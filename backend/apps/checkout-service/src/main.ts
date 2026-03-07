@@ -1,12 +1,16 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { UcheckoutUserviceModule } from './checkout-service.module';
+import { CheckoutServiceModule } from './checkout-service.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(UcheckoutUserviceModule);
+  const app = await NestFactory.create(CheckoutServiceModule, { rawBody: true });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.enableCors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    credentials: true,
+  });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -19,6 +23,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT || 3009);
-  console.log(`UcheckoutUservice running on port ${process.env.PORT || 3009}`);
+  console.log(`checkout-service running on port ${process.env.PORT || 3009}`);
 }
 bootstrap();
