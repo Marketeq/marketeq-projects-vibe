@@ -1,0 +1,402 @@
+[
+  {
+    "id": "11-3013.01",
+    "label": "Security Manager"
+  },
+  {
+    "id": "11-3021.00",
+    "label": "Computer and Information Systems Manager"
+  },
+  {
+    "id": "11-3051.01",
+    "label": "Quality Control Systems Manager"
+  },
+  {
+    "id": "11-9041.00",
+    "label": "Architectural and Engineering Manager"
+  },
+  {
+    "id": "13-1081.01",
+    "label": "Logistics Engineer"
+  },
+  {
+    "id": "13-1081.02",
+    "label": "Logistics Analyst"
+  },
+  {
+    "id": "13-1111.00",
+    "label": "Management Analyst"
+  },
+  {
+    "id": "13-1161.00",
+    "label": "Market Research Analysts and Marketing Specialist"
+  },
+  {
+    "id": "13-1199.07",
+    "label": "Security Management Specialist"
+  },
+  {
+    "id": "13-2031.00",
+    "label": "Budget Analyst"
+  },
+  {
+    "id": "13-2041.00",
+    "label": "Credit Analyst"
+  },
+  {
+    "id": "13-2051.00",
+    "label": "Financial and Investment Analyst"
+  },
+  {
+    "id": "13-2099.01",
+    "label": "Financial Quantitative Analyst"
+  },
+  {
+    "id": "13-2099.04",
+    "label": "Fraud Examiners, Investigators and Analyst"
+  },
+  {
+    "id": "15-1211.00",
+    "label": "Computer Systems Analyst"
+  },
+  {
+    "id": "15-1212.00",
+    "label": "Information Security Analyst"
+  },
+  {
+    "id": "15-1221.00",
+    "label": "Computer and Information Research Scientist"
+  },
+  {
+    "id": "15-1231.00",
+    "label": "Computer Network Support Specialist"
+  },
+  {
+    "id": "15-1232.00",
+    "label": "Computer User Support Specialist"
+  },
+  {
+    "id": "15-1241.00",
+    "label": "Computer Network Architect"
+  },
+  {
+    "id": "tech-021",
+    "label": "Cloud Engineer"
+  },
+  {
+    "id": "tech-022",
+    "label": "DevOps Engineer"
+  },
+  {
+    "id": "tech-023",
+    "label": "Machine Learning Engineer"
+  },
+  {
+    "id": "tech-024",
+    "label": "AI Research Scientist"
+  },
+  {
+    "id": "tech-025",
+    "label": "Site Reliability Engineer"
+  },
+  {
+    "id": "tech-026",
+    "label": "Full Stack Developer"
+  },
+  {
+    "id": "tech-027",
+    "label": "Backend Developer"
+  },
+  {
+    "id": "tech-028",
+    "label": "Frontend Developer"
+  },
+  {
+    "id": "tech-029",
+    "label": "Mobile Application Developer"
+  },
+  {
+    "id": "tech-030",
+    "label": "Cybersecurity Specialist"
+  },
+  {
+    "id": "tech-031",
+    "label": "Blockchain Developer"
+  },
+  {
+    "id": "tech-032",
+    "label": "Cloud Solutions Architect"
+  },
+  {
+    "id": "tech-033",
+    "label": "Computer Vision Engineer"
+  },
+  {
+    "id": "tech-034",
+    "label": "Computer Hardware Engineer"
+  },
+  {
+    "id": "tech-035",
+    "label": "Data Engineer"
+  },
+  {
+    "id": "tech-036",
+    "label": "Data Architect"
+  },
+  {
+    "id": "tech-037",
+    "label": "Deep Learning Engineer"
+  },
+  {
+    "id": "tech-038",
+    "label": "Embedded Systems Engineer"
+  },
+  {
+    "id": "tech-039",
+    "label": "Ethical Hacker"
+  },
+  {
+    "id": "tech-040",
+    "label": "Firmware Engineer"
+  },
+  {
+    "id": "tech-041",
+    "label": "Game Developer"
+  },
+  {
+    "id": "tech-042",
+    "label": "Hardware Design Engineer"
+  },
+  {
+    "id": "tech-043",
+    "label": "IT Support Specialist"
+  },
+  {
+    "id": "tech-044",
+    "label": "Information Assurance Analyst"
+  },
+  {
+    "id": "tech-045",
+    "label": "Information Systems Manager"
+  },
+  {
+    "id": "tech-046",
+    "label": "IoT Developer"
+  },
+  {
+    "id": "tech-047",
+    "label": "IT Project Manager"
+  },
+  {
+    "id": "tech-048",
+    "label": "Linux System Administrator"
+  },
+  {
+    "id": "tech-049",
+    "label": "Mobile Security Analyst"
+  },
+  {
+    "id": "tech-050",
+    "label": "Natural Language Processing Engineer"
+  },
+  {
+    "id": "tech-061",
+    "label": "AI Ethicist"
+  },
+  {
+    "id": "tech-062",
+    "label": "Automation Engineer"
+  },
+  {
+    "id": "tech-063",
+    "label": "Augmented Reality Developer"
+  },
+  {
+    "id": "tech-064",
+    "label": "Big Data Engineer"
+  },
+  {
+    "id": "tech-065",
+    "label": "BI Developer"
+  },
+  {
+    "id": "tech-066",
+    "label": "Build and Release Engineer"
+  },
+  {
+    "id": "tech-067",
+    "label": "Cloud Security Engineer"
+  },
+  {
+    "id": "tech-068",
+    "label": "Computer Forensics Analyst"
+  },
+  {
+    "id": "tech-069",
+    "label": "Configuration Manager"
+  },
+  {
+    "id": "tech-070",
+    "label": "CRM Developer"
+  },
+  {
+    "id": "tech-071",
+    "label": "Cyber Intelligence Analyst"
+  },
+  {
+    "id": "tech-072",
+    "label": "Database Developer"
+  },
+  {
+    "id": "tech-073",
+    "label": "Desktop Support Technician"
+  },
+  {
+    "id": "tech-074",
+    "label": "Digital Product Manager"
+  },
+  {
+    "id": "tech-075",
+    "label": "Edge Computing Specialist"
+  },
+  {
+    "id": "tech-076",
+    "label": "Firmware Developer"
+  },
+  {
+    "id": "tech-077",
+    "label": "GIS Developer"
+  },
+  {
+    "id": "tech-078",
+    "label": "HCI Researcher"
+  },
+  {
+    "id": "tech-079",
+    "label": "IT Business Analyst"
+  },
+  {
+    "id": "tech-080",
+    "label": "Information Security Consultant"
+  },
+  {
+    "id": "tech-081",
+    "label": "Infrastructure Engineer"
+  },
+  {
+    "id": "tech-082",
+    "label": "Integration Engineer"
+  },
+  {
+    "id": "tech-083",
+    "label": "Java Developer"
+  },
+  {
+    "id": "tech-084",
+    "label": "Kubernetes Administrator"
+  },
+  {
+    "id": "tech-085",
+    "label": "Low Code/No Code Developer"
+  },
+  {
+    "id": "tech-086",
+    "label": "Machine Vision Engineer"
+  },
+  {
+    "id": "tech-087",
+    "label": "Middleware Specialist"
+  },
+  {
+    "id": "tech-088",
+    "label": "Network Engineer"
+  },
+  {
+    "id": "tech-089",
+    "label": "Observability Engineer"
+  },
+  {
+    "id": "tech-090",
+    "label": "Platform Reliability Engineer"
+  },
+  {
+    "id": "tech-091",
+    "label": "Power BI Developer"
+  },
+  {
+    "id": "tech-092",
+    "label": "Quantum Computing Researcher"
+  },
+  {
+    "id": "tech-093",
+    "label": "Release Manager"
+  },
+  {
+    "id": "tech-094",
+    "label": "Ruby on Rails Developer"
+  },
+  {
+    "id": "tech-095",
+    "label": "SAP Consultant"
+  },
+  {
+    "id": "tech-096",
+    "label": "Scrum Master"
+  },
+  {
+    "id": "tech-097",
+    "label": "Security Software Developer"
+  },
+  {
+    "id": "tech-098",
+    "label": "Solutions Architect"
+  },
+  {
+    "id": "tech-099",
+    "label": "Technical Account Manager"
+  },
+  {
+    "id": "tech-100",
+    "label": "Technology Evangelist"
+  },
+  {
+    "id": "tech-101",
+    "label": "Test Automation Engineer"
+  },
+  {
+    "id": "tech-102",
+    "label": "Tools Engineer"
+  },
+  {
+    "id": "tech-103",
+    "label": "TypeScript Developer"
+  },
+  {
+    "id": "tech-104",
+    "label": "Unity Developer"
+  },
+  {
+    "id": "tech-105",
+    "label": "User Researcher"
+  },
+  {
+    "id": "tech-106",
+    "label": "Video Streaming Engineer"
+  },
+  {
+    "id": "tech-107",
+    "label": "Visual Designer"
+  },
+  {
+    "id": "tech-108",
+    "label": "VoIP Engineer"
+  },
+  {
+    "id": "tech-109",
+    "label": "VR/AR Tester"
+  },
+  {
+    "id": "tech-110",
+    "label": "Zigbee Developer"
+  }
+]

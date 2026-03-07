@@ -1,0 +1,46 @@
+version = 1
+
+test_patterns = [
+  "*/__tests__/**",
+  "*/tests/**",
+  "*/__mocks__/**"
+]
+
+exclude_patterns = [
+  "node_modules/**",
+  ".next/**",
+  "dist/**",
+  "build/**",
+  "coverage/**"
+]
+
+[[analyzers]]
+name = "javascript"
+enabled = true
+
+[[analyzers]]
+name = "test-coverage"
+enabled = true
+
+[[analyzers]]
+name = "typescript"
+enabled = true
+
+[[analyzers]]
+name = "docker"
+enabled = false
+
+[[analyzers]]
+name = "yaml"
+enabled = false
+
+[[analyzers]]
+name = "secrets"
+enabled = true
+
+# Optional: stricter standards for pull requests
+[metrics]
+  reliability_threshold = "medium"
+  security_threshold = "medium"
+  performance_threshold = "medium"
+  style_threshold = "low"
