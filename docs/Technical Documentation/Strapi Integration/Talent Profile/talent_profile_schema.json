@@ -1,0 +1,76 @@
+{
+  "kind": "collectionType",
+  "collectionName": "talent_profiles",
+  "info": {
+    "singularName": "talent-profile",
+    "pluralName": "talent-profiles",
+    "displayName": "Talent Profile",
+    "description": "Editable profile fields managed by admin users"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "username": {
+      "type": "uid",
+      "targetField": "username",
+      "required": true,
+      "unique": true
+    },
+    "password": {
+      "type": "password",
+      "required": true,
+      "private": true
+    },
+    "user_type": {
+      "type": "enumeration",
+      "enum": [
+        "client",
+        "talent"
+      ],
+      "required": true
+    },
+    "availability": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "timezone": {
+      "type": "string"
+    },
+    "overview": {
+      "type": "richtext"
+    },
+    "skills": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::skill.skill"
+    },
+    "industry_expertise": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::industry.industry"
+    },
+    "certifications": {
+      "type": "component",
+      "repeatable": true,
+      "component": "shared.certification"
+    },
+    "languages": {
+      "type": "component",
+      "repeatable": true,
+      "component": "shared.language"
+    },
+    "education": {
+      "type": "component",
+      "repeatable": true,
+      "component": "shared.education"
+    },
+    "work_experience": {
+      "type": "component",
+      "repeatable": true,
+      "component": "shared.work-experience"
+    }
+  }
+}
