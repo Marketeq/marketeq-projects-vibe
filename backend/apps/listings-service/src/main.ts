@@ -1,12 +1,16 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { UlistingsUserviceModule } from './listings-service.module';
+import { ListingsServiceModule } from './listings-service.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(UlistingsUserviceModule);
+  const app = await NestFactory.create(ListingsServiceModule);
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.enableCors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    credentials: true,
+  });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -19,6 +23,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT || 3003);
-  console.log(`UlistingsUservice running on port ${process.env.PORT || 3003}`);
+  console.log(`listings-service running on port ${process.env.PORT || 3003}`);
 }
 bootstrap();
