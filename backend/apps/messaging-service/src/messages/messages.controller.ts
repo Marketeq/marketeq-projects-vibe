@@ -17,7 +17,7 @@ export class MessagesController {
 
   @Patch(':id')
   edit(@Param('id') id: string, @Body('content') content: string, @Req() req: any) {
-    return this.service.edit(id, content, req.user?.id || dto?.userId);
+    return this.service.edit(id, content, req.user?.id);
   }
 
   @Delete(':id')
