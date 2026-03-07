@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UadminUserviceController } from './admin-service.controller';
-import { UadminUserviceService } from './admin-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UadminUserviceController],
-  providers: [UadminUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UadminUserviceModule {}
+export class AdminServiceModuleModule {}

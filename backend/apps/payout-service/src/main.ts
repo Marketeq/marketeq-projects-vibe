@@ -1,12 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { UpayoutUserviceModule } from './payout-service.module';
+import { PayoutServiceModuleModule } from './payout-service.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(UpayoutUserviceModule);
-
+  const app = await NestFactory.create(PayoutServiceModuleModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -19,6 +19,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT || 3014);
-  console.log(`UpayoutUservice running on port ${process.env.PORT || 3014}`);
+  console.log("payout-service running on port ${process.env.PORT || 3014}");
 }
 bootstrap();

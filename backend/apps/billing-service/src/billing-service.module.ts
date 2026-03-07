@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UbillingUserviceController } from './billing-service.controller';
-import { UbillingUserviceService } from './billing-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UbillingUserviceController],
-  providers: [UbillingUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UbillingUserviceModule {}
+export class BillingServiceModuleModule {}

@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UcontractsUserviceController } from './contracts-service.controller';
-import { UcontractsUserviceService } from './contracts-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UcontractsUserviceController],
-  providers: [UcontractsUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UcontractsUserviceModule {}
+export class ContractsServiceModuleModule {}

@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UtransactionUserviceController } from './transaction-service.controller';
-import { UtransactionUserviceService } from './transaction-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UtransactionUserviceController],
-  providers: [UtransactionUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UtransactionUserviceModule {}
+export class TransactionServiceModuleModule {}

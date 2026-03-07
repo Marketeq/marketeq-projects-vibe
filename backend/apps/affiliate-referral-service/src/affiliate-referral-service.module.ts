@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UaffiliateUreferralUserviceController } from './affiliate-referral-service.controller';
-import { UaffiliateUreferralUserviceService } from './affiliate-referral-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UaffiliateUreferralUserviceController],
-  providers: [UaffiliateUreferralUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UaffiliateUreferralUserviceModule {}
+export class AffiliateReferralServiceModuleModule {}

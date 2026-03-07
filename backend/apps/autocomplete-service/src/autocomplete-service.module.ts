@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UautocompleteUserviceController } from './autocomplete-service.controller';
-import { UautocompleteUserviceService } from './autocomplete-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UautocompleteUserviceController],
-  providers: [UautocompleteUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UautocompleteUserviceModule {}
+export class AutocompleteServiceModuleModule {}

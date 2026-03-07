@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UsuggestionsUserviceController } from './suggestions-service.controller';
-import { UsuggestionsUserviceService } from './suggestions-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UsuggestionsUserviceController],
-  providers: [UsuggestionsUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UsuggestionsUserviceModule {}
+export class SuggestionsServiceModuleModule {}

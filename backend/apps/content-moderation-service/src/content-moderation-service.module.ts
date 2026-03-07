@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UcontentUmoderationUserviceController } from './content-moderation-service.controller';
-import { UcontentUmoderationUserviceService } from './content-moderation-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UcontentUmoderationUserviceController],
-  providers: [UcontentUmoderationUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UcontentUmoderationUserviceModule {}
+export class ContentModerationServiceModuleModule {}

@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UtimeUtrackingUserviceController } from './time-tracking-service.controller';
-import { UtimeUtrackingUserviceService } from './time-tracking-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UtimeUtrackingUserviceController],
-  providers: [UtimeUtrackingUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UtimeUtrackingUserviceModule {}
+export class TimeTrackingServiceModuleModule {}

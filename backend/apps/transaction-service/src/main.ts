@@ -1,12 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { UtransactionUserviceModule } from './transaction-service.module';
+import { TransactionServiceModuleModule } from './transaction-service.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(UtransactionUserviceModule);
-
+  const app = await NestFactory.create(TransactionServiceModuleModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -19,6 +19,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT || 3016);
-  console.log(`UtransactionUservice running on port ${process.env.PORT || 3016}`);
+  console.log("transaction-service running on port ${process.env.PORT || 3016}");
 }
 bootstrap();

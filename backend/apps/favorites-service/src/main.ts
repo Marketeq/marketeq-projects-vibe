@@ -1,12 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { UfavoritesUserviceModule } from './favorites-service.module';
+import { FavoritesServiceModuleModule } from './favorites-service.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(UfavoritesUserviceModule);
-
+  const app = await NestFactory.create(FavoritesServiceModuleModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -19,6 +19,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT || 3012);
-  console.log(`UfavoritesUservice running on port ${process.env.PORT || 3012}`);
+  console.log("favorites-service running on port ${process.env.PORT || 3012}");
 }
 bootstrap();

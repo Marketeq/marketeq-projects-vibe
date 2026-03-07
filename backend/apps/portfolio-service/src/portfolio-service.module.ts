@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UportfolioUserviceController } from './portfolio-service.controller';
-import { UportfolioUserviceService } from './portfolio-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UportfolioUserviceController],
-  providers: [UportfolioUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UportfolioUserviceModule {}
+export class PortfolioServiceModuleModule {}

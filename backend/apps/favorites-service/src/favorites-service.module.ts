@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UfavoritesUserviceController } from './favorites-service.controller';
-import { UfavoritesUserviceService } from './favorites-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UfavoritesUserviceController],
-  providers: [UfavoritesUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UfavoritesUserviceModule {}
+export class FavoritesServiceModuleModule {}

@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UsearchUserviceController } from './search-service.controller';
-import { UsearchUserviceService } from './search-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UsearchUserviceController],
-  providers: [UsearchUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UsearchUserviceModule {}
+export class SearchServiceModuleModule {}

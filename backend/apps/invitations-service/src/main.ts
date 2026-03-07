@@ -1,12 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { UinvitationsUserviceModule } from './invitations-service.module';
+import { InvitationsServiceModuleModule } from './invitations-service.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(UinvitationsUserviceModule);
-
+  const app = await NestFactory.create(InvitationsServiceModuleModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -19,6 +19,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT || 3013);
-  console.log(`UinvitationsUservice running on port ${process.env.PORT || 3013}`);
+  console.log("invitations-service running on port ${process.env.PORT || 3013}");
 }
 bootstrap();

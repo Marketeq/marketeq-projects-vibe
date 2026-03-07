@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UinvitationsUserviceController } from './invitations-service.controller';
-import { UinvitationsUserviceService } from './invitations-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UinvitationsUserviceController],
-  providers: [UinvitationsUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UinvitationsUserviceModule {}
+export class InvitationsServiceModuleModule {}

@@ -1,12 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { UaffiliateUreferralUserviceModule } from './affiliate-referral-service.module';
+import { AffiliateReferralServiceModuleModule } from './affiliate-referral-service.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(UaffiliateUreferralUserviceModule);
-
+  const app = await NestFactory.create(AffiliateReferralServiceModuleModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -19,6 +19,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT || 3021);
-  console.log(`UaffiliateUreferralUservice running on port ${process.env.PORT || 3021}`);
+  console.log("affiliate-referral-service running on port ${process.env.PORT || 3021}");
 }
 bootstrap();

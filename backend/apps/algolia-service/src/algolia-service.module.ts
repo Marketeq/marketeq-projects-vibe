@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UalgoliaUserviceController } from './algolia-service.controller';
-import { UalgoliaUserviceService } from './algolia-service.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
-  controllers: [UalgoliaUserviceController],
-  providers: [UalgoliaUserviceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
 })
-export class UalgoliaUserviceModule {}
+export class AlgoliaServiceModuleModule {}

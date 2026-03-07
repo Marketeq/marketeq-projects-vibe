@@ -1,12 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { UearningsUserviceModule } from './earnings-service.module';
+import { EarningsServiceModuleModule } from './earnings-service.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(UearningsUserviceModule);
-
+  const app = await NestFactory.create(EarningsServiceModuleModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -19,6 +19,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT || 3011);
-  console.log(`UearningsUservice running on port ${process.env.PORT || 3011}`);
+  console.log("earnings-service running on port ${process.env.PORT || 3011}");
 }
 bootstrap();
