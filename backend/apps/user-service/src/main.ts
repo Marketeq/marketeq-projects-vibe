@@ -1,12 +1,17 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { UuserUserviceModule } from './user-service.module';
+import { UserServiceModule } from './user-service.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(UuserUserviceModule);
+  const app = await NestFactory.create(UserServiceModule);
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  app.enableCors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    credentials: true,
+  });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -19,6 +24,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT || 3002);
-  console.log(`UuserUservice running on port ${process.env.PORT || 3002}`);
+  console.log(`user-service running on port ${process.env.PORT || 3002}`);
 }
 bootstrap();
