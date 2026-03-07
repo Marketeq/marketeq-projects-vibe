@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "monorepo": true,
+  "root": "apps/api-gateway",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": false
+  },
+  "projects": {
+    "api-gateway": { "type": "application", "root": "apps/api-gateway", "entryFile": "main", "sourceRoot": "apps/api-gateway/src", "compilerOptions": { "tsConfigPath": "apps/api-gateway/tsconfig.app.json" } },
+    "auth-service": { "type": "application", "root": "apps/auth-service", "entryFile": "main", "sourceRoot": "apps/auth-service/src", "compilerOptions": { "tsConfigPath": "apps/auth-service/tsconfig.app.json" } },
+    "user-service": { "type": "application", "root": "apps/user-service", "entryFile": "main", "sourceRoot": "apps/user-service/src", "compilerOptions": { "tsConfigPath": "apps/user-service/tsconfig.app.json" } },
+    "listings-service": { "type": "application", "root": "apps/listings-service", "entryFile": "main", "sourceRoot": "apps/listings-service/src", "compilerOptions": { "tsConfigPath": "apps/listings-service/tsconfig.app.json" } },
+    "billing-service": { "type": "application", "root": "apps/billing-service", "entryFile": "main", "sourceRoot": "apps/billing-service/src", "compilerOptions": { "tsConfigPath": "apps/billing-service/tsconfig.app.json" } },
+    "messaging-service": { "type": "application", "root": "apps/messaging-service", "entryFile": "main", "sourceRoot": "apps/messaging-service/src", "compilerOptions": { "tsConfigPath": "apps/messaging-service/tsconfig.app.json" } },
+    "notification-service": { "type": "application", "root": "apps/notification-service", "entryFile": "main", "sourceRoot": "apps/notification-service/src", "compilerOptions": { "tsConfigPath": "apps/notification-service/tsconfig.app.json" } },
+    "search-service": { "type": "application", "root": "apps/search-service", "entryFile": "main", "sourceRoot": "apps/search-service/src", "compilerOptions": { "tsConfigPath": "apps/search-service/tsconfig.app.json" } },
+    "algolia-service": { "type": "application", "root": "apps/algolia-service", "entryFile": "main", "sourceRoot": "apps/algolia-service/src", "compilerOptions": { "tsConfigPath": "apps/algolia-service/tsconfig.app.json" } },
+    "checkout-service": { "type": "application", "root": "apps/checkout-service", "entryFile": "main", "sourceRoot": "apps/checkout-service/src", "compilerOptions": { "tsConfigPath": "apps/checkout-service/tsconfig.app.json" } },
+    "contracts-service": { "type": "application", "root": "apps/contracts-service", "entryFile": "main", "sourceRoot": "apps/contracts-service/src", "compilerOptions": { "tsConfigPath": "apps/contracts-service/tsconfig.app.json" } },
+    "earnings-service": { "type": "application", "root": "apps/earnings-service", "entryFile": "main", "sourceRoot": "apps/earnings-service/src", "compilerOptions": { "tsConfigPath": "apps/earnings-service/tsconfig.app.json" } },
+    "favorites-service": { "type": "application", "root": "apps/favorites-service", "entryFile": "main", "sourceRoot": "apps/favorites-service/src", "compilerOptions": { "tsConfigPath": "apps/favorites-service/tsconfig.app.json" } },
+    "invitations-service": { "type": "application", "root": "apps/invitations-service", "entryFile": "main", "sourceRoot": "apps/invitations-service/src", "compilerOptions": { "tsConfigPath": "apps/invitations-service/tsconfig.app.json" } },
+    "payout-service": { "type": "application", "root": "apps/payout-service", "entryFile": "main", "sourceRoot": "apps/payout-service/src", "compilerOptions": { "tsConfigPath": "apps/payout-service/tsconfig.app.json" } },
+    "portfolio-service": { "type": "application", "root": "apps/portfolio-service", "entryFile": "main", "sourceRoot": "apps/portfolio-service/src", "compilerOptions": { "tsConfigPath": "apps/portfolio-service/tsconfig.app.json" } },
+    "transaction-service": { "type": "application", "root": "apps/transaction-service", "entryFile": "main", "sourceRoot": "apps/transaction-service/src", "compilerOptions": { "tsConfigPath": "apps/transaction-service/tsconfig.app.json" } },
+    "time-tracking-service": { "type": "application", "root": "apps/time-tracking-service", "entryFile": "main", "sourceRoot": "apps/time-tracking-service/src", "compilerOptions": { "tsConfigPath": "apps/time-tracking-service/tsconfig.app.json" } },
+    "content-moderation-service": { "type": "application", "root": "apps/content-moderation-service", "entryFile": "main", "sourceRoot": "apps/content-moderation-service/src", "compilerOptions": { "tsConfigPath": "apps/content-moderation-service/tsconfig.app.json" } },
+    "autocomplete-service": { "type": "application", "root": "apps/autocomplete-service", "entryFile": "main", "sourceRoot": "apps/autocomplete-service/src", "compilerOptions": { "tsConfigPath": "apps/autocomplete-service/tsconfig.app.json" } },
+    "suggestions-service": { "type": "application", "root": "apps/suggestions-service", "entryFile": "main", "sourceRoot": "apps/suggestions-service/src", "compilerOptions": { "tsConfigPath": "apps/suggestions-service/tsconfig.app.json" } },
+    "affiliate-referral-service": { "type": "application", "root": "apps/affiliate-referral-service", "entryFile": "main", "sourceRoot": "apps/affiliate-referral-service/src", "compilerOptions": { "tsConfigPath": "apps/affiliate-referral-service/tsconfig.app.json" } },
+    "admin-service": { "type": "application", "root": "apps/admin-service", "entryFile": "main", "sourceRoot": "apps/admin-service/src", "compilerOptions": { "tsConfigPath": "apps/admin-service/tsconfig.app.json" } }
+  }
+}

@@ -1,0 +1,363 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: apps/api-gateway/Dockerfile
+    ports:
+      - '3000:3000'
+    environment:
+      PORT: 3000
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: apps/auth-service/Dockerfile
+    ports:
+      - '3001:3001'
+    environment:
+      PORT: 3001
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: auth
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  user-service:
+    build:
+      context: .
+      dockerfile: apps/user-service/Dockerfile
+    ports:
+      - '3002:3002'
+    environment:
+      PORT: 3002
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: users
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  listings-service:
+    build:
+      context: .
+      dockerfile: apps/listings-service/Dockerfile
+    ports:
+      - '3003:3003'
+    environment:
+      PORT: 3003
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: listings
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  billing-service:
+    build:
+      context: .
+      dockerfile: apps/billing-service/Dockerfile
+    ports:
+      - '3004:3004'
+    environment:
+      PORT: 3004
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: billing
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  messaging-service:
+    build:
+      context: .
+      dockerfile: apps/messaging-service/Dockerfile
+    ports:
+      - '3005:3005'
+    environment:
+      PORT: 3005
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: messaging
+      ABLY_API_KEY: ${ABLY_API_KEY}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: apps/notification-service/Dockerfile
+    ports:
+      - '3006:3006'
+    environment:
+      PORT: 3006
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      ABLY_API_KEY: ${ABLY_API_KEY}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  search-service:
+    build:
+      context: .
+      dockerfile: apps/search-service/Dockerfile
+    ports:
+      - '3007:3007'
+    environment:
+      PORT: 3007
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      ALGOLIA_APP_ID: ${ALGOLIA_APP_ID}
+      ALGOLIA_API_KEY: ${ALGOLIA_API_KEY}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  algolia-service:
+    build:
+      context: .
+      dockerfile: apps/algolia-service/Dockerfile
+    ports:
+      - '3008:3008'
+    environment:
+      PORT: 3008
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      ALGOLIA_APP_ID: ${ALGOLIA_APP_ID}
+      ALGOLIA_API_KEY: ${ALGOLIA_API_KEY}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  checkout-service:
+    build:
+      context: .
+      dockerfile: apps/checkout-service/Dockerfile
+    ports:
+      - '3009:3009'
+    environment:
+      PORT: 3009
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: checkout
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  contracts-service:
+    build:
+      context: .
+      dockerfile: apps/contracts-service/Dockerfile
+    ports:
+      - '3010:3010'
+    environment:
+      PORT: 3010
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: contracts
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  earnings-service:
+    build:
+      context: .
+      dockerfile: apps/earnings-service/Dockerfile
+    ports:
+      - '3011:3011'
+    environment:
+      PORT: 3011
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: earnings
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  favorites-service:
+    build:
+      context: .
+      dockerfile: apps/favorites-service/Dockerfile
+    ports:
+      - '3012:3012'
+    environment:
+      PORT: 3012
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: favorites
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  invitations-service:
+    build:
+      context: .
+      dockerfile: apps/invitations-service/Dockerfile
+    ports:
+      - '3013:3013'
+    environment:
+      PORT: 3013
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: invitations
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  payout-service:
+    build:
+      context: .
+      dockerfile: apps/payout-service/Dockerfile
+    ports:
+      - '3014:3014'
+    environment:
+      PORT: 3014
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: payouts
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  portfolio-service:
+    build:
+      context: .
+      dockerfile: apps/portfolio-service/Dockerfile
+    ports:
+      - '3015:3015'
+    environment:
+      PORT: 3015
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: portfolio
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  transaction-service:
+    build:
+      context: .
+      dockerfile: apps/transaction-service/Dockerfile
+    ports:
+      - '3016:3016'
+    environment:
+      PORT: 3016
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: transactions
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  time-tracking-service:
+    build:
+      context: .
+      dockerfile: apps/time-tracking-service/Dockerfile
+    ports:
+      - '3017:3017'
+    environment:
+      PORT: 3017
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: time_tracking
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  content-moderation-service:
+    build:
+      context: .
+      dockerfile: apps/content-moderation-service/Dockerfile
+    ports:
+      - '3018:3018'
+    environment:
+      PORT: 3018
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  autocomplete-service:
+    build:
+      context: .
+      dockerfile: apps/autocomplete-service/Dockerfile
+    ports:
+      - '3019:3019'
+    environment:
+      PORT: 3019
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      ALGOLIA_APP_ID: ${ALGOLIA_APP_ID}
+      ALGOLIA_API_KEY: ${ALGOLIA_API_KEY}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  suggestions-service:
+    build:
+      context: .
+      dockerfile: apps/suggestions-service/Dockerfile
+    ports:
+      - '3020:3020'
+    environment:
+      PORT: 3020
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: suggestions
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  affiliate-referral-service:
+    build:
+      context: .
+      dockerfile: apps/affiliate-referral-service/Dockerfile
+    ports:
+      - '3021:3021'
+    environment:
+      PORT: 3021
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: affiliate_referral
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  admin-service:
+    build:
+      context: .
+      dockerfile: apps/admin-service/Dockerfile
+    ports:
+      - '3022:3022'
+    environment:
+      PORT: 3022
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SCHEMA: admin
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
