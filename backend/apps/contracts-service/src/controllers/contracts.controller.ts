@@ -1,58 +1,45 @@
-import { Controller, Post, Put, Get, Param, Body } from '@nestjs/common';
+import { Controller, Get, Put, Param, Body, Request, UseGuards } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ContractsService } from '../services/contracts.service';
+import { EndContractDto } from '../dtos/end-contract.dto';
+import { AcceptRejectDto } from '../dtos/accept-reject.dto';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { RolesGuard } from '../guards/roles.guard';
 
-@Controller('v1')
+@Controller('contracts')
+@UseGuards(JwtAuthGuard)
 export class ContractsController {
-  constructor(private readonly service: ContractsService) {}
+  constructor(private readonly svc: ContractsService) {}
 
-  @Post('contract-groups')
-  createGroup(@Body() dto: any) {
-    return this.service.createGroup(dto);
-  }
-
-  @Get('contract-groups/:id')
-  getGroup(@Param('id') id: string) {
-    return this.service.getGroup(id);
-  }
-
-  @Get('contracts/:id')
+  @Get(':id')
   getContract(@Param('id') id: string) {
-    return this.service.getContract(id);
+    return this.svc.getContract(id);
   }
 
-  @Get('contracts/client/:clientId')
+  @Get('client/:clientId')
   getClientContracts(@Param('clientId') clientId: string) {
-    return this.service.getContractsByClient(clientId);
+    return this.svc.getContractsByClient(clientId);
   }
 
-  @Get('contracts/talent/:talentId')
+  @Get('talent/:talentId')
   getTalentContracts(@Param('talentId') talentId: string) {
-    return this.service.getContractsByTalent(talentId);
+    return this.svc.getContractsByTalent(talentId);
   }
 
-  @Put('contracts/:id/respond')
-  respond(@Param('id') id: string, @Body() dto: { accepted: boolean; talentId: string }) {
-    return this.service.respondToOffer(id, dto);
+  @UseGuards(RolesGuard('client'))
+  @Put(':id/end')
+  endContract(@Param('id') id: string, @Body() dto: EndContractDto, @Request() req: any) {
+    return this.svc.endContract(id, dto, req.user);
   }
 
-  @Put('contracts/:id/end')
-  endContract(@Param('id') id: string, @Body() dto: { reasonCode: string; notes: string }) {
-    return this.service.endContract(id, dto);
-  }
-
-  @Post('webhooks/checkout/deposit-cleared')
-  depositCleared(@Body() payload: { groupId: string }) {
-    return this.service.activateGroup(payload.groupId);
-  }
-
-  @Get('health')
-  health() {
-    return { status: 'ok', service: 'contracts-service' };
+  @UseGuards(RolesGuard('talent'))
+  @Put(':id/respond')
+  respond(@Param('id') id: string, @Body() dto: AcceptRejectDto, @Request() req: any) {
+    return this.svc.respondToOffer(id, dto, req.user);
   }
 
   @MessagePattern('contract.activate')
-  handleActivate(@Payload() data: { groupId: string }) {
-    return this.service.activateGroup(data.groupId);
+  handleActivate(@Payload() data: { groupId: string; paymentRef?: string }) {
+    return this.svc.activateGroup(data.groupId, data.paymentRef);
   }
 }
