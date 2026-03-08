@@ -7,6 +7,7 @@ import { SubmitAutocompleteDto } from './dto/submit-autocomplete.dto';
 import { ReviewAutocompleteDto } from './dto/review-autocomplete.dto';
 import { QueryAutocompleteDto } from './dto/query-autocomplete.dto';
 import { EntryType } from './entities/autocomplete-entry.entity';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('autocomplete')
 export class AutocompleteController {
@@ -33,11 +34,13 @@ export class AutocompleteController {
     return this.svc.getCategoryMap();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('review')
   review(@Body() dto: ReviewAutocompleteDto) {
     return this.svc.review(dto);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('review/pending')
   getPending() {
     return this.svc.getPendingReview();

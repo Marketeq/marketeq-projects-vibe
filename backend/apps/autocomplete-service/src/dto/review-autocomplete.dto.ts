@@ -1,4 +1,4 @@
-import { IsUUID, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsUUID, IsEnum, IsOptional, IsString, ValidateIf } from 'class-validator';
 import { ReviewAction } from '../entities/autocomplete-review-queue.entity';
 
 export class ReviewAutocompleteDto {
@@ -8,9 +8,9 @@ export class ReviewAutocompleteDto {
   @IsEnum(ReviewAction)
   action: ReviewAction;
 
+  @ValidateIf(o => o.action === ReviewAction.REJECT)
   @IsString()
-  @IsOptional()
-  reason?: string;
+  reason: string;
 
   @IsString()
   @IsOptional()
