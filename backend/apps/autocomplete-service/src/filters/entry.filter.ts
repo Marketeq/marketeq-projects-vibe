@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-const MIN_LENGTH = 3;
+const MIN_LENGTH = 2;
 const MAX_LENGTH = 100;
 const MAX_WORDS = 4;
 const VALID_CHARS = /^[a-zA-Z0-9\s\-_.+#@&()'/]+$/;
