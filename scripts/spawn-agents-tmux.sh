@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # spawn-agents-tmux.sh
 # Opens a tmux session with one window per agent.
@@ -46,25 +46,29 @@ echo "======================================"
 echo "Spawning ${#SERVICES[@]} agent(s) in tmux session: $SESSION"
 echo ""
 
-# Map service names to their docs folder
-declare -A DOCS_MAP
-DOCS_MAP["autocomplete-service"]="Autocomplete"
-DOCS_MAP["suggestions-service"]="Suggestions Service"
-DOCS_MAP["favorites-service"]="Favorites Service"
-DOCS_MAP["portfolio-service"]="Portfolio Service"
-DOCS_MAP["invitations-service"]="Invite Service"
-DOCS_MAP["content-moderation-service"]="Content Moderation Service"
-DOCS_MAP["search-service"]="Search Service"
-DOCS_MAP["algolia-service"]="Search Service"
-DOCS_MAP["transaction-service"]="Transaction Service"
-DOCS_MAP["api-gateway"]="Microservices Architecture"
-DOCS_MAP["billing-service"]="Billing Service"
-DOCS_MAP["contracts-service"]="Contracts Service"
-DOCS_MAP["earnings-service"]="Earnings Service"
-DOCS_MAP["payout-service"]="Payout Service"
-DOCS_MAP["time-tracking-service"]="Time Tracking Service"
-DOCS_MAP["admin-service"]="User Service"
-DOCS_MAP["affiliate-referral-service"]="User Service"
+# Map service name to docs folder
+get_docs_folder() {
+  case "$1" in
+    autocomplete-service)       echo "Autocomplete" ;;
+    suggestions-service)        echo "Suggestions Service" ;;
+    favorites-service)          echo "Favorites Service" ;;
+    portfolio-service)          echo "Portfolio Service" ;;
+    invitations-service)        echo "Invite Service" ;;
+    content-moderation-service) echo "Content Moderation Service" ;;
+    search-service)             echo "Search Service" ;;
+    algolia-service)            echo "Search Service" ;;
+    transaction-service)        echo "Transaction Service" ;;
+    api-gateway)                echo "Microservices Architecture" ;;
+    billing-service)            echo "Billing Service" ;;
+    contracts-service)          echo "Contracts Service" ;;
+    earnings-service)           echo "Earnings Service" ;;
+    payout-service)             echo "Payout Service" ;;
+    time-tracking-service)      echo "Time Tracking Service" ;;
+    admin-service)              echo "User Service" ;;
+    affiliate-referral-service) echo "User Service" ;;
+    *)                          echo "$1" ;;
+  esac
+}
 
 # Create tmux session
 tmux new-session -d -s "$SESSION" -n "${SERVICES[0]}"
@@ -73,7 +77,7 @@ for i in "${!SERVICES[@]}"; do
   SERVICE="${SERVICES[$i]}"
   WORKTREE_DIR="$AGENTS_DIR/$SERVICE"
   BRANCH="agent/$SERVICE"
-  DOCS_FOLDER="${DOCS_MAP[$SERVICE]:-$SERVICE}"
+  DOCS_FOLDER="$(get_docs_folder "$SERVICE")"
   SERVICE_DOCS="$DOCS_DIR/$DOCS_FOLDER"
 
   echo "-> Setting up: $SERVICE"
