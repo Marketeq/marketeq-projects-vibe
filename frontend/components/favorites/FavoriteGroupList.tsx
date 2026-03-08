@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useFavoriteGroups, useRemoveFavorite, useMoveFavorite, useCreateGroup, useDeleteGroup } from "@/src/hooks/useFavorites"
 import { FavoriteGroup, Favorite } from "@/service/http/favorites"
-import { Button, IconButton, Input, Spinner } from "@/components/ui"
+import { Button, IconButton, Input } from "@/components/ui"
 import { Plus, Trash01, X } from "@blend-metrics/icons"
 import { cn } from "@/utils/functions"
 
@@ -79,7 +79,7 @@ function NewGroupForm({ onDone }: { onDone: () => void }) {
         className="h-8 text-sm"
       />
       <Button type="submit" size="sm" disabled={create.isPending || !name.trim()}>
-        {create.isPending ? <Spinner className="h-3 w-3" /> : "Create"}
+        {create.isPending ? "Creating..." : "Create"}
       </Button>
       <Button type="button" size="sm" variant="outlined" onClick={onDone}>
         Cancel
@@ -95,8 +95,8 @@ export function FavoriteGroupList() {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center py-16">
-        <Spinner className="h-6 w-6 text-primary-500" />
+      <div className="flex justify-center py-16 text-sm text-gray-400">
+        Loading favorites...
       </div>
     )
   }
