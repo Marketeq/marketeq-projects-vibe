@@ -1,33 +1,50 @@
-import { Controller, Get, Post, Param, Body, Req } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Invitation } from '../entities/invitation.entity';
-import { v4 as uuidv4 } from 'uuid';
+import {
+  Controller, Post, Get, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus, Req,
+} from '@nestjs/common';
+import { MessagePattern, Payload } from '@nestjs/microservices';
+import { InvitationsService } from './invitations.service';
+import { CreateInvitationsDto, ListInvitationsDto, AcceptInvitationDto } from '../dto/invitation.dto';
+import { GatewayAuthGuard } from '../guards/gateway-auth.guard';
 
-@Controller('v1/invitations')
+@Controller('invitations')
+@UseGuards(GatewayAuthGuard)
 export class InvitationsController {
-  constructor(@InjectRepository(Invitation) private readonly repo: Repository<Invitation>) {}
+  constructor(private readonly svc: InvitationsService) {}
 
   @Post()
-  async invite(@Body() dto: { inviteeEmail: string }, @Req() req: any) {
-    const invitation = this.repo.create({ inviterId: req.user?.id, inviteeEmail: dto.inviteeEmail, token: uuidv4(), expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) });
-    return this.repo.save(invitation);
+  @HttpCode(HttpStatus.CREATED)
+  create(@Body() dto: CreateInvitationsDto, @Req() req: any) {
+    return this.svc.createInvites(dto, req.user);
   }
 
-  @Get('verify/:token')
-  async verify(@Param('token') token: string) {
-    const inv = await this.repo.findOne({ where: { token } });
-    if (!inv) return { valid: false };
-    if (inv.status !== 'pending' || inv.expiresAt < new Date()) return { valid: false, reason: 'expired' };
-    return { valid: true, invitation: inv };
+  @Get()
+  list(@Query() dto: ListInvitationsDto) {
+    return this.svc.list(dto);
   }
 
-  @Post(':token/accept')
-  async accept(@Param('token') token: string, @Req() req: any) {
-    await this.repo.update({ token }, { status: 'accepted', inviteeId: req.user?.id });
-    return { accepted: true };
+  @Get(':id')
+  getOne(@Param('id') id: string) {
+    return this.svc.getOne(id);
   }
 
-  @Get('health')
-  health() { return { status: 'ok', service: 'invitations-service' }; }
+  @Post(':id/resend')
+  resend(@Param('id') id: string) {
+    return this.svc.resend(id);
+  }
+
+  @Delete(':id/cancel')
+  cancel(@Param('id') id: string) {
+    return this.svc.cancel(id);
+  }
+
+  @Post('accept')
+  accept(@Body() dto: AcceptInvitationDto, @Req() req: any) {
+    return this.svc.accept(dto, req.user);
+  }
+
+  // RabbitMQ
+  @MessagePattern('invitations.create')
+  handleCreate(@Payload() data: { dto: CreateInvitationsDto; user: { id: string; email: string } }) {
+    return this.svc.createInvites(data.dto, data.user);
+  }
 }
