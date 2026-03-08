@@ -1,12 +1,13 @@
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { TransactionServiceModuleModule } from './transaction-service.module';
+import { NestFactory } from '@nestjs/core'
+import { ValidationPipe } from '@nestjs/common'
+import { Transport, MicroserviceOptions } from '@nestjs/microservices'
+import { TransactionServiceModule } from './transaction-service.module'
+import { GlobalExceptionFilter } from './filters/http-exception.filter'
 
 async function bootstrap() {
-  const app = await NestFactory.create(TransactionServiceModuleModule);
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
+  const app = await NestFactory.create(TransactionServiceModule)
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
+  app.useGlobalFilters(new GlobalExceptionFilter())
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -15,10 +16,10 @@ async function bootstrap() {
       queue: 'transaction_service_queue',
       queueOptions: { durable: true },
     },
-  });
+  })
 
-  await app.startAllMicroservices();
-  await app.listen(process.env.PORT || 3016);
-  console.log("transaction-service running on port ${process.env.PORT || 3016}");
+  await app.startAllMicroservices()
+  await app.listen(process.env.PORT || 3016)
+  console.log(`transaction-service running on port ${process.env.PORT || 3016}`)
 }
-bootstrap();
+bootstrap()
