@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Query, Body, Param, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Query, Body, Param, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { SuggestionsService } from './suggestions.service';
 import { SuggestDto, AddJobTitleDto } from './dto/suggest.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('suggestions')
 export class SuggestionsController {
@@ -17,14 +18,11 @@ export class SuggestionsController {
     return this.svc.getByIndustry(industry);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('job-titles')
   @HttpCode(HttpStatus.CREATED)
-  async add(@Body() dto: AddJobTitleDto) {
-    try {
-      return await this.svc.add(dto);
-    } catch {
-      throw new BadRequestException('Invalid job title');
-    }
+  add(@Body() dto: AddJobTitleDto) {
+    return this.svc.add(dto);
   }
 
   @MessagePattern('suggestions.job-titles')
