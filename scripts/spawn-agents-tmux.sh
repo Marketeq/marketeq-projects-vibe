@@ -2,17 +2,17 @@
 
 # spawn-agents-tmux.sh
 # Opens a tmux session with one window per agent.
-# Each agent runs with --dangerously-skip-permissions.
+# Each agent reads the markdown docs and builds the FULL service implementation.
 # Session survives terminal close — reattach with: tmux attach -t marketeq
 
 set -e
 
 REPO_DIR="/Users/christorres/vibecoding/marketeq-projects-vibe"
 AGENTS_DIR="/Users/christorres/vibecoding/agents"
-LOG_DIR="/Users/christorres/vibecoding/logs"
+DOCS_DIR="$REPO_DIR/docs/md"
 SESSION="marketeq"
 
-# Services to spawn — edit to control which agents run
+# Services that are unblocked and ready to implement
 SERVICES=(
   "autocomplete-service"
   "suggestions-service"
@@ -26,22 +26,18 @@ SERVICES=(
   "api-gateway"
 )
 
-# Override with args if provided
-# e.g. ./spawn-agents-tmux.sh autocomplete-service favorites-service
 if [ $# -gt 0 ]; then
   SERVICES=("$@")
 fi
 
-# Check tmux is installed
 if ! command -v tmux &>/dev/null; then
-  echo "tmux not found. Install it with: brew install tmux"
+  echo "tmux not found. Install: brew install tmux"
   exit 1
 fi
 
 mkdir -p "$AGENTS_DIR"
-mkdir -p "$LOG_DIR"
 
-# Kill existing session if it exists
+# Kill existing session
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 
 echo "======================================"
@@ -50,14 +46,35 @@ echo "======================================"
 echo "Spawning ${#SERVICES[@]} agent(s) in tmux session: $SESSION"
 echo ""
 
-# Create the tmux session with the first service
-FIRST_SERVICE="${SERVICES[0]}"
-tmux new-session -d -s "$SESSION" -n "$FIRST_SERVICE"
+# Map service names to their docs folder
+declare -A DOCS_MAP
+DOCS_MAP["autocomplete-service"]="Autocomplete"
+DOCS_MAP["suggestions-service"]="Suggestions Service"
+DOCS_MAP["favorites-service"]="Favorites Service"
+DOCS_MAP["portfolio-service"]="Portfolio Service"
+DOCS_MAP["invitations-service"]="Invite Service"
+DOCS_MAP["content-moderation-service"]="Content Moderation Service"
+DOCS_MAP["search-service"]="Search Service"
+DOCS_MAP["algolia-service"]="Search Service"
+DOCS_MAP["transaction-service"]="Transaction Service"
+DOCS_MAP["api-gateway"]="Microservices Architecture"
+DOCS_MAP["billing-service"]="Billing Service"
+DOCS_MAP["contracts-service"]="Contracts Service"
+DOCS_MAP["earnings-service"]="Earnings Service"
+DOCS_MAP["payout-service"]="Payout Service"
+DOCS_MAP["time-tracking-service"]="Time Tracking Service"
+DOCS_MAP["admin-service"]="User Service"
+DOCS_MAP["affiliate-referral-service"]="User Service"
+
+# Create tmux session
+tmux new-session -d -s "$SESSION" -n "${SERVICES[0]}"
 
 for i in "${!SERVICES[@]}"; do
   SERVICE="${SERVICES[$i]}"
   WORKTREE_DIR="$AGENTS_DIR/$SERVICE"
   BRANCH="agent/$SERVICE"
+  DOCS_FOLDER="${DOCS_MAP[$SERVICE]:-$SERVICE}"
+  SERVICE_DOCS="$DOCS_DIR/$DOCS_FOLDER"
 
   echo "-> Setting up: $SERVICE"
 
@@ -71,32 +88,71 @@ for i in "${!SERVICES[@]}"; do
     fi
   fi
 
-  # Build agent prompt
-  PROMPT="You are a backend-builder agent assigned to implement the $SERVICE microservice.
+  PROMPT="You are a senior NestJS backend engineer. Your ONLY job is to fully implement the $SERVICE microservice for the Marketeq platform.
 
-Step 1: Read $REPO_DIR/.claude/memory/agents/backend-builder.md
-Step 2: Read $REPO_DIR/.claude/memory/progress.md
-Step 3: Claim $SERVICE in progress.md under 'In Progress'
-Step 4: Read $REPO_DIR/.claude/memory/services/$SERVICE.md (if it exists)
-Step 5: Read $REPO_DIR/.claude/memory/architecture.md
-Step 6: Read $REPO_DIR/.claude/memory/global.md
-Step 7: Find and read all relevant .docx docs in $REPO_DIR/docs/Technical\ Documentation/
-Step 8: Implement $SERVICE fully in $WORKTREE_DIR/backend/apps/$SERVICE/src/
-Step 9: Update $REPO_DIR/.claude/memory/services/$SERVICE.md with what you built
-Step 10: Update $REPO_DIR/.claude/memory/progress.md — move $SERVICE to Completed
-Step 11: Commit your changes with message: feat($SERVICE): implement service from docs
+## CRITICAL RULES
+- Build the COMPLETE, PRODUCTION-READY implementation — not scaffolding, not stubs, not TODOs
+- Every method must have real logic, real database queries, real error handling
+- Follow the architecture exactly as described in the docs
+- Use TypeORM for database, class-validator for DTOs, NestJS guards for auth
+- Every endpoint must be fully wired: DTO → Controller → Service → Repository → Response
 
-Work only in: $WORKTREE_DIR
-Do not touch other services, MEMORY.md, global.md, or architecture.md."
+## STEP 1: Read the memory files
+Read these files FIRST before doing anything else:
+- $REPO_DIR/.claude/memory/architecture.md
+- $REPO_DIR/.claude/memory/global.md
+- $REPO_DIR/.claude/memory/services/$SERVICE.md (if exists)
 
-  # Create a new window for each service (first one already exists)
+## STEP 2: Read ALL documentation for this service
+Read every markdown file in: $SERVICE_DOCS/
+These docs define exactly what to build. Read them all before writing any code.
+
+## STEP 3: Understand the existing scaffolding
+Read all existing files in: $WORKTREE_DIR/backend/apps/$SERVICE/src/
+Understand what folders and files already exist so you build on top, not from scratch.
+
+## STEP 4: Build the FULL implementation
+For each feature described in the docs, implement:
+
+1. ENTITIES — TypeORM entity classes with all columns, relations, indexes
+2. DTOs — Input/output DTOs with class-validator decorators for every endpoint
+3. SERVICE — Full business logic: create, read, update, delete, search, and all domain-specific operations
+4. CONTROLLER — HTTP endpoints with proper decorators (@Get, @Post, @Put, @Delete, @Patch), guards, pipes
+5. MODULE — Wire everything together with TypeOrmModule.forFeature, providers, imports, exports
+6. INTERFACES/TYPES — Any shared types needed
+
+Do NOT leave any method body empty. Do NOT write 'TODO'. Do NOT stub anything.
+Every method must work end-to-end.
+
+## STEP 5: Wire up integrations
+Based on what the docs say, also implement:
+- RabbitMQ event emitting/listening if the service publishes or consumes events
+- External API integrations (Stripe, Algolia, Ably, SendGrid) if required by this service
+- Proper error handling with NestJS exceptions (NotFoundException, BadRequestException, etc.)
+
+## STEP 6: Update memory
+After completing implementation:
+- Write a summary to: $REPO_DIR/.claude/memory/services/$SERVICE.md
+  Include: entities built, endpoints implemented, events emitted/consumed, any gotchas
+- Update $REPO_DIR/.claude/memory/progress.md — move $SERVICE from 'In Progress' to 'Completed'
+
+## STEP 7: Commit
+Commit all your changes with:
+  git add -A
+  git commit -m 'feat($SERVICE): implement full service from docs'
+
+Work directory: $WORKTREE_DIR
+Service source: $WORKTREE_DIR/backend/apps/$SERVICE/src/
+
+BEGIN NOW. Read the docs, then build the full implementation."
+
+  # Create tmux window
   if [ $i -eq 0 ]; then
     tmux rename-window -t "$SESSION:0" "$SERVICE"
   else
     tmux new-window -t "$SESSION" -n "$SERVICE"
   fi
 
-  # Send the claude command to the window
   tmux send-keys -t "$SESSION:$SERVICE" "cd \"$WORKTREE_DIR\" && claude --dangerously-skip-permissions -p \"$PROMPT\"" Enter
 
   sleep 0.5
@@ -104,26 +160,13 @@ done
 
 echo ""
 echo "======================================"
-echo "All agents launched in tmux session: $SESSION"
+echo "All ${#SERVICES[@]} agents launched in tmux session: $SESSION"
 echo ""
-echo "Attach to session (see all agents):"
-echo "  tmux attach -t $SESSION"
-echo ""
-echo "Switch between agent windows inside tmux:"
-echo "  Ctrl+B then number (0-9)"
-echo "  Ctrl+B then n (next window)"
-echo "  Ctrl+B then p (previous window)"
-echo "  Ctrl+B then w (window list)"
-echo ""
-echo "Detach from session (agents keep running):"
-echo "  Ctrl+B then d"
-echo ""
-echo "Kill entire session:"
-echo "  tmux kill-session -t $SESSION"
-echo ""
-echo "Reattach after closing terminal:"
-echo "  tmux attach -t $SESSION"
+echo "  tmux attach -t $SESSION       (attach)"
+echo "  Ctrl+B then 0-9               (switch windows)"
+echo "  Ctrl+B then w                 (window list)"
+echo "  Ctrl+B then d                 (detach — agents keep running)"
+echo "  tmux kill-session -t $SESSION (stop all)"
 echo "======================================"
 
-# Auto-attach to the session
 tmux attach -t "$SESSION"
