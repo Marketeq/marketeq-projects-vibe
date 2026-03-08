@@ -157,7 +157,16 @@ BEGIN NOW. Read the docs, then build the full implementation."
     tmux new-window -t "$SESSION" -n "$SERVICE"
   fi
 
-  tmux send-keys -t "$SESSION:$SERVICE" "cd \"$WORKTREE_DIR\" && claude --dangerously-skip-permissions -p \"$PROMPT\"" Enter
+  # Write a launcher script per agent to avoid quoting issues
+  LAUNCHER="/tmp/agent-launch-$SERVICE.sh"
+  cat > "$LAUNCHER" <<LAUNCHEREOF
+#!/bin/bash
+cd "$WORKTREE_DIR"
+unset CLAUDECODE
+claude --dangerously-skip-permissions -p "$PROMPT"
+LAUNCHEREOF
+  chmod +x "$LAUNCHER"
+  tmux send-keys -t "$SESSION:$SERVICE" "bash $LAUNCHER" Enter
 
   sleep 0.5
 done
