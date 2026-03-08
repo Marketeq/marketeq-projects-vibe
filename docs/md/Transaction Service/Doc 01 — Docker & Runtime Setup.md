@@ -282,7 +282,7 @@ File location (do not commit):
 |                                                                       |
 | \# Use sk_test\_ key for local development and staging                |
 |                                                                       |
-| STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxx                    |
+| STRIPE_SECRET_KEY=<your_stripe_test_secret_key>                       |
 +=======================================================================+
 
 ## **3.3 Startup Validation**
