@@ -1,9 +1,19 @@
-import { IsString, IsUrl } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsOptional, IsString } from 'class-validator';
 
 export class LinkedInLoginDto {
+  @ApiProperty()
+  @IsOptional()
   @IsString()
-  code: string;
+  access_token?: string;
 
-  @IsUrl()
-  redirectUri: string;
+  @ApiProperty()
+  @IsOptional()
+  @IsString()
+  code?: string;
+
+  @ApiProperty()
+  @IsOptional()
+  @IsString()
+  redirectUrl?: string;
 }

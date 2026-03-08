@@ -1,38 +1,60 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { HttpModule } from '@nestjs/axios';
-import { ClientsModule, Transport } from '@nestjs/microservices';
+import type { StringValue } from 'ms';
+
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
-import { User } from './entities/user.entity';
-import { SocialIdentity } from './entities/social-identity.entity';
+import { User } from '../user/entities/user.entity';
+
+const normalizeKey = (value?: string) =>
+  value ? value.replace(/\\n/g, '\n') : value;
+
+const parseExpiresIn = (value: string): number | StringValue =>
+  /^\d+$/.test(value) ? Number(value) : (value as StringValue);
 
 @Module({
   imports: [
-    PassportModule,
-    HttpModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'changeme',
-      signOptions: { expiresIn: process.env.JWT_EXPIRES_IN || '1h' },
-    }),
-    TypeOrmModule.forFeature([User, SocialIdentity]),
-    ClientsModule.register([
-      {
-        name: 'NOTIFICATION_SERVICE',
-        transport: Transport.RMQ,
-        options: {
-          urls: [process.env.RABBITMQ_URI || 'amqp://localhost:5672'],
-          queue: 'notification_service_queue',
-          queueOptions: { durable: true },
-        },
+    ConfigModule,
+    PassportModule.register({ defaultStrategy: 'jwt' }),
+    TypeOrmModule.forFeature([User]),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const privateKey = normalizeKey(
+          config.get<string>('AUTH_JWT_PRIVATE_KEY'),
+        );
+        const publicKey = normalizeKey(
+          config.get<string>('AUTH_JWT_PUBLIC_KEY'),
+        );
+
+        if (!privateKey || !publicKey) {
+          throw new Error(
+            'AUTH_JWT_PRIVATE_KEY and AUTH_JWT_PUBLIC_KEY are required for RS256',
+          );
+        }
+
+        const accessExpires = parseExpiresIn(
+          config.get<string>('AUTH_JWT_TOKEN_EXPIRES_IN') ?? '15m',
+        );
+
+        return {
+          privateKey,
+          publicKey,
+          signOptions: {
+            algorithm: 'RS256',
+            expiresIn: accessExpires,
+          },
+        };
       },
-    ]),
+    }),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
-  exports: [AuthService],
+  exports: [PassportModule, JwtModule],
 })
 export class AuthModule {}

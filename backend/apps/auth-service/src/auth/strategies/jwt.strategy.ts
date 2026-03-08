@@ -1,32 +1,31 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
+import { ConfigService } from '@nestjs/config';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { Request } from 'express';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User } from '../entities/user.entity';
+
+const normalizeKey = (value?: string) =>
+  value ? value.replace(/\\n/g, '\n') : value;
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(
-    @InjectRepository(User)
-    private readonly userRepo: Repository<User>,
-  ) {
+  constructor(configService: ConfigService) {
+    const publicKey = normalizeKey(
+      configService.get<string>('AUTH_JWT_PUBLIC_KEY'),
+    );
+
+    if (!publicKey) {
+      throw new Error('AUTH_JWT_PUBLIC_KEY is required for RS256 validation');
+    }
+
     super({
-      jwtFromRequest: ExtractJwt.fromExtractors([
-        (req: Request) => req?.cookies?.accessToken ?? null,
-        ExtractJwt.fromAuthHeaderAsBearerToken(),
-      ]),
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'changeme',
+      secretOrKey: publicKey,
+      algorithms: ['RS256'],
     });
   }
 
-  async validate(payload: { sub: string; email: string }) {
-    const user = await this.userRepo.findOne({ where: { id: payload.sub } });
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException();
-    }
-    return user;
+  async validate(payload: any) {
+    return { id: payload.sub, sub: payload.sub, email: payload.email };
   }
 }

@@ -1,31 +1,42 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import * as cookieParser from 'cookie-parser';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { AuthServiceModule } from './auth-service.module';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AuthServiceModule);
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
 
-  app.use(cookieParser());
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  // Create Swagger config using DocumentBuilder
+  const config = new DocumentBuilder()
+    .setTitle('Auth Service API')
+    .setDescription('API documentation for Auth Service')
+    .setVersion('1.0')
+    .addTag('Authentication')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+      },
+      'access_token',
+    )
+    .build();
 
-  app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials: true,
-  });
+  // Create Swagger document
+  const document = SwaggerModule.createDocument(app, config);
 
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.RMQ,
-    options: {
-      urls: [process.env.RABBITMQ_URI || 'amqp://localhost:5672'],
-      queue: 'auth_service_queue',
-      queueOptions: { durable: true },
-    },
-  });
+  // Setup Swagger UI endpoint
+  SwaggerModule.setup('api-docs', app, document);
 
-  await app.startAllMicroservices();
-  await app.listen(process.env.PORT || 3001);
-  console.log(`auth-service running on port ${process.env.PORT || 3001}`);
+  const port = process.env.PORT || 3001;
+  await app.listen(port);
+  Logger.log(`Authentication Service running on port ${port}`);
 }
 bootstrap();
