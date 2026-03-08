@@ -1,5 +1,5 @@
 import {
-  Controller, Post, Get, Delete, Body, Param, Query,
+  Controller, Post, Get, Delete, Body, Param, Query, Request,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -31,10 +31,13 @@ export class PortfolioController {
     return this.svc.archive(dto.slug);
   }
 
+  // Owner extracted from JWT — users can only see their own portfolios; admins can pass ?owner=
   @UseGuards(AuthGuard('jwt'))
   @Get('list')
-  list(@Query('owner') owner: string) {
-    return this.svc.listByOwner(owner);
+  list(@Request() req: any, @Query('owner') ownerParam?: string) {
+    const isAdmin = req.user?.role === 'admin';
+    const ownerUserId = isAdmin && ownerParam ? ownerParam : req.user.userId;
+    return this.svc.listByOwner(ownerUserId);
   }
 
   @Get('public/:slug')
@@ -51,7 +54,7 @@ export class PortfolioController {
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':slug')
   @HttpCode(HttpStatus.NO_CONTENT)
-  delete(@Param('slug') slug: string, @Query('owner') ownerUserId: string) {
+  delete(@Param('slug') slug: string, @Body('ownerUserId') ownerUserId: string) {
     return this.svc.delete(slug, ownerUserId);
   }
 
@@ -62,7 +65,7 @@ export class PortfolioController {
   }
 
   @MessagePattern('portfolio.publish')
-  handlePublish(@Payload() slug: string) {
-    return this.svc.publish(slug);
+  handlePublish(@Payload() dto: PublishDto) {
+    return this.svc.publish(dto.slug);
   }
 }

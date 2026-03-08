@@ -2,7 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 
 export type PortfolioStatus = 'draft' | 'published' | 'archived';
 
-@Entity('portfolio_items')
+@Entity('portfolio_item')
 export class PortfolioItem {
   @PrimaryGeneratedColumn('uuid')
   id: string;
