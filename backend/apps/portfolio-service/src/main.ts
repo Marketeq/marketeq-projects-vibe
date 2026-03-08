@@ -1,12 +1,19 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { PortfolioServiceModuleModule } from './portfolio-service.module';
+import helmet from 'helmet';
+import { PortfolioServiceModule } from './portfolio-service.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(PortfolioServiceModuleModule);
+  const app = await NestFactory.create(PortfolioServiceModule);
+
+  app.use(helmet());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
+
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : ['http://localhost:3000'];
+  app.enableCors({ origin: allowedOrigins, credentials: true });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -19,6 +26,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT || 3015);
-  console.log("portfolio-service running on port ${process.env.PORT || 3015}");
+  console.log(`portfolio-service running on port ${process.env.PORT || 3015}`);
 }
 bootstrap();

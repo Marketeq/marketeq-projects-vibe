@@ -1,15 +1,38 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
-@Entity('portfolio_items')
+export type PortfolioStatus = 'draft' | 'published' | 'archived';
+
+@Entity('portfolio_item')
 export class PortfolioItem {
-  @PrimaryGeneratedColumn('uuid') id: string;
-  @Column() userId: string;
-  @Column() title: string;
-  @Column('text', { nullable: true }) description: string;
-  @Column({ nullable: true }) coverImageUrl: string;
-  @Column('text', { array: true, default: [] }) mediaUrls: string[];
-  @Column('text', { array: true, default: [] }) tags: string[];
-  @Column({ default: 0 }) sortOrder: number;
-  @CreateDateColumn() createdAt: Date;
-  @UpdateDateColumn() updatedAt: Date;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Index()
+  @Column('uuid')
+  ownerUserId: string;
+
+  @Index({ unique: true })
+  @Column('text')
+  slug: string;
+
+  @Column('text')
+  title: string;
+
+  @Column('jsonb', { nullable: true })
+  schemaJson: Record<string, any> | null;
+
+  @Column('text', { nullable: true })
+  htmlPreview: string | null;
+
+  @Column('text', { nullable: true })
+  htmlPublished: string | null;
+
+  @Column({ type: 'text', default: 'draft' })
+  status: PortfolioStatus;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }
