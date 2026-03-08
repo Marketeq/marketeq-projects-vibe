@@ -1,10 +1,10 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { SuggestionsServiceModuleModule } from './suggestions-service.module';
+import { SuggestionsServiceModule } from './suggestions-service.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(SuggestionsServiceModuleModule);
+  const app = await NestFactory.create(SuggestionsServiceModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
 
@@ -19,6 +19,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT || 3020);
-  console.log("suggestions-service running on port ${process.env.PORT || 3020}");
+  console.log(`suggestions-service running on port ${process.env.PORT || 3020}`);
 }
 bootstrap();
