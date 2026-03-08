@@ -1,12 +1,16 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { BillingServiceModuleModule } from './billing-service.module';
+import { BillingServiceModule } from './billing-service.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(BillingServiceModuleModule);
+  const app = await NestFactory.create(BillingServiceModule, { rawBody: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
+
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : ['http://localhost:3000'];
+  app.enableCors({ origin: allowedOrigins, credentials: true });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -19,6 +23,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT || 3004);
-  console.log("billing-service running on port ${process.env.PORT || 3004}");
+  console.log(`billing-service running on port ${process.env.PORT || 3004}`);
 }
 bootstrap();
