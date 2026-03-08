@@ -1,8 +1,10 @@
-import { IsString, IsOptional, IsInt, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsInt, Min, Max, IsNotEmpty, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class SuggestDto {
   @IsString()
+  @IsNotEmpty()
+  @MinLength(2)
   q: string;
 
   @IsString()
@@ -23,6 +25,8 @@ export class SuggestDto {
 
 export class AddJobTitleDto {
   @IsString()
+  @IsNotEmpty()
+  @MinLength(2)
   title: string;
 
   @IsString()

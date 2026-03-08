@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CacheModule } from '@nestjs/cache-manager';
 import { JobTitle } from './entities/job-title.entity';
 import { SuggestionsService } from './suggestions.service';
 import { SuggestionsController } from './suggestions.controller';
@@ -20,6 +21,19 @@ import { SuggestionsController } from './suggestions.controller';
       }),
     }),
     TypeOrmModule.forFeature([JobTitle]),
+    CacheModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      isGlobal: true,
+      useFactory: async (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL');
+        if (redisUrl) {
+          const { default: KeyvRedis } = await import('@keyv/redis');
+          return { stores: [new KeyvRedis(redisUrl)] };
+        }
+        return {}; // in-memory fallback
+      },
+    }),
   ],
   controllers: [SuggestionsController],
   providers: [SuggestionsService],
