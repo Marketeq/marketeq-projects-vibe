@@ -3,7 +3,7 @@ import { EntryType } from '../entities/autocomplete-entry.entity';
 
 export class SubmitAutocompleteDto {
   @IsString()
-  @MinLength(2)
+  @MinLength(3)
   @MaxLength(100)
   value: string;
 
