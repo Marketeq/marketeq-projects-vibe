@@ -502,7 +502,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
-                onClick={() => router.push("/search")}
+                onClick={() => router.push("/c/research")}
               >
                 Research
               </Button>
@@ -510,7 +510,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
-                onClick={() => router.push("/search")}
+                onClick={() => router.push("/c/design")}
               >
                 Design
               </Button>
@@ -518,7 +518,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
-                onClick={() => router.push("/search")}
+                onClick={() => router.push("/c/development")}
               >
                 Development
               </Button>
@@ -526,7 +526,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
-                onClick={() => router.push("/search")}
+                onClick={() => router.push("/c/testing")}
               >
                 Testing
               </Button>
@@ -534,7 +534,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
-                onClick={() => router.push("/search")}
+                onClick={() => router.push("/c/security")}
               >
                 Security
               </Button>
@@ -542,7 +542,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
-                onClick={() => router.push("/search")}
+                onClick={() => router.push("/c/maintenance")}
               >
                 Maintenance
               </Button>
@@ -550,7 +550,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
-                onClick={() => router.push("/search")}
+                onClick={() => router.push("/c/digital-marketing")}
               >
                 Digital Marketing
               </Button>

@@ -3,19 +3,30 @@
 import React, { useEffect, useState } from "react"
 import { useAuth } from "@/contexts/auth"
 import { cn } from "@/utils/functions"
-import { ChevronLeft, ChevronRight } from "@blend-metrics/icons"
+import { ChevronLeft, ChevronRight, Clock, Star } from "@blend-metrics/icons"
 import { Swiper as SwiperRoot, SwiperSlide } from "swiper/react"
 import { Swiper } from "swiper/types"
 import { Blocks1 } from "@/components/blocks-1"
+import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
+import NextLink from "@/components/next-link"
 import SecuritySettingsStepper from "@/components/security-settings"
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarGroup,
+  AvatarImage,
   Button,
   Favorite,
+  FavoriteRoot,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@/components/ui"
 
 const swiperBaseConfig = {
@@ -112,40 +123,187 @@ const ClientOnlySwiper = ({
   )
 }
 
-const FavoriteProjectCard = () => {
+interface MockProject {
+  title: string
+  rating: number
+  reviewCount: number
+  summary: string
+  timeline: string
+  budget: string
+  image: string
+  href: string
+}
+
+const mockProjects: MockProject[] = [
+  {
+    title: "The Ultimate Mobile App Experience",
+    rating: 4.9,
+    reviewCount: 128,
+    summary: "A complete funnel for your customer service needs. Designed to convert visitors into loyal customers with proven UX patterns.",
+    timeline: "12 weeks",
+    budget: "40,000",
+    image: "/design-screens.png",
+    href: "/c/design",
+  },
+  {
+    title: "Enterprise SEO & Content Strategy",
+    rating: 4.8,
+    reviewCount: 94,
+    summary: "Dominate search rankings with a full-stack SEO strategy backed by data-driven content and technical optimization.",
+    timeline: "8 weeks",
+    budget: "25,000",
+    image: "/dashboard.png",
+    href: "/c/digital-marketing",
+  },
+  {
+    title: "Cloud Infrastructure & DevOps Setup",
+    rating: 4.7,
+    reviewCount: 61,
+    summary: "Scalable, secure cloud architecture with CI/CD pipelines, monitoring, and automated deployments.",
+    timeline: "6 weeks",
+    budget: "30,000",
+    image: "/sending-emails.png",
+    href: "/c/development",
+  },
+  {
+    title: "E-Commerce Platform Redesign",
+    rating: 4.9,
+    reviewCount: 203,
+    summary: "A conversion-focused redesign of your online store with streamlined checkout and mobile-first design.",
+    timeline: "10 weeks",
+    budget: "55,000",
+    image: "/working-2.jpeg",
+    href: "/c/design",
+  },
+  {
+    title: "Marketing Automation Campaign Suite",
+    rating: 4.6,
+    reviewCount: 77,
+    summary: "Automate lead nurturing, follow-ups, and conversions with a fully integrated marketing automation workflow.",
+    timeline: "4 weeks",
+    budget: "18,000",
+    image: "/design-screens.png",
+    href: "/c/digital-marketing",
+  },
+  {
+    title: "Cybersecurity Audit & Hardening",
+    rating: 4.8,
+    reviewCount: 45,
+    summary: "Comprehensive security audit, penetration testing, and infrastructure hardening to protect your business.",
+    timeline: "3 weeks",
+    budget: "15,000",
+    image: "/dashboard.png",
+    href: "/c/security",
+  },
+  {
+    title: "Custom CRM Integration",
+    rating: 4.7,
+    reviewCount: 88,
+    summary: "Seamless CRM integration with your existing tools — automate workflows, sync data, and close more deals.",
+    timeline: "5 weeks",
+    budget: "22,000",
+    image: "/sending-emails.png",
+    href: "/c/development",
+  },
+]
+
+const ProjectCard = ({ project }: { project: MockProject }) => {
   return (
-    <article className="rounded-lg shrink-0 bg-white border border-[#122A4B]/[.15] overflow-hidden shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-      <div className="h-[140px] border-b border-black/[.15] relative">
+    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] flex flex-col">
+      {/* Image */}
+      <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
         <NextImage
-          className="object-cover"
-          src="/design-screens.png"
-          alt="Design screens"
-          sizes="25vw"
+          className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+          src={project.image}
+          alt={project.title}
           fill
+          sizes="25vw"
         />
       </div>
-      <div className="p-5">
-        <h1 className="text-base leading-[19.36px] font-bold text-dark-blue-600 line-clamp-2">
-          The Ultimate Mobile App Experience
-        </h1>
-        <p className="text-sm mt-3 leading-[16.94px] font-light text-gray-500 line-clamp-2">
-          A complete funnel for your customer service needs
-        </p>
 
-        <div className="flex items-center mt-[9px] gap-x-[16.33px] md:mt-[16.98px] justify-between">
-          <span className="text-sm leading-[16.94px] text-dark-blue-600 font-light">
-            Starts at $40k, 12 weeks
+      {/* Title and Rating */}
+      <div className="mt-3 flex items-start gap-x-3">
+        <NextLink
+          href={project.href}
+          className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
+        >
+          {project.title}
+        </NextLink>
+        <div className="inline-flex shrink-0 items-center gap-x-1">
+          <Star className="size-[15px] text-primary-500 fill-primary-500" />
+          <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+            {project.rating}{" "}
+            <span className="font-extralight">({project.reviewCount})</span>
           </span>
-
-          <Favorite
-            starClassName="size-5"
-            className="size-5 shrink-0 text-[#122A4B]/[.15]"
-          />
         </div>
+      </div>
+
+      {/* Description */}
+      <p className="mt-3 text-sm leading-[1.4] font-extralight text-dark-blue-400 line-clamp-3">
+        {project.summary}
+      </p>
+
+      {/* Timeline and Budget */}
+      <div className="mt-[14.5px] flex flex-col gap-y-3">
+        <div className="flex items-center gap-x-[6.4px]">
+          <Clock className="size-[18px] shrink-0 text-primary-500" />
+          <span className="font-medium text-sm leading-none text-dark-blue-400">
+            Starting from {project.timeline}
+          </span>
+        </div>
+        <div className="flex items-center gap-x-[6.4px]">
+          <Money className="size-[18px] shrink-0 text-primary-500" />
+          <span className="font-medium text-sm leading-none text-dark-blue-400">
+            ${project.budget} budget
+          </span>
+        </div>
+      </div>
+
+      {/* Bottom: Avatars + Favorite */}
+      <div className="mt-auto pt-5 flex items-end justify-between">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <AvatarGroup
+                max={5}
+                size="sm"
+                excess
+                excessClassName="border-gray-300 text-gray-500"
+              >
+                {Array(3)
+                  .fill(0)
+                  .map((_, i) => (
+                    <Avatar
+                      key={i}
+                      size="sm"
+                      className="border-2 border-white hover:ring-0 active:ring-0"
+                    >
+                      <AvatarImage src="/woman.jpg" alt="Team member" />
+                      <AvatarFallback>U</AvatarFallback>
+                    </Avatar>
+                  ))}
+              </AvatarGroup>
+            </TooltipTrigger>
+            <TooltipContent>Team members</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        <FavoriteRoot>
+          {() => (
+            <Favorite
+              starClassName="size-5"
+              className="size-5 shrink-0 text-[#122A4B]/[.15]"
+            />
+          )}
+        </FavoriteRoot>
       </div>
     </article>
   )
 }
+
+const FavoriteProjectCard = ({ project }: { project: MockProject }) => (
+  <ProjectCard project={project} />
+)
 
 const FavoriteProjects = () => {
   const [controller, setController] = useState<Swiper>()
@@ -171,27 +329,11 @@ const FavoriteProjects = () => {
         </button>
 
         <ClientOnlySwiper onInit={setController}>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
+          {mockProjects.map((project, i) => (
+            <SwiperSlide key={i}>
+              <FavoriteProjectCard project={project} />
+            </SwiperSlide>
+          ))}
         </ClientOnlySwiper>
 
         <button
@@ -212,33 +354,9 @@ const FavoriteProjects = () => {
   )
 }
 
-const NewestAdditionCard = () => {
-  return (
-    <article className="flex items-start gap-x-[15px] lg:gap-x-[23px]">
-      <div className="size-[100px] shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] rounded-[4px] overflow-hidden shrink-0 relative">
-        <NextImage
-          className="object-cover"
-          src="/design-screens.png"
-          alt="Design screens"
-          sizes="10vw"
-          fill
-        />
-      </div>
-      <div className="flex-auto">
-        <h1 className="text-sm leading-[16.94px] lg:text-lg lg:leading-[21.78px] font-bold text-dark-blue-600 line-clamp-2">
-          SEO Enterprise
-        </h1>
-        <p className="text-sm leading-[16.94px] font-light text-dark-blue-600 mt-[7.5px] lg:mt-[11px] line-clamp-2">
-          Sed ut perspiciatis unde omnis iste natus error sit voluptatem
-          accusantium doloremque{" "}
-        </p>
-        <span className="text-sm block mt-[7.5px] lg:mt-[15px] leading-[16.94px] font-light text-dark-blue-600">
-          Starts at $40k, 12 weeks
-        </span>
-      </div>
-    </article>
-  )
-}
+const NewestAdditionCard = ({ project }: { project: MockProject }) => (
+  <ProjectCard project={project} />
+)
 
 const NewestAdditions = () => {
   return (
@@ -254,12 +372,9 @@ const NewestAdditions = () => {
       </div>
 
       <div className="mt-[29px] grid md:grid-cols-2 xl:grid-cols-3 gap-[25px] lg:gap-y-10 lg:gap-x-[42px]">
-        <NewestAdditionCard />
-        <NewestAdditionCard />
-        <NewestAdditionCard />
-        <NewestAdditionCard />
-        <NewestAdditionCard />
-        <NewestAdditionCard />
+        {mockProjects.slice(0, 6).map((project, i) => (
+          <NewestAdditionCard key={i} project={project} />
+        ))}
       </div>
 
       <div className="flex items-center mt-[29px] justify-center lg:hidden">
@@ -271,33 +386,9 @@ const NewestAdditions = () => {
   )
 }
 
-const PopularProjectCard = () => {
-  return (
-    <article className="flex items-start gap-x-[23px]">
-      <div className="size-[100px] shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] rounded-[4px] overflow-hidden shrink-0 relative">
-        <NextImage
-          className="object-cover"
-          src="/design-screens.png"
-          alt="Design screens"
-          sizes="10vw"
-          fill
-        />
-      </div>
-      <div className="flex-auto">
-        <h1 className="text-lg leading-[21.78px] font-bold text-dark-blue-600 line-clamp-2">
-          SEO Enterprise
-        </h1>
-        <p className="text-sm leading-[16.94px] font-light text-gray-500 mt-[11px] line-clamp-2">
-          Sed ut perspiciatis unde omnis iste natus error sit voluptatem
-          accusantium doloremque{" "}
-        </p>
-        <span className="text-sm block mt-[15px] leading-[16.94px] font-light text-dark-blue-600">
-          Starts at $40k, 12 weeks
-        </span>
-      </div>
-    </article>
-  )
-}
+const PopularProjectCard = ({ project }: { project: MockProject }) => (
+  <ProjectCard project={project} />
+)
 
 const PopularProjects = () => {
   return (
@@ -329,12 +420,9 @@ const PopularProjects = () => {
 
         <TabsContent value="view-all">
           <div className="pt-[29px] grid md:grid-cols-2 xl:grid-cols-3 gap-[25px] lg:gap-y-10 lg:gap-x-[42px]">
-            <PopularProjectCard />
-            <PopularProjectCard />
-            <PopularProjectCard />
-            <PopularProjectCard />
-            <PopularProjectCard />
-            <PopularProjectCard />
+            {mockProjects.slice(0, 6).map((project, i) => (
+              <PopularProjectCard key={i} project={project} />
+            ))}
           </div>
         </TabsContent>
       </Tabs>
@@ -377,27 +465,11 @@ const OnlineSalesFunnels = () => {
           </button>
         )}
         <ClientOnlySwiper onInit={setController}>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
+          {mockProjects.map((project, i) => (
+            <SwiperSlide key={i}>
+              <FavoriteProjectCard project={project} />
+            </SwiperSlide>
+          ))}
         </ClientOnlySwiper>
 
         {controller?.allowSlideNext && (
@@ -449,27 +521,11 @@ const CustomerServiceSolutions = () => {
         )}
 
         <ClientOnlySwiper onInit={setController}>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
+          {mockProjects.map((project, i) => (
+            <SwiperSlide key={i}>
+              <FavoriteProjectCard project={project} />
+            </SwiperSlide>
+          ))}
         </ClientOnlySwiper>
 
         {controller?.allowSlideNext && (
@@ -521,27 +577,11 @@ const MarketingAutomationCampaigns = () => {
         )}
 
         <ClientOnlySwiper onInit={setController}>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
-          <SwiperSlide>
-            <FavoriteProjectCard />
-          </SwiperSlide>
+          {mockProjects.map((project, i) => (
+            <SwiperSlide key={i}>
+              <FavoriteProjectCard project={project} />
+            </SwiperSlide>
+          ))}
         </ClientOnlySwiper>
 
         {controller?.allowSlideNext && (
