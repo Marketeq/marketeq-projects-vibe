@@ -162,35 +162,35 @@ export const LeftSidebar = () => {
         <div className="flex flex-col gap-y-1">
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="#"
+            href="/talent-dashboard"
           >
             <Home03 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Home
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="#"
+            href="/search"
           >
             <Search className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Find Jobs
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="#"
+            href="/publish-project"
           >
             <Briefcase className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             My Projects
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="#"
+            href="/publish-project"
           >
             <Plus className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Create a Project
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="#"
+            href="/"
           >
             <BarChartSquare02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Stats & Trends
@@ -206,14 +206,14 @@ export const LeftSidebar = () => {
         <div className="flex flex-col gap-y-1">
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="#"
+            href="/talent-profile"
           >
             <UserCircle className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Profile
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="#"
+            href="/inbox"
           >
             <Mail01 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Inbox
@@ -1422,7 +1422,7 @@ export const RecommendedForYou = () => {
               Improve your recommendations by{" "}
               <NextLink
                 className="focus-visible:outline-none underline hover:text-primary-500"
-                href="#"
+                href="/complete-profile"
               >
                 adding skills
               </NextLink>{" "}

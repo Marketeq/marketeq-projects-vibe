@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState } from "react"
+import { useRouter } from "next/navigation"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   ArrowRight,
@@ -482,6 +483,7 @@ export default function MarketPlaceLayout({
 }: {
   children: React.ReactNode
 }) {
+  const router = useRouter()
   return (
     <>
       {/* <AuthenticatedRoute> */}
@@ -500,6 +502,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
+                onClick={() => router.push("/search")}
               >
                 Research
               </Button>
@@ -507,6 +510,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
+                onClick={() => router.push("/search")}
               >
                 Design
               </Button>
@@ -514,6 +518,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
+                onClick={() => router.push("/search")}
               >
                 Development
               </Button>
@@ -521,6 +526,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
+                onClick={() => router.push("/search")}
               >
                 Testing
               </Button>
@@ -528,6 +534,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
+                onClick={() => router.push("/search")}
               >
                 Security
               </Button>
@@ -535,6 +542,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
+                onClick={() => router.push("/search")}
               >
                 Maintenance
               </Button>
@@ -542,6 +550,7 @@ export default function MarketPlaceLayout({
                 className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
+                onClick={() => router.push("/search")}
               >
                 Digital Marketing
               </Button>
@@ -580,6 +589,7 @@ export default function MarketPlaceLayout({
                 className="text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
+                onClick={() => router.push("/favorites")}
               >
                 My Favorites
               </Button>
@@ -588,6 +598,7 @@ export default function MarketPlaceLayout({
                 className="text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
+                onClick={() => router.push("/client-dashboard")}
               >
                 My Dashboard
               </Button>

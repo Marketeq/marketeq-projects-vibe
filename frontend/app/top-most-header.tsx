@@ -571,6 +571,7 @@ const ONBOARDING = "/onboarding"
 export const TopMostHeader = () => {
   const pathname = usePathname()
 
+  const router = useRouter()
   const { logoutHandler, user } = useAuth()
 
   if (pathname.startsWith(ONBOARDING)) {
@@ -585,7 +586,7 @@ export const TopMostHeader = () => {
       )}
     >
       <div className="flex items-center justify-between md:gap-x-3 lg:gap-x-[50px] md:pt-2 md:pb-1 lg:py-3">
-        <NextLink className="focus-visible:outline-none" href="/marketplace">
+        <NextLink className="focus-visible:outline-none" href="/">
           <Logo3 className="h-[14.25px] w-[97px] lg:w-[128px] lg:h-[18.81px]" />
         </NextLink>
 
@@ -683,10 +684,10 @@ export const TopMostHeader = () => {
                     </span>
                   </div>
 
-                  <Button className="w-full">My Account</Button>
+                  <Button className="w-full" onClick={() => router.push("/client-dashboard")}>My Account</Button>
                 </div>
               </DropdownMenuLabel>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/publish-project")}>
                 <Monitor className="size-4" />
                 My Projects
               </DropdownMenuItem>
@@ -695,11 +696,11 @@ export const TopMostHeader = () => {
                 My Campaigns
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/my-team")}>
                 <Users className="size-4" />
                 My Team
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/favorites")}>
                 <Star className="size-4" />
                 My Favorites
               </DropdownMenuItem>
