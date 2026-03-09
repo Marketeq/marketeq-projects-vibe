@@ -1,13 +1,15 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import helmet from 'helmet';
-import { TimeTrackingServiceModule } from './time-tracking-service.module';
+import { AppModule } from './app.module';
+import { PgExceptionFilter } from './infra/pg-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(TimeTrackingServiceModule);
+  const app = await NestFactory.create(AppModule);
 
   app.use(helmet());
+  app.useGlobalFilters(new PgExceptionFilter());
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
   );
@@ -40,8 +42,8 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   const port = process.env.PORT ?? 3017;
-  await app.listen(port);
-  console.log(`time-tracking-service running on port ${port}`);
+  await app.listen(port, '0.0.0.0');
+  Logger.log(`✅ time-tracking-service listening on http://localhost:${port}`, 'Bootstrap');
 }
 
 bootstrap();
