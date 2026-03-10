@@ -825,19 +825,27 @@ function formatJobTitle(value: string): string {
     .join(" ")
 }
 
-const moreInfoFormSchema = z.object({
-  jobTitle: z.string().min(1, "Please enter at least 1 character(s)"),
-  saveAsDefault: z.boolean(),
-  clientRate: z.number({ message: "Please enter an amount" }).optional(),
-  earning: z.number({ message: "Please enter an amount" }).optional(),
-  fee: z.number().optional(),
-})
+const moreInfoFormSchema = z
+  .object({
+    jobTitle: z.string().min(1, "Please enter at least 1 character(s)"),
+    saveAsDefault: z.boolean(),
+    clientRate: z.number().optional(),
+    earning: z.number().optional(),
+    fee: z.number().optional(),
+  })
+  .refine(
+    (data) => (data.clientRate ?? 0) > 0 || (data.earning ?? 0) > 0,
+    { message: "Please enter a rate", path: ["clientRate"] }
+  )
 
 type MoreInfoFormValues = z.infer<typeof moreInfoFormSchema>
 
 const moreInfoFormDefaultValues: Partial<MoreInfoFormValues> = {
   jobTitle: "",
   saveAsDefault: false,
+  clientRate: 0,
+  earning: 0,
+  fee: 0,
 }
 
 const MoreInfoDialog = ({
@@ -1220,7 +1228,7 @@ const MoreInfoDialog = ({
                                       onValueChange={(value, name, values) =>
                                         onChange(values?.float)
                                       }
-                                      placeholder="$13"
+                                      placeholder="$0"
                                       decimalsLimit={0}
                                     />
                                   )}
@@ -1360,7 +1368,7 @@ const MoreInfoDialog = ({
                 >
                   <X className="size-[15px]" /> Cancel
                 </Button>
-                <Button ref={submitTriggerRef}>Save</Button>
+                <Button ref={submitTriggerRef} disabled={!isValid}>Save</Button>
 
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                   <DialogContent className="max-w-[409px] p-0">
