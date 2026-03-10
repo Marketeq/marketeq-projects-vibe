@@ -814,6 +814,17 @@ const StatusDialog = ({
   )
 }
 
+function formatJobTitle(value: string): string {
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2") // split camelCase/PascalCase
+    .replace(/[^a-zA-Z\s]/g, "") // strip numbers, hyphens, underscores, special chars
+    .replace(/\s+/g, " ") // collapse multiple spaces
+    .trim()
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ")
+}
+
 const moreInfoFormSchema = z.object({
   jobTitle: z.string().min(1, "Please enter at least 1 character(s)"),
   saveAsDefault: z.boolean(),
@@ -1053,6 +1064,9 @@ const MoreInfoDialog = ({
                           id="job-title-1"
                           placeholder="e.g. Software Engineer"
                           {...register("jobTitle")}
+                          onBlur={(e) => {
+                            setValue("jobTitle", formatJobTitle(e.target.value))
+                          }}
                           isInvalid={hookFormHasError({
                             errors,
                             name: "jobTitle",
@@ -2207,6 +2221,9 @@ const WorkExperienceDialog = ({
                             id="job-title"
                             placeholder="CEO"
                             {...register("jobTitle")}
+                            onBlur={(e) => {
+                              setValue("jobTitle", formatJobTitle(e.target.value))
+                            }}
                             isInvalid={hookFormHasError({
                               errors,
                               name: "jobTitle",
