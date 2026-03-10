@@ -183,6 +183,8 @@ export const BlockToolbar = ({
   canHide,
   canMoveDown,
   canMoveUp,
+  onMoveDown,
+  onMoveUp,
 }: {
   className?: string
   onDrag?: (event: React.PointerEvent<HTMLElement>) => void
@@ -197,6 +199,8 @@ export const BlockToolbar = ({
   canHide?: boolean
   canMoveDown?: boolean
   canMoveUp?: boolean
+  onMoveDown?: () => void
+  onMoveUp?: () => void
 }) => {
   const [open, setOpen] = useState(false)
   return (
@@ -233,7 +237,10 @@ export const BlockToolbar = ({
       {canMoveDown && (
         <TooltipProvider delayDuration={75}>
           <Tooltip>
-            <TooltipTrigger className="first:rounded-l-[5px] last:rounded-r-[5px] focus-visible:outline-none inline-flex items-center size-9 shrink-0 text-gray-500 justify-center hover:bg-gray-100 hover:text-gray-950">
+            <TooltipTrigger
+              onClick={onMoveDown}
+              className="first:rounded-l-[5px] last:rounded-r-[5px] focus-visible:outline-none inline-flex items-center size-9 shrink-0 text-gray-500 justify-center hover:bg-gray-100 hover:text-gray-950"
+            >
               <ArrowDown className="size-4" />
             </TooltipTrigger>
             <TooltipContent visual="white">Move Down</TooltipContent>
@@ -243,7 +250,10 @@ export const BlockToolbar = ({
       {canMoveUp && (
         <TooltipProvider delayDuration={75}>
           <Tooltip>
-            <TooltipTrigger className="first:rounded-l-[5px] last:rounded-r-[5px] focus-visible:outline-none inline-flex items-center size-9 shrink-0 text-gray-500 justify-center hover:bg-gray-100 hover:text-gray-950">
+            <TooltipTrigger
+              onClick={onMoveUp}
+              className="first:rounded-l-[5px] last:rounded-r-[5px] focus-visible:outline-none inline-flex items-center size-9 shrink-0 text-gray-500 justify-center hover:bg-gray-100 hover:text-gray-950"
+            >
               <ArrowUp className="size-4" />
             </TooltipTrigger>
             <TooltipContent visual="white">Move Up</TooltipContent>
@@ -3472,10 +3482,22 @@ const BlockRoot = ({
   children,
   value,
   onAdd,
+  onRemove,
+  onDuplicate,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
 }: {
   children?: React.ReactNode
   value: number
   onAdd?: () => void
+  onRemove?: () => void
+  onDuplicate?: () => void
+  onMoveUp?: () => void
+  onMoveDown?: () => void
+  isFirst?: boolean
+  isLast?: boolean
 }) => {
   const y = useMotionValue(0)
   const boxShadow = useRaisedShadow(y)
@@ -3510,9 +3532,13 @@ const BlockRoot = ({
           className="group-hover:opacity-100 group-hover:inline-flex hidden opacity-0 transition duration-300 -top-[20px] -right-[17px] absolute z-10"
           canRemove
           canDuplicate
+          onRemove={onRemove}
+          onDuplicate={onDuplicate}
           onDrag={(event) => dragControls.start(event)}
-          canMoveDown
-          canMoveUp
+          canMoveDown={!isLast}
+          canMoveUp={!isFirst}
+          onMoveUp={onMoveUp}
+          onMoveDown={onMoveDown}
         />
         {/* <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" /> */}
       </span>
@@ -3599,6 +3625,10 @@ interface State {
 type Action =
   | { type: State["regions"][number]["region"] }
   | { type: "reorder"; payload: State["regions"] }
+  | { type: "remove"; payload: number }
+  | { type: "duplicate"; payload: number }
+  | { type: "move-up"; payload: number }
+  | { type: "move-down"; payload: number }
 
 const reducer = (state: State, action: Action) => {
   switch (action.type) {
@@ -3624,11 +3654,42 @@ const reducer = (state: State, action: Action) => {
       }
 
     case "reorder":
-      console.log(action.payload)
       return {
         ...state,
         regions: action.payload,
       }
+
+    case "remove":
+      return {
+        ...state,
+        regions: state.regions.filter((r) => r.id !== action.payload),
+      }
+
+    case "duplicate": {
+      const idx = state.regions.findIndex((r) => r.id === action.payload)
+      if (idx === -1) return state
+      const original = state.regions[idx]
+      const copy = { id: getId(), region: original.region }
+      const newRegions = [...state.regions]
+      newRegions.splice(idx + 1, 0, copy)
+      return { ...state, regions: newRegions }
+    }
+
+    case "move-up": {
+      const idx = state.regions.findIndex((r) => r.id === action.payload)
+      if (idx <= 0) return state
+      const newRegions = [...state.regions]
+      ;[newRegions[idx - 1], newRegions[idx]] = [newRegions[idx], newRegions[idx - 1]]
+      return { ...state, regions: newRegions }
+    }
+
+    case "move-down": {
+      const idx = state.regions.findIndex((r) => r.id === action.payload)
+      if (idx === -1 || idx >= state.regions.length - 1) return state
+      const newRegions = [...state.regions]
+      ;[newRegions[idx], newRegions[idx + 1]] = [newRegions[idx + 1], newRegions[idx]]
+      return { ...state, regions: newRegions }
+    }
 
     default:
       return state
@@ -3835,15 +3896,20 @@ const CaseStudyBuilder = ({
             axis="y"
             values={state.regions}
             onReorder={(newRegions) => {
-              console.log("onReorder", newRegions)
               dispatch({ type: "reorder", payload: newRegions })
             }}
           >
-            {state.regions.map((region) => (
+            {state.regions.map((region, index) => (
               <BlockRoot
                 key={region.id}
                 value={region.id}
                 onAdd={() => setOpen(true)}
+                onRemove={() => dispatch({ type: "remove", payload: region.id })}
+                onDuplicate={() => dispatch({ type: "duplicate", payload: region.id })}
+                onMoveUp={() => dispatch({ type: "move-up", payload: region.id })}
+                onMoveDown={() => dispatch({ type: "move-down", payload: region.id })}
+                isFirst={index === 0}
+                isLast={index === state.regions.length - 1}
               >
                 <Region {...region} />
               </BlockRoot>
