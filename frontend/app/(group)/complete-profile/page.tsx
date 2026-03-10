@@ -2324,7 +2324,7 @@ const WorkExperienceDialog = ({
                                   <Listbox value={value} onChange={onChange}>
                                     <ListboxButton
                                       placeholder="Month"
-                                      displayValue={(value: number) => value}
+                                      displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
                                       isInvalid={hookFormHasError({
                                         errors,
                                         name: "startDate.month",
@@ -2433,7 +2433,7 @@ const WorkExperienceDialog = ({
                                   <Listbox value={value} onChange={onChange}>
                                     <ListboxButton
                                       placeholder="Month"
-                                      displayValue={(value: number) => value}
+                                      displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
                                       isInvalid={hookFormHasError({
                                         errors,
                                         name: "endDate.month",
@@ -3192,7 +3192,7 @@ const EducationDialog = ({
                               render={({ field: { value, onChange } }) => (
                                 <Listbox value={value} onChange={onChange}>
                                   <ListboxButton
-                                    displayValue={(value: number) => `${value}`}
+                                    displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
                                     placeholder="Month"
                                     isInvalid={hookFormHasError({
                                       errors,
@@ -3280,7 +3280,7 @@ const EducationDialog = ({
                               render={({ field: { value, onChange } }) => (
                                 <Listbox value={value} onChange={onChange}>
                                   <ListboxButton
-                                    displayValue={(value: number) => `${value}`}
+                                    displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
                                     placeholder="Month"
                                     isInvalid={hookFormHasError({
                                       errors,
