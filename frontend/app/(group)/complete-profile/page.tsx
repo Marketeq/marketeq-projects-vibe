@@ -886,7 +886,7 @@ const MoreInfoDialog = ({
   const {
     control,
     handleSubmit,
-    formState: { errors, isValid },
+    formState: { errors, isValid, isDirty },
     register,
     reset,
     setValue,
@@ -977,7 +977,17 @@ const MoreInfoDialog = ({
               ) : (
                 <Button
                   className="text-dark-blue-400"
-                  onClick={() => setIsOpen(true)}
+                  onClick={() => {
+                    if (isDirty) {
+                      setIsOpen(true)
+                    } else {
+                      setEditingIndex(undefined)
+                      reset(moreInfoFormDefaultValues as MoreInfoFormValues)
+                      Boolean(workExperiences?.length)
+                        ? setState("preview")
+                        : setState("default")
+                    }
+                  }}
                   size="md"
                   visual="gray"
                   variant="link"
@@ -1220,8 +1230,8 @@ const MoreInfoDialog = ({
                                 Marketeq Service Fee (20%)
                               </AlertTitle>
                               <AlertDescription>
-                                Lorem ipsum dolor sit amet consectetur
-                                adipisicing elit.
+                                Marketeq charges a 20% service fee on every
+                                transaction to support the platform.
                               </AlertDescription>
                             </div>
 
@@ -1383,14 +1393,24 @@ const MoreInfoDialog = ({
             ) : (
               <>
                 <Button
-                  onClick={() => setIsOpen(true)}
+                  onClick={() => {
+                    if (isDirty) {
+                      setIsOpen(true)
+                    } else {
+                      setEditingIndex(undefined)
+                      reset(moreInfoFormDefaultValues as MoreInfoFormValues)
+                      Boolean(workExperiences?.length)
+                        ? setState("preview")
+                        : setState("default")
+                    }
+                  }}
                   variant="link"
                   visual="gray"
                   type="button"
                 >
                   <X className="size-[15px]" /> Cancel
                 </Button>
-                <Button ref={submitTriggerRef} disabled={!isValid}>Save</Button>
+                <Button ref={submitTriggerRef} type="submit" disabled={!isValid}>Save</Button>
 
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                   <DialogContent className="max-w-[409px] p-0">
@@ -1613,7 +1633,7 @@ const AboutMeDialog = ({
             This is your moment to shine!
           </h1>
           <p className="text-base text-dark-blue-400 mt-2.5">
-            A killer “About Me” attracts top-tier clients and builds trust in
+            A killer "About Me" attracts top-tier clients and builds trust in
             just a few words.
           </p>
 
@@ -1824,6 +1844,7 @@ const SkillsDialog = ({
                   <Badge key={skill.id} visual="primary">
                     {skill.name}
                     <button
+                      type="button"
                       className="focus-visible:outline-none"
                       onClick={() => {
                         setValue(
@@ -2059,7 +2080,7 @@ const WorkExperienceDialog = ({
   const {
     control,
     handleSubmit,
-    formState: { errors, isValid },
+    formState: { errors, isValid, isDirty },
     trigger,
     setValue,
     register,
@@ -2135,8 +2156,9 @@ const WorkExperienceDialog = ({
                   {state === "preview" && (
                     <Button
                       onClick={() => {
-                        setState("action")
+                        setEditingIndex(undefined)
                         reset()
+                        setState("action")
                       }}
                       className="bg-white"
                       variant="outlined"
@@ -2144,14 +2166,24 @@ const WorkExperienceDialog = ({
                       type="button"
                     >
                       <Plus className="size-[15px]" />
-                      Add Education
+                      Add Work Experience
                     </Button>
                   )}
                 </div>
               ) : (
                 <Button
                   className="text-dark-blue-400"
-                  onClick={() => setIsOpen(true)}
+                  onClick={() => {
+                    if (isDirty) {
+                      setIsOpen(true)
+                    } else {
+                      setEditingIndex(undefined)
+                      reset()
+                      Boolean(workExperiences?.length)
+                        ? setState("preview")
+                        : setState("default")
+                    }
+                  }}
                   size="md"
                   visual="gray"
                   variant="link"
@@ -2195,11 +2227,15 @@ const WorkExperienceDialog = ({
                     <div className="space-y-3">
                       {workExperiences?.map((workExperience, index) => (
                         <WorkExperienceCard
-                          onRemove={() =>
-                            setWorkExperiences(
-                              (prev) => prev?.filter((_, i) => i !== index)
+                          onRemove={() => {
+                            const updated = workExperiences?.filter(
+                              (_, i) => i !== index
                             )
-                          }
+                            setWorkExperiences(
+                              updated?.length ? updated : undefined
+                            )
+                            if (!updated?.length) setState("default")
+                          }}
                           onEdit={() => {
                             reset(workExperience)
                             setState("action")
@@ -2397,7 +2433,7 @@ const WorkExperienceDialog = ({
                                       displayValue={(value: number) => value}
                                       isInvalid={hookFormHasError({
                                         errors,
-                                        name: "endDate.year",
+                                        name: "endDate.month",
                                       })}
                                     />
                                     <ListboxOptions>
@@ -2595,6 +2631,7 @@ const WorkExperienceDialog = ({
                           <Badge key={skill.id} visual="primary">
                             {skill.name}
                             <button
+                              type="button"
                               className="focus-visible:outline-none"
                               onClick={() => {
                                 setValue(
@@ -2652,14 +2689,24 @@ const WorkExperienceDialog = ({
             ) : (
               <>
                 <Button
-                  onClick={() => setIsOpen(true)}
+                  onClick={() => {
+                    if (isDirty) {
+                      setIsOpen(true)
+                    } else {
+                      setEditingIndex(undefined)
+                      reset()
+                      Boolean(workExperiences?.length)
+                        ? setState("preview")
+                        : setState("default")
+                    }
+                  }}
                   variant="link"
                   visual="gray"
                   type="button"
                 >
                   <X className="size-[15px]" /> Cancel
                 </Button>
-                <Button ref={submitTriggerRef}>Save </Button>
+                <Button ref={submitTriggerRef} type="submit" disabled={!isValid}>Save</Button>
 
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                   <DialogContent className="max-w-[409px] p-0">
@@ -2854,7 +2901,7 @@ const EducationDialog = ({
   const {
     control,
     handleSubmit,
-    formState: { errors, isValid },
+    formState: { errors, isValid, isDirty },
     register,
     reset,
   } = useForm<EducationFormValues>({
@@ -2939,8 +2986,9 @@ const EducationDialog = ({
                   {state === "preview" && (
                     <Button
                       onClick={() => {
-                        setState("action")
+                        setEditingIndex(undefined)
                         reset()
+                        setState("action")
                       }}
                       className="bg-white"
                       variant="outlined"
@@ -2955,7 +3003,17 @@ const EducationDialog = ({
               ) : (
                 <Button
                   className="text-dark-blue-400"
-                  onClick={() => setIsOpen(true)}
+                  onClick={() => {
+                    if (isDirty) {
+                      setIsOpen(true)
+                    } else {
+                      setEditingIndex(undefined)
+                      reset()
+                      Boolean(educationQualifications?.length)
+                        ? setState("preview")
+                        : setState("default")
+                    }
+                  }}
                   size="md"
                   visual="gray"
                   variant="link"
@@ -2993,11 +3051,15 @@ const EducationDialog = ({
                   <div className="space-y-3">
                     {educationQualifications?.map((qualification, index) => (
                       <EducationCard
-                        onRemove={() =>
-                          setEducationQualifications(
-                            (prev) => prev?.filter((_, i) => i !== index)
+                        onRemove={() => {
+                          const updated = educationQualifications?.filter(
+                            (_, i) => i !== index
                           )
-                        }
+                          setEducationQualifications(
+                            updated?.length ? updated : undefined
+                          )
+                          if (!updated?.length) setState("default")
+                        }}
                         onEdit={() => {
                           reset(qualification)
                           setState("action")
@@ -3061,14 +3123,17 @@ const EducationDialog = ({
                               />
                               <ListboxOptions>
                                 {[
-                                  "Option 1",
-                                  "Option 2",
-                                  "Option 3",
-                                  "Option 4",
-                                  "Option 5",
-                                ].map((month) => (
-                                  <ListboxOption key={month} value={month}>
-                                    {month}
+                                  "High School Diploma",
+                                  "Associate's Degree",
+                                  "Bachelor's Degree",
+                                  "Master's Degree",
+                                  "Doctoral Degree (PhD)",
+                                  "Professional Degree",
+                                  "Certificate / Diploma",
+                                  "Other",
+                                ].map((degree) => (
+                                  <ListboxOption key={degree} value={degree}>
+                                    {degree}
                                   </ListboxOption>
                                 ))}
                               </ListboxOptions>
@@ -3076,7 +3141,7 @@ const EducationDialog = ({
                           )}
                         />
                         <HookFormErrorMessage
-                          name="schoolOrUniversity"
+                          name="degree"
                           errors={errors}
                           render={({ message }) => (
                             <ErrorMessage size="sm">{message}</ErrorMessage>
@@ -3330,6 +3395,7 @@ const EducationDialog = ({
                   </Button>
                   <Button
                     size="md"
+                    type="button"
                     disabled={!Boolean(educationQualifications?.length)}
                     onClick={next}
                   >
@@ -3341,10 +3407,15 @@ const EducationDialog = ({
               <>
                 <Button
                   onClick={() => {
-                    Boolean(educationQualifications?.length)
-                      ? setState("preview")
-                      : setState("default")
-                    reset()
+                    if (isDirty) {
+                      setIsOpen(true)
+                    } else {
+                      setEditingIndex(undefined)
+                      reset()
+                      Boolean(educationQualifications?.length)
+                        ? setState("preview")
+                        : setState("default")
+                    }
                   }}
                   variant="link"
                   visual="gray"
@@ -3353,7 +3424,7 @@ const EducationDialog = ({
                   <X className="size-[15px]" /> Cancel
                 </Button>
 
-                <Button ref={submitTriggerRef}> Save </Button>
+                <Button ref={submitTriggerRef} type="submit" disabled={!isValid}>Save</Button>
 
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                   <DialogContent className="max-w-[409px] p-0">
@@ -3451,10 +3522,10 @@ const EducationDialog = ({
 
           <div className="mt-[67px]">
             <p className="text-sm leading-none text-dark-blue-400">
-              “I value freelancers who have a complete education section. It
+              "I value freelancers who have a complete education section. It
               shows dedication and makes me feel secure in their qualifications.
               It’s not just about skills; it’s about the foundation behind
-              them.”
+              them."
             </p>
 
             <div className="mt-5">
@@ -3527,7 +3598,11 @@ const Portfolio = ({
             </div>
 
             <div className="mt-6 grid grid-cols-2 gap-3">
-              <article className="h-[150px] bg-white gap-y-3 flex items-center flex-col border border-gray-300 p-6 rounded-[5px]">
+              <button
+                type="button"
+                className="h-[150px] bg-white gap-y-3 flex items-center flex-col border border-gray-300 p-6 rounded-[5px] hover:border-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                onClick={() => onFinished?.(true)}
+              >
                 <div className="size-[52px] rounded-full text-white shrink-0 border-[12px] border-gray-200 bg-gray-400 inline-flex items-center justify-center">
                   <Plus className="size-[21px]" />
                 </div>
@@ -3535,7 +3610,7 @@ const Portfolio = ({
                 <h3 className="text-center text-sm font-semibold text-gray-400">
                   Add a project
                 </h3>
-              </article>
+              </button>
             </div>
           </div>
           <div className="border rounded-b-[10px] flex items-center justify-between border-gray-200 bg-white py-4 px-6">
@@ -3809,7 +3884,7 @@ const DeleteWorkExperience = () => {
             Delete Work Experience
           </DialogTitle>
           <DialogDescription className="text-dark-blue-400 mt-2">
-            Your “Senior UX / UI Designer” job will be removed. This cannot be
+            Your "Senior UX / UI Designer" job will be removed. This cannot be
             undone.
           </DialogDescription>
         </div>
@@ -3864,7 +3939,7 @@ const DeleteEducation = () => {
             Delete Education?
           </DialogTitle>
           <DialogDescription className="text-dark-blue-400 mt-2">
-            Your “University of Florida” education will be removed. This cannot
+            Your "University of Florida" education will be removed. This cannot
             be undone.
           </DialogDescription>
         </div>
@@ -3924,6 +3999,7 @@ const WorkExperienceCard = ({
               size="md"
               visual="gray"
               variant="ghost"
+              type="button"
               onClick={onEdit}
             >
               <Edit03 className="size-[15px]" />
@@ -3936,6 +4012,7 @@ const WorkExperienceCard = ({
                   size="md"
                   visual="gray"
                   variant="ghost"
+                  type="button"
                 >
                   <Trash03 className="size-[15px]" />
                 </IconButton>
@@ -3946,7 +4023,7 @@ const WorkExperienceCard = ({
                     Delete Work Experience
                   </DialogTitle>
                   <DialogDescription className="text-dark-blue-400 mt-2">
-                    Your “Senior UX / UI Designer” job will be removed. This
+                    Your &ldquo;{jobTitle}&rdquo; job will be removed. This
                     cannot be undone.
                   </DialogDescription>
                 </div>
@@ -4104,13 +4181,13 @@ const EducationCard = ({
                     Delete Education?
                   </DialogTitle>
                   <DialogDescription className="text-dark-blue-400 mt-2">
-                    Your “University of Florida” education will be removed. This
-                    cannot be undone.
+                    Your &ldquo;{schoolOrUniversity}&rdquo; education will be
+                    removed. This cannot be undone.
                   </DialogDescription>
                 </div>
 
                 <div className="border-t rounded-b-xl flex items-center justify-between border-gray-200 bg-gray-25 py-4 px-6">
-                  <DialogClose>
+                  <DialogClose asChild>
                     <Button variant="link" visual="gray">
                       <X className="size-[15px]" /> Cancel
                     </Button>
