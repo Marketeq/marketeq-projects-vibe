@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UnauthorizedException,
@@ -24,6 +25,8 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
 import { ConfirmScreenshotDto } from './dto/confirm.dto';
 import { ReadPresignDto } from './dto/read.dto';
+import { CreateFlagDto } from './dto/create-flag.dto';
+import { ReviewScreenshotDto } from './dto/review-screenshot.dto';
 import { ScreenshotQueryDto } from '../dtos/screenshot-query.dto';
 import {
   BatchUpdateScreenshotDto,
@@ -61,7 +64,7 @@ export class ScreenshotsController {
     private readonly events: EventsService,
   ) {}
 
-  // ── Original endpoints ─────────────────────────────────────────────
+  // ── Machine-to-machine endpoints (BearerGuard) ─────────────────────
 
   @Post('presign')
   async presign(@Body() body: PresignBody) {
@@ -93,16 +96,6 @@ export class ScreenshotsController {
     return this.svc.confirm(dto);
   }
 
-  @Get()
-  async list(
-    @Query('userId') userId: string,
-    @Query('page') page = '1',
-    @Query('limit') limit = '50',
-  ) {
-    if (!userId) throw new HttpException({ message: 'userId required' }, 400);
-    return this.svc.listByUser(userId, Number(page), Number(limit));
-  }
-
   @Get('env-check')
   envCheck() {
     return (this.r2 as any).missingEnv?.() ?? { note: 'update R2Service to latest' };
@@ -124,7 +117,17 @@ export class ScreenshotsController {
     return result;
   }
 
-  // ── Extended endpoints (JWT-protected) ────────────────────────────
+  // ── JWT-protected user/admin endpoints ────────────────────────────
+
+  /**
+   * GET /api/screenshots — full list with all filters + sort
+   * Replaces the basic BearerGuard listByUser for authenticated users
+   */
+  @Get()
+  @UseGuards(JwtAuthGuard)
+  async listScreenshots(@Req() req: any, @Query() query: ScreenshotQueryDto) {
+    return this.svc.listScreenshots(query, req.user.sub, req.user.role);
+  }
 
   @Get('cards')
   @UseGuards(JwtAuthGuard)
@@ -138,16 +141,59 @@ export class ScreenshotsController {
     return this.svc.findCards(null, query);
   }
 
+  @Get('flagged')
+  @UseGuards(JwtAuthGuard, RolesGuard('admin'))
+  async getFlagged() {
+    return this.svc.getFlaggedScreenshots();
+  }
+
   @Get('group/:groupKey')
   @UseGuards(JwtAuthGuard)
   async getGroup(@Param('groupKey') groupKey: string, @Req() req: any) {
     return this.svc.findGrouped(groupKey, req.user.sub, req.user.role);
   }
 
+  @Get(':id/url')
+  @UseGuards(JwtAuthGuard)
+  async getSignedUrl(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.svc.getSignedUrl(id, req.user.sub, req.user.role);
+  }
+
   @Get(':id/detail')
   @UseGuards(JwtAuthGuard)
   async getDetail(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
     return this.svc.findDetail(id, req.user.sub, req.user.role);
+  }
+
+  @Post(':id/flag')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async flagScreenshot(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
+    @Body() dto: CreateFlagDto,
+  ) {
+    return this.svc.flagScreenshot(id, req.user.sub, req.user.role, dto);
+  }
+
+  @Put(':id/review')
+  @UseGuards(JwtAuthGuard, RolesGuard('admin'))
+  async reviewScreenshot(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
+    @Body() dto: ReviewScreenshotDto,
+  ) {
+    return this.svc.reviewScreenshot(id, req.user.sub, dto);
+  }
+
+  @Patch(':id/blur')
+  @UseGuards(JwtAuthGuard)
+  async blur(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
+    @Query('scopeId') scopeId?: string,
+  ) {
+    return this.svc.blur(id, req.user.sub, req.user.role, scopeId);
   }
 
   @Patch(':id/meta')
@@ -169,15 +215,5 @@ export class ScreenshotsController {
     @Query('scopeId') scopeId?: string,
   ) {
     return this.svc.batchUpdateMeta(req.user.sub, req.user.role, dto, scopeId);
-  }
-
-  @Patch(':id/blur')
-  @UseGuards(JwtAuthGuard)
-  async blur(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Req() req: any,
-    @Query('scopeId') scopeId?: string,
-  ) {
-    return this.svc.blur(id, req.user.sub, req.user.role, scopeId);
   }
 }

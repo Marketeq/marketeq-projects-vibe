@@ -208,7 +208,58 @@ export default function SignIn() {
               Login to your account below
             </p>
 
-            <div className="grid md:grid-cols-2 mt-10 md:mt-[50px] gap-3 items-center">
+            {process.env.NODE_ENV === "development" && (
+              <div className="mt-10 md:mt-[50px] grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUser({
+                      id: "dev-client",
+                      email: "client@marketeq.dev",
+                      firstName: "Christopher",
+                      lastName: "Torres",
+                      role: "CLIENT" as any,
+                      provider: "EMAIL" as any,
+                      hasPassword: true,
+                      emailVerified: true,
+                      onboardingDismissed: true,
+                      createdAt: new Date(),
+                      updatedAt: new Date(),
+                      deletedAt: null,
+                    })
+                    router.push("/client-dashboard")
+                  }}
+                  className="h-10 rounded-md border border-dashed border-gray-400 text-sm text-gray-600 hover:bg-gray-50"
+                >
+                  Dev: Client Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUser({
+                      id: "dev-talent",
+                      email: "talent@marketeq.dev",
+                      firstName: "Alex",
+                      lastName: "Smith",
+                      role: "TALENT" as any,
+                      provider: "EMAIL" as any,
+                      hasPassword: true,
+                      emailVerified: true,
+                      onboardingDismissed: true,
+                      createdAt: new Date(),
+                      updatedAt: new Date(),
+                      deletedAt: null,
+                    })
+                    router.push("/talent-dashboard")
+                  }}
+                  className="h-10 rounded-md border border-dashed border-gray-400 text-sm text-gray-600 hover:bg-gray-50"
+                >
+                  Dev: Talent Login
+                </button>
+              </div>
+            )}
+
+            <div className="grid md:grid-cols-2 mt-4 gap-3 items-center">
               <GoogleLoginButton />
 
               <LinkedInLoginButton />

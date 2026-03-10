@@ -77,25 +77,12 @@ function useProvideAuth() {
       })
   }
 
-  const logoutHandler = async () => {
-    try {
-      await AuthAPI.Logout()
-      document.cookie =
-        "access_token=; Path=/; Max-Age=0; SameSite=None; Secure"
-      document.cookie =
-        "accessToken=; Path=/; Max-Age=0; SameSite=None; Secure"
-    } catch (err: any) {
-      toast({
-        title:
-          err?.response?.data?.message ||
-          err?.message ||
-          "Something went wrong",
-        variant: "destructive",
-      })
-    } finally {
-      setUser(null)
-      router.push("/sign-in")
-    }
+  const logoutHandler = () => {
+    setUser(null)
+    document.cookie = "access_token=; Path=/; Max-Age=0; SameSite=None; Secure"
+    document.cookie = "accessToken=; Path=/; Max-Age=0; SameSite=None; Secure"
+    router.push("/sign-in")
+    AuthAPI.Logout().catch(() => {})
   }
 
   useEffect(() => {

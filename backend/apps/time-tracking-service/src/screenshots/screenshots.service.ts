@@ -4,10 +4,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { Screenshot } from './screenshots.entity';
 import { AdminSettings } from '../entities/admin-settings.entity';
+import { R2Service } from '../storage/r2.service';
 import { ConfirmScreenshotDto } from './dto/confirm.dto';
+import { CreateFlagDto } from './dto/create-flag.dto';
+import { ReviewScreenshotDto } from './dto/review-screenshot.dto';
 import { ScreenshotQueryDto } from '../dtos/screenshot-query.dto';
 import {
   BatchUpdateScreenshotDto,
@@ -22,6 +25,7 @@ export class ScreenshotsService {
     private readonly repo: Repository<Screenshot>,
     @InjectRepository(AdminSettings)
     private readonly settingsRepo: Repository<AdminSettings>,
+    private readonly r2: R2Service,
   ) {}
 
   // ── From original ──────────────────────────────────────────────────
@@ -30,8 +34,8 @@ export class ScreenshotsService {
     const keyboard = dto.keyboard ?? 0;
     const mouse = dto.mouse ?? 0;
     const activity = keyboard + mouse;
-    const keyboardPct = activity > 0 ? Math.round((keyboard / activity) * 100) : null;
-    const mousePct = activity > 0 ? Math.round((mouse / activity) * 100) : null;
+    const keyboardPct = activity > 0 ? Math.round((keyboard / activity) * 100) : 0;
+    const mousePct = activity > 0 ? Math.round((mouse / activity) * 100) : 0;
 
     const saved = await this.repo.save({
       userId: dto.userId,
@@ -123,7 +127,7 @@ export class ScreenshotsService {
   async findCards(
     userId: string | null,
     query: ScreenshotQueryDto,
-  ): Promise<{ data: Screenshot[]; total: number; page: number; pageSize: number }> {
+  ): Promise<{ data: Array<Screenshot & { thumbnailUrl: string }>; total: number; page: number; pageSize: number }> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
 
@@ -148,15 +152,25 @@ export class ScreenshotsService {
     qb.orderBy(sortField, query.sortOrder ?? 'DESC');
     qb.skip((page - 1) * pageSize).take(pageSize);
 
-    const [data, total] = await qb.getManyAndCount();
+    const [rows, total] = await qb.getManyAndCount();
+
+    const data = await Promise.all(
+      rows.map(async (s) => {
+        const { url: thumbnailUrl } = await this.r2.presignGet(s.key);
+        return { ...s, thumbnailUrl };
+      }),
+    );
+
     return { data, total, page, pageSize };
   }
 
-  async findDetail(id: string, userId: string, role: string): Promise<Screenshot> {
+  async findDetail(id: string, userId: string, role: string): Promise<Screenshot & { signedUrl: string }> {
     const screenshot = await this.repo.findOneBy({ id, isDeleted: false });
     if (!screenshot) throw new NotFoundException('Screenshot not found');
     if (role !== 'admin' && screenshot.userId !== userId) throw new ForbiddenException('Access denied');
-    return screenshot;
+
+    const signedUrl = await this.buildSignedUrl(screenshot);
+    return { ...screenshot, signedUrl };
   }
 
   async findGrouped(groupKey: string, userId: string, role: string): Promise<Screenshot[]> {
@@ -168,6 +182,86 @@ export class ScreenshotsService {
       throw new ForbiddenException('Access denied');
     }
     return screenshots;
+  }
+
+  // ── Full list with filters + sort ──────────────────────────────────
+
+  async listScreenshots(
+    query: ScreenshotQueryDto,
+    userId: string,
+    role: string,
+  ): Promise<Array<Screenshot & { signedUrl: string }>> {
+    const qb = this.repo.createQueryBuilder('s').where('s.isDeleted = false');
+
+    if (role !== 'admin') {
+      qb.andWhere('s.userId = :userId', { userId });
+    }
+
+    // timeEntryType=manual → screenshots endpoint returns empty
+    if (query.timeEntryType === 'manual') {
+      return [];
+    }
+
+    if (query.projectId) qb.andWhere('s.projectId = :p', { p: query.projectId });
+    if (query.taskId) qb.andWhere('s.taskId = :t', { t: query.taskId });
+
+    if (query.from && query.to) {
+      qb.andWhere('s.capturedAt BETWEEN :f AND :to', { f: new Date(query.from), to: new Date(query.to) });
+    } else if (query.from) {
+      qb.andWhere('s.capturedAt >= :f', { f: new Date(query.from) });
+    } else if (query.to) {
+      qb.andWhere('s.capturedAt <= :to', { to: new Date(query.to) });
+    }
+
+    if (query.apps?.length) {
+      qb.andWhere(
+        new Brackets((sub) => {
+          query.apps!.forEach((name, idx) => {
+            sub[idx === 0 ? 'where' : 'orWhere'](
+              `EXISTS (SELECT 1 FROM jsonb_array_elements(s.apps) a WHERE a->>'appName' ILIKE :app${idx})`,
+              { [`app${idx}`]: name },
+            );
+          });
+        }),
+      );
+    }
+
+    if (query.urlContains) {
+      qb.andWhere('s.url ILIKE :urlLike', { urlLike: `%${query.urlContains}%` });
+    }
+
+    if (typeof query.activityLevel === 'number') {
+      qb.andWhere('((s.keyboard + s.mouse) / 2) >= :lvl', { lvl: query.activityLevel });
+    }
+
+    const sortField = {
+      timestamp: 's.capturedAt',
+      keyboard: 's.keyboard',
+      mouse: 's.mouse',
+      project: 's.projectId',
+    }[query.sortBy ?? 'timestamp'] ?? 's.capturedAt';
+
+    qb.orderBy(sortField, query.sortOrder ?? 'DESC');
+
+    const rows = await qb.getMany();
+
+    return Promise.all(
+      rows.map(async (s) => {
+        const signedUrl = await this.buildSignedUrl(s);
+        return { ...s, signedUrl };
+      }),
+    );
+  }
+
+  // ── Signed URL (blur-aware) ────────────────────────────────────────
+
+  async getSignedUrl(id: string, userId: string, role: string): Promise<{ signedUrl: string }> {
+    const screenshot = await this.repo.findOneBy({ id, isDeleted: false });
+    if (!screenshot) throw new NotFoundException('Screenshot not found');
+    if (role !== 'admin' && screenshot.userId !== userId) throw new ForbiddenException('Access denied');
+
+    const signedUrl = await this.buildSignedUrl(screenshot);
+    return { signedUrl };
   }
 
   // ── Meta updates ───────────────────────────────────────────────────
@@ -236,7 +330,53 @@ export class ScreenshotsService {
     return this.repo.save(screenshot);
   }
 
+  // ── Moderation: Flag ───────────────────────────────────────────────
+
+  async flagScreenshot(id: string, userId: string, role: string, dto: CreateFlagDto): Promise<Screenshot> {
+    const screenshot = await this.repo.findOneBy({ id, isDeleted: false });
+    if (!screenshot) throw new NotFoundException('Screenshot not found');
+    if (role !== 'admin' && screenshot.userId !== userId) throw new ForbiddenException('Access denied');
+
+    screenshot.isFlagged = true;
+    screenshot.flaggedBy = userId;
+    screenshot.flaggedAt = new Date();
+    if (!screenshot.reviewStatus) {
+      screenshot.reviewStatus = 'pending';
+    }
+
+    return this.repo.save(screenshot);
+  }
+
+  async getFlaggedScreenshots(): Promise<Screenshot[]> {
+    return this.repo.find({
+      where: { isFlagged: true, isDeleted: false },
+      order: { flaggedAt: 'DESC' },
+    });
+  }
+
+  async reviewScreenshot(id: string, adminId: string, dto: ReviewScreenshotDto): Promise<Screenshot> {
+    const screenshot = await this.repo.findOneBy({ id });
+    if (!screenshot) throw new NotFoundException('Screenshot not found');
+
+    screenshot.reviewStatus = dto.status;
+    screenshot.reviewedBy = adminId;
+    screenshot.reviewComment = dto.comment ?? null;
+
+    return this.repo.save(screenshot);
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────
+
+  private async buildSignedUrl(screenshot: Screenshot): Promise<string> {
+    if (screenshot.isBlurred) {
+      const cdnBase = process.env.R2_CDN_BASE ?? process.env.R2_PUBLIC_BASE;
+      if (cdnBase) {
+        return `${cdnBase}/blurred/${screenshot.key}`;
+      }
+    }
+    const { url } = await this.r2.presignGet(screenshot.key);
+    return url;
+  }
 
   private async getSettings(scopeId: string): Promise<AdminSettings> {
     let settings = await this.settingsRepo.findOneBy({ scopeId });

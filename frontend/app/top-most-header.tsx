@@ -570,6 +570,7 @@ const ONBOARDING = "/onboarding"
 
 export const TopMostHeader = () => {
   const pathname = usePathname()
+  const [menuOpen, setMenuOpen] = React.useState(false)
 
   const router = useRouter()
   const { logoutHandler, user } = useAuth()
@@ -641,7 +642,7 @@ export const TopMostHeader = () => {
             </IconButton>
           </div>
 
-          <DropdownMenu>
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger className="hidden lg:inline-flex items-center gap-x-2 px-3 py-1.5 rounded-[8px] hover:bg-gray-100 focus-visible:outline-none">
               <div className="inline-flex items-center gap-x-2">
                 <Avatar>
@@ -684,7 +685,7 @@ export const TopMostHeader = () => {
                     </span>
                   </div>
 
-                  <Button className="w-full" onClick={() => router.push("/client-dashboard")}>My Account</Button>
+                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push("/client-dashboard") }}>My Account</Button>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuItem onClick={() => router.push("/publish-project")}>

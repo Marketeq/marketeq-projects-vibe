@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import {
+  IsArray,
   IsDateString,
   IsIn,
   IsInt,
@@ -25,6 +26,31 @@ export class ScreenshotQueryDto {
   @IsOptional()
   @IsDateString()
   to?: string;
+
+  /** Filter by app name(s) — matches against the apps JSONB column */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @Transform(({ value }) => (Array.isArray(value) ? value : [value]))
+  apps?: string[];
+
+  /** Filter screenshots where url ILIKE %urlContains% */
+  @IsOptional()
+  @IsString()
+  urlContains?: string;
+
+  /** Minimum activity level (0–100), computed as (keyboard + mouse) / 2 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  activityLevel?: number;
+
+  /** Filter by time entry type; 'manual' returns empty from screenshots endpoint */
+  @IsOptional()
+  @IsIn(['automatic', 'manual', 'all'])
+  timeEntryType?: 'automatic' | 'manual' | 'all';
 
   @IsOptional()
   @Type(() => Number)

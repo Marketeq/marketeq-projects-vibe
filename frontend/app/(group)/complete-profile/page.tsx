@@ -569,6 +569,12 @@ const StatusDialog = ({
     defaultValue: false,
   })
 
+  const totalSteps = Object.keys(content).length
+  const completedSteps = (Object.keys(content) as (keyof typeof content)[]).filter(
+    (k) => dialogsState[k].finished
+  ).length
+  const progressPercent = Math.round((completedSteps / totalSteps) * 100)
+
   return (
     <>
       <AboutMeDialog
@@ -587,6 +593,7 @@ const StatusDialog = ({
         }
         next={next}
         userId={user?.id ?? ""}
+        progressPercent={progressPercent}
       />
       <Portfolio
         onFinished={(finished) =>
@@ -603,6 +610,8 @@ const StatusDialog = ({
           }))
         }
         next={next}
+        previous={previous}
+        progressPercent={progressPercent}
       />
       <SkillsDialog
         onFinished={(finished) =>
@@ -621,6 +630,7 @@ const StatusDialog = ({
         next={next}
         previous={previous}
         userId={user?.id ?? ""}
+        progressPercent={progressPercent}
       />
       <WorkExperienceDialog
         onFinished={(finished) =>
@@ -639,6 +649,7 @@ const StatusDialog = ({
         next={next}
         previous={previous}
         userId={user?.id ?? ""}
+        progressPercent={progressPercent}
       />
       <EducationDialog
         onFinished={(finished) =>
@@ -675,6 +686,7 @@ const StatusDialog = ({
         next={next}
         previous={previous}
         userId={user?.id ?? ""}
+        progressPercent={progressPercent}
       />
       <Congratulations
         opened={dialogsState["CONGRATULATIONS"].opened}
@@ -706,7 +718,7 @@ const StatusDialog = ({
                 {(Object.keys(content) as (keyof typeof content)[]).reduce(
                   (previous, current) =>
                     dialogsState[current].finished ? previous - 1 : previous,
-                  4
+                  Object.keys(content).length
                 )}{" "}
                 steps left
               </Badge>
@@ -805,9 +817,9 @@ const StatusDialog = ({
 const moreInfoFormSchema = z.object({
   jobTitle: z.string().min(1, "Please enter at least 1 character(s)"),
   saveAsDefault: z.boolean(),
-  clientRate: z.number({ message: "Please enter an amount" }),
-  earning: z.number({ message: "Please enter an amount" }),
-  fee: z.number({ message: "Please enter an amount" }),
+  clientRate: z.number({ message: "Please enter an amount" }).optional(),
+  earning: z.number({ message: "Please enter an amount" }).optional(),
+  fee: z.number().optional(),
 })
 
 type MoreInfoFormValues = z.infer<typeof moreInfoFormSchema>
@@ -824,6 +836,7 @@ const MoreInfoDialog = ({
   next,
   previous,
   userId,
+  progressPercent,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -831,6 +844,7 @@ const MoreInfoDialog = ({
   next?: () => void
   previous?: () => void
   userId: string
+  progressPercent?: number
 }) => {
   const [open, setOpen] = useControllableState({
     defaultValue: false,
@@ -856,7 +870,6 @@ const MoreInfoDialog = ({
     formState: { errors, isValid },
     register,
     reset,
-    watch,
     setValue,
   } = useForm<MoreInfoFormValues>({
     resolver: zodResolver(moreInfoFormSchema),
@@ -885,37 +898,15 @@ const MoreInfoDialog = ({
 
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
 
+  const watchedClientRate = useWatch({ control, name: "clientRate" })
+  const watchedEarning = useWatch({ control, name: "earning" })
+
   useEffect(() => {
-    const [clientRate, earning] = watch(["clientRate", "earning"])
-
-    function calculatePercentage({
-      percentage,
-      value,
-    }: {
-      value: number
-      percentage: number
-    }) {
-      return (value * percentage) / 100
+    const value = watchedEarning ?? watchedClientRate
+    if (value != null) {
+      setValue("fee", (value * 20) / 100)
     }
-
-    earning != null
-      ? setValue(
-          "fee",
-          calculatePercentage({
-            value: earning,
-            percentage: 20,
-          })
-        )
-      : clientRate != null
-        ? setValue(
-            "fee",
-            calculatePercentage({
-              value: clientRate,
-              percentage: 20,
-            })
-          )
-        : noop()
-  }, [watch, setValue])
+  }, [watchedClientRate, watchedEarning, setValue])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -938,10 +929,10 @@ const MoreInfoDialog = ({
                 <div className="flex items-start justify-between">
                   <div className="max-w-[157px] flex-auto flex items-center gap-x-3">
                     <span className="text-sm font-medium text-dark-blue-400">
-                      40%
+                      {progressPercent ?? 0}%
                     </span>
                     <div className="max-w-[115px] flex-auto">
-                      <Progress value={20} />
+                      <Progress value={progressPercent ?? 0} />
                     </div>
                   </div>
 
@@ -1467,12 +1458,14 @@ const AboutMeDialog = ({
   onOpenedChange,
   next,
   userId,
+  progressPercent,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
   onOpenedChange?: (opened: boolean) => void
   next?: () => void
   userId: string
+  progressPercent?: number
 }) => {
   const onFinished = useCallbackRef(onFinishedProp)
   const [open, setOpen] = useControllableState({
@@ -1511,10 +1504,10 @@ const AboutMeDialog = ({
           <div className="border-x border-t p-[30px] rounded-t-[10px] border-gray-200 bg-gray-50">
             <div className="flex items-center gap-x-3">
               <span className="text-sm font-medium text-dark-blue-400">
-                40%
+                {progressPercent ?? 0}%
               </span>
               <div className="max-w-[115px] flex-auto">
-                <Progress value={20} />
+                <Progress value={progressPercent ?? 0} />
               </div>
             </div>
 
@@ -1642,6 +1635,7 @@ const SkillsDialog = ({
   next,
   previous,
   userId,
+  progressPercent,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -1649,6 +1643,7 @@ const SkillsDialog = ({
   next?: () => void
   previous?: () => void
   userId: string
+  progressPercent?: number
 }) => {
   const onFinished = useCallbackRef(onFinishedProp)
   const [open, setOpen] = useControllableState({
@@ -1712,10 +1707,10 @@ const SkillsDialog = ({
           <div className="border-x min-h-[567px] border-t rounded-t-[10px] p-[30px] border-gray-200 bg-gray-50">
             <div className="flex items-center gap-x-3">
               <span className="text-sm font-medium text-dark-blue-400">
-                40%
+                {progressPercent ?? 0}%
               </span>
               <div className="max-w-[115px] flex-auto">
-                <Progress value={20} />
+                <Progress value={progressPercent ?? 0} />
               </div>
             </div>
 
@@ -1962,6 +1957,7 @@ const WorkExperienceDialog = ({
   next,
   previous,
   userId,
+  progressPercent,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -1969,6 +1965,7 @@ const WorkExperienceDialog = ({
   next?: () => void
   previous?: () => void
   userId: string
+  progressPercent?: number
 }) => {
   const [open, setOpen] = useControllableState({
     defaultValue: false,
@@ -2082,10 +2079,10 @@ const WorkExperienceDialog = ({
                 <div className="flex items-start justify-between">
                   <div className="max-w-[157px] flex-auto flex items-center gap-x-3">
                     <span className="text-sm font-medium text-dark-blue-400">
-                      40%
+                      {progressPercent ?? 0}%
                     </span>
                     <div className="max-w-[115px] flex-auto">
-                      <Progress value={20} />
+                      <Progress value={progressPercent ?? 0} />
                     </div>
                   </div>
 
@@ -2788,6 +2785,7 @@ const EducationDialog = ({
   next,
   previous,
   userId,
+  progressPercent,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -2795,6 +2793,7 @@ const EducationDialog = ({
   next?: () => void
   previous?: () => void
   userId: string
+  progressPercent?: number
 }) => {
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useControllableState({
@@ -2881,10 +2880,10 @@ const EducationDialog = ({
                 <div className="flex items-start justify-between">
                   <div className="max-w-[157px] flex-auto flex items-center gap-x-3">
                     <span className="text-sm font-medium text-dark-blue-400">
-                      40%
+                      {progressPercent ?? 0}%
                     </span>
                     <div className="max-w-[115px] flex-auto">
-                      <Progress value={20} />
+                      <Progress value={progressPercent ?? 0} />
                     </div>
                   </div>
 
@@ -3441,12 +3440,14 @@ const Portfolio = ({
   opened,
   next,
   previous,
+  progressPercent,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
   onOpenedChange?: (opened: boolean) => void
   next?: () => void
   previous?: () => void
+  progressPercent?: number
 }) => {
   const [open, setOpen] = useControllableState({
     value: opened,
@@ -3460,10 +3461,10 @@ const Portfolio = ({
           <div className="border-x min-h-[567px] border-t rounded-t-[10px] p-[30px] border-gray-200 bg-gray-50">
             <div className="flex items-center gap-x-3">
               <span className="text-sm font-medium text-dark-blue-400">
-                40%
+                {progressPercent ?? 0}%
               </span>
               <div className="max-w-[115px] flex-auto">
-                <Progress value={20} />
+                <Progress value={progressPercent ?? 0} />
               </div>
             </div>
 
@@ -3509,7 +3510,16 @@ const Portfolio = ({
               >
                 Skip
               </Button>
-              <Button size="md">Save & Continue</Button>
+              <Button
+                size="md"
+                type="button"
+                onClick={() => {
+                  onFinished?.(true)
+                  next?.()
+                }}
+              >
+                Save & Continue
+              </Button>
             </div>
           </div>
         </form>

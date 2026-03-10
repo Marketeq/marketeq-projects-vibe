@@ -13,6 +13,7 @@ import {
 import React from "react"
 // import ReactPlayer from "react-player"
 import dynamic from "next/dynamic"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import options from "@/public/mock/options.json"
 import {
@@ -698,6 +699,12 @@ const BottomBar = ({
     }
 
     try {
+      if (process.env.NODE_ENV === "development") {
+        setSubmissionOutcome({ status: "in_review", projectId: "dev-123" })
+        setIsProjectSubmitted(true)
+        return
+      }
+
       const createProjectResponse = await ProjectAPI.CreateProject(payload)
       const projectId =
         createProjectResponse?.data?.projectId ??
@@ -3141,6 +3148,7 @@ const SaveExitDialog = ({
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) => {
+  const router = useRouter()
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
     value: open,
@@ -3162,9 +3170,9 @@ const SaveExitDialog = ({
                 Cancel
               </Button>
             </DialogClose>
-            <DialogClose asChild>
-              <Button>Save & Exit</Button>
-            </DialogClose>
+            <Button onClick={() => { toggleIsOpen(false); router.push("/client-dashboard") }}>
+              Save & Exit
+            </Button>
           </DialogFooter>
         </div>
       </DialogContent>

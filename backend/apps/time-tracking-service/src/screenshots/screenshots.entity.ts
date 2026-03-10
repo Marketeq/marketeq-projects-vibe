@@ -2,6 +2,12 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 
 export type ReviewStatus = 'pending' | 'approved' | 'rejected';
 
+export interface AppUsageEntry {
+  iconUrl: string;
+  appName: string;
+  url?: string;
+}
+
 @Entity({ name: 'screenshots', schema: 'public' })
 @Index('idx_screenshots_user_created', ['userId', 'createdAt'])
 @Index('idx_screenshots_group_key', ['groupKey'])
@@ -38,21 +44,26 @@ export class Screenshot {
   @Column({ name: 'task_id', type: 'text', nullable: true })
   taskId!: string | null;
 
-  // ── ActivityWatch activity data ─────────────────────────────────────
+  /** Primary URL of the page visible in the screenshot (for URL filter) */
+  @Column({ name: 'url', type: 'text', nullable: true })
+  url!: string | null;
+
+  // ── Activity data ───────────────────────────────────────────────────
   @Column({ name: 'keyboard', type: 'int', default: 0 })
   keyboard!: number;
 
   @Column({ name: 'mouse', type: 'int', default: 0 })
   mouse!: number;
 
-  @Column({ name: 'keyboard_pct', type: 'float', nullable: true })
-  keyboardPct!: number | null;
+  @Column({ name: 'keyboard_pct', type: 'int', default: 0 })
+  keyboardPct!: number;
 
-  @Column({ name: 'mouse_pct', type: 'float', nullable: true })
-  mousePct!: number | null;
+  @Column({ name: 'mouse_pct', type: 'int', default: 0 })
+  mousePct!: number;
 
-  @Column({ name: 'app_usage', type: 'jsonb', nullable: true })
-  appUsage!: Record<string, any>[] | null;
+  /** App usage entries: [{iconUrl, appName, url?}] — used in detail view and app filter */
+  @Column({ name: 'apps', type: 'jsonb', nullable: true })
+  apps!: AppUsageEntry[] | null;
 
   // ── Blur / moderation ───────────────────────────────────────────────
   @Column({ name: 'is_blurred', type: 'boolean', default: false })
@@ -61,6 +72,15 @@ export class Screenshot {
   @Column({ name: 'blurred_at', type: 'timestamptz', nullable: true })
   blurredAt!: Date | null;
 
+  @Column({ name: 'is_flagged', type: 'boolean', default: false })
+  isFlagged!: boolean;
+
+  @Column({ name: 'flagged_by', type: 'text', nullable: true })
+  flaggedBy!: string | null;
+
+  @Column({ name: 'flagged_at', type: 'timestamptz', nullable: true })
+  flaggedAt!: Date | null;
+
   @Column({
     name: 'review_status',
     type: 'enum',
@@ -68,6 +88,12 @@ export class Screenshot {
     nullable: true,
   })
   reviewStatus!: ReviewStatus | null;
+
+  @Column({ name: 'reviewed_by', type: 'text', nullable: true })
+  reviewedBy!: string | null;
+
+  @Column({ name: 'review_comment', type: 'text', nullable: true })
+  reviewComment!: string | null;
 
   // ── Soft-delete metadata ────────────────────────────────────────────
   @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true })
