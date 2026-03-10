@@ -140,14 +140,18 @@ const ThinkCheck = (props: SVGProps<SVGSVGElement>) => (
 )
 
 const RightSidebar = () => {
+  const { user } = useAuth()
   const searchParams = useSearchParams()
   const [isOpen, setIsOpen] = useState(() => searchParams.get("open") === "1")
+  const displayUsername = user?.username ||
+    `${user?.firstName || ""}${user?.lastName || ""}`.toLowerCase().replace(/\s+/g, "") ||
+    "my-profile"
   return (
     <div className="shrink-0 w-[322px]">
       <div className="bg-white border border-gray-200 rounded-lg shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
         <div className="p-5 border-b border-gray-200">
           <h2 className="text-base font-bold text-dark-blue-400 leading-none">
-            @chrisdesign221
+            @{displayUsername}
           </h2>
           <Button
             className="text-dark-blue-400 underline text-[11px] leading-6"
@@ -399,6 +403,43 @@ const content = {
   { icon: React.ReactNode; title: string; desc: string }
 >
 
+const STORAGE_KEY = "marketeq-profile-completion"
+
+type DialogsStateType = {
+  [Property in (typeof DIALOG_NAMES)[number]]: {
+    finished: boolean
+    opened: boolean
+  }
+}
+
+const defaultDialogsState = (): DialogsStateType =>
+  DIALOG_NAMES.reduce(
+    (previous, current) => ({
+      ...previous,
+      [current]: { finished: false, opened: false },
+    }),
+    {} as DialogsStateType
+  )
+
+const loadDialogsState = (): DialogsStateType => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      // Merge with default to handle any new dialog names
+      const def = defaultDialogsState()
+      return DIALOG_NAMES.reduce(
+        (acc, name) => ({
+          ...acc,
+          [name]: { finished: parsed[name]?.finished ?? false, opened: false },
+        }),
+        {} as DialogsStateType
+      )
+    }
+  } catch {}
+  return defaultDialogsState()
+}
+
 const StatusDialog = ({
   onOpenChange,
   open,
@@ -407,23 +448,48 @@ const StatusDialog = ({
   onOpenChange?: (open: boolean) => void
 }) => {
   const { user } = useAuth()
-  const [dialogsState, setDialogsState] = useState(
-    DIALOG_NAMES.reduce(
-      (previous, current) => ({
-        ...previous,
-        [current]: {
-          finished: false,
-          opened: false,
-        },
-      }),
-      {} as {
-        [Property in (typeof DIALOG_NAMES)[number]]: {
-          finished: boolean
-          opened: boolean
-        }
-      }
-    )
-  )
+  const [dialogsState, setDialogsState] = useState<DialogsStateType>(loadDialogsState)
+
+  // Persist finished state to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dialogsState))
+    } catch {}
+  }, [dialogsState])
+
+  // On mount, derive completion from API profile data
+  useEffect(() => {
+    if (!user?.id) return
+    UserAPI.getProfile(user.id)
+      .then((res) => {
+        const profile = res?.data
+        if (!profile) return
+        setDialogsState((prev) => ({
+          ...prev,
+          "ABOUT-ME": {
+            ...prev["ABOUT-ME"],
+            finished: Boolean(profile.bio || profile.overview),
+          },
+          SKILLS: {
+            ...prev["SKILLS"],
+            finished: Boolean(profile.skills?.length),
+          },
+          "WORK-EXPERIENCE": {
+            ...prev["WORK-EXPERIENCE"],
+            finished: Boolean(profile.experience?.length),
+          },
+          EDUCATION: {
+            ...prev["EDUCATION"],
+            finished: Boolean(profile.education?.length),
+          },
+          JOB_TITLE_RATE: {
+            ...prev["JOB_TITLE_RATE"],
+            finished: Boolean(profile.rateMin || profile.rateMax),
+          },
+        }))
+      })
+      .catch(() => {})
+  }, [user?.id])
   const next = () => {
     let openedDialogName: keyof typeof dialogsState | null = null
     for (const dialogName in dialogsState) {
@@ -1425,13 +1491,11 @@ const AboutMeDialog = ({
       aboutMe: "",
     },
   })
-  const onSubmit: SubmitHandler<AboutMeFormValues> = async ({ aboutMe }) => {
-    if (userId) {
-      try {
-        await UserAPI.updateProfile(userId, { bio: aboutMe })
-      } catch { /* ignore, still proceed */ }
-    }
+  const onSubmit: SubmitHandler<AboutMeFormValues> = ({ aboutMe }) => {
     next?.()
+    if (userId) {
+      UserAPI.updateProfile(userId, { bio: aboutMe }).catch(() => {})
+    }
   }
 
   const aboutMe = useWatch({ control, name: "aboutMe" })
@@ -1626,15 +1690,13 @@ const SkillsDialog = ({
   } = useForm<SkillsFormValues>({
     resolver: zodResolver(skillsFormSchema),
   })
-  const onSubmit: SubmitHandler<SkillsFormValues> = async ({ skills }) => {
-    if (userId) {
-      try {
-        await Promise.all(
-          skills.map((s) => UserAPI.addSkill(userId, { name: s.name }))
-        )
-      } catch { /* ignore */ }
-    }
+  const onSubmit: SubmitHandler<SkillsFormValues> = ({ skills }) => {
     next?.()
+    if (userId) {
+      Promise.all(
+        skills.map((s) => UserAPI.addSkill(userId, { name: s.name }))
+      ).catch(() => {})
+    }
   }
 
   const skills = useWatch({ control, name: "skills" })

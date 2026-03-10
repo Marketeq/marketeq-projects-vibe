@@ -245,6 +245,7 @@ export const LeftSidebar = () => {
 }
 
 export const RightDrawer = ({ className }: { className?: string }) => {
+  const { user } = useAuth()
   return (
     <div
       className={cn(
@@ -254,9 +255,12 @@ export const RightDrawer = ({ className }: { className?: string }) => {
     >
       <div className="divide-y divide-[#122A4B]/[.15]">
         <div className="p-5">
-          <h1 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
-            @chrisdesign221
-          </h1>
+          <NextLink
+            href="/talent-profile"
+            className="text-base leading-[19.36px] font-bold text-dark-blue-400 hover:text-primary-500 hover:underline"
+          >
+            @{user?.username || `${user?.firstName || ""}${user?.lastName || ""}`.toLowerCase().replace(/\s+/g, "") || "my-profile"}
+          </NextLink>
           <Button
             className="underline text-dark-blue-400 hover:text-primary-500"
             visual="gray"
@@ -384,15 +388,19 @@ export const RightDrawer = ({ className }: { className?: string }) => {
 }
 
 export const RightSidebar = ({ className }: { className?: string }) => {
+  const { user } = useAuth()
   return (
     <div
       className={cn("w-[322px] shrink-0 min-[1440px]:block hidden", className)}
     >
       <div className="divide-y bg-white border rounded-lg border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] divide-[#122A4B]/[.15]">
         <div className="p-5">
-          <h1 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
-            @chrisdesign221
-          </h1>
+          <NextLink
+            href="/talent-profile"
+            className="text-base leading-[19.36px] font-bold text-dark-blue-400 hover:text-primary-500 hover:underline block"
+          >
+            @{user?.username || `${user?.firstName || ""}${user?.lastName || ""}`.toLowerCase().replace(/\s+/g, "") || "my-profile"}
+          </NextLink>
           <Button
             className="underline text-dark-blue-400 hover:text-primary-500"
             visual="gray"

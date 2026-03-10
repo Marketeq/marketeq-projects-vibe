@@ -92,7 +92,7 @@ export const UserAPI = {
       { headers: authHeaders() }
     ),
   removeEducation: (userId: string, eduId: string) =>
-    AxiosRequest.delete(
+    AxiosRequest.del(
       `${USER_BASE}/v1/users/${userId}/education/${eduId}`,
       { headers: authHeaders() }
     ),
@@ -113,7 +113,7 @@ export const UserAPI = {
       { headers: authHeaders() }
     ),
   removeExperience: (userId: string, workId: string) =>
-    AxiosRequest.delete(`${USER_BASE}/v1/users/${userId}/work/${workId}`, {
+    AxiosRequest.del(`${USER_BASE}/v1/users/${userId}/work/${workId}`, {
       headers: authHeaders(),
     }),
 
@@ -129,7 +129,7 @@ export const UserAPI = {
       { headers: authHeaders() }
     ),
   removeSkill: (userId: string, skillId: string) =>
-    AxiosRequest.delete(`${USER_BASE}/v1/users/${userId}/skills/${skillId}`, {
+    AxiosRequest.del(`${USER_BASE}/v1/users/${userId}/skills/${skillId}`, {
       headers: authHeaders(),
     }),
 
@@ -145,7 +145,7 @@ export const UserAPI = {
       { headers: authHeaders() }
     ),
   removeLanguage: (userId: string, langId: string) =>
-    AxiosRequest.delete(
+    AxiosRequest.del(
       `${USER_BASE}/v1/users/${userId}/languages/${langId}`,
       { headers: authHeaders() }
     ),
@@ -168,7 +168,7 @@ export const UserAPI = {
       { headers: authHeaders() }
     ),
   removeCertification: (userId: string, certId: string) =>
-    AxiosRequest.delete(
+    AxiosRequest.del(
       `${USER_BASE}/v1/users/${userId}/certifications/${certId}`,
       { headers: authHeaders() }
     ),
@@ -179,7 +179,7 @@ export const UserAPI = {
       headers: authHeaders(),
     }),
   removeIndustry: (userId: string, industryId: string) =>
-    AxiosRequest.delete(
+    AxiosRequest.del(
       `${USER_BASE}/v1/users/${userId}/industries/${industryId}`,
       { headers: authHeaders() }
     ),
