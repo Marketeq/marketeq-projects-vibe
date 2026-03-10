@@ -48,7 +48,10 @@ import CurrencyInput from "react-currency-input-field"
 import { Controller, SubmitHandler, useForm, useWatch } from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
+import dynamic from "next/dynamic"
 import NextImage from "@/components/next-image"
+
+const CaseStudyBuilder = dynamic(() => import("@/components/case-study-builder"), { ssr: false })
 import {
   BecomeTopSeller,
   Carousel,
@@ -3577,79 +3580,118 @@ const Portfolio = ({
     onChange: onOpenedChange,
     defaultValue: false,
   })
+  const [caseStudyOpen, setCaseStudyOpen] = useState(false)
+  const [portfolioItems, setPortfolioItems] = useState<string[]>([])
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-[1090px] grid grid-cols-2 rounded-[24px] p-[30px]">
-        <form>
-          <div className="border-x min-h-[567px] border-t rounded-t-[10px] p-[30px] border-gray-200 bg-gray-50">
-            <div className="flex items-center gap-x-3">
-              <span className="text-sm font-medium text-dark-blue-400">
-                {progressPercent ?? 0}%
-              </span>
-              <div className="max-w-[115px] flex-auto">
-                <Progress value={progressPercent ?? 0} />
+    <>
+      {caseStudyOpen && (
+        <div className="fixed inset-0 z-[100] bg-white">
+          <CaseStudyBuilder
+            onClose={() => setCaseStudyOpen(false)}
+            onSave={() => {
+              setPortfolioItems((prev) => [...prev, `Case Study ${prev.length + 1}`])
+              onFinished?.(true)
+              setCaseStudyOpen(false)
+            }}
+          />
+        </div>
+      )}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-[1090px] grid grid-cols-2 rounded-[24px] p-[30px]">
+          <form>
+            <div className="border-x min-h-[567px] border-t rounded-t-[10px] p-[30px] border-gray-200 bg-gray-50">
+              <div className="flex items-center gap-x-3">
+                <span className="text-sm font-medium text-dark-blue-400">
+                  {progressPercent ?? 0}%
+                </span>
+                <div className="max-w-[115px] flex-auto">
+                  <Progress value={progressPercent ?? 0} />
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
+                  Portfolio
+                </h1>
+                <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
+                  Show the quality and style that clients are looking for.
+                </p>
+              </div>
+
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                {portfolioItems.map((item, index) => (
+                  <article
+                    key={index}
+                    className="h-[150px] bg-white gap-y-2 flex items-center flex-col justify-center border border-gray-200 p-6 rounded-[5px]"
+                  >
+                    <div className="size-10 shrink-0 rounded-full border-2 border-success-500 inline-flex items-center justify-center text-success-500">
+                      <Check className="size-4" />
+                    </div>
+                    <h3 className="text-center text-sm font-semibold text-dark-blue-400">{item}</h3>
+                    <button
+                      type="button"
+                      className="text-xs text-error-500 hover:underline"
+                      onClick={() => {
+                        const updated = portfolioItems.filter((_, i) => i !== index)
+                        setPortfolioItems(updated)
+                        if (updated.length === 0) onFinished?.(false)
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </article>
+                ))}
+                <button
+                  type="button"
+                  className="h-[150px] bg-white gap-y-3 flex items-center flex-col justify-center border border-gray-300 border-dashed p-6 rounded-[5px] hover:border-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                  onClick={() => setCaseStudyOpen(true)}
+                >
+                  <div className="size-[52px] rounded-full text-white shrink-0 border-[12px] border-gray-200 bg-gray-400 inline-flex items-center justify-center">
+                    <Plus className="size-[21px]" />
+                  </div>
+
+                  <h3 className="text-center text-sm font-semibold text-gray-400">
+                    Add a project
+                  </h3>
+                </button>
               </div>
             </div>
-
-            <div className="mt-6">
-              <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
-                Portfolio
-              </h1>
-              <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                Show the quality and style that clients are looking for.
-              </p>
-            </div>
-
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                className="h-[150px] bg-white gap-y-3 flex items-center flex-col border border-gray-300 p-6 rounded-[5px] hover:border-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-                onClick={() => onFinished?.(true)}
-              >
-                <div className="size-[52px] rounded-full text-white shrink-0 border-[12px] border-gray-200 bg-gray-400 inline-flex items-center justify-center">
-                  <Plus className="size-[21px]" />
-                </div>
-
-                <h3 className="text-center text-sm font-semibold text-gray-400">
-                  Add a project
-                </h3>
-              </button>
-            </div>
-          </div>
-          <div className="border rounded-b-[10px] flex items-center justify-between border-gray-200 bg-white py-4 px-6">
-            <Button
-              className="bg-white"
-              size="md"
-              variant="outlined"
-              visual="gray"
-              type="button"
-              onClick={previous}
-            >
-              Back
-            </Button>
-            <div className="flex items-center gap-x-3">
+            <div className="border rounded-b-[10px] flex items-center justify-between border-gray-200 bg-white py-4 px-6">
               <Button
-                type="button"
+                className="bg-white"
                 size="md"
-                variant="ghost"
+                variant="outlined"
                 visual="gray"
-                onClick={next}
-              >
-                Skip
-              </Button>
-              <Button
-                size="md"
                 type="button"
-                onClick={() => {
-                  onFinished?.(true)
-                  next?.()
-                }}
+                onClick={previous}
               >
-                Save & Continue
+                Back
               </Button>
+              <div className="flex items-center gap-x-3">
+                <Button
+                  type="button"
+                  size="md"
+                  variant="ghost"
+                  visual="gray"
+                  onClick={next}
+                >
+                  Skip
+                </Button>
+                <Button
+                  size="md"
+                  type="button"
+                  disabled={portfolioItems.length === 0}
+                  onClick={() => {
+                    onFinished?.(true)
+                    next?.()
+                  }}
+                >
+                  Save & Continue
+                </Button>
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
         <div className="p-[50px] relative">
           <DialogClose asChild>
             <IconButton
@@ -3695,7 +3737,8 @@ const Portfolio = ({
           </div>
         </div>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+    </>
   )
 }
 
