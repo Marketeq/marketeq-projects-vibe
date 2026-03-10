@@ -1138,8 +1138,8 @@ const MoreInfoDialog = ({
                                         const rate = values?.float ?? null
                                         onChange(rate)
                                         if (rate != null) {
-                                          setValue("earning", Math.round(rate * 0.8 * 100) / 100)
-                                          setValue("fee", Math.round(rate * 0.2 * 100) / 100)
+                                          setValue("earning", Math.round(rate * 0.8))
+                                          setValue("fee", Math.round(rate * 0.2))
                                         }
                                       }}
                                       placeholder="$78"
@@ -1268,9 +1268,9 @@ const MoreInfoDialog = ({
                                         const earning = values?.float ?? null
                                         onChange(earning)
                                         if (earning != null) {
-                                          const clientRate = Math.round((earning / 0.8) * 100) / 100
+                                          const clientRate = Math.round(earning / 0.8)
                                           setValue("clientRate", clientRate)
-                                          setValue("fee", Math.round(clientRate * 0.2 * 100) / 100)
+                                          setValue("fee", Math.round(clientRate * 0.2))
                                         }
                                       }}
                                       placeholder="$65"
