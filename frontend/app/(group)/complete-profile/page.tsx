@@ -898,16 +898,6 @@ const MoreInfoDialog = ({
 
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
 
-  const watchedClientRate = useWatch({ control, name: "clientRate" })
-  const watchedEarning = useWatch({ control, name: "earning" })
-
-  useEffect(() => {
-    const value = watchedEarning ?? watchedClientRate
-    if (value != null) {
-      setValue("fee", (value * 20) / 100)
-    }
-  }, [watchedClientRate, watchedEarning, setValue])
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
@@ -1144,9 +1134,14 @@ const MoreInfoDialog = ({
                                         locale: "en-US",
                                         currency: "USD",
                                       }}
-                                      onValueChange={(value, name, values) =>
-                                        onChange(values?.float)
-                                      }
+                                      onValueChange={(_, __, values) => {
+                                        const rate = values?.float ?? null
+                                        onChange(rate)
+                                        if (rate != null) {
+                                          setValue("earning", Math.round(rate * 0.8 * 100) / 100)
+                                          setValue("fee", Math.round(rate * 0.2 * 100) / 100)
+                                        }
+                                      }}
                                       placeholder="$78"
                                       decimalsLimit={0}
                                     />
@@ -1269,9 +1264,15 @@ const MoreInfoDialog = ({
                                         locale: "en-US",
                                         currency: "USD",
                                       }}
-                                      onValueChange={(value, name, values) =>
-                                        onChange(values?.float)
-                                      }
+                                      onValueChange={(_, __, values) => {
+                                        const earning = values?.float ?? null
+                                        onChange(earning)
+                                        if (earning != null) {
+                                          const clientRate = Math.round((earning / 0.8) * 100) / 100
+                                          setValue("clientRate", clientRate)
+                                          setValue("fee", Math.round(clientRate * 0.2 * 100) / 100)
+                                        }
+                                      }}
                                       placeholder="$65"
                                       decimalsLimit={0}
                                     />
