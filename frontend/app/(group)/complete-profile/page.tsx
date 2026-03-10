@@ -1,6 +1,8 @@
 "use client"
 
 import React, { Fragment, SVGProps, useEffect, useRef, useState } from "react"
+import { useAuth } from "@/contexts/auth"
+import { UserAPI, EducationPayload, ExperiencePayload } from "@/service/http/user"
 import { cn, hookFormHasError, noop } from "@/utils/functions"
 import {
   useCallbackRef,
@@ -402,6 +404,7 @@ const StatusDialog = ({
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) => {
+  const { user } = useAuth()
   const [dialogsState, setDialogsState] = useState(
     DIALOG_NAMES.reduce(
       (previous, current) => ({
@@ -515,6 +518,7 @@ const StatusDialog = ({
           }))
         }
         next={next}
+        userId={user?.id ?? ""}
       />
       <Portfolio
         onFinished={(finished) =>
@@ -548,6 +552,7 @@ const StatusDialog = ({
         }
         next={next}
         previous={previous}
+        userId={user?.id ?? ""}
       />
       <WorkExperienceDialog
         onFinished={(finished) =>
@@ -565,6 +570,7 @@ const StatusDialog = ({
         }
         next={next}
         previous={previous}
+        userId={user?.id ?? ""}
       />
       <EducationDialog
         onFinished={(finished) =>
@@ -582,6 +588,7 @@ const StatusDialog = ({
         }
         next={next}
         previous={previous}
+        userId={user?.id ?? ""}
       />
       <MoreInfoDialog
         onFinished={(finished) =>
@@ -599,6 +606,7 @@ const StatusDialog = ({
         }
         next={next}
         previous={previous}
+        userId={user?.id ?? ""}
       />
       <Congratulations
         opened={dialogsState["CONGRATULATIONS"].opened}
@@ -732,12 +740,14 @@ const MoreInfoDialog = ({
   opened,
   next,
   previous,
+  userId,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
   onOpenedChange?: (opened: boolean) => void
   next?: () => void
   previous?: () => void
+  userId: string
 }) => {
   const [open, setOpen] = useControllableState({
     defaultValue: false,
@@ -779,6 +789,12 @@ const MoreInfoDialog = ({
       setEditingIndex(undefined)
     } else {
       setWorkExperiences((prev) => (prev ? [...prev, values] : [values]))
+    }
+    if (userId) {
+      UserAPI.updateProfile(userId, {
+        rateMin: values.earning ? Number(values.earning) : undefined,
+        rateMax: values.clientRate ? Number(values.clientRate) : undefined,
+      }).catch(() => {})
     }
     reset()
     setState("preview")
@@ -1367,11 +1383,13 @@ const AboutMeDialog = ({
   opened,
   onOpenedChange,
   next,
+  userId,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
   onOpenedChange?: (opened: boolean) => void
   next?: () => void
+  userId: string
 }) => {
   const onFinished = useCallbackRef(onFinishedProp)
   const [open, setOpen] = useControllableState({
@@ -1390,7 +1408,12 @@ const AboutMeDialog = ({
       aboutMe: "",
     },
   })
-  const onSubmit: SubmitHandler<AboutMeFormValues> = () => {
+  const onSubmit: SubmitHandler<AboutMeFormValues> = async ({ aboutMe }) => {
+    if (userId) {
+      try {
+        await UserAPI.updateProfile(userId, { bio: aboutMe })
+      } catch { /* ignore, still proceed */ }
+    }
     next?.()
   }
 
@@ -1537,12 +1560,14 @@ const SkillsDialog = ({
   onOpenedChange,
   next,
   previous,
+  userId,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
   onOpenedChange?: (opened: boolean) => void
   next?: () => void
   previous?: () => void
+  userId: string
 }) => {
   const onFinished = useCallbackRef(onFinishedProp)
   const [open, setOpen] = useControllableState({
@@ -1584,7 +1609,14 @@ const SkillsDialog = ({
   } = useForm<SkillsFormValues>({
     resolver: zodResolver(skillsFormSchema),
   })
-  const onSubmit: SubmitHandler<SkillsFormValues> = () => {
+  const onSubmit: SubmitHandler<SkillsFormValues> = async ({ skills }) => {
+    if (userId) {
+      try {
+        await Promise.all(
+          skills.map((s) => UserAPI.addSkill(userId, { name: s.name }))
+        )
+      } catch { /* ignore */ }
+    }
     next?.()
   }
 
@@ -1850,12 +1882,14 @@ const WorkExperienceDialog = ({
   opened,
   next,
   previous,
+  userId,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
   onOpenedChange?: (opened: boolean) => void
   next?: () => void
   previous?: () => void
+  userId: string
 }) => {
   const [open, setOpen] = useControllableState({
     defaultValue: false,
@@ -1927,6 +1961,16 @@ const WorkExperienceDialog = ({
       setEditingIndex(undefined)
     } else {
       setWorkExperiences((prev) => (prev ? [...prev, values] : [values]))
+      if (userId) {
+        const payload: ExperiencePayload = {
+          company: values.employer,
+          role: values.jobTitle,
+          startDate: `${values.startDate.year}-${String(values.startDate.month).padStart(2, "0")}`,
+          endDate: values.currentlyWorkHere ? undefined : values.endDate?.year ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}` : undefined,
+          description: values.jobDescription,
+        }
+        UserAPI.addExperience(userId, payload).catch(() => {})
+      }
     }
     reset()
     setState("preview")
@@ -2664,12 +2708,14 @@ const EducationDialog = ({
   opened,
   next,
   previous,
+  userId,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
   onOpenedChange?: (opened: boolean) => void
   next?: () => void
   previous?: () => void
+  userId: string
 }) => {
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useControllableState({
@@ -2715,6 +2761,16 @@ const EducationDialog = ({
       setEducationQualifications((prev) =>
         prev ? [...prev, values] : [values]
       )
+      if (userId) {
+        const payload: EducationPayload = {
+          institution: values.schoolOrUniversity,
+          degree: values.degree,
+          field: values.major,
+          startDate: `${values.startDate.year}-${String(values.startDate.month).padStart(2, "0")}`,
+          endDate: values.currentlyAttending ? undefined : values.endDate?.year ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}` : undefined,
+        }
+        UserAPI.addEducation(userId, payload).catch(() => {})
+      }
     }
     reset()
     setState("preview")

@@ -1,6 +1,9 @@
 "use client"
 
 import React, { useEffect, useRef, useState } from "react"
+import { useAuth } from "@/contexts/auth"
+import { UserAPI } from "@/service/http/user"
+import type { UserProfile } from "@/types/user"
 import { getComputedStyle } from "@/utils/dom-utils"
 import { cn, toPxIfNumber } from "@/utils/functions"
 import { useClickOutside } from "@/utils/hooks"
@@ -230,6 +233,18 @@ const SectionSearchBar = () => {
 }
 
 export default function Default() {
+  const { user } = useAuth()
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+
+  useEffect(() => {
+    if (!user?.id) return
+    UserAPI.getProfile(user.id)
+      .then((res) => {
+        if (res?.data) setProfile(res.data)
+      })
+      .catch(() => {})
+  }, [user?.id])
+
   const cardRef = useRef<HTMLDivElement>(null)
   const tabsListRef = useRef<HTMLDivElement>(null)
   const [isCardStuck, setIsCardStuck] = useState<boolean>(false)
@@ -572,88 +587,31 @@ export default function Default() {
                           }}
                         >
                           <ShowMoreLess max={5}>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Typescript
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              React.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
-                            <NextLink
-                              href="#skills"
-                              onClick={() => setActiveTab("Skills")}
-                            >
-                              <Badge
-                                className="text-gray-700 cursor-pointer"
-                                visual="gray"
-                                size="lg"
-                              >
-                                <Plus2 className="h-3 w-3" /> 6 more...
-                              </Badge>
-                            </NextLink>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
+                            {(profile?.skills && profile.skills.length > 0)
+                              ? profile.skills.map((skill) => (
+                                  <Badge
+                                    key={skill.id}
+                                    className="text-gray-700"
+                                    visual="gray"
+                                    size="lg"
+                                  >
+                                    {skill.name}
+                                  </Badge>
+                                ))
+                              : (
+                                <>
+                                  <Badge className="text-gray-700" visual="gray" size="lg">Typescript</Badge>
+                                  <Badge className="text-gray-700" visual="gray" size="lg">React.js</Badge>
+                                  <Badge className="text-gray-700" visual="gray" size="lg">Tailwind CSS</Badge>
+                                  <Badge className="text-gray-700" visual="gray" size="lg">Next.js</Badge>
+                                  <NextLink href="#skills" onClick={() => setActiveTab("Skills")}>
+                                    <Badge className="text-gray-700 cursor-pointer" visual="gray" size="lg">
+                                      <Plus2 className="h-3 w-3" /> 6 more...
+                                    </Badge>
+                                  </NextLink>
+                                </>
+                              )
+                            }
                           </ShowMoreLess>
                         </div>
                       )}
@@ -1335,323 +1293,26 @@ export default function Default() {
                           }}
                         >
                           <ShowMoreLess max={22}>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Typescript
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              React.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Typescript
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              React.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Typescript
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              React.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Typescript
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              React.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Typescript
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              React.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Typescript
-                            </Badge>
-                            {isShowing ? null : (
-                              <Badge
-                                className="text-gray-700"
-                                visual="gray"
-                                size="lg"
-                              >
-                                <Plus2 className="h-3 w-3" /> 17 more...
-                              </Badge>
-                            )}
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Typescript
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              React.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Typescript
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              React.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Typescript
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              React.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Typescript
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              React.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Typescript
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              React.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Next.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Typescript
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              React.js
-                            </Badge>
-                            <Badge
-                              className="text-gray-700"
-                              visual="gray"
-                              size="lg"
-                            >
-                              Tailwind CSS
-                            </Badge>
+                            {(profile?.skills && profile.skills.length > 0)
+                              ? profile.skills.map((skill) => (
+                                  <Badge
+                                    key={skill.id}
+                                    className="text-gray-700"
+                                    visual="gray"
+                                    size="lg"
+                                  >
+                                    {skill.name}
+                                  </Badge>
+                                ))
+                              : (
+                                <>
+                                  <Badge className="text-gray-700" visual="gray" size="lg">Typescript</Badge>
+                                  <Badge className="text-gray-700" visual="gray" size="lg">React.js</Badge>
+                                  <Badge className="text-gray-700" visual="gray" size="lg">Tailwind CSS</Badge>
+                                  <Badge className="text-gray-700" visual="gray" size="lg">Next.js</Badge>
+                                </>
+                              )
+                            }
                           </ShowMoreLess>
                         </div>
 
@@ -1675,7 +1336,7 @@ export default function Default() {
                       Overview
                     </h1>
 
-                    <ReadMoreLess text="Front-end Technologies & Web Accessibility | Exploring Human Interface Design I’m passionate about crafting intuitive, user-friendly digital experiences with a strong focus on accessibility and human-centered design. With expertise in HTML, CSS, JavaScript, and modern frameworks, I create seamless interfaces that enhance usability for all users, including those with disabilities. I believe technology should be inclusive, aesthetically engaging, and functionally efficient.">
+                    <ReadMoreLess text={profile?.bio || profile?.overview || "Front-end Technologies & Web Accessibility | Exploring Human Interface Design I’m passionate about crafting intuitive, user-friendly digital experiences with a strong focus on accessibility and human-centered design. With expertise in HTML, CSS, JavaScript, and modern frameworks, I create seamless interfaces that enhance usability for all users, including those with disabilities. I believe technology should be inclusive, aesthetically engaging, and functionally efficient."}>
                       {({ text, readMore, toggle }) => (
                         <>
                           <p className="mt-6 text-sm font-extralight text-gray-700">

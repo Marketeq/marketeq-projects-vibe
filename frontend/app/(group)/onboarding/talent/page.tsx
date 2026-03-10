@@ -2433,6 +2433,7 @@ const SetYourPreferences = ({
   setTalentUser: React.Dispatch<React.SetStateAction<User | null>>
 }) => {
   const { toast } = useToast()
+  const { user } = useAuth()
   const [isLoading, setIsLoading] = React.useState(false)
 
   const {
@@ -2460,85 +2461,69 @@ const SetYourPreferences = ({
 
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
-  const onSubmit: SubmitHandler<SetYourPreferencesFormValues> = ({
+  const onSubmit: SubmitHandler<SetYourPreferencesFormValues> = async ({
     projects,
     yourAvailability,
     customAvailability,
   }) => {
+    if (!user?.id) return
     setIsLoading(true)
 
-    const availability: AVAILABILITY = yourAvailability
+    const availability = yourAvailability
       ?.replaceAll("-", "_")
       ?.toUpperCase() as AVAILABILITY
 
-    const formData = new FormData()
+    try {
+      // 1. Update basic profile
+      await UserAPI.updateProfile(user.id, {
+        firstName: stepData?.firstName,
+        lastName: stepData?.lastName,
+        username: stepData?.username,
+        location: stepData?.location,
+        availability: availability || undefined,
+        businessGoals: projects,
+      })
 
-    if (stepData?.avatar instanceof File) {
-      formData.append("avatar", stepData.avatar)
-    }
-    formData.append("username", stepData?.username || "")
-    formData.append("firstName", stepData?.firstName || "")
-    formData.append("lastName", stepData?.lastName || "")
-    formData.append("location", stepData?.location || "")
-    formData.append("language", stepData?.language || "")
-    formData.append("recentJobTitle", stepData?.recentJobTitle || "")
-    formData.append("industriesWorkedIn", stepData?.industriesWorkedIn || "")
+      // 2. Save languages
+      if (stepData?.language) {
+        await UserAPI.addLanguage(user.id, { name: stepData.language })
+      }
 
-    stepData?.lookingToWorkWith?.forEach((item) => {
-      formData.append("lookingToWorkWith", item)
-    })
+      // 3. Save industries
+      if (stepData?.industriesWorkedIn) {
+        await UserAPI.addIndustry(user.id, { name: stepData.industriesWorkedIn })
+      }
 
-    projects?.forEach((item) => {
-      formData.append("projectTypes", item)
-    })
-
-    formData.append("isStudent", stepData?.isStudent?.toString() || "false")
-
-    formData.append("availability", availability || "")
-
-    if (availability === AVAILABILITY.CUSTOM) {
-      formData.append(
-        "customAvailability",
-        JSON.stringify(customAvailability) || ""
+      // 4. Save skills (recentJobTitle as a skill + lookingToWorkWith)
+      const skillsToAdd: string[] = []
+      if (stepData?.recentJobTitle) skillsToAdd.push(stepData.recentJobTitle)
+      if (stepData?.lookingToWorkWith) skillsToAdd.push(...stepData.lookingToWorkWith)
+      await Promise.all(
+        skillsToAdd.map((name) => UserAPI.addSkill(user.id, { name }))
       )
-    }
 
-    TalentAPI.CreateTalent(formData)
-      .then((response) => {
-        if (
-          response?.status === 201 &&
-          response?.data &&
-          response?.data?.user
-        ) {
-          nextStep()
-          setStepData(null)
-          setTalentUser(response?.data?.user)
-        }
-      })
-      .catch((error) => {
-        if (error?.response?.data?.errors?.message) {
-          toast({
-            title: error?.response?.data?.errors?.message,
-            variant: "destructive",
-          })
-        } else if (
-          Array.isArray(error?.response?.data?.message) &&
-          error?.response?.data?.message?.length > 0
-        ) {
-          toast({
-            title: error?.response?.data?.message?.[0],
-            variant: "destructive",
-          })
-        } else {
-          toast({
-            title: error?.response?.data?.message,
-            variant: "destructive",
-          })
-        }
-      })
-      .finally(() => {
-        setIsLoading(false)
-      })
+      // 5. Dismiss onboarding
+      await UserAPI.dismissOnboarding(user.id)
+
+      // 6. Refresh user profile
+      const profileResponse = await UserAPI.getProfile(user.id)
+      const updatedUser = profileResponse?.data
+      if (updatedUser) {
+        setTalentUser(updatedUser)
+      }
+
+      nextStep()
+      setStepData(null)
+    } catch (error: any) {
+      const msg =
+        error?.response?.data?.errors?.message ||
+        error?.response?.data?.message?.[0] ||
+        error?.response?.data?.message ||
+        "Something went wrong. Please try again."
+      toast({ title: msg, variant: "destructive" })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const { totalSteps, currentStep } = useStepRootContext()
