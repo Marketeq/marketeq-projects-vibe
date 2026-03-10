@@ -64,9 +64,19 @@ export const UserAPI = {
   handleSkip: (data: { role: string }) =>
     AxiosRequest.patch(`${USER_BASE}/user/onboarding-dismissed`, data),
 
+  // List users
+  listUsers: (limit = 50, offset = 0) =>
+    AxiosRequest.get(`${USER_BASE}/v1/users?limit=${limit}&offset=${offset}`, {
+      headers: authHeaders(),
+    }),
+
   // Profile
   getProfile: (userId: string) =>
     AxiosRequest.get(`${USER_BASE}/v1/users/${userId}`, {
+      headers: authHeaders(),
+    }),
+  getByUsername: (username: string) =>
+    AxiosRequest.get(`${USER_BASE}/v1/users/username/${username}`, {
       headers: authHeaders(),
     }),
   updateProfile: (userId: string, data: UserProfilePayload) =>

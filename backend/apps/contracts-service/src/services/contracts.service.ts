@@ -1,17 +1,23 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In, Not } from 'typeorm';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { Contract } from '../entities/contract.entity';
 import { ContractGroup } from '../entities/contract-group.entity';
 import { ContractStatus } from '../entities/enums';
 import { CreateGroupDto } from '../dtos/create-group.dto';
 import { EndContractDto } from '../dtos/end-contract.dto';
 import { AcceptRejectDto } from '../dtos/accept-reject.dto';
+import { DisputeContractDto } from '../dtos/dispute-contract.dto';
 import { AuditLoggerService } from './audit-logger.service';
 import { EventsService } from './events.service';
 
 @Injectable()
 export class ContractsService {
+  private readonly logger = new Logger(ContractsService.name);
+
   constructor(
     @InjectRepository(Contract) private readonly contractRepo: Repository<Contract>,
     @InjectRepository(ContractGroup) private readonly groupRepo: Repository<ContractGroup>,
@@ -91,6 +97,10 @@ export class ContractsService {
 
   async endContract(id: string, dto: EndContractDto, user: { sub: string; role: string }) {
     const contract = await this.getContract(id);
+
+    if (contract.clientId !== user.sub) {
+      throw new ForbiddenException('Only the owning client can end this contract');
+    }
     if (contract.status !== ContractStatus.ACTIVE) {
       throw new BadRequestException('Only active contracts can be ended');
     }
@@ -106,7 +116,27 @@ export class ContractsService {
     this.events.contractEnded(id, contract.groupId, contract.clientId, contract.talentId, dto.reasonCode, endAtISO);
     await this.audit.log(user, 'CONTRACT_ENDED', { contractId: id, groupId: contract.groupId, reason: dto.reasonCode });
 
+    await this.checkGroupEnded(contract.groupId);
+
     return { contractId: id, status: ContractStatus.ENDED, endAtISO };
+  }
+
+  async disputeContract(id: string, dto: DisputeContractDto, user: { sub: string; role: string }) {
+    const contract = await this.getContract(id);
+
+    if (contract.clientId !== user.sub && contract.talentId !== user.sub) {
+      throw new ForbiddenException('Only parties to this contract can dispute it');
+    }
+    if (contract.status !== ContractStatus.ACTIVE) {
+      throw new BadRequestException('Only active contracts can be disputed');
+    }
+
+    await this.contractRepo.update(id, { status: ContractStatus.DISPUTED });
+
+    this.events.contractDisputed(id, contract.groupId, contract.clientId, contract.talentId, dto.reason);
+    await this.audit.log(user, 'CONTRACT_DISPUTED', { contractId: id, groupId: contract.groupId, reason: dto.reason });
+
+    return { contractId: id, status: ContractStatus.DISPUTED };
   }
 
   async activateGroup(groupId: string, paymentRef?: string) {
@@ -145,5 +175,44 @@ export class ContractsService {
 
     this.events.contractsCanceled(groupId, pendingIds, reason);
     return { groupId, canceled: pendingIds.length };
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async cancelExpiredPendingGroups() {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const expiredGroups = await this.groupRepo
+      .createQueryBuilder('g')
+      .leftJoinAndSelect('g.contracts', 'c')
+      .where('g.depositPaid = false')
+      .andWhere('g.createdAt < :cutoff', { cutoff: sevenDaysAgo })
+      .getMany();
+
+    for (const group of expiredGroups) {
+      const hasPending = group.contracts.some(c => c.status === ContractStatus.PENDING);
+      if (!hasPending) continue;
+
+      this.logger.log(`Auto-canceling expired group ${group.id}`);
+      await this.cancelGroup(group.id, 'deposit_expired');
+      await this.audit.log(
+        { sub: 'system', role: 'system' },
+        'GROUP_AUTO_CANCELED',
+        { groupId: group.id, reason: 'deposit_expired' },
+      );
+    }
+  }
+
+  private async checkGroupEnded(groupId: string): Promise<void> {
+    const activeCount = await this.contractRepo.count({
+      where: {
+        groupId,
+        status: In([ContractStatus.ACTIVE, ContractStatus.PENDING, ContractStatus.DISPUTED]),
+      },
+    });
+
+    if (activeCount === 0) {
+      this.events.groupEnded(groupId);
+    }
   }
 }

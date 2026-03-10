@@ -1,6 +1,6 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-@Entity({ name: 'tooltips', schema: 'public' })
+@Entity({ name: 'tooltips', schema: 'time_tracking' })
 export class Tooltip {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

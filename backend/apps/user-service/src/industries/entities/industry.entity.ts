@@ -1,18 +1,18 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { User } from '../../user/entities/user.entity';
 
-@Entity('user_industries')
+@Entity({ name: 'user_industries', schema: 'user_service' })
 export class Industry {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column('uuid')
+  @Column({ type: 'uuid' })
   userId: string;
 
   @ManyToOne(() => User, (u) => u.industries, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user: User;
 
-  @Column()
+  @Column({ type: 'text' })
   name: string;
 }

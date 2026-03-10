@@ -145,11 +145,17 @@ const config: Config = {
             transform: "scale(1.125)",
           },
         },
+        shimmer: {
+          "100%": {
+            transform: "translateX(100%)",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "scale-up": "scale-up 20s linear forwards",
+        shimmer: "shimmer 2s ease-in-out infinite",
       },
       zIndex: {
         "60": "60",

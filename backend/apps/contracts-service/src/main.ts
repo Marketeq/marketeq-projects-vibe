@@ -1,7 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { Transport, MicroserviceOptions } from '@nestjs/microservices';
+import { MicroserviceOptions } from '@nestjs/microservices';
 import { ContractsServiceModule } from './contracts-service.module';
+import { getRabbitMQConfig } from '../../../shared/config/rabbitmq.config';
+import { QUEUE_NAMES } from '../../../shared/types/events.types';
 
 async function bootstrap() {
   const app = await NestFactory.create(ContractsServiceModule);
@@ -12,17 +14,13 @@ async function bootstrap() {
     : ['http://localhost:3000'];
   app.enableCors({ origin: allowedOrigins, credentials: true });
 
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.RMQ,
-    options: {
-      urls: [process.env.RABBITMQ_URI || 'amqp://localhost:5672'],
-      queue: 'contracts_service_queue',
-      queueOptions: { durable: true },
-    },
-  });
+  app.connectMicroservice<MicroserviceOptions>(
+    getRabbitMQConfig(QUEUE_NAMES.CONTRACTS),
+  );
 
   await app.startAllMicroservices();
-  await app.listen(process.env.PORT || 3010);
-  console.log(`contracts-service running on port ${process.env.PORT || 3010}`);
+  const port = process.env.PORT || 3010;
+  await app.listen(port);
+  console.log(`contracts-service running on port ${port}`);
 }
 bootstrap();

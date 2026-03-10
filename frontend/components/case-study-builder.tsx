@@ -1,6 +1,6 @@
 "use client"
 
-import React, { SVGProps, useEffect, useReducer, useRef, useState } from "react"
+import React, { SVGProps, useEffect, useReducer, useState } from "react"
 import { cn, fromLength, getId } from "@/utils/functions"
 import {
   ArrowDown,
@@ -52,14 +52,12 @@ import {
   useDragControls,
   useMotionValue,
 } from "framer-motion"
-import { useDrag } from "react-aria"
 import {
   Controller,
   SubmitHandler,
   useFieldArray,
   useForm,
 } from "react-hook-form"
-import { useMotion } from "react-use"
 import { z } from "zod"
 import {
   Bold,
@@ -74,6 +72,7 @@ import {
 } from "@/components/icons/editing-icons"
 import { Grid01 } from "@/components/icons/grid-01"
 import NextImage from "@/components/next-image"
+import { RichTextEditor } from "@/components/rich-text-editor"
 import {
   Avatar,
   AvatarFallback,
@@ -986,82 +985,28 @@ export const BlockWithCols = () => {
       <Toolbar className="top-[50px] absolute -right-[33px]" />
 
       <div className="space-y-3">
-        <h1 className="group/block relative font-semibold">
-          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-              Text
-            </span>
-            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-          </span>
-          <EditableRoot
-            className="relative"
+        <div className="relative font-semibold">
+          <RichTextEditor
             defaultValue="Your Case Study Title"
-          >
-            <EditableLabel>Title</EditableLabel>
-            <EditableArea>
-              <EditableInput
-                asChild
-                className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[64px] [field-sizing:content] resize-none scrollbar-none text-[64px] leading-none font-semibold text-dark-blue-400"
-              >
-                <textarea />
-              </EditableInput>
-              <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[64px] leading-none font-semibold text-dark-blue-400" />
-            </EditableArea>
-          </EditableRoot>
-        </h1>
+            editorClassName="text-[64px] leading-none font-semibold text-dark-blue-400"
+          />
+        </div>
 
-        <p className="group/block relative">
-          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-              Text
-            </span>
-            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-          </span>
-          <EditableRoot
-            className="relative"
+        <div className="relative">
+          <RichTextEditor
             defaultValue="Write what into this design or add any details you want to mention"
-          >
-            <EditableLabel>Sub Title</EditableLabel>
-            <EditableArea>
-              <EditableInput
-                asChild
-                className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-light text-dark-blue-400"
-              >
-                <textarea />
-              </EditableInput>
-              <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-light text-dark-blue-400" />
-            </EditableArea>
-          </EditableRoot>
-        </p>
+            editorClassName="text-2xl leading-none font-light text-dark-blue-400"
+          />
+        </div>
       </div>
 
       <div className="relative group">
-        <h1 className="relative group/block">
-          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-              Text
-            </span>
-            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-          </span>
-          <EditableRoot
-            className="relative"
+        <div className="relative">
+          <RichTextEditor
             defaultValue="These are your columns"
-          >
-            <EditableLabel>These are your columns</EditableLabel>
-            <EditableArea>
-              <EditableInput
-                asChild
-                className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[40px] [field-sizing:content] resize-none scrollbar-none text-[40px] leading-none font-semibold text-dark-blue-400"
-              >
-                <textarea />
-              </EditableInput>
-              <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[40px] leading-none font-semibold text-dark-blue-400" />
-            </EditableArea>
-          </EditableRoot>
-        </h1>
+            editorClassName="text-[40px] leading-none font-semibold text-dark-blue-400"
+          />
+        </div>
         {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute hidden opacity-0 group-focus-within:group-hover:hidden group-focus-within:group-hover:opacity-0 group-hover:inline-flex group-hover:opacity-100 transition duration-300" />*/}
 
         <div className="mt-8">
@@ -1139,54 +1084,18 @@ export const BlockWithCols = () => {
                         )}
                       />
                       <div className="mt-6">
-                        <h1 className="relative group/block">
-                          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                              Text
-                            </span>
-                            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                            <FlexibleToolbar className="absolute z-10 left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                          </span>
-                          <EditableRoot
-                            className="relative"
+                        <div className="relative">
+                          <RichTextEditor
                             defaultValue="This is your heading"
-                          >
-                            <EditableLabel>Title</EditableLabel>
-                            <EditableArea>
-                              <EditableInput
-                                asChild
-                                className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-semibold text-dark-blue-400"
-                              >
-                                <textarea />
-                              </EditableInput>
-                              <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-semibold text-dark-blue-400" />
-                            </EditableArea>
-                          </EditableRoot>
-                        </h1>
-                        <p className="relative group/block mt-3">
-                          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                              Text
-                            </span>
-                            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                            <FlexibleToolbar className="absolute z-10 left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                          </span>
-                          <EditableRoot
-                            className="relative"
+                            editorClassName="text-2xl leading-none font-semibold text-dark-blue-400"
+                          />
+                        </div>
+                        <div className="relative mt-3">
+                          <RichTextEditor
                             defaultValue="Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor"
-                          >
-                            <EditableLabel>Sub Title</EditableLabel>
-                            <EditableArea>
-                              <EditableInput
-                                asChild
-                                className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-light text-dark-blue-400"
-                              >
-                                <textarea />
-                              </EditableInput>
-                              <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-light text-dark-blue-400" />
-                            </EditableArea>
-                          </EditableRoot>
-                        </p>
+                            editorClassName="text-2xl leading-none font-light text-dark-blue-400"
+                          />
+                        </div>
                       </div>
                     </ArticleRoot>
                   )}
@@ -1258,55 +1167,19 @@ export const SplitCard = () => {
           />
 
           <div>
-            <h1 className="group/block relative font-semibold">
-              <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                  Text
-                </span>
-                <BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-              </span>
-              <EditableRoot
-                className="relative"
+            <div className="relative font-semibold">
+              <RichTextEditor
                 defaultValue="These are your challenges"
-              >
-                <EditableLabel>Title</EditableLabel>
-                <EditableArea>
-                  <EditableInput
-                    asChild
-                    className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[40px] [field-sizing:content] resize-none scrollbar-none text-[40px] leading-none font-semibold text-dark-blue-400"
-                  >
-                    <textarea />
-                  </EditableInput>
-                  <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[40px] leading-none font-semibold text-dark-blue-400" />
-                </EditableArea>
-              </EditableRoot>
-            </h1>
+                editorClassName="text-[40px] leading-none font-semibold text-dark-blue-400"
+              />
+            </div>
 
-            <p className="group/block relative mt-5">
-              <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                  Text
-                </span>
-                <BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-              </span>
-              <EditableRoot
-                className="relative"
+            <div className="relative mt-5">
+              <RichTextEditor
                 defaultValue="This is left aligned. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat."
-              >
-                <EditableLabel>Sub Title</EditableLabel>
-                <EditableArea>
-                  <EditableInput
-                    asChild
-                    className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-light text-dark-blue-400"
-                  >
-                    <textarea />
-                  </EditableInput>
-                  <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-light text-dark-blue-400" />
-                </EditableArea>
-              </EditableRoot>
-            </p>
+                editorClassName="text-2xl leading-none font-light text-dark-blue-400"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -1790,34 +1663,16 @@ const BoldStatement = () => {
 
   return (
     <form className=" relative group" onSubmit={handleSubmit(onSubmit)}>
-      <h1 className="relative group/block">
-        <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-          <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-            Text
-          </span>
-          {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-          <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-        </span>
+      <h1 className="relative">
         <Controller
           control={control}
           name="statement"
           render={({ field: { value, onChange } }) => (
-            <EditableRoot
-              className="relative"
-              value={value}
-              onChange={onChange}
-            >
-              <EditableLabel>Bold Statement</EditableLabel>
-              <EditableArea>
-                <EditableInput
-                  asChild
-                  className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[64px] [field-sizing:content] resize-none scrollbar-none text-[64px] leading-none font-bold text-dark-blue-400"
-                >
-                  <textarea />
-                </EditableInput>
-                <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[64px] leading-none font-semibold text-dark-blue-400" />
-              </EditableArea>
-            </EditableRoot>
+            <RichTextEditor
+              defaultValue={value}
+              onUpdate={onChange}
+              editorClassName="text-[64px] leading-none font-bold text-dark-blue-400"
+            />
           )}
         />
       </h1>
@@ -1830,52 +1685,19 @@ const Process = () => {
   const len = items.length
   return (
     <div className=" relative group">
-      <h1 className="relative group/block">
-        <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-          <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-            Text
-          </span>
-          {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-          <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-        </span>
-        <EditableRoot className="relative" defaultValue="This is your process">
-          <EditableLabel>Title</EditableLabel>
-          <EditableArea>
-            <EditableInput
-              asChild
-              className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[40px] [field-sizing:content] resize-none scrollbar-none text-[40px] leading-none font-semibold text-dark-blue-400"
-            >
-              <textarea />
-            </EditableInput>
-            <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[40px] leading-none font-semibold text-dark-blue-400" />
-          </EditableArea>
-        </EditableRoot>
-      </h1>
+      <div className="relative">
+        <RichTextEditor
+          defaultValue="This is your process"
+          editorClassName="text-[40px] leading-none font-semibold text-dark-blue-400"
+        />
+      </div>
 
-      <p className="group/block relative mt-3">
-        <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-          <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-            Text
-          </span>
-          {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-          <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-        </span>
-        <EditableRoot
-          className="relative"
+      <div className="relative mt-3">
+        <RichTextEditor
           defaultValue="Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat."
-        >
-          <EditableLabel>Sub Title</EditableLabel>
-          <EditableArea>
-            <EditableInput
-              asChild
-              className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-light text-dark-blue-400"
-            >
-              <textarea />
-            </EditableInput>
-            <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-light text-dark-blue-400" />
-          </EditableArea>
-        </EditableRoot>
-      </p>
+          editorClassName="text-2xl leading-none font-light text-dark-blue-400"
+        />
+      </div>
 
       <Reorder.Group
         as="div"
@@ -1926,55 +1748,19 @@ const Process = () => {
                     </div>
 
                     <div className="pr-[38px] mt-5">
-                      <h1 className="group/block relative mt-3">
-                        <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                          <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                            Text
-                          </span>
-                          {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                          <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                        </span>
-                        <EditableRoot
-                          className="relative"
+                      <div className="relative mt-3">
+                        <RichTextEditor
                           defaultValue="Step Name"
-                        >
-                          <EditableLabel>Title</EditableLabel>
-                          <EditableArea>
-                            <EditableInput
-                              asChild
-                              className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-medium text-dark-blue-400"
-                            >
-                              <textarea />
-                            </EditableInput>
-                            <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-medium text-dark-blue-400" />
-                          </EditableArea>
-                        </EditableRoot>
-                      </h1>
+                          editorClassName="text-2xl leading-none font-medium text-dark-blue-400"
+                        />
+                      </div>
 
-                      <p className="group/block relative mt-3">
-                        <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                          <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                            Text
-                          </span>
-                          {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                          <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                        </span>
-                        <EditableRoot
-                          className="relative"
+                      <div className="relative mt-3">
+                        <RichTextEditor
                           defaultValue="This is sample description for process"
-                        >
-                          <EditableLabel>Sub Title</EditableLabel>
-                          <EditableArea>
-                            <EditableInput
-                              asChild
-                              className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-4 [field-sizing:content] resize-none scrollbar-none text-base leading-none font-light text-dark-blue-400"
-                            >
-                              <textarea />
-                            </EditableInput>
-                            <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-base leading-none font-light text-dark-blue-400" />
-                          </EditableArea>
-                        </EditableRoot>
-                      </p>
+                          editorClassName="text-base leading-none font-light text-dark-blue-400"
+                        />
+                      </div>
                     </div>
                   </div>
                 </ArticleRoot>
@@ -2041,67 +1827,31 @@ const InterviewPointers = () => {
 
   return (
     <form className=" group relative" onSubmit={handleSubmit(onSubmit)}>
-      <h1 className="relative group/block">
-        <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-          <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-            Text
-          </span>
-          {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-          <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-        </span>
+      <h1 className="relative">
         <Controller
           control={control}
           name="title"
           render={({ field: { value, onChange } }) => (
-            <EditableRoot
-              className="relative"
-              value={value}
-              onChange={onChange}
-            >
-              <EditableLabel>Title</EditableLabel>
-              <EditableArea>
-                <EditableInput
-                  asChild
-                  className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[40px] [field-sizing:content] resize-none scrollbar-none text-[40px] leading-none font-semibold text-dark-blue-400"
-                >
-                  <textarea />
-                </EditableInput>
-                <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[40px] leading-none font-semibold text-dark-blue-400" />
-              </EditableArea>
-            </EditableRoot>
+            <RichTextEditor
+              defaultValue={value}
+              onUpdate={onChange}
+              editorClassName="text-[40px] leading-none font-semibold text-dark-blue-400"
+            />
           )}
         />
       </h1>
 
       <div className="mt-6">
-        <p className="group/block relative">
-          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-              Text
-            </span>
-            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-          </span>
+        <p className="relative">
           <Controller
             control={control}
             name="subTitle"
             render={({ field: { value, onChange } }) => (
-              <EditableRoot
-                className="relative"
-                value={value}
-                onChange={onChange}
-              >
-                <EditableLabel>Sub Title</EditableLabel>
-                <EditableArea>
-                  <EditableInput
-                    asChild
-                    className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-light text-dark-blue-400"
-                  >
-                    <textarea />
-                  </EditableInput>
-                  <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-light text-dark-blue-400" />
-                </EditableArea>
-              </EditableRoot>
+              <RichTextEditor
+                defaultValue={value}
+                onUpdate={onChange}
+                editorClassName="text-2xl leading-none font-light text-dark-blue-400"
+              />
             )}
           />
         </p>
@@ -2109,66 +1859,30 @@ const InterviewPointers = () => {
         <ul className="mt-4 list-disc">
           {fields.map((field, index) => (
             <React.Fragment key={field.id}>
-              <li className="relative group/block block first:mt-0 mt-5">
-                <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                  <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                    Text
-                  </span>
-                  {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                  <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                </span>
+              <li className="relative block first:mt-0 mt-5">
                 <Controller
                   control={control}
                   name={`points.${index}.title`}
                   render={({ field: { value, onChange } }) => (
-                    <EditableRoot
-                      className="relative"
-                      value={value}
-                      onChange={onChange}
-                    >
-                      <EditableLabel>List Item</EditableLabel>
-                      <EditableArea>
-                        <EditableInput
-                          asChild
-                          className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-[24px] leading-none font-bold text-dark-blue-400"
-                        >
-                          <textarea />
-                        </EditableInput>
-                        <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[24px] leading-none font-bold text-dark-blue-400" />
-                      </EditableArea>
-                    </EditableRoot>
+                    <RichTextEditor
+                      defaultValue={value}
+                      onUpdate={onChange}
+                      editorClassName="text-[24px] leading-none font-bold text-dark-blue-400"
+                    />
                   )}
                 />
               </li>
 
-              <span className="relative group/block block mt-2">
-                <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                  <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                    Text
-                  </span>
-                  {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                  <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                </span>
+              <span className="relative block mt-2">
                 <Controller
                   control={control}
                   name={`points.${index}.subTitle`}
                   render={({ field: { value, onChange } }) => (
-                    <EditableRoot
-                      className="relative"
-                      value={value}
-                      onChange={onChange}
-                    >
-                      <EditableLabel>List Item Description</EditableLabel>
-                      <EditableArea>
-                        <EditableInput
-                          asChild
-                          className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-[24px] leading-none font-light text-dark-blue-400"
-                        >
-                          <textarea />
-                        </EditableInput>
-                        <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[24px] leading-none font-light text-dark-blue-400" />
-                      </EditableArea>
-                    </EditableRoot>
+                    <RichTextEditor
+                      defaultValue={value}
+                      onUpdate={onChange}
+                      editorClassName="text-[24px] leading-none font-light text-dark-blue-400"
+                    />
                   )}
                 />
               </span>
@@ -2213,48 +1927,18 @@ const Personas = () => {
 
         <div className="rounded-l-lg relative group-hover/column:bg-none bg-[linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(0,0,0,.2)_100%)] p-8">
           <div>
-            <h1 className="relative group/block">
-              <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                  Text
-                </span>
-                {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-              </span>
-              <EditableRoot className="relative" defaultValue="Jane Doe">
-                <EditableLabel>Title</EditableLabel>
-                <EditableArea>
-                  <EditableInput
-                    asChild
-                    className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-white group-data-[placeholder-shown]/area:text-white min-h-[40px] [field-sizing:content] resize-none scrollbar-none text-[40px] leading-none font-semibold text-white"
-                  >
-                    <textarea />
-                  </EditableInput>
-                  <EditablePreview className=" group-data-[placeholder-shown]/area:text-white text-[40px] leading-none font-semibold text-white" />
-                </EditableArea>
-              </EditableRoot>
-            </h1>
-            <p className="relative group/block mt-3">
-              <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                  Text
-                </span>
-                {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-              </span>
-              <EditableRoot className="relative" defaultValue="Jane Doe">
-                <EditableLabel>Title</EditableLabel>
-                <EditableArea>
-                  <EditableInput
-                    asChild
-                    className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-white group-data-[placeholder-shown]/area:text-white min-h-6 [field-sizing:content] resize-none scrollbar-none text-2xl leading-none text-white"
-                  >
-                    <textarea />
-                  </EditableInput>
-                  <EditablePreview className=" group-data-[placeholder-shown]/area:text-white text-2xl leading-none text-white" />
-                </EditableArea>
-              </EditableRoot>
-            </p>
+            <div className="relative">
+              <RichTextEditor
+                defaultValue="Jane Doe"
+                editorClassName="text-[40px] leading-none font-semibold text-white"
+              />
+            </div>
+            <div className="relative mt-3">
+              <RichTextEditor
+                defaultValue="Jane Doe"
+                editorClassName="text-2xl leading-none text-white"
+              />
+            </div>
 
             <div className="mt-3 flex items-center gap-x-3 flex-wrap">
               <div className="inline-flex shrink-0 items-center rounded-full px-3 h-7 bg-white text-gray-700 text-sm font-medium">
@@ -2268,148 +1952,49 @@ const Personas = () => {
         </div>
       </div>
       <div className="p-8">
-        <h1 className="relative group/block">
-          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-              Text
-            </span>
-            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-          </span>
-          <EditableRoot className="relative" defaultValue="About">
-            <EditableLabel>Title</EditableLabel>
-            <EditableArea>
-              <EditableInput
-                asChild
-                className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-4 [field-sizing:content] resize-none scrollbar-none text-base leading-none font-semibold text-dark-blue-400"
-              >
-                <textarea />
-              </EditableInput>
-              <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-base leading-none font-semibold text-dark-blue-400" />
-            </EditableArea>
-          </EditableRoot>
-        </h1>
+        <div className="relative">
+          <RichTextEditor
+            defaultValue="About"
+            editorClassName="text-base leading-none font-semibold text-dark-blue-400"
+          />
+        </div>
 
-        <p className="group/block mt-3 relative">
-          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-              Text
-            </span>
-            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-          </span>
-          <EditableRoot
-            className="relative"
+        <div className="mt-3 relative">
+          <RichTextEditor
             defaultValue="Jane is a Professional Model who lives in New York. She has been modeling for about 10 years at different companies like GAP, Levi’s, Banana Republic and Theory. It was when she was around 21 when she was contacted by the agency."
-          >
-            <EditableLabel>Sub Title</EditableLabel>
-            <EditableArea>
-              <EditableInput
-                asChild
-                className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-3.5 [field-sizing:content] resize-none scrollbar-none text-sm font-light leading-none text-dark-blue-400"
-              >
-                <textarea />
-              </EditableInput>
-              <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-sm font-light leading-none text-dark-blue-400" />
-            </EditableArea>
-          </EditableRoot>
-        </p>
+            editorClassName="text-sm font-light leading-none text-dark-blue-400"
+          />
+        </div>
 
         <div className="mt-[34.45px]">
-          <h1 className="relative group/block">
-            <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-              <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                Text
-              </span>
-              {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-              <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-            </span>
-            <EditableRoot className="relative" defaultValue="Goals">
-              <EditableLabel>Title</EditableLabel>
-              <EditableArea>
-                <EditableInput
-                  asChild
-                  className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-4 [field-sizing:content] resize-none scrollbar-none text-base leading-none font-semibold text-dark-blue-400"
-                >
-                  <textarea />
-                </EditableInput>
-                <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-base leading-none font-semibold text-dark-blue-400" />
-              </EditableArea>
-            </EditableRoot>
-          </h1>
+          <div className="relative">
+            <RichTextEditor
+              defaultValue="Goals"
+              editorClassName="text-base leading-none font-semibold text-dark-blue-400"
+            />
+          </div>
 
-          <p className="group/block mt-3 relative">
-            <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-              <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                Text
-              </span>
-              {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-              <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-            </span>
-            <EditableRoot
-              className="relative"
+          <div className="mt-3 relative">
+            <RichTextEditor
               defaultValue="Jane is a Professional Model who lives in New York. She has been modeling for about 10 years at different companies like GAP, Levi’s, Banana Republic and Theory. It was when she was around 21 when she was contacted by the agency."
-            >
-              <EditableLabel>Sub Title</EditableLabel>
-              <EditableArea>
-                <EditableInput
-                  asChild
-                  className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-3.5 [field-sizing:content] resize-none scrollbar-none text-sm font-light leading-none text-dark-blue-400"
-                >
-                  <textarea />
-                </EditableInput>
-                <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-sm font-light leading-none text-dark-blue-400" />
-              </EditableArea>
-            </EditableRoot>
-          </p>
+              editorClassName="text-sm font-light leading-none text-dark-blue-400"
+            />
+          </div>
         </div>
         <div className="mt-[34.45px]">
-          <h1 className="relative group/block">
-            <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-              <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                Text
-              </span>
-              {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-              <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-            </span>
-            <EditableRoot className="relative" defaultValue="Frustrations">
-              <EditableLabel>Title</EditableLabel>
-              <EditableArea>
-                <EditableInput
-                  asChild
-                  className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-4 [field-sizing:content] resize-none scrollbar-none text-base leading-none font-semibold text-dark-blue-400"
-                >
-                  <textarea />
-                </EditableInput>
-                <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-base leading-none font-semibold text-dark-blue-400" />
-              </EditableArea>
-            </EditableRoot>
-          </h1>
+          <div className="relative">
+            <RichTextEditor
+              defaultValue="Frustrations"
+              editorClassName="text-base leading-none font-semibold text-dark-blue-400"
+            />
+          </div>
 
-          <p className="group/block mt-3 relative">
-            <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-              <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                Text
-              </span>
-              {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-              <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-            </span>
-            <EditableRoot
-              className="relative"
+          <div className="mt-3 relative">
+            <RichTextEditor
               defaultValue="Jane is a Professional Model who lives in New York. She has been modeling for about 10 years at different companies like GAP, Levi’s, Banana Republic and Theory. It was when she was around 21 when she was contacted by the agency."
-            >
-              <EditableLabel>Sub Title</EditableLabel>
-              <EditableArea>
-                <EditableInput
-                  asChild
-                  className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-3.5 [field-sizing:content] resize-none scrollbar-none text-sm font-light leading-none text-dark-blue-400"
-                >
-                  <textarea />
-                </EditableInput>
-                <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-sm font-light leading-none text-dark-blue-400" />
-              </EditableArea>
-            </EditableRoot>
-          </p>
+              editorClassName="text-sm font-light leading-none text-dark-blue-400"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -2462,52 +2047,19 @@ const ResultMetrics = () => {
                   />
 
                   <div className="relative space-y-2" key={index}>
-                    <h1 className="relative group/block">
-                      <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                        <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                          Text
-                        </span>
-                        {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                        <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                      </span>
-                      <EditableRoot className="relative" defaultValue="50%">
-                        <EditableLabel>Title</EditableLabel>
-                        <EditableArea>
-                          <EditableInput
-                            asChild
-                            className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[40px] [field-sizing:content] resize-none scrollbar-none text-[40px] leading-none font-bold text-dark-blue-400"
-                          >
-                            <textarea />
-                          </EditableInput>
-                          <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[40px] leading-none font-bold text-dark-blue-400" />
-                        </EditableArea>
-                      </EditableRoot>
-                    </h1>
+                    <div className="relative">
+                      <RichTextEditor
+                        defaultValue="50%"
+                        editorClassName="text-[40px] leading-none font-bold text-dark-blue-400"
+                      />
+                    </div>
 
-                    <p className="group/block relative">
-                      <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                        <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                          Text
-                        </span>
-                        {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                        <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                      </span>
-                      <EditableRoot
-                        className="relative"
+                    <div className="relative">
+                      <RichTextEditor
                         defaultValue="Less Time Spent"
-                      >
-                        <EditableLabel>Sub Title</EditableLabel>
-                        <EditableArea>
-                          <EditableInput
-                            asChild
-                            className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-5 [field-sizing:content] resize-none scrollbar-none text-xl leading-none text-dark-blue-400"
-                          >
-                            <textarea />
-                          </EditableInput>
-                          <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-xl leading-none text-dark-blue-400" />
-                        </EditableArea>
-                      </EditableRoot>
-                    </p>
+                        editorClassName="text-xl leading-none text-dark-blue-400"
+                      />
+                    </div>
                   </div>
                 </ArticleRoot>
               )}
@@ -2524,27 +2076,12 @@ const Testimonials = () => {
   const len = items.length
   return (
     <div className=" group relative">
-      <h1 className="relative group/block">
-        <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-          <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-            Text
-          </span>
-          {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-          <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-        </span>
-        <EditableRoot className="relative" defaultValue="Testimonials">
-          <EditableLabel>Title</EditableLabel>
-          <EditableArea>
-            <EditableInput
-              asChild
-              className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[40px] [field-sizing:content] resize-none scrollbar-none text-[40px] leading-none font-semibold text-dark-blue-400"
-            >
-              <textarea />
-            </EditableInput>
-            <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[40px] leading-none font-semibold text-dark-blue-400" />
-          </EditableArea>
-        </EditableRoot>
-      </h1>
+      <div className="relative">
+        <RichTextEditor
+          defaultValue="Testimonials"
+          editorClassName="text-[40px] leading-none font-semibold text-dark-blue-400"
+        />
+      </div>
 
       <Reorder.Group
         as="div"
@@ -2592,29 +2129,11 @@ const Testimonials = () => {
                         “
                       </h1>
 
-                      <h3 className="group/block relative pt-6">
-                        <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                          <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                            Text
-                          </span>
-                          {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                          <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                        </span>
-                        <EditableRoot
-                          className="relative"
+                      <h3 className="relative pt-6">
+                        <RichTextEditor
                           defaultValue="Lorem Ipsum is simply dummy text of the printing and typesetting industry."
-                        >
-                          <EditableLabel>Quote</EditableLabel>
-                          <EditableArea>
-                            <EditableInput
-                              asChild
-                              className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none text-dark-blue-400"
-                            >
-                              <textarea />
-                            </EditableInput>
-                            <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none text-dark-blue-400" />
-                          </EditableArea>
-                        </EditableRoot>
+                          editorClassName="text-2xl leading-none text-dark-blue-400"
+                        />
                       </h3>
                     </div>
 
@@ -2625,55 +2144,19 @@ const Testimonials = () => {
                       </Avatar>
 
                       <div className="space-y-0.5">
-                        <h3 className="group/block relative">
-                          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                              Text
-                            </span>
-                            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                          </span>
-                          <EditableRoot
-                            className="relative"
+                        <h3 className="relative">
+                          <RichTextEditor
                             defaultValue="John Doe"
-                          >
-                            <EditableLabel>Name</EditableLabel>
-                            <EditableArea>
-                              <EditableInput
-                                asChild
-                                className="bg-transparent py-px w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-3.5 [field-sizing:content] resize-none scrollbar-none text-sm font-bold leading-none text-dark-blue-400"
-                              >
-                                <textarea />
-                              </EditableInput>
-                              <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-sm font-bold leading-none text-dark-blue-400" />
-                            </EditableArea>
-                          </EditableRoot>
+                            editorClassName="text-sm font-bold leading-none text-dark-blue-400"
+                          />
                         </h3>
 
-                        <p className="group/block relative">
-                          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                              Text
-                            </span>
-                            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                          </span>
-                          <EditableRoot
-                            className="relative"
+                        <div className="relative">
+                          <RichTextEditor
                             defaultValue="Acme Inc., President & CEO"
-                          >
-                            <EditableLabel>Sub Title</EditableLabel>
-                            <EditableArea>
-                              <EditableInput
-                                asChild
-                                className="bg-transparent py-px w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[10px] [field-sizing:content] resize-none scrollbar-none text-[10px] leading-none font-light text-dark-blue-400"
-                              >
-                                <textarea />
-                              </EditableInput>
-                              <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[10px] leading-none font-light text-dark-blue-400" />
-                            </EditableArea>
-                          </EditableRoot>
-                        </p>
+                            editorClassName="text-[10px] leading-none font-light text-dark-blue-400"
+                          />
+                        </div>
                       </div>
                     </div>
                   </article>
@@ -2725,65 +2208,29 @@ const Conclusion = () => {
 
   return (
     <form className=" group relative" onSubmit={handleSubmit(onSubmit)}>
-      <h1 className="relative group/block">
-        <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-          <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-            Text
-          </span>
-          {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-          <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-        </span>
+      <h1 className="relative">
         <Controller
           control={control}
           name="title"
           render={({ field: { value, onChange } }) => (
-            <EditableRoot
-              className="relative"
-              value={value}
-              onChange={onChange}
-            >
-              <EditableLabel>Title</EditableLabel>
-              <EditableArea>
-                <EditableInput
-                  asChild
-                  className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[40px] [field-sizing:content] resize-none scrollbar-none text-[40px] leading-none font-semibold text-dark-blue-400"
-                >
-                  <textarea />
-                </EditableInput>
-                <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[40px] leading-none font-semibold text-dark-blue-400" />
-              </EditableArea>
-            </EditableRoot>
+            <RichTextEditor
+              defaultValue={value}
+              onUpdate={onChange}
+              editorClassName="text-[40px] leading-none font-semibold text-dark-blue-400"
+            />
           )}
         />
       </h1>
-      <p className="group/block relative mt-6">
-        <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-          <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-            Text
-          </span>
-          {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-          <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-        </span>
+      <p className="relative mt-6">
         <Controller
           control={control}
           name="subTitle"
           render={({ field: { value, onChange } }) => (
-            <EditableRoot
-              className="relative"
-              value={value}
-              onChange={onChange}
-            >
-              <EditableLabel>Sub Title</EditableLabel>
-              <EditableArea>
-                <EditableInput
-                  asChild
-                  className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-light text-dark-blue-400"
-                >
-                  <textarea />
-                </EditableInput>
-                <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-light text-dark-blue-400" />
-              </EditableArea>
-            </EditableRoot>
+            <RichTextEditor
+              defaultValue={value}
+              onUpdate={onChange}
+              editorClassName="text-2xl leading-none font-light text-dark-blue-400"
+            />
           )}
         />
       </p>
@@ -2796,30 +2243,12 @@ const Columns = () => {
   const len = items.length
   return (
     <div className="relative group mt-[100px]">
-      <h1 className="relative group/block">
-        <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-          <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-            Text
-          </span>
-          {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-          <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-        </span>
-        <EditableRoot
-          className="relative"
+      <div className="relative">
+        <RichTextEditor
           defaultValue="These are your columns"
-        >
-          <EditableLabel>These are your columns</EditableLabel>
-          <EditableArea>
-            <EditableInput
-              asChild
-              className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[40px] [field-sizing:content] resize-none scrollbar-none text-[40px] leading-none font-semibold text-dark-blue-400"
-            >
-              <textarea />
-            </EditableInput>
-            <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[40px] leading-none font-semibold text-dark-blue-400" />
-          </EditableArea>
-        </EditableRoot>
-      </h1>
+          editorClassName="text-[40px] leading-none font-semibold text-dark-blue-400"
+        />
+      </div>
       {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute hidden opacity-0 group-focus-within:group-hover:hidden group-focus-within:group-hover:opacity-0 group-hover:inline-flex group-hover:opacity-100 transition duration-300" />*/}
 
       <div className="mt-8">
@@ -2900,54 +2329,18 @@ const Columns = () => {
                         )}
                       />
                       <div className="mt-6">
-                        <h1 className="relative group/block">
-                          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                              Text
-                            </span>
-                            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                            <FlexibleToolbar className="absolute z-10 left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                          </span>
-                          <EditableRoot
-                            className="relative"
+                        <div className="relative">
+                          <RichTextEditor
                             defaultValue="This is your heading"
-                          >
-                            <EditableLabel>Title</EditableLabel>
-                            <EditableArea>
-                              <EditableInput
-                                asChild
-                                className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-semibold text-dark-blue-400"
-                              >
-                                <textarea />
-                              </EditableInput>
-                              <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-semibold text-dark-blue-400" />
-                            </EditableArea>
-                          </EditableRoot>
-                        </h1>
-                        <p className="relative group/block mt-3">
-                          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-                            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                              Text
-                            </span>
-                            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-                            <FlexibleToolbar className="absolute z-10 left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-                          </span>
-                          <EditableRoot
-                            className="relative"
+                            editorClassName="text-2xl leading-none font-semibold text-dark-blue-400"
+                          />
+                        </div>
+                        <div className="relative mt-3">
+                          <RichTextEditor
                             defaultValue="Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor"
-                          >
-                            <EditableLabel>Sub Title</EditableLabel>
-                            <EditableArea>
-                              <EditableInput
-                                asChild
-                                className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-light text-dark-blue-400"
-                              >
-                                <textarea />
-                              </EditableInput>
-                              <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-light text-dark-blue-400" />
-                            </EditableArea>
-                          </EditableRoot>
-                        </p>
+                            editorClassName="text-2xl leading-none font-light text-dark-blue-400"
+                          />
+                        </div>
                       </div>
                     </div>
                   </ArticleRoot>
@@ -3004,65 +2397,29 @@ const Introduction = () => {
       onSubmit={handleSubmit(onSubmit)}
     >
       <div className="py-[52px]">
-        <h1 className="relative group/block">
-          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-              Text
-            </span>
-            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-          </span>
+        <h1 className="relative">
           <Controller
             control={control}
             name="title"
             render={({ field: { value, onChange } }) => (
-              <EditableRoot
-                className="relative"
-                value={value}
-                onChange={onChange}
-              >
-                <EditableLabel>Title</EditableLabel>
-                <EditableArea>
-                  <EditableInput
-                    asChild
-                    className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[40px] [field-sizing:content] resize-none scrollbar-none text-[40px] leading-none font-semibold text-dark-blue-400"
-                  >
-                    <textarea />
-                  </EditableInput>
-                  <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[40px] leading-none font-semibold text-dark-blue-400" />
-                </EditableArea>
-              </EditableRoot>
+              <RichTextEditor
+                defaultValue={value}
+                onUpdate={onChange}
+                editorClassName="text-[40px] leading-none font-semibold text-dark-blue-400"
+              />
             )}
           />
         </h1>
-        <p className="group/block relative mt-5">
-          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-              Text
-            </span>
-            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-          </span>
+        <p className="relative mt-5">
           <Controller
             control={control}
             name="subTitle"
             render={({ field: { value, onChange } }) => (
-              <EditableRoot
-                className="relative"
-                value={value}
-                onChange={onChange}
-              >
-                <EditableLabel>Sub Title</EditableLabel>
-                <EditableArea>
-                  <EditableInput
-                    asChild
-                    className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-light text-dark-blue-400"
-                  >
-                    <textarea />
-                  </EditableInput>
-                  <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-light text-dark-blue-400" />
-                </EditableArea>
-              </EditableRoot>
+              <RichTextEditor
+                defaultValue={value}
+                onUpdate={onChange}
+                editorClassName="text-2xl leading-none font-light text-dark-blue-400"
+              />
             )}
           />
         </p>
@@ -3136,65 +2493,29 @@ const ImageText = () => {
       onSubmit={handleSubmit(onSubmit)}
     >
       <div className="py-[66.5px]">
-        <h1 className="relative group/block">
-          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-              Text
-            </span>
-            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-          </span>
+        <h1 className="relative">
           <Controller
             control={control}
             name="title"
             render={({ field: { value, onChange } }) => (
-              <EditableRoot
-                className="relative"
-                value={value}
-                onChange={onChange}
-              >
-                <EditableLabel>Title</EditableLabel>
-                <EditableArea>
-                  <EditableInput
-                    asChild
-                    className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[40px] [field-sizing:content] resize-none scrollbar-none text-[40px] leading-none font-semibold text-dark-blue-400"
-                  >
-                    <textarea />
-                  </EditableInput>
-                  <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[40px] leading-none font-semibold text-dark-blue-400" />
-                </EditableArea>
-              </EditableRoot>
+              <RichTextEditor
+                defaultValue={value}
+                onUpdate={onChange}
+                editorClassName="text-[40px] leading-none font-semibold text-dark-blue-400"
+              />
             )}
           />
         </h1>
-        <p className="group/block relative mt-5">
-          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-              Text
-            </span>
-            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-          </span>
+        <p className="relative mt-5">
           <Controller
             control={control}
             name="subTitle"
             render={({ field: { value, onChange } }) => (
-              <EditableRoot
-                className="relative"
-                value={value}
-                onChange={onChange}
-              >
-                <EditableLabel>Sub Title</EditableLabel>
-                <EditableArea>
-                  <EditableInput
-                    asChild
-                    className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-light text-dark-blue-400"
-                  >
-                    <textarea />
-                  </EditableInput>
-                  <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-light text-dark-blue-400" />
-                </EditableArea>
-              </EditableRoot>
+              <RichTextEditor
+                defaultValue={value}
+                onUpdate={onChange}
+                editorClassName="text-2xl leading-none font-light text-dark-blue-400"
+              />
             )}
           />
         </p>
@@ -3411,65 +2732,29 @@ const Challenges = () => {
       </div>
 
       <div className="py-[28px]">
-        <h1 className="relative group/block">
-          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-              Text
-            </span>
-            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-          </span>
+        <h1 className="relative">
           <Controller
             control={control}
             name="title"
             render={({ field: { value, onChange } }) => (
-              <EditableRoot
-                className="relative"
-                value={value}
-                onChange={onChange}
-              >
-                <EditableLabel>Title</EditableLabel>
-                <EditableArea>
-                  <EditableInput
-                    asChild
-                    className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[40px] [field-sizing:content] resize-none scrollbar-none text-[40px] leading-none font-semibold text-dark-blue-400"
-                  >
-                    <textarea />
-                  </EditableInput>
-                  <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[40px] leading-none font-semibold text-dark-blue-400" />
-                </EditableArea>
-              </EditableRoot>
+              <RichTextEditor
+                defaultValue={value}
+                onUpdate={onChange}
+                editorClassName="text-[40px] leading-none font-semibold text-dark-blue-400"
+              />
             )}
           />
         </h1>
-        <p className="group/block relative mt-5">
-          <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-            <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-              Text
-            </span>
-            {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-            <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-          </span>
+        <p className="relative mt-5">
           <Controller
             control={control}
             name="subTitle"
             render={({ field: { value, onChange } }) => (
-              <EditableRoot
-                className="relative"
-                value={value}
-                onChange={onChange}
-              >
-                <EditableLabel>Sub Title</EditableLabel>
-                <EditableArea>
-                  <EditableInput
-                    asChild
-                    className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-light text-dark-blue-400"
-                  >
-                    <textarea />
-                  </EditableInput>
-                  <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-light text-dark-blue-400" />
-                </EditableArea>
-              </EditableRoot>
+              <RichTextEditor
+                defaultValue={value}
+                onUpdate={onChange}
+                editorClassName="text-2xl leading-none font-light text-dark-blue-400"
+              />
             )}
           />
         </p>
@@ -3841,54 +3126,18 @@ const CaseStudyBuilder = ({
 
       <div className="p-[100px] flex-1 overflow-auto">
         <div className="border border-gray-200 bg-white rounded-[10px] p-[100px]">
-          <h1 className="relative group/block">
-            <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-              <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                Text
-              </span>
-              {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-              <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-            </span>
-            <EditableRoot
-              className="relative"
+          <div className="relative">
+            <RichTextEditor
               defaultValue="Your Case Study Title"
-            >
-              <EditableLabel>Title</EditableLabel>
-              <EditableArea>
-                <EditableInput
-                  asChild
-                  className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[64px] [field-sizing:content] resize-none scrollbar-none text-[64px] leading-none font-semibold text-dark-blue-400"
-                >
-                  <textarea />
-                </EditableInput>
-                <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-[64px] leading-none font-semibold text-dark-blue-400" />
-              </EditableArea>
-            </EditableRoot>
-          </h1>
-          <p className="group/block relative mt-3">
-            <span className="absolute -inset-x-2.5 inset-0 group-hover/block:inline-block group-focus-within/block:inline-block opacity-0 hidden group-hover/block:opacity-100 group-focus-within/block:opacity-100 transition duration-300 border-2 rounded-lg border-primary-500 group-hover/block:bg-primary-500/5 group-focus-within/block:bg-transparent group-hover/block:group-focus-within/block:bg-transparent group-hover/block:border-primary-200">
-              <span className="absolute left-0 invisible transition-[visibility] duration-300 group-focus-within/block:invisible group-hover/block:visible -top-[22px] text-xs text-primary-500 leading-none font-medium group-hover/block:group-focus-within/block:invisible">
-                Text
-              </span>
-              {/*<BlockToolbar className="-top-[46px] -right-[17px] absolute group-focus-within/block:visible invisible transition-[visibility] duration-300" />*/}
-              <FlexibleToolbar className="absolute left-0 -top-[51px] group-focus-within/block:visible invisible transition-[visibility] duration-300" />
-            </span>
-            <EditableRoot
-              className="relative"
+              editorClassName="text-[64px] leading-none font-semibold text-dark-blue-400"
+            />
+          </div>
+          <div className="relative mt-3">
+            <RichTextEditor
               defaultValue="Write what into this design or add any details you want to mention"
-            >
-              <EditableLabel>Sub Title</EditableLabel>
-              <EditableArea>
-                <EditableInput
-                  asChild
-                  className="bg-transparent py-2 w-full first-line:inline-block placeholder:text-dark-blue-400 group-data-[placeholder-shown]/area:text-dark-blue-400 min-h-[24px] [field-sizing:content] resize-none scrollbar-none text-2xl leading-none font-light text-dark-blue-400"
-                >
-                  <textarea />
-                </EditableInput>
-                <EditablePreview className=" group-data-[placeholder-shown]/area:text-dark-blue-400 text-2xl leading-none font-light text-dark-blue-400" />
-              </EditableArea>
-            </EditableRoot>
-          </p>
+              editorClassName="text-2xl leading-none font-light text-dark-blue-400"
+            />
+          </div>
 
           <Reorder.Group
             as="div"

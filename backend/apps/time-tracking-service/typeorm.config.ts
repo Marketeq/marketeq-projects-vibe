@@ -9,7 +9,7 @@ import { UserPreferences } from './src/entities/user-preferences.entity';
 export default new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL ?? 'postgres://postgres:password@localhost:5432/marketeq',
-  schema: 'public',
+  schema: 'time_tracking',
   entities: [ActivityWatchEvent, Screenshot, ManualTime, AdminSettings, UserPreferences],
   migrations: ['migrations/*.ts'],
   ssl:

@@ -13,6 +13,7 @@
 - checkout-service – Stripe checkout, wallet, webhooks
 - messaging-service – Ably real-time, message threads, history
 - notification-service – Ably push, SendGrid email, event handlers, preferences
+- contracts-service – contract groups, lifecycle (pending→active→ended/canceled/disputed), audit logging, CRON auto-cancel, RabbitMQ events
 
 ## In Progress
 (none currently — agents: claim your service here before starting)
@@ -31,11 +32,11 @@ These can be built immediately in parallel:
 - api-gateway (routes to all services — can start now, expand as services are added)
 
 ## Blocked (waiting on other services)
-- contracts-service → needs listings-service ✅ + user-service ✅ (unblocked now)
-- earnings-service → needs contracts-service + transaction-service
+- contracts-service → ✅ DONE
+- earnings-service → needs contracts-service ✅ + transaction-service
 - payout-service → needs earnings-service + billing-service
 - billing-service → needs checkout-service ✅ (unblocked now)
-- time-tracking-service → needs contracts-service
+- time-tracking-service → needs contracts-service ✅ (unblocked now)
 - admin-service → needs most services complete
 - affiliate-referral-service → standalone, low priority
 

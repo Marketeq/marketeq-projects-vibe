@@ -3,6 +3,7 @@ import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ContractsService } from '../services/contracts.service';
 import { EndContractDto } from '../dtos/end-contract.dto';
 import { AcceptRejectDto } from '../dtos/accept-reject.dto';
+import { DisputeContractDto } from '../dtos/dispute-contract.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
 
@@ -36,6 +37,11 @@ export class ContractsController {
   @Put(':id/respond')
   respond(@Param('id') id: string, @Body() dto: AcceptRejectDto, @Request() req: any) {
     return this.svc.respondToOffer(id, dto, req.user);
+  }
+
+  @Put(':id/dispute')
+  disputeContract(@Param('id') id: string, @Body() dto: DisputeContractDto, @Request() req: any) {
+    return this.svc.disputeContract(id, dto, req.user);
   }
 
   @MessagePattern('contract.activate')

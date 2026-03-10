@@ -2,6 +2,7 @@
 
 import React, { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   ArrowRight,
@@ -484,6 +485,7 @@ export default function MarketPlaceLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
+  const { user } = useAuth()
   return (
     <>
       {/* <AuthenticatedRoute> */}
@@ -598,7 +600,7 @@ export default function MarketPlaceLayout({
                 className="text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
-                onClick={() => router.push("/client-dashboard")}
+                onClick={() => router.push(user?.role === "TALENT" ? "/talent-dashboard" : "/client-dashboard")}
               >
                 My Dashboard
               </Button>

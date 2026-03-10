@@ -1,33 +1,33 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn } from 'typeorm';
 import { User } from '../../user/entities/user.entity';
 
-@Entity('experience')
+@Entity({ name: 'experience', schema: 'user_service' })
 export class Experience {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column('uuid')
+  @Column({ type: 'uuid' })
   userId: string;
 
   @ManyToOne(() => User, (u) => u.experience, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user: User;
 
-  @Column()
+  @Column({ type: 'text' })
   company: string;
 
-  @Column()
+  @Column({ type: 'text' })
   role: string;
 
-  @Column()
+  @Column({ type: 'text' })
   startDate: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   endDate: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   description: string;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

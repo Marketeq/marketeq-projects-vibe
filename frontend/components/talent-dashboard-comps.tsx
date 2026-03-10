@@ -244,7 +244,7 @@ export const LeftSidebar = () => {
   )
 }
 
-export const RightDrawer = ({ className }: { className?: string }) => {
+export const RightDrawer = ({ className, onCompleteProfile, profileProgress = 0 }: { className?: string; onCompleteProfile?: () => void; profileProgress?: number }) => {
   const { user } = useAuth()
   return (
     <div
@@ -286,16 +286,17 @@ export const RightDrawer = ({ className }: { className?: string }) => {
             className="text-gray-700"
             strokeWidth={6}
             size={50}
-            value={10}
+            value={profileProgress}
           />
 
           <div className="gap-y-2 flex items-start flex-col">
-            <NextLink
-              href="/complete-profile?open=1"
-              className="underline text-[13px] font-medium text-dark-blue-400 hover:text-primary-500"
+            <button
+              type="button"
+              onClick={onCompleteProfile}
+              className="underline text-[13px] font-medium text-dark-blue-400 hover:text-primary-500 text-left"
             >
               Complete Your Profile
-            </NextLink>
+            </button>
 
             <span className="text-[13px] leading-[15.73px] font-light">
               Talents with complete profiles are 4 times more likely to get
@@ -387,7 +388,7 @@ export const RightDrawer = ({ className }: { className?: string }) => {
   )
 }
 
-export const RightSidebar = ({ className }: { className?: string }) => {
+export const RightSidebar = ({ className, onCompleteProfile, profileProgress = 0 }: { className?: string; onCompleteProfile?: () => void; profileProgress?: number }) => {
   const { user } = useAuth()
   return (
     <div
@@ -426,16 +427,17 @@ export const RightSidebar = ({ className }: { className?: string }) => {
             className="text-gray-700"
             strokeWidth={6}
             size={50}
-            value={10}
+            value={profileProgress}
           />
 
           <div className="gap-y-2 flex items-start flex-col">
-            <NextLink
-              href="/complete-profile?open=1"
-              className="underline text-[13px] font-medium text-dark-blue-400 hover:text-primary-500"
+            <button
+              type="button"
+              onClick={onCompleteProfile}
+              className="underline text-[13px] font-medium text-dark-blue-400 hover:text-primary-500 text-left"
             >
               Complete Your Profile
-            </NextLink>
+            </button>
 
             <span className="text-[13px] leading-[15.73px] font-light">
               Talents with complete profiles are 4 times more likely to get

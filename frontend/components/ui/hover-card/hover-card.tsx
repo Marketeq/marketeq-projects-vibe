@@ -4,12 +4,12 @@ import * as React from "react"
 import { cn } from "@/utils/functions"
 import * as HoverCardPrimitive from "@radix-ui/react-hover-card"
 
-const HoverCard = React.forwardRef<
-  React.ElementRef<typeof HoverCardPrimitive.Root>,
-  React.ComponentPropsWithRef<typeof HoverCardPrimitive.Root>
->(({ openDelay = 300, ...props }) => (
+const HoverCard = ({
+  openDelay = 300,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof HoverCardPrimitive.Root>) => (
   <HoverCardPrimitive.Root openDelay={openDelay} {...props} />
-))
+)
 
 HoverCard.displayName = HoverCardPrimitive.Root.displayName
 

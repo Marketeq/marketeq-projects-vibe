@@ -19,12 +19,12 @@ export class AlterScreenshotsAddMissingColumns1714000000000 implements Migration
       BEGIN
         IF EXISTS (
           SELECT 1 FROM information_schema.columns
-          WHERE table_schema = 'public' AND table_name = 'screenshots' AND column_name = 'app_usage'
+          WHERE table_schema = 'time_tracking' AND table_name = 'screenshots' AND column_name = 'app_usage'
         ) AND NOT EXISTS (
           SELECT 1 FROM information_schema.columns
-          WHERE table_schema = 'public' AND table_name = 'screenshots' AND column_name = 'apps'
+          WHERE table_schema = 'time_tracking' AND table_name = 'screenshots' AND column_name = 'apps'
         ) THEN
-          ALTER TABLE public.screenshots RENAME COLUMN app_usage TO apps;
+          ALTER TABLE time_tracking.screenshots RENAME COLUMN app_usage TO apps;
         END IF;
       END $$;
     `);
@@ -35,21 +35,21 @@ export class AlterScreenshotsAddMissingColumns1714000000000 implements Migration
       BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM information_schema.columns
-          WHERE table_schema = 'public' AND table_name = 'screenshots' AND column_name = 'apps'
+          WHERE table_schema = 'time_tracking' AND table_name = 'screenshots' AND column_name = 'apps'
         ) THEN
-          ALTER TABLE public.screenshots ADD COLUMN apps jsonb NULL;
+          ALTER TABLE time_tracking.screenshots ADD COLUMN apps jsonb NULL;
         END IF;
       END $$;
     `);
 
     // Add url column
     await qr.query(`
-      ALTER TABLE public.screenshots ADD COLUMN IF NOT EXISTS url text NULL;
+      ALTER TABLE time_tracking.screenshots ADD COLUMN IF NOT EXISTS url text NULL;
     `);
 
     // Add moderation flag columns
     await qr.query(`
-      ALTER TABLE public.screenshots
+      ALTER TABLE time_tracking.screenshots
         ADD COLUMN IF NOT EXISTS is_flagged   boolean NOT NULL DEFAULT false,
         ADD COLUMN IF NOT EXISTS flagged_by   text NULL,
         ADD COLUMN IF NOT EXISTS flagged_at   timestamptz NULL,
@@ -59,7 +59,7 @@ export class AlterScreenshotsAddMissingColumns1714000000000 implements Migration
 
     // Fix keyboard_pct / mouse_pct: change from float/nullable → int NOT NULL DEFAULT 0
     await qr.query(`
-      ALTER TABLE public.screenshots
+      ALTER TABLE time_tracking.screenshots
         ALTER COLUMN keyboard_pct TYPE integer USING COALESCE(keyboard_pct::integer, 0),
         ALTER COLUMN keyboard_pct SET NOT NULL,
         ALTER COLUMN keyboard_pct SET DEFAULT 0,
@@ -71,7 +71,7 @@ export class AlterScreenshotsAddMissingColumns1714000000000 implements Migration
     // Add index on is_flagged for admin flagged-list queries
     await qr.query(`
       CREATE INDEX IF NOT EXISTS idx_screenshots_flagged
-        ON public.screenshots (flagged_at DESC)
+        ON time_tracking.screenshots (flagged_at DESC)
         WHERE is_flagged = true AND is_deleted = false;
     `);
   }
@@ -79,7 +79,7 @@ export class AlterScreenshotsAddMissingColumns1714000000000 implements Migration
   public async down(qr: QueryRunner): Promise<void> {
     await qr.query(`DROP INDEX IF EXISTS idx_screenshots_flagged`);
     await qr.query(`
-      ALTER TABLE public.screenshots
+      ALTER TABLE time_tracking.screenshots
         DROP COLUMN IF EXISTS review_comment,
         DROP COLUMN IF EXISTS reviewed_by,
         DROP COLUMN IF EXISTS flagged_at,
@@ -89,7 +89,7 @@ export class AlterScreenshotsAddMissingColumns1714000000000 implements Migration
     `);
     // Revert keyboard_pct / mouse_pct to float nullable
     await qr.query(`
-      ALTER TABLE public.screenshots
+      ALTER TABLE time_tracking.screenshots
         ALTER COLUMN keyboard_pct DROP NOT NULL,
         ALTER COLUMN keyboard_pct TYPE float,
         ALTER COLUMN mouse_pct DROP NOT NULL,

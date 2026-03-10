@@ -1,7 +1,9 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { ContractsService } from '../services/contracts.service';
+import { BearerGuard } from '../guards/bearer.guard';
 
 @Controller('webhooks')
+@UseGuards(BearerGuard)
 export class WebhooksController {
   constructor(private readonly svc: ContractsService) {}
 
@@ -12,14 +14,19 @@ export class WebhooksController {
 
   @Post('checkout/deposit-failed')
   depositFailed(@Body() payload: { groupId: string; reason: string }) {
-    // Contracts remain PENDING — cancel only if retry window expired (handled by scheduler)
-    // For now, log the failure and return status
-    return { groupId: payload.groupId, status: 'deposit_failed', message: 'Contracts remain pending. Retry window active.' };
+    return {
+      groupId: payload.groupId,
+      status: 'deposit_failed',
+      message: 'Contracts remain pending. Retry window active.',
+    };
   }
 
   @Post('billing/finalized')
   billingFinalized(@Body() payload: { contractId: string; invoiceId: string; finalAmount: number }) {
-    // Billing confirmation — contracts already ended via contract.ended event
-    return { contractId: payload.contractId, invoiceId: payload.invoiceId, status: 'billing_confirmed' };
+    return {
+      contractId: payload.contractId,
+      invoiceId: payload.invoiceId,
+      status: 'billing_confirmed',
+    };
   }
 }

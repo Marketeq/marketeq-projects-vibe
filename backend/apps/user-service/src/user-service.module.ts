@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UserModule } from './user/user.module';
 import { User } from './user/entities/user.entity';
 import { Education } from './education/entities/education.entity';
@@ -12,14 +12,25 @@ import { Industry } from './industries/entities/industry.entity';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.DATABASE_URL,
-      schema: process.env.DATABASE_SCHEMA || 'users',
-      entities: [User, Education, Experience, Skill, Language, Certification, Industry],
-      synchronize: process.env.NODE_ENV !== 'production',
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['apps/user-service/.env', '.env'],
+    }),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const isProd = config.get<string>('NODE_ENV') === 'production';
+        return {
+          type: 'postgres' as const,
+          url: config.get<string>('DATABASE_URL') ?? 'postgres://postgres:password@localhost:5432/postgres',
+          schema: 'user_service',
+          entities: [User, Education, Experience, Skill, Language, Certification, Industry],
+          synchronize: false,
+          logging: !isProd,
+          ssl: isProd ? { rejectUnauthorized: false } : undefined,
+          extra: isProd ? { sslmode: 'require' } : undefined,
+        };
+      },
     }),
     UserModule,
   ],

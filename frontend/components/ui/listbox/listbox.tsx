@@ -211,35 +211,31 @@ interface ListboxOption<T = any>
   indicator?: boolean
 }
 
-export const ListboxOption = React.forwardRef(
-  ({
-    className,
-    value,
-    children,
-    iconClassName,
-    indicator = true,
-    ...props
-  }: ListboxOption) => (
-    <ListboxPrimitive.Option
-      className={cn(
-        "flex cursor-pointer items-center gap-x-2 p-3 text-[13px] truncate leading-[13.25px] text-gray-500 ui-active:bg-gray-50 ui-active:text-gray-black",
-        className
-      )}
-      value={value}
-      {...props}
-    >
-      {({ selected }) => (
-        <>
-          {children}
-          {indicator && selected && (
-            <Check
-              className={cn("ml-auto h-4 w-4 text-primary-500", iconClassName)}
-            />
-          )}
-        </>
-      )}
-    </ListboxPrimitive.Option>
-  )
+export const ListboxOption = ({
+  className,
+  value,
+  children,
+  iconClassName,
+  indicator = true,
+  ...props
+}: ListboxOption) => (
+  <ListboxPrimitive.Option
+    className={cn(
+      "flex cursor-pointer items-center gap-x-2 p-3 text-[13px] truncate leading-[13.25px] text-gray-500 ui-active:bg-gray-50 ui-active:text-gray-black",
+      className
+    )}
+    value={value}
+    {...props}
+  >
+    {({ selected }) => (
+      <>
+        {children}
+        {indicator && selected && (
+          <Check
+            className={cn("ml-auto h-4 w-4 text-primary-500", iconClassName)}
+          />
+        )}
+      </>
+    )}
+  </ListboxPrimitive.Option>
 )
-
-ListboxOption.displayName = "ListboxOption"

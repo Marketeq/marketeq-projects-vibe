@@ -46,7 +46,8 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
 
     //Has role and onboarding is dismissed
     if (hasRole && onboardingDismissed) {
-      if (!pathname?.includes("onboarding")) {
+      if (pathname?.includes("onboarding")) {
+        // User already completed onboarding, redirect away from onboarding pages
         if (user.role === ROLE.TALENT) {
           router.push(`/talent-dashboard`)
         } else if (user.role === ROLE.CLIENT) {
@@ -54,13 +55,12 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
         } else {
           router.push(`/`)
         }
-
-        setIsPageLoading(false)
-        return
-      } else {
-        router.push("/")
         return
       }
+
+      // User is on a normal authenticated page — let them through
+      setIsPageLoading(false)
+      return
     }
   }
 

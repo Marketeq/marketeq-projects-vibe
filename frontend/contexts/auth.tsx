@@ -40,6 +40,13 @@ function useProvideAuth() {
   const [isAuthChecked, setIsAuthChecked] = useState<boolean>(false)
 
   const getUser = () => {
+    // Skip auth check during SSR — cookies and API calls are client-side only
+    if (typeof window === "undefined") {
+      setIsLoading(false)
+      setIsAuthChecked(true)
+      return
+    }
+
     setIsLoading(true)
 
     const accessToken = Cookies.get("access_token")

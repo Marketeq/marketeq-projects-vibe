@@ -8,7 +8,7 @@ export interface AppUsageEntry {
   url?: string;
 }
 
-@Entity({ name: 'screenshots', schema: 'public' })
+@Entity({ name: 'screenshots', schema: 'time_tracking' })
 @Index('idx_screenshots_user_created', ['userId', 'createdAt'])
 @Index('idx_screenshots_group_key', ['groupKey'])
 export class Screenshot {

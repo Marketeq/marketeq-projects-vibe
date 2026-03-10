@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Put, Patch, Delete,
-  Param, Body, HttpCode, HttpStatus,
+  Param, Body, Query, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { UserService } from './user.service';
@@ -22,14 +22,30 @@ export class UserController {
     return this.userService.create(dto);
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.userService.findById(id);
+  @Get()
+  findAll(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.userService.findAll(
+      limit ? parseInt(limit, 10) : 50,
+      offset ? parseInt(offset, 10) : 0,
+    );
+  }
+
+  @Get('health')
+  health() {
+    return { status: 'ok', service: 'user-service' };
   }
 
   @Get('username/:username')
   findByUsername(@Param('username') username: string) {
     return this.userService.findByUsername(username);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.userService.findById(id);
   }
 
   @Post('check-username')
@@ -52,11 +68,6 @@ export class UserController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.userService.remove(id);
-  }
-
-  @Get('health')
-  health() {
-    return { status: 'ok', service: 'user-service' };
   }
 
   // --- Education ---

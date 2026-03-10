@@ -16,57 +16,57 @@ import { Industry } from '../../industries/entities/industry.entity';
 export type UserType = 'client' | 'talent';
 export type OnboardingStatus = 'pending' | 'completed' | 'skipped';
 
-@Entity('users')
+@Entity({ name: 'users', schema: 'user_service' })
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
+  @Column({ type: 'text', unique: true })
   email: string;
 
-  @Column({ unique: true, nullable: true })
+  @Column({ type: 'text', unique: true, nullable: true })
   username: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   firstName: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   lastName: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   avatarUrl: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   bio: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   overview: string;
 
-  @Column({ type: 'enum', enum: ['client', 'talent'], nullable: true })
+  @Column({ type: 'text', nullable: true })
   userType: UserType;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   location: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   timezone: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   availability: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   role: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   industry: string;
 
-  @Column('simple-array', { nullable: true })
-  businessGoals: string[];
+  @Column({ type: 'text', nullable: true })
+  businessGoals: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   teamName: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   inviteCode: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
@@ -75,14 +75,18 @@ export class User {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   rateMax: number;
 
-  @Column({ default: false })
+  @Column({ type: 'boolean', default: false })
   onboardingDismissed: boolean;
 
-  @Column({ type: 'enum', enum: ['pending', 'completed', 'skipped'], default: 'pending' })
+  @Column({ type: 'text', default: 'pending' })
   onboardingStatus: OnboardingStatus;
 
-  @Column({ default: true })
+  @Column({ type: 'boolean', default: true })
   isActive: boolean;
+
+  /** Timestamp when user completed registration/onboarding */
+  @Column({ type: 'timestamptz', nullable: true })
+  onboardedAt: Date | null;
 
   @OneToMany(() => Education, (e) => e.user, { cascade: true })
   education: Education[];
@@ -102,9 +106,9 @@ export class User {
   @OneToMany(() => Industry, (i) => i.user, { cascade: true })
   industries: Industry[];
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }

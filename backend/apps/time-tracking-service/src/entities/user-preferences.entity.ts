@@ -6,19 +6,19 @@ import {
   Index,
 } from 'typeorm';
 
-@Entity('user_preferences')
+@Entity({ name: 'user_preferences', schema: 'time_tracking' })
 @Index(['userId'], { unique: true })
 export class UserPreferences {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
+  @Column({ type: 'text', unique: true })
   userId: string;
 
-  @Column({ default: 'UTC' })
+  @Column({ type: 'text', default: 'UTC' })
   timezone: string;
 
-  @Column({ default: 'MM/DD/YYYY' })
+  @Column({ type: 'text', default: 'MM/DD/YYYY' })
   dateFormat: string;
 
   @Column({

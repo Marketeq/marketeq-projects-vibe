@@ -51,7 +51,7 @@ backend/apps/
 ├── algolia-service/      🔨 In progress
 ├── transaction-service/  🔨 In progress
 ├── billing-service/      📋 Not started
-├── contracts-service/    📋 Not started
+├── contracts-service/    ✅ Implemented
 ├── earnings-service/     📋 Not started
 ├── payout-service/       📋 Not started
 ├── time-tracking-service/ 📋 Not started

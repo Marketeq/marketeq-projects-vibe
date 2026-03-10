@@ -17,13 +17,13 @@ export class ContractAudit {
   action: string;
 
   @Column({ nullable: true })
-  contractId: string;
+  contractId?: string;
 
   @Column({ nullable: true })
-  groupId: string;
+  groupId?: string;
 
   @Column('jsonb', { nullable: true })
-  details: Record<string, any>;
+  details?: Record<string, any>;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -4,6 +4,7 @@ import React, { Fragment, SVGProps, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI, EducationPayload, ExperiencePayload } from "@/service/http/user"
+import { UserProfile } from "@/types/user"
 import { cn, hookFormHasError, noop } from "@/utils/functions"
 import {
   useCallbackRef,
@@ -146,6 +147,7 @@ const RightSidebar = () => {
   const { user } = useAuth()
   const searchParams = useSearchParams()
   const [isOpen, setIsOpen] = useState(() => searchParams.get("open") === "1")
+  const [profileProgress, setProfileProgress] = useState(0)
   const displayUsername = user?.username ||
     `${user?.firstName || ""}${user?.lastName || ""}`.toLowerCase().replace(/\s+/g, "") ||
     "my-profile"
@@ -182,7 +184,7 @@ const RightSidebar = () => {
               className="text-[10px] leading-[15.63px]"
               size={46}
               strokeWidth={4}
-              value={10}
+              value={profileProgress}
             />
 
             <Button
@@ -192,7 +194,7 @@ const RightSidebar = () => {
               <UserCheck01 className="size-[15px]" />
               Complete My Profile
             </Button>
-            <StatusDialog open={isOpen} onOpenChange={setIsOpen} />
+            <StatusDialog open={isOpen} onOpenChange={setIsOpen} onProgressChange={setProfileProgress} />
           </div>
           <div className="mt-3">
             <span className="text-[13px] leading-none font-light text-dark-blue-400">
@@ -360,7 +362,7 @@ export default function TalentDashboard() {
   )
 }
 
-const DIALOG_NAMES = [
+export const DIALOG_NAMES = [
   "ABOUT-ME",
   "PORTFOLIO",
   "SKILLS",
@@ -424,15 +426,18 @@ const defaultDialogsState = (): DialogsStateType =>
     {} as DialogsStateType
   )
 
-const StatusDialog = ({
+export const StatusDialog = ({
   onOpenChange,
   open,
+  onProgressChange,
 }: {
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  onProgressChange?: (percent: number) => void
 }) => {
   const { user } = useAuth()
   const [dialogsState, setDialogsState] = useState<DialogsStateType>(defaultDialogsState)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
 
   // Load from localStorage on mount (client-side only — localStorage unavailable during SSR)
   useEffect(() => {
@@ -465,29 +470,30 @@ const StatusDialog = ({
     if (!user?.id) return
     UserAPI.getProfile(user.id)
       .then((res) => {
-        const profile = res?.data
-        if (!profile) return
+        const p = res?.data
+        if (!p) return
+        setProfile(p)
         setDialogsState((prev) => ({
           ...prev,
           "ABOUT-ME": {
             ...prev["ABOUT-ME"],
-            finished: Boolean(profile.bio || profile.overview),
+            finished: Boolean(p.bio || p.overview),
           },
           SKILLS: {
             ...prev["SKILLS"],
-            finished: Boolean(profile.skills?.length),
+            finished: Boolean(p.skills?.length),
           },
           "WORK-EXPERIENCE": {
             ...prev["WORK-EXPERIENCE"],
-            finished: Boolean(profile.experience?.length),
+            finished: Boolean(p.experience?.length),
           },
           EDUCATION: {
             ...prev["EDUCATION"],
-            finished: Boolean(profile.education?.length),
+            finished: Boolean(p.education?.length),
           },
           JOB_TITLE_RATE: {
             ...prev["JOB_TITLE_RATE"],
-            finished: Boolean(profile.rateMin || profile.rateMax),
+            finished: Boolean(p.rateMin || p.rateMax),
           },
         }))
       })
@@ -578,6 +584,10 @@ const StatusDialog = ({
   ).length
   const progressPercent = Math.round((completedSteps / totalSteps) * 100)
 
+  useEffect(() => {
+    onProgressChange?.(progressPercent)
+  }, [progressPercent, onProgressChange])
+
   return (
     <>
       <AboutMeDialog
@@ -597,6 +607,7 @@ const StatusDialog = ({
         next={next}
         userId={user?.id ?? ""}
         progressPercent={progressPercent}
+        profile={profile}
       />
       <Portfolio
         onFinished={(finished) =>
@@ -634,6 +645,7 @@ const StatusDialog = ({
         previous={previous}
         userId={user?.id ?? ""}
         progressPercent={progressPercent}
+        profile={profile}
       />
       <WorkExperienceDialog
         onFinished={(finished) =>
@@ -653,6 +665,7 @@ const StatusDialog = ({
         previous={previous}
         userId={user?.id ?? ""}
         progressPercent={progressPercent}
+        profile={profile}
       />
       <EducationDialog
         onFinished={(finished) =>
@@ -671,6 +684,7 @@ const StatusDialog = ({
         next={next}
         previous={previous}
         userId={user?.id ?? ""}
+        profile={profile}
       />
       <MoreInfoDialog
         onFinished={(finished) =>
@@ -690,6 +704,7 @@ const StatusDialog = ({
         previous={previous}
         userId={user?.id ?? ""}
         progressPercent={progressPercent}
+        profile={profile}
       />
       <Congratulations
         opened={dialogsState["CONGRATULATIONS"].opened}
@@ -703,7 +718,7 @@ const StatusDialog = ({
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent
-          dialogOverlay={<DialogOverlay className="backdrop-blur-lg" />}
+          dialogOverlay={<DialogOverlay className="bg-gray-700/50" />}
           variant="unanimated"
           className="shadow-[0px_20px_24px_-4px_rgba(16,24,40,.08)] max-w-[451px] bottom-5 right-5 duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5"
         >
@@ -862,6 +877,7 @@ const MoreInfoDialog = ({
   previous,
   userId,
   progressPercent,
+  profile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -870,6 +886,7 @@ const MoreInfoDialog = ({
   previous?: () => void
   userId: string
   progressPercent?: number
+  profile?: UserProfile | null
 }) => {
   const [open, setOpen] = useControllableState({
     defaultValue: false,
@@ -881,6 +898,7 @@ const MoreInfoDialog = ({
     "default"
   )
   const [editingIndex, setEditingIndex] = useState<number>()
+  const [profileLoaded, setProfileLoaded] = useState(false)
   const [workExperiences, setWorkExperiences] = useUncontrolledState<
     MoreInfoFormValues[] | undefined
   >({
@@ -900,6 +918,22 @@ const MoreInfoDialog = ({
     resolver: zodResolver(moreInfoFormSchema),
     defaultValues: moreInfoFormDefaultValues,
   })
+
+  // Pre-fill from saved profile data
+  useEffect(() => {
+    if (profile && !profileLoaded && (profile.rateMin || profile.rateMax || profile.role)) {
+      setProfileLoaded(true)
+      const entry: MoreInfoFormValues = {
+        jobTitle: profile.role ?? "",
+        saveAsDefault: true,
+        earning: profile.rateMin ? Number(profile.rateMin) : 0,
+        clientRate: profile.rateMax ? Number(profile.rateMax) : 0,
+        fee: 0,
+      }
+      setWorkExperiences([entry])
+      setState("preview")
+    }
+  }, [profile, profileLoaded, setWorkExperiences])
   const onSubmit: SubmitHandler<MoreInfoFormValues> = (values) => {
     if (editingIndex !== undefined) {
       // If this entry is being set as default, unmark the previous default
@@ -1531,6 +1565,7 @@ const AboutMeDialog = ({
   next,
   userId,
   progressPercent,
+  profile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -1538,6 +1573,7 @@ const AboutMeDialog = ({
   next?: () => void
   userId: string
   progressPercent?: number
+  profile?: UserProfile | null
 }) => {
   const onFinished = useCallbackRef(onFinishedProp)
   const [open, setOpen] = useControllableState({
@@ -1550,12 +1586,21 @@ const AboutMeDialog = ({
     formState: { errors, isValid },
     handleSubmit,
     control,
+    reset,
   } = useForm<AboutMeFormValues>({
     resolver: zodResolver(aboutMeFormSchema),
     defaultValues: {
       aboutMe: "",
     },
   })
+
+  // Pre-fill from saved profile data
+  useEffect(() => {
+    if (profile?.bio) {
+      reset({ aboutMe: profile.bio })
+    }
+  }, [profile, reset])
+
   const onSubmit: SubmitHandler<AboutMeFormValues> = ({ aboutMe }) => {
     next?.()
     if (userId) {
@@ -1708,6 +1753,7 @@ const SkillsDialog = ({
   previous,
   userId,
   progressPercent,
+  profile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -1716,6 +1762,7 @@ const SkillsDialog = ({
   previous?: () => void
   userId: string
   progressPercent?: number
+  profile?: UserProfile | null
 }) => {
   const onFinished = useCallbackRef(onFinishedProp)
   const [open, setOpen] = useControllableState({
@@ -1757,12 +1804,29 @@ const SkillsDialog = ({
   } = useForm<SkillsFormValues>({
     resolver: zodResolver(skillsFormSchema),
   })
+
+  // Track which skill names already exist in DB to avoid duplicates
+  const existingSkillNamesRef = React.useRef<Set<string>>(new Set())
+
+  // Pre-fill from saved profile data
+  useEffect(() => {
+    if (profile?.skills?.length) {
+      const mapped = profile.skills.map((s, i) => ({ id: i + 1, name: s.name }))
+      setValue("skills", mapped, { shouldValidate: true })
+      existingSkillNamesRef.current = new Set(profile.skills.map((s) => s.name))
+    }
+  }, [profile, setValue])
+
   const onSubmit: SubmitHandler<SkillsFormValues> = ({ skills }) => {
     next?.()
     if (userId) {
-      Promise.all(
-        skills.map((s) => UserAPI.addSkill(userId, { name: s.name }))
-      ).catch(() => {})
+      // Only add skills that don't already exist in DB
+      const newSkills = skills.filter((s) => !existingSkillNamesRef.current.has(s.name))
+      if (newSkills.length) {
+        Promise.all(
+          newSkills.map((s) => UserAPI.addSkill(userId, { name: s.name }))
+        ).catch(() => {})
+      }
     }
   }
 
@@ -2031,6 +2095,7 @@ const WorkExperienceDialog = ({
   previous,
   userId,
   progressPercent,
+  profile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -2039,6 +2104,7 @@ const WorkExperienceDialog = ({
   previous?: () => void
   userId: string
   progressPercent?: number
+  profile?: UserProfile | null
 }) => {
   const [open, setOpen] = useControllableState({
     defaultValue: false,
@@ -2075,6 +2141,7 @@ const WorkExperienceDialog = ({
     "default"
   )
   const [editingIndex, setEditingIndex] = useState<number>()
+  const [profileLoaded, setProfileLoaded] = useState(false)
   const [workExperiences, setWorkExperiences] = useUncontrolledState<
     WorkExperienceFormValues[] | undefined
   >({
@@ -2083,6 +2150,28 @@ const WorkExperienceDialog = ({
     },
     defaultValue: undefined,
   })
+
+  // Pre-fill from saved profile data
+  useEffect(() => {
+    if (profile?.experience?.length && !profileLoaded) {
+      setProfileLoaded(true)
+      const mapped: WorkExperienceFormValues[] = profile.experience.map((exp) => {
+        const [startYear, startMonth] = (exp.startDate ?? "").split("-").map(Number)
+        const [endYear, endMonth] = (exp.endDate ?? "").split("-").map(Number)
+        return {
+          employer: exp.company,
+          jobTitle: exp.role,
+          startDate: { month: startMonth || 1, year: startYear || 2020 },
+          endDate: { month: endMonth || undefined, year: endYear || undefined },
+          currentlyWorkHere: !exp.endDate,
+          jobDescription: exp.description ?? "",
+          skills: [],
+        }
+      })
+      setWorkExperiences(mapped)
+      setState("preview")
+    }
+  }, [profile, profileLoaded, setWorkExperiences])
   const {
     control,
     handleSubmit,
@@ -2888,6 +2977,7 @@ const EducationDialog = ({
   previous,
   userId,
   progressPercent,
+  profile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -2896,6 +2986,7 @@ const EducationDialog = ({
   previous?: () => void
   userId: string
   progressPercent?: number
+  profile?: UserProfile | null
 }) => {
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useControllableState({
@@ -2923,11 +3014,33 @@ const EducationDialog = ({
     "default"
   )
   const [editingIndex, setEditingIndex] = useState<number>()
+  const [profileLoaded, setProfileLoaded] = useState(false)
   const [educationQualifications, setEducationQualifications] =
     useUncontrolledState<EducationFormValues[] | undefined>({
       defaultValue: undefined,
       onChange: (value) => onFinished?.(Boolean(value?.length)),
     })
+
+  // Pre-fill from saved profile data
+  useEffect(() => {
+    if (profile?.education?.length && !profileLoaded) {
+      setProfileLoaded(true)
+      const mapped: EducationFormValues[] = profile.education.map((edu) => {
+        const [startYear, startMonth] = (edu.startDate ?? "").split("-").map(Number)
+        const [endYear, endMonth] = (edu.endDate ?? "").split("-").map(Number)
+        return {
+          schoolOrUniversity: edu.institution,
+          degree: edu.degree,
+          major: edu.field,
+          startDate: { month: startMonth || 1, year: startYear || 2020 },
+          endDate: { month: endMonth || undefined, year: endYear || undefined },
+          currentlyAttending: !edu.endDate,
+        }
+      })
+      setEducationQualifications(mapped)
+      setState("preview")
+    }
+  }, [profile, profileLoaded, setEducationQualifications])
 
   const onSubmit: SubmitHandler<EducationFormValues> = (values) => {
     if (editingIndex !== undefined) {

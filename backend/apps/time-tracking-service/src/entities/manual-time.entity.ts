@@ -9,19 +9,19 @@ import {
 
 export type ManualTimeStatus = 'pending' | 'approved' | 'rejected';
 
-@Entity('manual_time')
+@Entity({ name: 'manual_time', schema: 'time_tracking' })
 @Index(['userId', 'status'])
 export class ManualTime {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ type: 'text' })
   userId: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   projectId: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   taskId: string | null;
 
   @Column({ type: 'timestamptz' })
@@ -40,7 +40,7 @@ export class ManualTime {
   })
   status: ManualTimeStatus;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   reviewedBy: string | null;
 
   @Column({ type: 'text', nullable: true })

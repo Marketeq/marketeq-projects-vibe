@@ -5,7 +5,7 @@ export class CreateTooltips1714100000000 implements MigrationInterface {
 
   public async up(qr: QueryRunner): Promise<void> {
     await qr.query(`
-      CREATE TABLE IF NOT EXISTS public.tooltips (
+      CREATE TABLE IF NOT EXISTS time_tracking.tooltips (
         id   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         "key" text NOT NULL,
         text text NOT NULL,
@@ -15,7 +15,7 @@ export class CreateTooltips1714100000000 implements MigrationInterface {
 
     // Seed default static tooltips
     await qr.query(`
-      INSERT INTO public.tooltips ("key", text) VALUES
+      INSERT INTO time_tracking.tooltips ("key", text) VALUES
         ('timeCalculation', 'We calculate your activity using mouse and keyboard input during tracked hours. Screenshots are taken every 10 minutes to match the activity score.'),
         ('deleteReason',    'This helps us understand why screenshots are being deleted.'),
         ('noActivity',      'No mouse or keyboard activity was detected during this period.'),
@@ -25,6 +25,6 @@ export class CreateTooltips1714100000000 implements MigrationInterface {
   }
 
   public async down(qr: QueryRunner): Promise<void> {
-    await qr.query(`DROP TABLE IF EXISTS public.tooltips`);
+    await qr.query(`DROP TABLE IF EXISTS time_tracking.tooltips`);
   }
 }

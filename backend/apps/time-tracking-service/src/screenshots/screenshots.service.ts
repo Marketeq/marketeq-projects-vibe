@@ -96,7 +96,7 @@ export class ScreenshotsService {
     const now = new Date().toISOString();
 
     const updated = await (this.repo as any).query(
-      `UPDATE public.screenshots
+      `UPDATE time_tracking.screenshots
        SET is_deleted = true, deleted_at = $3, deletion_reason = $4
        WHERE id = $1 AND user_id = $2 AND is_deleted = false
        RETURNING id`,
@@ -109,7 +109,7 @@ export class ScreenshotsService {
 
     // Check if not found or not owner
     const rows = await (this.repo as any).query(
-      `SELECT id, user_id FROM public.screenshots WHERE id = $1`,
+      `SELECT id, user_id FROM time_tracking.screenshots WHERE id = $1`,
       [id],
     );
 

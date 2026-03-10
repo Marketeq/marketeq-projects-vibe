@@ -1,30 +1,30 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { User } from '../../user/entities/user.entity';
 
-@Entity('certifications')
+@Entity({ name: 'certifications', schema: 'user_service' })
 export class Certification {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column('uuid')
+  @Column({ type: 'uuid' })
   userId: string;
 
   @ManyToOne(() => User, (u) => u.certifications, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user: User;
 
-  @Column()
+  @Column({ type: 'text' })
   name: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   issuingOrganization: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   issueDate: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   expiryDate: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   credentialUrl: string;
 }

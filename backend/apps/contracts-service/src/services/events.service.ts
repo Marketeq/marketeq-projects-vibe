@@ -1,6 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { Inject } from '@nestjs/common';
 
 @Injectable()
 export class EventsService {
@@ -28,6 +27,14 @@ export class EventsService {
 
   contractEnded(contractId: string, groupId: string, clientId: string, talentId: string, reasonCode: string, endAtISO: string): void {
     this.emit('contract.ended', { contractId, groupId, clientId, talentId, reasonCode, endAtISO });
+  }
+
+  groupEnded(groupId: string): void {
+    this.emit('contract.group.ended', { groupId });
+  }
+
+  contractDisputed(contractId: string, groupId: string, clientId: string, talentId: string, reason: string): void {
+    this.emit('contract.disputed', { contractId, groupId, clientId, talentId, reason });
   }
 
   contractsCanceled(groupId: string, contractIds: string[], reason: string): void {

@@ -685,7 +685,7 @@ export const TopMostHeader = () => {
                     </span>
                   </div>
 
-                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push("/client-dashboard") }}>My Account</Button>
+                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push(user?.role === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>My Account</Button>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuItem onClick={() => router.push("/publish-project")}>

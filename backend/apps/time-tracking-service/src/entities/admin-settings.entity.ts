@@ -7,13 +7,13 @@ import {
   Index,
 } from 'typeorm';
 
-@Entity('admin_settings')
+@Entity({ name: 'admin_settings', schema: 'time_tracking' })
 @Index(['scopeId'], { unique: true })
 export class AdminSettings {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
+  @Column({ type: 'text', unique: true })
   scopeId: string;
 
   @Column({ default: true })

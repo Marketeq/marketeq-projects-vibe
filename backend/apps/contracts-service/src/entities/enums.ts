@@ -3,6 +3,7 @@ export enum ContractStatus {
   ACTIVE = 'active',
   ENDED = 'ended',
   CANCELED = 'canceled',
+  DISPUTED = 'disputed',
 }
 
 export enum GroupType {

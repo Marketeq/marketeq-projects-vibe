@@ -208,16 +208,20 @@ export default function SignIn() {
               Login to your account below
             </p>
 
-            {process.env.NODE_ENV === "development" && (
+            {process.env.NEXT_PUBLIC_ENV === "development" && (
               <div className="mt-10 md:mt-[50px] grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => {
+                    // Create a dev JWT so /user/me works on refresh
+                    const payload = btoa(JSON.stringify({ sub: "dev", email: "taylor.kim@example.com" }))
+                    const devToken = `eyJ0eXAiOiJKV1QiLCJhbGciOiJub25lIn0.${payload}.dev`
+                    Cookies.set("access_token", devToken, { path: "/" })
                     setUser({
                       id: "dev-client",
-                      email: "client@marketeq.dev",
-                      firstName: "Christopher",
-                      lastName: "Torres",
+                      email: "taylor.kim@example.com",
+                      firstName: "Taylor",
+                      lastName: "Kim",
                       role: "CLIENT" as any,
                       provider: "EMAIL" as any,
                       hasPassword: true,
@@ -235,12 +239,27 @@ export default function SignIn() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
+                    // Create a dev JWT so /user/me works on refresh
+                    const payload = btoa(JSON.stringify({ sub: "dev", email: "jordan.patel@example.com" }))
+                    const devToken = `eyJ0eXAiOiJKV1QiLCJhbGciOiJub25lIn0.${payload}.dev`
+                    Cookies.set("access_token", devToken, { path: "/" })
+                    // Fetch real user from DB via /user/me
+                    try {
+                      const res = await UserAPI.me()
+                      const u = res?.data
+                      if (u?.id) {
+                        setUser({ ...u, role: "TALENT", provider: "EMAIL", hasPassword: true, emailVerified: true, deletedAt: null })
+                        router.push("/talent-dashboard")
+                        return
+                      }
+                    } catch {}
+                    // Fallback if API fails
                     setUser({
                       id: "dev-talent",
-                      email: "talent@marketeq.dev",
-                      firstName: "Alex",
-                      lastName: "Smith",
+                      email: "jordan.patel@example.com",
+                      firstName: "Jordan",
+                      lastName: "Patel",
                       role: "TALENT" as any,
                       provider: "EMAIL" as any,
                       hasPassword: true,

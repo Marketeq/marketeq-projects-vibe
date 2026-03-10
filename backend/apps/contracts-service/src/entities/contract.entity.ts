@@ -1,13 +1,19 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn,
+  ManyToOne, JoinColumn, Index,
+} from 'typeorm';
 import { ContractStatus } from './enums';
 import { ContractGroup } from './contract-group.entity';
 
 @Entity('contracts')
+@Index(['clientId'])
+@Index(['talentId'])
+@Index(['status'])
 export class Contract {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column('uuid')
   groupId: string;
 
   @ManyToOne(() => ContractGroup, (g) => g.contracts, { onDelete: 'CASCADE' })
@@ -44,7 +50,7 @@ export class Contract {
   @Column({ nullable: true })
   reasonCode: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   notes: string;
 
   @Column({ nullable: true })

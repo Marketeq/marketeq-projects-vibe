@@ -5,7 +5,7 @@ export class CreateManualTimeAndSettings1713000000000 implements MigrationInterf
 
   public async up(qr: QueryRunner): Promise<void> {
     await qr.query(`
-      CREATE TABLE IF NOT EXISTS manual_time (
+      CREATE TABLE IF NOT EXISTS time_tracking.manual_time (
         id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id        text NOT NULL,
         project_id     text NULL,
@@ -20,10 +20,10 @@ export class CreateManualTimeAndSettings1713000000000 implements MigrationInterf
         updated_at     timestamptz NOT NULL DEFAULT now()
       )
     `);
-    await qr.query(`CREATE INDEX IF NOT EXISTS idx_manual_time_user_status ON manual_time (user_id, status)`);
+    await qr.query(`CREATE INDEX IF NOT EXISTS idx_manual_time_user_status ON time_tracking.manual_time (user_id, status)`);
 
     await qr.query(`
-      CREATE TABLE IF NOT EXISTS admin_settings (
+      CREATE TABLE IF NOT EXISTS time_tracking.admin_settings (
         id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         scope_id              text NOT NULL UNIQUE,
         allow_delete          boolean NOT NULL DEFAULT true,
@@ -38,7 +38,7 @@ export class CreateManualTimeAndSettings1713000000000 implements MigrationInterf
     `);
 
     await qr.query(`
-      CREATE TABLE IF NOT EXISTS user_preferences (
+      CREATE TABLE IF NOT EXISTS time_tracking.user_preferences (
         id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id      text NOT NULL UNIQUE,
         timezone     text NOT NULL DEFAULT 'UTC',
@@ -51,9 +51,9 @@ export class CreateManualTimeAndSettings1713000000000 implements MigrationInterf
   }
 
   public async down(qr: QueryRunner): Promise<void> {
-    await qr.query(`DROP TABLE IF EXISTS user_preferences`);
-    await qr.query(`DROP TABLE IF EXISTS admin_settings`);
-    await qr.query(`DROP INDEX IF EXISTS idx_manual_time_user_status`);
-    await qr.query(`DROP TABLE IF EXISTS manual_time`);
+    await qr.query(`DROP TABLE IF EXISTS time_tracking.user_preferences`);
+    await qr.query(`DROP TABLE IF EXISTS time_tracking.admin_settings`);
+    await qr.query(`DROP INDEX IF EXISTS time_tracking.idx_manual_time_user_status`);
+    await qr.query(`DROP TABLE IF EXISTS time_tracking.manual_time`);
   }
 }

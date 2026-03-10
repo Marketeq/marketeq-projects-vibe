@@ -28,6 +28,15 @@ export class UserService {
     return this.userRepo.save(user);
   }
 
+  async findAll(limit = 50, offset = 0): Promise<User[]> {
+    return this.userRepo.find({
+      relations: ['skills', 'languages', 'certifications', 'industries'],
+      take: limit,
+      skip: offset,
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async findById(id: string): Promise<User> {
     const user = await this.userRepo.findOne({
       where: { id },
@@ -37,14 +46,14 @@ export class UserService {
     return user;
   }
 
-  async findByEmail(email: string): Promise<User> {
+  async findByEmail(email: string): Promise<User | null> {
     return this.userRepo.findOne({ where: { email } });
   }
 
   async findByUsername(username: string): Promise<User> {
     const user = await this.userRepo.findOne({
       where: { username },
-      relations: ['skills', 'languages', 'certifications', 'industries'],
+      relations: ['education', 'experience', 'skills', 'languages', 'certifications', 'industries'],
     });
     if (!user) throw new NotFoundException('User not found');
     return user;
@@ -61,7 +70,11 @@ export class UserService {
   }
 
   async dismissOnboarding(id: string): Promise<void> {
-    await this.userRepo.update(id, { onboardingDismissed: true, onboardingStatus: 'completed' });
+    await this.userRepo.update(id, {
+      onboardingDismissed: true,
+      onboardingStatus: 'completed',
+      onboardedAt: new Date(),
+    });
   }
 
   async remove(id: string): Promise<void> {
@@ -75,7 +88,9 @@ export class UserService {
   }
   async updateEducation(id: string, dto: Partial<Education>): Promise<Education> {
     await this.educationRepo.update(id, dto);
-    return this.educationRepo.findOne({ where: { id } });
+    const found = await this.educationRepo.findOne({ where: { id } });
+    if (!found) throw new NotFoundException('Education entry not found');
+    return found;
   }
   async removeEducation(id: string): Promise<void> {
     await this.educationRepo.delete(id);
@@ -88,7 +103,9 @@ export class UserService {
   }
   async updateExperience(id: string, dto: Partial<Experience>): Promise<Experience> {
     await this.experienceRepo.update(id, dto);
-    return this.experienceRepo.findOne({ where: { id } });
+    const found = await this.experienceRepo.findOne({ where: { id } });
+    if (!found) throw new NotFoundException('Experience entry not found');
+    return found;
   }
   async removeExperience(id: string): Promise<void> {
     await this.experienceRepo.delete(id);
@@ -101,7 +118,9 @@ export class UserService {
   }
   async updateSkill(id: string, dto: Partial<Skill>): Promise<Skill> {
     await this.skillRepo.update(id, dto);
-    return this.skillRepo.findOne({ where: { id } });
+    const found = await this.skillRepo.findOne({ where: { id } });
+    if (!found) throw new NotFoundException('Skill not found');
+    return found;
   }
   async removeSkill(id: string): Promise<void> {
     await this.skillRepo.delete(id);
@@ -114,7 +133,9 @@ export class UserService {
   }
   async updateLanguage(id: string, dto: Partial<Language>): Promise<Language> {
     await this.languageRepo.update(id, dto);
-    return this.languageRepo.findOne({ where: { id } });
+    const found = await this.languageRepo.findOne({ where: { id } });
+    if (!found) throw new NotFoundException('Language not found');
+    return found;
   }
   async removeLanguage(id: string): Promise<void> {
     await this.languageRepo.delete(id);
@@ -127,7 +148,9 @@ export class UserService {
   }
   async updateCertification(id: string, dto: Partial<Certification>): Promise<Certification> {
     await this.certRepo.update(id, dto);
-    return this.certRepo.findOne({ where: { id } });
+    const found = await this.certRepo.findOne({ where: { id } });
+    if (!found) throw new NotFoundException('Certification not found');
+    return found;
   }
   async removeCertification(id: string): Promise<void> {
     await this.certRepo.delete(id);

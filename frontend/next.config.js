@@ -18,6 +18,14 @@ const nextConfig = {
         protocol: "https",
         hostname: "cdn.sanity.io",
       },
+      {
+        protocol: "https",
+        hostname: "pub-4789db6a57d64de3ad7b5e8c316d125b.r2.dev",
+      },
+      {
+        protocol: "https",
+        hostname: "randomuser.me",
+      },
     ],
   },
 }
