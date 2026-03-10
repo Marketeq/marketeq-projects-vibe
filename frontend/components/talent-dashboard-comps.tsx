@@ -286,14 +286,12 @@ export const RightDrawer = ({ className }: { className?: string }) => {
           />
 
           <div className="gap-y-2 flex items-start flex-col">
-            <Button
-              className="underline text-dark-blue-400 hover:text-primary-500"
-              visual="gray"
-              size="md"
-              variant="link"
+            <NextLink
+              href="/complete-profile?open=1"
+              className="underline text-[13px] font-medium text-dark-blue-400 hover:text-primary-500"
             >
               Complete Your Profile
-            </Button>
+            </NextLink>
 
             <span className="text-[13px] leading-[15.73px] font-light">
               Talents with complete profiles are 4 times more likely to get
@@ -424,14 +422,12 @@ export const RightSidebar = ({ className }: { className?: string }) => {
           />
 
           <div className="gap-y-2 flex items-start flex-col">
-            <Button
-              className="underline text-dark-blue-400 hover:text-primary-500"
-              visual="gray"
-              size="md"
-              variant="link"
+            <NextLink
+              href="/complete-profile?open=1"
+              className="underline text-[13px] font-medium text-dark-blue-400 hover:text-primary-500"
             >
               Complete Your Profile
-            </Button>
+            </NextLink>
 
             <span className="text-[13px] leading-[15.73px] font-light">
               Talents with complete profiles are 4 times more likely to get

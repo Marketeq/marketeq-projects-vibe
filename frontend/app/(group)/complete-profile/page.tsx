@@ -1,6 +1,7 @@
 "use client"
 
 import React, { Fragment, SVGProps, useEffect, useRef, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI, EducationPayload, ExperiencePayload } from "@/service/http/user"
 import { cn, hookFormHasError, noop } from "@/utils/functions"
@@ -139,7 +140,8 @@ const ThinkCheck = (props: SVGProps<SVGSVGElement>) => (
 )
 
 const RightSidebar = () => {
-  const [isOpen, setIsOpen] = useState(false)
+  const searchParams = useSearchParams()
+  const [isOpen, setIsOpen] = useState(() => searchParams.get("open") === "1")
   return (
     <div className="shrink-0 w-[322px]">
       <div className="bg-white border border-gray-200 rounded-lg shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
@@ -662,9 +664,24 @@ const StatusDialog = ({
                               {content[dialogName].desc}
                             </p>
                           </div>
-                          <div className="size-[30px] rounded-full bg-success-500 text-white shrink-0 inline-flex items-center justify-center">
-                            <Check className="size-[19px]" />
-                          </div>
+                          <Button
+                            type="button"
+                            className="h-8 text-xs leading-5 text-success-500 border-success-500 rounded-full"
+                            variant="outlined"
+                            visual="gray"
+                            onClick={() =>
+                              setDialogsState((prev) => ({
+                                ...prev,
+                                [dialogName]: {
+                                  ...prev[dialogName],
+                                  opened: true,
+                                },
+                              }))
+                            }
+                          >
+                            <Check className="size-3" />
+                            Edit
+                          </Button>
                         </div>
                       </article>
                     ) : (
