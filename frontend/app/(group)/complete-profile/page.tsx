@@ -896,14 +896,24 @@ const MoreInfoDialog = ({
   })
   const onSubmit: SubmitHandler<MoreInfoFormValues> = (values) => {
     if (editingIndex !== undefined) {
-      setWorkExperiences(
-        workExperiences?.map((workExperience, index) =>
-          index === editingIndex ? values : workExperience
-        )
-      )
+      // If this entry is being set as default, unmark the previous default
+      const updated = workExperiences?.map((workExperience, index) => {
+        if (index === editingIndex) return values
+        if (values.saveAsDefault) return { ...workExperience, saveAsDefault: false }
+        return workExperience
+      })
+      setWorkExperiences(updated)
       setEditingIndex(undefined)
     } else {
-      setWorkExperiences((prev) => (prev ? [...prev, values] : [values]))
+      // If new entry is marked default, unmark previous defaults
+      setWorkExperiences((prev) => {
+        const newEntry = values
+        if (!prev) return [newEntry]
+        if (newEntry.saveAsDefault) {
+          return [...prev.map((e) => ({ ...e, saveAsDefault: false })), newEntry]
+        }
+        return [...prev, newEntry]
+      })
     }
     if (userId) {
       UserAPI.updateProfile(userId, {
@@ -911,7 +921,7 @@ const MoreInfoDialog = ({
         rateMax: values.clientRate ? Number(values.clientRate) : undefined,
       }).catch(() => {})
     }
-    reset()
+    reset(moreInfoFormDefaultValues as MoreInfoFormValues)
     setState("preview")
   }
 
@@ -948,13 +958,16 @@ const MoreInfoDialog = ({
                   {state === "preview" && (
                     <Button
                       onClick={() => {
+                        if ((workExperiences?.length ?? 0) >= 3) return
+                        setEditingIndex(undefined)
+                        reset(moreInfoFormDefaultValues as MoreInfoFormValues)
                         setState("action")
-                        reset()
                       }}
                       className="bg-white"
                       variant="outlined"
                       visual="gray"
                       type="button"
+                      disabled={(workExperiences?.length ?? 0) >= 3}
                     >
                       <Plus className="size-[15px]" />
                       Add Job Title
@@ -993,7 +1006,11 @@ const MoreInfoDialog = ({
                 <div className="mt-6">
                   {state === "default" && (
                     <Button
-                      onClick={() => setState("action")}
+                      onClick={() => {
+                        setEditingIndex(undefined)
+                        reset(moreInfoFormDefaultValues as MoreInfoFormValues)
+                        setState("action")
+                      }}
                       className="bg-white"
                       variant="outlined"
                       visual="gray"
@@ -1019,11 +1036,11 @@ const MoreInfoDialog = ({
                             <div className="mt-1 flex items-center gap-x-3">
                               <div className="flex items-center flex-none gap-x-2">
                                 <span className="text-xs leading-none font-light text-dark-blue-400">
-                                  Client rate {workExperience.clientRate}/hr
+                                  Client rate ${workExperience.clientRate ?? 0}/hr
                                 </span>
                                 <span className="inline-block size-1 bg-gray-300 rounded-full" />
                                 <span className="text-xs leading-none font-light text-dark-blue-400">
-                                  Your earnings {workExperience.earning}/hr
+                                  Your earnings ${workExperience.earning ?? 0}/hr
                                 </span>
                               </div>
 
@@ -1052,6 +1069,11 @@ const MoreInfoDialog = ({
                               variant="ghost"
                               type="button"
                               className="text-gray-400 rounded-full hover:text-error-500 hover:bg-error-50"
+                              onClick={() => {
+                                const updated = workExperiences?.filter((_, i) => i !== index)
+                                setWorkExperiences(updated?.length ? updated : undefined)
+                                if (!updated?.length) setState("default")
+                              }}
                             >
                               <Trash03 className="size-[15px]" />
                             </IconButton>
@@ -1064,12 +1086,12 @@ const MoreInfoDialog = ({
                   {state === "action" && (
                     <>
                       <div className="space-y-1.5">
-                        <Label size="sm" htmlFor="job-title-1">
-                          Job Title 1
+                        <Label size="sm" htmlFor="job-title-input">
+                          Job Title {editingIndex !== undefined ? editingIndex + 1 : (workExperiences?.length ?? 0) + 1}
                         </Label>
 
                         <Input
-                          id="job-title-1"
+                          id="job-title-input"
                           placeholder="e.g. Software Engineer"
                           {...register("jobTitle")}
                           onBlur={(e) => {
@@ -1384,10 +1406,11 @@ const MoreInfoDialog = ({
                     <div className="border-t rounded-b-xl flex items-center justify-between border-gray-200 bg-gray-25 py-4 px-6">
                       <DialogClose
                         onClick={() => {
+                          setEditingIndex(undefined)
+                          reset(moreInfoFormDefaultValues as MoreInfoFormValues)
                           Boolean(workExperiences?.length)
                             ? setState("preview")
                             : setState("default")
-                          reset()
                         }}
                         asChild
                       >
