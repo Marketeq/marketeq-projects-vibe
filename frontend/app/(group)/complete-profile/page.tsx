@@ -394,9 +394,9 @@ const content = {
     desc: "Show your qualifications to give clients confidence",
   },
   JOB_TITLE_RATE: {
-    icon: <User className="size-5" />,
+    icon: <CreditCard02 className="size-5" />,
     title: "Job Title & Rate",
-    desc: "Message is received in Gmail",
+    desc: "Set your rate and job title to attract the right clients",
   },
 } as Record<
   Exclude<(typeof DIALOG_NAMES)[number], "CONGRATULATIONS">,
@@ -421,25 +421,6 @@ const defaultDialogsState = (): DialogsStateType =>
     {} as DialogsStateType
   )
 
-const loadDialogsState = (): DialogsStateType => {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      // Merge with default to handle any new dialog names
-      const def = defaultDialogsState()
-      return DIALOG_NAMES.reduce(
-        (acc, name) => ({
-          ...acc,
-          [name]: { finished: parsed[name]?.finished ?? false, opened: false },
-        }),
-        {} as DialogsStateType
-      )
-    }
-  } catch {}
-  return defaultDialogsState()
-}
-
 const StatusDialog = ({
   onOpenChange,
   open,
@@ -448,7 +429,26 @@ const StatusDialog = ({
   onOpenChange?: (open: boolean) => void
 }) => {
   const { user } = useAuth()
-  const [dialogsState, setDialogsState] = useState<DialogsStateType>(loadDialogsState)
+  const [dialogsState, setDialogsState] = useState<DialogsStateType>(defaultDialogsState)
+
+  // Load from localStorage on mount (client-side only — localStorage unavailable during SSR)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        setDialogsState(
+          DIALOG_NAMES.reduce(
+            (acc, name) => ({
+              ...acc,
+              [name]: { finished: parsed[name]?.finished ?? false, opened: false },
+            }),
+            {} as DialogsStateType
+          )
+        )
+      }
+    } catch {}
+  }, [])
 
   // Persist finished state to localStorage whenever it changes
   useEffect(() => {
