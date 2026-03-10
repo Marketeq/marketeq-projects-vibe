@@ -708,20 +708,23 @@ const StatusDialog = ({
             <div className="p-6 bg-white border-gray-200 flex items-center gap-x-[18px] border-b">
               <div className="flex-auto space-y-2">
                 <p className="text-sm leading-none text-dark-blue-400">
-                  Boost your hiring potential, Chris!
+                  Boost your hiring potential{user?.firstName ? `, ${user.firstName}` : ""}!
                 </p>
                 <h2 className="text-lg font-semibold leading-none text-dark-blue-400">
                   Complete your profile to get hired by top clients.
                 </h2>
               </div>
-              <Badge visual="primary" size="lg">
-                {(Object.keys(content) as (keyof typeof content)[]).reduce(
-                  (previous, current) =>
-                    dialogsState[current].finished ? previous - 1 : previous,
+              {(() => {
+                const remaining = (Object.keys(content) as (keyof typeof content)[]).reduce(
+                  (prev, cur) => (dialogsState[cur].finished ? prev - 1 : prev),
                   Object.keys(content).length
-                )}{" "}
-                steps left
-              </Badge>
+                )
+                return remaining === 0 ? (
+                  <Badge visual="success" size="lg">All done! 🎉</Badge>
+                ) : (
+                  <Badge visual="primary" size="lg">{remaining} step{remaining !== 1 ? "s" : ""} left</Badge>
+                )
+              })()}
             </div>
             <div className="p-6 space-y-2.5 bg-gray-50">
               {(Object.keys(content) as (keyof typeof content)[]).map(
@@ -3764,8 +3767,8 @@ const Congratulations = ({
                   <span className="text-base leading-6 text-gray-600">
                     Need Help?{" "}
                   </span>
-                  <Button variant="link" size="lg">
-                    View FAQs
+                  <Button variant="link" size="lg" asChild>
+                    <a href="/help">View FAQs</a>
                   </Button>
                 </div>
               </div>
@@ -3792,55 +3795,42 @@ const Congratulations = ({
 
           <div className="mt-[30px]">
             <ul className="space-y-[19px]">
-              <li className="flex items-center gap-x-[15px] border border-gray-300 p-[15px] rounded-lg bg-white">
-                <CreditCard02 className="shrink-0 size-8 text-dark-blue-400" />
-                <span className="text-lg font-semibold leading-none text-dark-blue-400">
-                  Set up payments
-                </span>
-              </li>
-              <li className="flex items-center gap-x-[15px] border border-gray-300 p-[15px] rounded-lg bg-white">
-                <Search className="shrink-0 size-8 text-dark-blue-400" />
-                <span className="text-lg font-semibold leading-none text-dark-blue-400">
-                  Find open projects
-                </span>
-              </li>
-              <li className="flex items-center gap-x-[15px] border border-gray-300 p-[15px] rounded-lg bg-white">
-                <UsersPlus className="shrink-0 size-8 text-dark-blue-400" />
-                <span className="text-lg font-semibold leading-none text-dark-blue-400">
-                  Join a team
-                </span>
-              </li>
-              <li className="flex items-center gap-x-[15px] border border-gray-300 p-[15px] rounded-lg bg-white">
-                <Briefcase02 className="shrink-0 size-8 text-dark-blue-400" />
-                <span className="text-lg font-semibold leading-none text-dark-blue-400">
-                  Create a new project
-                </span>
-              </li>
-              <li className="flex items-center gap-x-[15px] border border-gray-300 p-[15px] rounded-lg bg-white">
-                <RefreshCw className="shrink-0 size-8 text-dark-blue-400" />
-                <span className="text-lg font-semibold leading-none text-dark-blue-400">
-                  Start a new service
-                </span>
-              </li>
-              <li className="flex items-center gap-x-[15px] border border-gray-300 p-[15px] rounded-lg bg-white">
-                <UserPlus01 className="shrink-0 size-8 text-dark-blue-400" />
-                <span className="text-lg font-semibold leading-none text-dark-blue-400">
-                  Set up my account
-                </span>
-              </li>
+              {[
+                { icon: <CreditCard02 className="shrink-0 size-8 text-dark-blue-400" />, label: "Set up payments", href: "/talent-dashboard" },
+                { icon: <Search className="shrink-0 size-8 text-dark-blue-400" />, label: "Find open projects", href: "/search" },
+                { icon: <UsersPlus className="shrink-0 size-8 text-dark-blue-400" />, label: "Join a team", href: "/search" },
+                { icon: <Briefcase02 className="shrink-0 size-8 text-dark-blue-400" />, label: "Create a new project", href: "/submit-project" },
+                { icon: <RefreshCw className="shrink-0 size-8 text-dark-blue-400" />, label: "Start a new service", href: "/talent-dashboard" },
+                { icon: <UserPlus01 className="shrink-0 size-8 text-dark-blue-400" />, label: "Set up my account", href: "/account-settings" },
+              ].map(({ icon, label, href }) => (
+                <li key={label}>
+                  <DialogClose asChild>
+                    <a
+                      href={href}
+                      className="flex items-center gap-x-[15px] border border-gray-300 p-[15px] rounded-lg bg-white hover:bg-gray-50 hover:border-gray-400 transition-colors cursor-pointer"
+                    >
+                      {icon}
+                      <span className="text-lg font-semibold leading-none text-dark-blue-400">
+                        {label}
+                      </span>
+                      <ChevronRight className="ml-auto size-5 text-gray-400" />
+                    </a>
+                  </DialogClose>
+                </li>
+              ))}
             </ul>
           </div>
 
           <div className="mt-[30px] flex items-center justify-center">
-            <Button
-              size="xl"
-              className="text-dark-blue-400"
-              visual="gray"
-              variant="link"
-            >
-              <Home03 className="size-[18px]" />
-              Go to Dashboard
-            </Button>
+            <DialogClose asChild>
+              <a
+                href="/talent-dashboard"
+                className="inline-flex items-center gap-x-2 text-xl text-dark-blue-400 hover:underline"
+              >
+                <Home03 className="size-[18px]" />
+                Go to Dashboard
+              </a>
+            </DialogClose>
           </div>
         </div>
       </DialogContent>
