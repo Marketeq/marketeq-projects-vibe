@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useCallback, useEffect, useRef, useState } from "react"
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
@@ -266,7 +266,15 @@ const Shimmer = ({ className }: { className?: string }) => (
   </div>
 )
 
-export default function Default() {
+export default function DefaultPage() {
+  return (
+    <Suspense>
+      <Default />
+    </Suspense>
+  )
+}
+
+function Default() {
   const { user } = useAuth()
   const searchParams = useSearchParams()
   const usernameParam = searchParams.get("username")
@@ -598,10 +606,11 @@ export default function Default() {
   const fmtDate = (d: string | null) => {
     if (!d) return "Present"
     const [y, m] = d.split("-")
-    return `${MONTH_NAMES[parseInt(m, 10) - 1]} ${y}`
+    return `${MONTH_NAMES[parseInt(m, 10) - 1] ?? m} ${y}`
   }
 
-  const calcDuration = (start: string, end: string | null) => {
+  const calcDuration = (start: string | null | undefined, end: string | null) => {
+    if (!start) return ""
     const s = new Date(start + "-01")
     const e = end ? new Date(end + "-01") : new Date()
     let totalMonths = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth())
@@ -896,7 +905,19 @@ export default function Default() {
                                   </Badge>
                                 ))
                               : (
-                                <span className="text-sm text-gray-400">No skills added yet.</span>
+                                <>
+                                  <span className="text-sm text-gray-400">No skills added yet.</span>
+                                  {isEditMode && isOwnProfile && (
+                                    <Button
+                                      variant="outlined"
+                                      visual="gray"
+                                      size="sm"
+                                      onClick={() => setSkillsOpen(true)}
+                                    >
+                                      <Plus className="size-4" /> Add Skills
+                                    </Button>
+                                  )}
+                                </>
                               )
                             }
                           </ShowMoreLess>
@@ -1723,9 +1744,25 @@ export default function Default() {
                     </ShowMoreLessRoot>
                   ) : (
                     <div className="mt-4 p-5 border border-gray-200 rounded-lg bg-gray-25">
-                      <p className="text-sm font-extralight text-gray-500">
-                        Showcase your expertise and the strengths that set you apart. Highlight the skills that define your work so the right clients can recognize your value and find you faster.
-                      </p>
+                      <div className="flex items-start justify-between gap-x-4">
+                        <div className="flex-auto">
+                          <h2 className="text-base font-bold text-dark-blue-400">Skills</h2>
+                          <p className="mt-2 text-sm font-extralight text-gray-500">
+                            Showcase your expertise and the strengths that set you apart. Highlight the skills that define your work so the right clients can recognize your value and find you faster.
+                          </p>
+                        </div>
+                        {isEditMode && isOwnProfile && (
+                          <Button
+                            className="shrink-0"
+                            variant="outlined"
+                            visual="gray"
+                            size="sm"
+                            onClick={() => setSkillsOpen(true)}
+                          >
+                            <Plus className="size-4" /> Add Skills
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1822,6 +1859,7 @@ export default function Default() {
                           className="rounded-full text-gray-500 hover:text-gray-800"
                           variant="ghost"
                           visual="gray"
+                          onClick={() => setCertificationsOpen(true)}
                         >
                           <Edit03 className="size-4" />
                         </IconButton>
@@ -6644,6 +6682,7 @@ export default function Default() {
                               </ShowMoreLessComp>
                             </div>
 
+                            {(profile?.experience?.length ?? 0) > 3 && (
                             <div className="flex mt-6 items-center justify-center">
                               <Button
                                 variant="link"
@@ -6653,6 +6692,7 @@ export default function Default() {
                                 {isShowing ? "View Less" : "View More"}
                               </Button>
                             </div>
+                            )}
                           </>
                         )}
                       </ShowMoreLessRoot>

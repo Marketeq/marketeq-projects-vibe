@@ -30,7 +30,7 @@ const Breadcrumb = React.forwardRef<
     const clones = validChildren.map((child, index) =>
       React.cloneElement(child, {
         isLastChild: count === index + 1,
-      })
+      } as any)
     )
 
     return (
@@ -127,7 +127,7 @@ const BreadcrumbItem = React.forwardRef<
     const clones = validChildren.map((child) =>
       React.cloneElement(child, {
         isCurrentPage,
-      })
+      } as any)
     )
 
     return (

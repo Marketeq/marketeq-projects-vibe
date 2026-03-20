@@ -1,6 +1,6 @@
 "use client"
 
-import React, { Fragment, SVGProps, useEffect, useRef, useState } from "react"
+import React, { Fragment, Suspense, SVGProps, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI, EducationPayload, ExperiencePayload } from "@/service/http/user"
@@ -293,7 +293,15 @@ const RightSidebar = () => {
   )
 }
 
-export default function TalentDashboard() {
+export default function TalentDashboardPage() {
+  return (
+    <Suspense>
+      <TalentDashboard />
+    </Suspense>
+  )
+}
+
+function TalentDashboard() {
   const [isOpen, toggleIsOpen] = useToggle(false)
 
   return (
