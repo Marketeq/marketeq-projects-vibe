@@ -50,6 +50,7 @@ export type UserEducation = {
   field: string
   startDate: string
   endDate?: string | null
+  institutionLogoUrl?: string | null
 }
 
 export type UserExperience = {
@@ -59,6 +60,7 @@ export type UserExperience = {
   startDate: string
   endDate?: string | null
   description?: string | null
+  companyLogoUrl?: string | null
 }
 
 export type UserCertification = {

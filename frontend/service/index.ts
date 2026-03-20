@@ -16,7 +16,7 @@ axios.defaults.baseURL = BASE
 
 const axiosInstance = axios.create({
   baseURL: BASE,
-  timeout: 10000,
+  timeout: 30000,
 })
 
 axiosInstance.interceptors.request.use(
@@ -24,8 +24,6 @@ axiosInstance.interceptors.request.use(
     const access_token = Cookies.get("access_token")
     if (access_token) {
       config.headers.Authorization = `Bearer ${access_token}`
-    } else {
-      delete config.headers.Authorization
     }
 
     return Promise.resolve(config)
