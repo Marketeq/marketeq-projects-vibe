@@ -8706,14 +8706,14 @@ export default function Default() {
           <AvailabilityDialog opened={availabilityOpen} onOpenedChange={setAvailabilityOpen} profile={profile} onSaved={refreshProfile} />
           <SkillsDialog opened={skillsOpen} onOpenedChange={setSkillsOpen} profile={profile} onSaved={refreshProfile} />
           <AboutMeDialog opened={overviewOpen} onOpenedChange={setOverviewOpen} profile={profile} onSaved={refreshProfile} />
-          <MyOffersDialog opened={offersOpen} onOpenedChange={setOffersOpen} profile={profile} onSaved={refreshProfile} />
+          <MyOffersDialog opened={offersOpen} onOpenedChange={setOffersOpen} />
           <MoreInfoDialog opened={jobTitleOpen} onOpenedChange={setJobTitleOpen} profile={profile} onSaved={refreshProfile} />
           <LanguagesDialog opened={languagesOpen} onOpenedChange={setLanguagesOpen} profile={profile} onSaved={refreshProfile} />
           <IndustryExpertiseDialog opened={industriesOpen} onOpenedChange={setIndustriesOpen} profile={profile} onSaved={refreshProfile} />
           <CertificationsDialog opened={certificationsOpen} onOpenedChange={setCertificationsOpen} profile={profile} onSaved={refreshProfile} />
           <WorkExperienceDialog opened={workExperienceOpen} onOpenedChange={setWorkExperienceOpen} profile={profile} onSaved={refreshProfile} />
           <EducationDialog opened={educationOpen} onOpenedChange={setEducationOpen} profile={profile} onSaved={refreshProfile} />
-          <AffiliatedTeamsDialog opened={affiliatedTeamsOpen} onOpenedChange={setAffiliatedTeamsOpen} profile={profile} onSaved={refreshProfile} />
+          <AffiliatedTeamsDialog opened={affiliatedTeamsOpen} onOpenedChange={setAffiliatedTeamsOpen} />
           <StatusDialog
             open={statusDialogOpen}
             onOpenChange={(open) => {
