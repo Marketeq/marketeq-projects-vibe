@@ -4,8 +4,10 @@ import { JwtService } from '@nestjs/jwt'
 
 const PUBLIC_ROUTES = [
   '/health', '/ready',
-  '/auth/login', '/auth/signup', '/auth/refresh',
+  '/auth/login', '/auth/signup', '/auth/register', '/auth/register-email',
+  '/auth/refresh', '/auth/check-username',
   '/auth/google', '/auth/linkedin', '/auth/magic-link', '/auth/verify',
+  '/auth/forgot-password', '/auth/reset-password',
   '/search', '/autocomplete', '/suggestions',
   '/v1/users/username',
   '/v1/users/health',

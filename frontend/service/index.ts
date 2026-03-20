@@ -22,7 +22,11 @@ const axiosInstance = axios.create({
 axiosInstance.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     const access_token = Cookies.get("access_token")
-    config.headers.Authorization = access_token ? `Bearer ${access_token}` : ""
+    if (access_token) {
+      config.headers.Authorization = `Bearer ${access_token}`
+    } else {
+      delete config.headers.Authorization
+    }
 
     return Promise.resolve(config)
   },
