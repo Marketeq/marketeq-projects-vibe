@@ -486,6 +486,7 @@ export default function MarketPlaceLayout({
 }) {
   const router = useRouter()
   const { user } = useAuth()
+
   return (
     <>
       {/* <AuthenticatedRoute> */}

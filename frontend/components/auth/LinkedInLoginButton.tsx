@@ -9,6 +9,7 @@ import { LinkedInDefault } from "@blend-metrics/icons/social"
 import Cookies from "js-cookie"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
+import { ROLE } from "@/types/user"
 
 const LinkedInLogin = () => {
   const hasLoggedInRef = useRef(false)
@@ -68,11 +69,16 @@ const LinkedInLogin = () => {
               response?.data?.access_token &&
               response?.data?.user
             ) {
-              Cookies.set("access_token", response?.data?.access_token)
+              Cookies.set("access_token", response?.data?.access_token, { path: "/" })
               UserAPI.me().then((me) => {
                 if (me?.status === 200) {
                   const user = me.data?.user ?? me.data
-                  if (user?.role) {
+                  // Backend `role` is job title, `userType` is account type
+                  if (user?.userType) {
+                    const typeMap: Record<string, ROLE> = { talent: ROLE.TALENT, client: ROLE.CLIENT }
+                    user.role = typeMap[user.userType] ?? user.role
+                  }
+                  if (user?.role || user?.userType) {
                     setUser(user)
                     router.push("/")
                   } else {

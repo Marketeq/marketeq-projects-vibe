@@ -18,11 +18,14 @@ export type User = {
   lastName?: string | null
   avatarUrl?: string | null
   role: ROLE
+  /** Backend field — normalized to `role` by auth context */
+  userType?: string | null
   provider: AUTH_PROVIDERS
   hasPassword?: boolean
   socialId?: string | null
   emailVerified: boolean
   onboardingDismissed: boolean
+  gettingStartedStep?: number | null
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null

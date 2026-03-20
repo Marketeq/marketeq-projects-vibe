@@ -7,11 +7,12 @@ import { Spinner } from "@/components/ui/spinner/spinner"
 const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter()
   const pathname = usePathname()
-  const { isLoading, user } = useAuth()
+  const { isLoading, isAuthChecked, user } = useAuth()
   const [isPageLoading, setIsPageLoading] = useState(true)
 
   const routeCheck = async () => {
-    if (isLoading) return
+    // Wait until auth context has finished its initial check
+    if (isLoading || !isAuthChecked) return
 
     //Not logged in
     if (!user) {
@@ -66,7 +67,7 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     routeCheck()
-  }, [user, isLoading, pathname])
+  }, [user, isLoading, isAuthChecked, pathname])
 
   return (
     <>

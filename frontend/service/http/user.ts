@@ -58,6 +58,7 @@ export interface UserProfilePayload {
   userType?: string
   industry?: string
   businessGoals?: string[]
+  gettingStartedStep?: number | null
 }
 
 export const UserAPI = {

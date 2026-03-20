@@ -430,10 +430,12 @@ export const StatusDialog = ({
   onOpenChange,
   open,
   onProgressChange,
+  initialStep,
 }: {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   onProgressChange?: (percent: number) => void
+  initialStep?: (typeof DIALOG_NAMES)[number] | null
 }) => {
   const { user } = useAuth()
   const [dialogsState, setDialogsState] = useState<DialogsStateType>(defaultDialogsState)
@@ -499,7 +501,54 @@ export const StatusDialog = ({
       })
       .catch(() => {})
   }, [user?.id])
+
+  // Open a specific step dialog when initialStep is provided
+  const isDirectStep = Boolean(initialStep)
+  useEffect(() => {
+    if (initialStep && DIALOG_NAMES.includes(initialStep)) {
+      setDialogsState((prev) => ({
+        ...prev,
+        [initialStep]: { ...prev[initialStep], opened: true },
+      }))
+    }
+  }, [initialStep])
+
+  // When opened directly to a step, closing that step should close the whole dialog
+  const closeAll = React.useCallback(() => {
+    setDialogsState(defaultDialogsState())
+    onOpenChange?.(false)
+  }, [onOpenChange])
+
   const next = () => {
+    // If opened directly to a single step, skip to next incomplete step (or close if all done)
+    if (isDirectStep) {
+      let openedDialogName: keyof typeof dialogsState | null = null
+      for (const dialogName in dialogsState) {
+        if (dialogsState[dialogName as keyof typeof dialogsState].opened) {
+          openedDialogName = dialogName as keyof typeof dialogsState
+          break
+        }
+      }
+      if (!openedDialogName) { closeAll(); return }
+
+      // Find next incomplete step (excluding CONGRATULATIONS)
+      const stepsToCheck = DIALOG_NAMES.filter((n) => n !== "CONGRATULATIONS")
+      const nextIncomplete = stepsToCheck.find(
+        (name) => name !== openedDialogName && !dialogsState[name].finished
+      )
+
+      if (nextIncomplete) {
+        setDialogsState((prev) => ({
+          ...prev,
+          [openedDialogName]: { ...prev[openedDialogName], opened: false },
+          [nextIncomplete]: { ...prev[nextIncomplete], opened: true },
+        }))
+      } else {
+        // All steps complete — close
+        closeAll()
+      }
+      return
+    }
     let openedDialogName: keyof typeof dialogsState | null = null
     for (const dialogName in dialogsState) {
       if (dialogsState[dialogName as keyof typeof dialogsState].opened) {
@@ -598,12 +647,13 @@ export const StatusDialog = ({
           }))
         }
         opened={dialogsState["ABOUT-ME"].opened}
-        onOpenedChange={(opened) =>
+        onOpenedChange={(opened) => {
+          if (!opened && isDirectStep) { closeAll(); return }
           setDialogsState((prev) => ({
             ...prev,
             "ABOUT-ME": { ...prev["ABOUT-ME"], opened },
           }))
-        }
+        }}
         next={next}
         userId={user?.id ?? ""}
         progressPercent={progressPercent}
@@ -617,12 +667,13 @@ export const StatusDialog = ({
           }))
         }
         opened={dialogsState["PORTFOLIO"].opened}
-        onOpenedChange={(opened) =>
+        onOpenedChange={(opened) => {
+          if (!opened && isDirectStep) { closeAll(); return }
           setDialogsState((prev) => ({
             ...prev,
             PORTFOLIO: { ...prev["PORTFOLIO"], opened },
           }))
-        }
+        }}
         next={next}
         previous={previous}
         progressPercent={progressPercent}
@@ -635,12 +686,13 @@ export const StatusDialog = ({
           }))
         }
         opened={dialogsState["SKILLS"].opened}
-        onOpenedChange={(opened) =>
+        onOpenedChange={(opened) => {
+          if (!opened && isDirectStep) { closeAll(); return }
           setDialogsState((prev) => ({
             ...prev,
             SKILLS: { ...prev["SKILLS"], opened },
           }))
-        }
+        }}
         next={next}
         previous={previous}
         userId={user?.id ?? ""}
@@ -655,12 +707,13 @@ export const StatusDialog = ({
           }))
         }
         opened={dialogsState["WORK-EXPERIENCE"].opened}
-        onOpenedChange={(opened) =>
+        onOpenedChange={(opened) => {
+          if (!opened && isDirectStep) { closeAll(); return }
           setDialogsState((prev) => ({
             ...prev,
             "WORK-EXPERIENCE": { ...prev["WORK-EXPERIENCE"], opened },
           }))
-        }
+        }}
         next={next}
         previous={previous}
         userId={user?.id ?? ""}
@@ -675,12 +728,13 @@ export const StatusDialog = ({
           }))
         }
         opened={dialogsState["EDUCATION"].opened}
-        onOpenedChange={(opened) =>
+        onOpenedChange={(opened) => {
+          if (!opened && isDirectStep) { closeAll(); return }
           setDialogsState((prev) => ({
             ...prev,
             EDUCATION: { ...prev["EDUCATION"], opened },
           }))
-        }
+        }}
         next={next}
         previous={previous}
         userId={user?.id ?? ""}
@@ -694,12 +748,13 @@ export const StatusDialog = ({
           }))
         }
         opened={dialogsState["JOB_TITLE_RATE"].opened}
-        onOpenedChange={(opened) =>
+        onOpenedChange={(opened) => {
+          if (!opened && isDirectStep) { closeAll(); return }
           setDialogsState((prev) => ({
             ...prev,
             JOB_TITLE_RATE: { ...prev["JOB_TITLE_RATE"], opened },
           }))
-        }
+        }}
         next={next}
         previous={previous}
         userId={user?.id ?? ""}
@@ -716,7 +771,7 @@ export const StatusDialog = ({
         }
       />
 
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <Dialog open={isOpen && !isDirectStep} onOpenChange={setIsOpen}>
         <DialogContent
           dialogOverlay={<DialogOverlay className="bg-gray-700/50" />}
           variant="unanimated"

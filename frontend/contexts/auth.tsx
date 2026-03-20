@@ -11,7 +11,7 @@ import React, {
 import { useRouter } from "next/navigation"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
-import { User } from "@/types/user"
+import { ROLE, User } from "@/types/user"
 import { useToast } from "@/components/ui"
 import Cookies from "js-cookie"
 
@@ -35,9 +35,21 @@ function useProvideAuth() {
   const router = useRouter()
   const { toast } = useToast()
 
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUserRaw] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [isAuthChecked, setIsAuthChecked] = useState<boolean>(false)
+
+  // Wrap setUser to always normalize userType → role
+  const setUser: Dispatch<React.SetStateAction<User | null>> = (action) => {
+    setUserRaw((prev) => {
+      const next = typeof action === "function" ? action(prev) : action
+      if (next && next.userType) {
+        const typeMap: Record<string, ROLE> = { talent: ROLE.TALENT, client: ROLE.CLIENT }
+        next.role = typeMap[next.userType] ?? next.role
+      }
+      return next
+    })
+  }
 
   const getUser = () => {
     // Skip auth check during SSR — cookies and API calls are client-side only

@@ -486,7 +486,7 @@ export const AboutMeDialog = ({
   const [isOpen, setIsOpen] = useState(false)
   const {
     register,
-    formState: { errors, isValid, isDirty },
+    formState: { errors, isValid, isDirty, isSubmitting },
     handleSubmit,
     reset,
   } = useForm<AboutMeFormValues>({
@@ -578,7 +578,7 @@ export const AboutMeDialog = ({
               Cancel
             </Button>
 
-            <Button disabled={!isValid} ref={submitTriggerRef}>
+            <Button disabled={!isValid} loading={isSubmitting} ref={submitTriggerRef}>
               Save
             </Button>
 
@@ -975,7 +975,7 @@ export const MoreInfoDialog = ({
   })
   const {
     handleSubmit,
-    formState: { isValid, isDirty },
+    formState: { isValid, isDirty, isSubmitting },
     reset,
     watch,
     setValue,
@@ -1380,6 +1380,7 @@ export const MoreInfoDialog = ({
               <Button
                 type="button"
                 disabled={(canPerformAction || typeof editingIndex === "number") && (!clientRate || clientRate > 1000 || !methods.getValues("jobTitle"))}
+                loading={isSubmitting}
                 onClick={async () => {
                   if (canPerformAction || typeof editingIndex === "number") {
                     const valid = await methods.trigger()
@@ -1466,7 +1467,7 @@ export const AvailabilityDialog = ({
   })
   const {
     control,
-    formState: { errors },
+    formState: { errors, isSubmitting },
     handleSubmit,
     reset,
   } = useForm<AvailabilityFormValues>({
@@ -1618,7 +1619,7 @@ export const AvailabilityDialog = ({
               <X className="size-[15px]" />
               Cancel
             </Button>
-            <Button>Save</Button>
+            <Button loading={isSubmitting}>Save</Button>
           </div>
         </form>
       </DialogContent>
@@ -1698,7 +1699,7 @@ export const WorkExperienceDialog = ({
   const {
     control,
     handleSubmit,
-    formState: { errors, isValid, isDirty },
+    formState: { errors, isValid, isDirty, isSubmitting },
     trigger,
     setValue,
     register,
@@ -2186,7 +2187,7 @@ export const WorkExperienceDialog = ({
                 Cancel
               </Button>
             </DialogClose>
-            <Button disabled={!isValid} ref={submitTriggerRef}>
+            <Button disabled={!isValid} loading={isSubmitting} ref={submitTriggerRef}>
               Save
             </Button>
 
@@ -2273,7 +2274,7 @@ export const EducationDialog = ({
   const {
     control,
     handleSubmit,
-    formState: { errors, isValid },
+    formState: { errors, isValid, isSubmitting },
     register,
     reset,
   } = useForm<EducationFormValues>({
@@ -2640,7 +2641,7 @@ export const EducationDialog = ({
                 Cancel
               </Button>
             </DialogClose>
-            <Button disabled={!isValid}>Save</Button>
+            <Button disabled={!isValid} loading={isSubmitting}>Save</Button>
           </div>
         </form>
       </DialogContent>
@@ -2689,7 +2690,7 @@ export const LanguagesDialog = ({
   })
   const {
     control,
-    formState: { isValid, errors },
+    formState: { isValid, errors, isSubmitting },
     handleSubmit,
     setValue,
     trigger,
@@ -2861,7 +2862,7 @@ export const LanguagesDialog = ({
               </Button>
             </DialogClose>
 
-            <Button disabled={!isValid}>Save</Button>
+            <Button disabled={!isValid} loading={isSubmitting}>Save</Button>
           </div>
         </form>
       </DialogContent>
@@ -2910,7 +2911,7 @@ export const SkillsDialog = ({
   })
   const {
     control,
-    formState: { isValid, errors },
+    formState: { isValid, errors, isSubmitting },
     handleSubmit,
     setValue,
     trigger,
@@ -3080,7 +3081,7 @@ export const SkillsDialog = ({
               </Button>
             </DialogClose>
 
-            <Button disabled={!isValid}>Save</Button>
+            <Button disabled={!isValid} loading={isSubmitting}>Save</Button>
           </div>
         </form>
       </DialogContent>
@@ -3129,7 +3130,7 @@ export const IndustryExpertiseDialog = ({
   })
   const {
     control,
-    formState: { isValid, errors },
+    formState: { isValid, errors, isSubmitting },
     handleSubmit,
     setValue,
     trigger,
@@ -3297,7 +3298,7 @@ export const IndustryExpertiseDialog = ({
               </Button>
             </DialogClose>
 
-            <Button disabled={!isValid}>Save</Button>
+            <Button disabled={!isValid} loading={isSubmitting}>Save</Button>
           </div>
         </form>
       </DialogContent>
@@ -3347,7 +3348,7 @@ export const CertificationsDialog = ({
   })
   const {
     control,
-    formState: { errors, isValid, isDirty },
+    formState: { errors, isValid, isDirty, isSubmitting },
     handleSubmit,
     setValue,
     reset,
@@ -3704,7 +3705,7 @@ export const CertificationsDialog = ({
               <X className="size-[15px]" />
               Cancel
             </Button>
-            <Button disabled={!isValid} ref={submitTriggerRef}>
+            <Button disabled={!isValid} loading={isSubmitting} ref={submitTriggerRef}>
               Save
             </Button>
 

@@ -19,7 +19,9 @@ import { AuthModule } from './auth/auth.module';
             type: 'postgres',
             url,
             autoLoadEntities: true,
-            synchronize: process.env.NODE_ENV !== 'production',
+            synchronize: false,
+            migrationsRun: true,
+            migrations: [__dirname + '/migrations/*{.ts,.js}'],
             logging: process.env.NODE_ENV !== 'production',
             ssl:
               process.env.NODE_ENV === 'production'
@@ -36,7 +38,9 @@ import { AuthModule } from './auth/auth.module';
           password: cfg.get<string>('DATABASE_PASSWORD'),
           database: cfg.get<string>('DATABASE_NAME'),
           autoLoadEntities: true,
-          synchronize: process.env.NODE_ENV !== 'production',
+          synchronize: false,
+          migrationsRun: true,
+          migrations: [__dirname + '/migrations/*{.ts,.js}'],
           logging: process.env.NODE_ENV !== 'production',
           ssl:
             process.env.NODE_ENV === 'production'

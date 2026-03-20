@@ -87,6 +87,10 @@ export class User {
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
 
+  /** Current getting-started step (0-4), null = dismissed/completed */
+  @Column({ type: 'integer', default: 0 })
+  gettingStartedStep: number;
+
   /** Timestamp when user completed registration/onboarding */
   @Column({ type: 'timestamptz', nullable: true })
   onboardedAt: Date | null;
