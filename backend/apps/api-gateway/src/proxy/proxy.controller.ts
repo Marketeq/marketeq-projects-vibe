@@ -4,6 +4,7 @@ import { ProxyService } from './proxy.service'
 
 const SERVICE_PREFIX_MAP: Record<string, string> = {
   auth: 'auth',
+  user: 'users',
   users: 'users',
   listings: 'listings',
   checkout: 'checkout',
@@ -18,6 +19,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   autocomplete: 'autocomplete',
   suggestions: 'suggestions',
   'v1': 'transactions', // transaction-service uses /v1/transactions and /v1/invoices
+  contracts: 'contracts',
 }
 
 @Controller()
@@ -37,7 +39,13 @@ export class ProxyController {
   @All('*')
   async catchAll(@Req() req: Request, @Res() res: Response) {
     const segments = req.path.replace(/^\//, '').split('/')
-    const prefix = segments[0]
+    let prefix = segments[0]
+
+    // /v1/users/* → user-service, /v1/transactions/* or /v1/invoices/* → transaction-service
+    if (prefix === 'v1' && segments[1] === 'users') {
+      prefix = 'users'
+    }
+
     const serviceName = SERVICE_PREFIX_MAP[prefix]
 
     if (!serviceName) {

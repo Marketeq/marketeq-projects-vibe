@@ -28,6 +28,11 @@ export class Education {
   @Column({ type: 'text', nullable: true })
   endDate: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  institutionId: string;
+
+  institutionLogoUrl?: string;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

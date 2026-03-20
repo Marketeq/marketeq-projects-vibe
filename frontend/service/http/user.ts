@@ -51,8 +51,10 @@ export interface UserProfilePayload {
   location?: string
   timezone?: string
   availability?: string
-  rateMin?: number
-  rateMax?: number
+  role?: string | null
+  rateMin?: number | null
+  rateMax?: number | null
+  jobTitles?: Array<{ jobTitle: string; clientRate: number; earning: number; fee: number; saveAsDefault: boolean }> | null
   userType?: string
   industry?: string
   businessGoals?: string[]

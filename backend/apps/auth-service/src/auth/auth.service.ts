@@ -611,7 +611,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    return this.issueTokens({ sub: payload.sub, email: payload.email });
+    return this.issueTokens({ sub: payload.sub, email: payload.email ?? '' });
   }
 
   async logout(user: { id?: string; sub?: string }) {

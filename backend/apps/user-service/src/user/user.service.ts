@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { User } from './entities/user.entity';
 import { Education } from '../education/entities/education.entity';
 import { Experience } from '../experience/entities/experience.entity';
@@ -19,7 +19,38 @@ export class UserService {
     @InjectRepository(Language) private readonly languageRepo: Repository<Language>,
     @InjectRepository(Certification) private readonly certRepo: Repository<Certification>,
     @InjectRepository(Industry) private readonly industryRepo: Repository<Industry>,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
+
+  private async enrichWithLogos(user: User): Promise<User> {
+    if (user.experience?.length) {
+      const companyIds = user.experience.map(e => e.companyId).filter(Boolean);
+      if (companyIds.length) {
+        const logos: { id: string; logoUrl: string }[] = await this.dataSource.query(
+          `SELECT id, "logoUrl" FROM companies.companies WHERE id = ANY($1)`,
+          [companyIds],
+        );
+        const logoMap = new Map(logos.map(l => [l.id, l.logoUrl]));
+        for (const exp of user.experience) {
+          if (exp.companyId) exp.companyLogoUrl = logoMap.get(exp.companyId) || undefined;
+        }
+      }
+    }
+    if (user.education?.length) {
+      const instIds = user.education.map(e => e.institutionId).filter(Boolean);
+      if (instIds.length) {
+        const logos: { id: string; logoUrl: string }[] = await this.dataSource.query(
+          `SELECT id, "logoUrl" FROM institutions.institutions WHERE id = ANY($1)`,
+          [instIds],
+        );
+        const logoMap = new Map(logos.map(l => [l.id, l.logoUrl]));
+        for (const edu of user.education) {
+          if (edu.institutionId) edu.institutionLogoUrl = logoMap.get(edu.institutionId) || undefined;
+        }
+      }
+    }
+    return user;
+  }
 
   async create(dto: Partial<User>): Promise<User> {
     const existing = await this.userRepo.findOne({ where: { email: dto.email } });
@@ -43,7 +74,7 @@ export class UserService {
       relations: ['education', 'experience', 'skills', 'languages', 'certifications', 'industries'],
     });
     if (!user) throw new NotFoundException('User not found');
-    return user;
+    return this.enrichWithLogos(user);
   }
 
   async findByEmail(email: string): Promise<User | null> {
@@ -56,7 +87,7 @@ export class UserService {
       relations: ['education', 'experience', 'skills', 'languages', 'certifications', 'industries'],
     });
     if (!user) throw new NotFoundException('User not found');
-    return user;
+    return this.enrichWithLogos(user);
   }
 
   async checkUsername(username: string): Promise<{ available: boolean }> {

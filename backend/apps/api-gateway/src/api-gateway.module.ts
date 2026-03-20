@@ -15,10 +15,20 @@ import { JwtMiddleware } from './middleware/jwt.middleware'
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '7d' },
-      }),
+      useFactory: (config: ConfigService) => {
+        const publicKey = config.get<string>('AUTH_JWT_PUBLIC_KEY');
+        if (publicKey) {
+          return {
+            publicKey,
+            verifyOptions: { algorithms: ['RS256'] },
+          };
+        }
+        // Fallback to symmetric secret
+        return {
+          secret: config.get<string>('JWT_SECRET'),
+          signOptions: { expiresIn: '7d' },
+        };
+      },
     }),
   ],
   providers: [ProxyService, JwtStrategy],

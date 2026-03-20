@@ -93,7 +93,9 @@ export default function SignIn() {
             setUser(nextUser)
           }
 
-          router.push("/")
+          // Route based on user type
+          const destination = nextUser?.userType === "talent" ? "/talent-dashboard" : "/"
+          router.push(destination)
           reset()
         }
       })

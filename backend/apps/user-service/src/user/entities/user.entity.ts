@@ -69,11 +69,14 @@ export class User {
   @Column({ type: 'text', nullable: true })
   inviteCode: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ type: 'integer', nullable: true })
   rateMin: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ type: 'integer', nullable: true })
   rateMax: number;
+
+  @Column({ type: 'jsonb', nullable: true })
+  jobTitles: Array<{ jobTitle: string; clientRate: number; earning: number; fee: number; saveAsDefault: boolean }>;
 
   @Column({ type: 'boolean', default: false })
   onboardingDismissed: boolean;

@@ -113,11 +113,80 @@ const aboutMeFormDefaultValues = {
   aboutMe: "",
 } satisfies AboutMeFormValues
 
+// Common job-title words for splitting concatenated titles like "softwareengineer"
+const JOB_TITLE_WORDS = [
+  "software", "senior", "junior", "lead", "principal", "staff", "chief",
+  "engineer", "developer", "designer", "manager", "director", "officer",
+  "architect", "analyst", "consultant", "specialist", "coordinator",
+  "administrator", "assistant", "associate", "executive", "president",
+  "vice", "head", "product", "project", "program", "technical", "technology",
+  "data", "machine", "learning", "artificial", "intelligence", "cloud",
+  "devops", "frontend", "backend", "fullstack", "full", "stack", "mobile",
+  "web", "security", "network", "database", "systems", "operations",
+  "marketing", "sales", "business", "human", "resources", "finance",
+  "creative", "content", "strategy", "growth", "customer", "success",
+  "support", "quality", "assurance", "research", "science", "scientist",
+  "ux", "ui", "graphic", "visual", "motion", "brand", "copy", "writer",
+  "editor", "producer", "scrum", "master", "agile", "coach", "trainer",
+  "recruiter", "talent", "acquisition", "relations", "communications",
+  "public", "media", "social", "digital", "seo", "sem", "ppc", "email",
+  "automation", "integration", "platform", "solution", "solutions",
+  "information", "cyber", "blockchain", "crypto", "defi", "nft",
+  "startup", "founder", "co", "cto", "ceo", "cfo", "coo", "cmo", "cio",
+  "vp", "svp", "evp", "avp",
+]
+
+function formatJobTitle(raw: string): string {
+  let title = raw.trim()
+  if (!title) return title
+
+  // If the title has no spaces and is long enough, try to split into known words
+  if (!title.includes(" ") && title.length > 3) {
+    const lower = title.toLowerCase()
+    const words: string[] = []
+    let remaining = lower
+    while (remaining.length > 0) {
+      // Find the longest matching word from the start
+      let matched = false
+      for (let len = Math.min(remaining.length, 15); len >= 2; len--) {
+        const candidate = remaining.slice(0, len)
+        if (JOB_TITLE_WORDS.includes(candidate)) {
+          words.push(candidate)
+          remaining = remaining.slice(len)
+          matched = true
+          break
+        }
+      }
+      if (!matched) {
+        // No known word found — take remaining as one word
+        words.push(remaining)
+        remaining = ""
+      }
+    }
+    if (words.length > 1) {
+      title = words.join(" ")
+    }
+  }
+
+  // Capitalize every word
+  return title
+    .split(/\s+/)
+    .map((w) => {
+      // Keep common acronyms uppercase
+      const upper = w.toUpperCase()
+      if (["CTO", "CEO", "CFO", "COO", "CMO", "CIO", "VP", "SVP", "EVP", "AVP", "UX", "UI", "SEO", "SEM", "PPC", "NFT", "AI", "ML", "QA", "HR", "IT", "PM", "API"].includes(upper)) {
+        return upper
+      }
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+    })
+    .join(" ")
+}
+
 const moreInfoFormSchema = z.object({
-  jobTitle: z.string().min(1, "Please enter at least 1 character(s)"),
+  jobTitle: z.string().min(1, "Please enter a job title"),
   saveAsDefault: z.boolean(),
-  clientRate: z.number({ message: "Please enter an amount" }),
-  earning: z.number({ message: "Please enter an amount" }),
+  clientRate: z.number({ message: "Please enter a client rate" }).min(1, "Please enter a client rate").max(1000, "Rate cannot exceed $1,000/hr"),
+  earning: z.number({ message: "Please enter your earnings" }).min(1, "Please enter your earnings").max(1000, "Rate cannot exceed $1,000/hr"),
   fee: z.number({ message: "Please enter an amount" }),
 })
 
@@ -385,6 +454,8 @@ export const AboutMeDialog = ({
   value: valueProp,
   defaultValue,
   userId: userIdProp,
+  profile,
+  onSaved,
 }: {
   opened?: boolean
   onOpenedChange?: (open: boolean) => void
@@ -397,9 +468,11 @@ export const AboutMeDialog = ({
   value?: AboutMeFormValues
   onValueChange?: (value: AboutMeFormValues) => void
   userId?: string
+  profile?: any
+  onSaved?: () => void
 }) => {
   const { user } = useAuth()
-  const userId = userIdProp ?? user?.id ?? ""
+  const userId = profile?.id ?? userIdProp ?? user?.id ?? ""
   const [value, setValue] = useControllableState<AboutMeFormValues>({
     defaultValue: defaultValue ? defaultValue : aboutMeFormDefaultValues,
     value: valueProp,
@@ -420,12 +493,22 @@ export const AboutMeDialog = ({
     resolver: zodResolver(aboutMeFormSchema),
     defaultValues: value,
   })
-  const onSubmit: SubmitHandler<AboutMeFormValues> = (values) => {
+
+  useEffect(() => {
+    if (open && profile?.bio) {
+      reset({ aboutMe: profile.bio })
+    }
+  }, [open, profile?.bio, reset])
+
+  const onSubmit: SubmitHandler<AboutMeFormValues> = async (values) => {
     if (userId) {
-      UserAPI.updateProfile(userId, { bio: values.aboutMe }).catch(() => {})
+      try {
+        await UserAPI.updateProfile(userId, { bio: values.aboutMe, overview: values.aboutMe })
+      } catch {}
     }
     setValue(values)
     setOpen(false)
+    onSaved?.()
   }
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
 
@@ -575,7 +658,10 @@ const MoreInfoForm = ({
               variant="ghost"
               visual="gray"
               type="button"
-              onClick={() => (isValid ? onSubmit() : trigger())}
+              onClick={async () => {
+                const valid = await trigger()
+                if (valid) onSubmit()
+              }}
             >
               <Check className="size-4" />
             </IconButton>
@@ -594,7 +680,11 @@ const MoreInfoForm = ({
         <Input
           id="job-title-1"
           placeholder="e.g. Software Engineer"
-          {...register("jobTitle")}
+          {...register("jobTitle", {
+            onChange: (e) => {
+              e.target.value = e.target.value.replace(/[0-9]/g, "")
+            },
+          })}
           isInvalid={hookFormHasError({
             errors,
             name: "jobTitle",
@@ -651,7 +741,18 @@ const MoreInfoForm = ({
               <InputGroup>
                 <InputLeftAddon className="inline-flex items-center gap-x-1">
                   USD
-                  <Info className="size-4" />
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button type="button" className="cursor-help">
+                          <Info className="size-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent size="sm">
+                        The hourly rate clients will see on your profile
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </InputLeftAddon>
 
                 <Controller
@@ -662,7 +763,7 @@ const MoreInfoForm = ({
                       id="client-rate"
                       className={cn(
                         inputVariants({
-                          className: "text-right",
+                          className: "text-right placeholder:!text-gray-500",
                           variant: hookFormHasError({
                             errors,
                             name: "clientRate",
@@ -679,7 +780,7 @@ const MoreInfoForm = ({
                       onValueChange={(value, name, values) =>
                         onChange(values?.float)
                       }
-                      placeholder="$78"
+                      placeholder="$0"
                       decimalsLimit={0}
                     />
                   )}
@@ -729,7 +830,7 @@ const MoreInfoForm = ({
                       className={cn(
                         inputVariants({
                           className:
-                            "text-right [field-sizing:content] pointer-events-none opacity-50",
+                            "text-right placeholder:!text-gray-500 [field-sizing:content] pointer-events-none opacity-50",
                         })
                       )}
                       value={value ?? undefined}
@@ -740,7 +841,7 @@ const MoreInfoForm = ({
                       onValueChange={(value, name, values) =>
                         onChange(values?.float)
                       }
-                      placeholder="$13"
+                      placeholder="$0"
                       decimalsLimit={0}
                     />
                   )}
@@ -773,7 +874,18 @@ const MoreInfoForm = ({
               <InputGroup>
                 <InputLeftAddon className="inline-flex items-center gap-x-1">
                   USD
-                  <Info className="size-4" />
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button type="button" className="cursor-help">
+                          <Info className="size-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent size="sm">
+                        Your take-home pay after the 20% Marketeq service fee
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </InputLeftAddon>
 
                 <Controller
@@ -784,7 +896,7 @@ const MoreInfoForm = ({
                       id="your-earning"
                       className={cn(
                         inputVariants({
-                          className: "text-right",
+                          className: "text-right placeholder:!text-gray-500",
                           variant: hookFormHasError({
                             errors,
                             name: "earning",
@@ -801,7 +913,7 @@ const MoreInfoForm = ({
                       onValueChange={(value, name, values) =>
                         onChange(values?.float)
                       }
-                      placeholder="$65"
+                      placeholder="$0"
                       decimalsLimit={0}
                     />
                   )}
@@ -833,6 +945,8 @@ export const MoreInfoDialog = ({
   onValueChange,
   value,
   userId: userIdProp,
+  profile,
+  onSaved,
 }: {
   opened?: boolean
   onOpenedChange?: (opened: boolean) => void
@@ -840,10 +954,13 @@ export const MoreInfoDialog = ({
   value?: MoreInfoFormValues[]
   onValueChange?: (vale: MoreInfoFormValues[] | undefined) => void
   userId?: string
+  profile?: any
+  onSaved?: () => void
 }) => {
   const { user } = useAuth()
-  const userId = userIdProp ?? user?.id ?? ""
+  const userId = profile?.id ?? userIdProp ?? user?.id ?? ""
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
+  const submitDoneRef = useRef<Promise<void> | null>(null)
   const [open, setOpen] = useControllableState({
     defaultValue: false,
     value: opened,
@@ -854,6 +971,7 @@ export const MoreInfoDialog = ({
   const methods = useForm<MoreInfoFormValues>({
     resolver: zodResolver(moreInfoFormSchema),
     defaultValues,
+    mode: "onChange",
   })
   const {
     handleSubmit,
@@ -862,7 +980,8 @@ export const MoreInfoDialog = ({
     watch,
     setValue,
   } = methods
-  const [canPerformAction, setCanPerformAction] = useState(true)
+  const [canPerformAction, setCanPerformAction] = useState(false)
+  const [maxTitlesError, setMaxTitlesError] = useState(false)
   const [editingIndex, setEditingIndex] = useState<number>()
   const [indexToRemove, setIndexToRemove] = useState<number>()
   const [infoChunks, setInfoChunks] = useControllableState<
@@ -873,43 +992,107 @@ export const MoreInfoDialog = ({
     onChange: onValueChange,
   })
 
-  const onSubmit: SubmitHandler<MoreInfoFormValues> = (values) => {
-    const { saveAsDefault } = values
+  useEffect(() => {
+    if (opened) {
+      // Reset editing state — all titles closed by default
+      setEditingIndex(undefined)
+      setMaxTitlesError(false)
 
-    if (userId) {
-      const payload: Record<string, unknown> = {}
-      if (values.earning) payload.rateMin = values.earning
-      if (values.clientRate) payload.rateMax = values.clientRate
-      UserAPI.updateProfile(userId, payload).catch(() => {})
+      // Load saved job titles from profile
+      if (profile?.jobTitles && profile.jobTitles.length > 0) {
+        setInfoChunks(profile.jobTitles)
+        setCanPerformAction(false)
+      } else if (profile?.role || profile?.rateMax) {
+        // Legacy: single title from old fields — migrate into chunk
+        const clientRate = Number(profile.rateMax) || 0
+        const fee = Math.round(clientRate * 0.2)
+        const earning = clientRate - fee
+        const legacyChunk: MoreInfoFormValues = {
+          jobTitle: profile.role || "Professional",
+          clientRate,
+          earning,
+          fee,
+          saveAsDefault: true,
+        }
+        if (clientRate > 0) {
+          setInfoChunks([legacyChunk])
+          setCanPerformAction(false)
+        } else {
+          methods.reset({ ...defaultValues, jobTitle: profile.role || "" })
+          setCanPerformAction(true)
+        }
+      } else {
+        setCanPerformAction(true)
+      }
     }
+  }, [opened])
+
+  const onSubmit: SubmitHandler<MoreInfoFormValues> = async (values) => {
+    let resolveDone: () => void
+    submitDoneRef.current = new Promise((r) => { resolveDone = r })
+
+    // Format the job title: add spaces, capitalize all words
+    const formatted = { ...values, jobTitle: formatJobTitle(values.jobTitle) }
+    const { saveAsDefault } = formatted
+
+    // Build the updated chunks list
+    let updatedChunks: MoreInfoFormValues[]
 
     if (editingIndex !== undefined) {
-      setInfoChunks(
-        infoChunks?.map((qualification, index) =>
-          index === editingIndex
-            ? values
-            : saveAsDefault
-              ? { ...qualification, saveAsDefault: false }
-              : qualification
-        )
+      updatedChunks = (infoChunks ?? []).map((qualification, index) =>
+        index === editingIndex
+          ? formatted
+          : saveAsDefault
+            ? { ...qualification, saveAsDefault: false }
+            : qualification
       )
-
       setEditingIndex(undefined)
     } else {
-      setInfoChunks((prev) =>
-        prev
-          ? prev
-              .map((qulification) =>
-                saveAsDefault
-                  ? { ...qulification, saveAsDefault: false }
-                  : qulification
-              )
-              .concat(values)
-          : [values]
-      )
+      const isFirst = !infoChunks || infoChunks.length === 0
+      const entry = isFirst ? { ...formatted, saveAsDefault: true } : formatted
+
+      updatedChunks = infoChunks
+        ? infoChunks
+            .map((q) =>
+              saveAsDefault || isFirst
+                ? { ...q, saveAsDefault: false }
+                : q
+            )
+            .concat(entry)
+        : [entry]
       setCanPerformAction(false)
     }
+
+    // Sort: default job title always at the top
+    updatedChunks.sort((a, b) => (a.saveAsDefault === b.saveAsDefault ? 0 : a.saveAsDefault ? -1 : 1))
+    setInfoChunks(updatedChunks)
+
+    // Save to API: compute range across all job titles, use default title
+    if (userId) {
+      const allRates = updatedChunks.map((c) => c.clientRate).filter((r) => r != null && r > 0)
+      const defaultChunk = updatedChunks.find((c) => c.saveAsDefault) ?? updatedChunks[0]
+      const payload: Record<string, unknown> = {}
+
+      if (allRates.length > 1) {
+        payload.rateMin = Math.min(...allRates)
+        payload.rateMax = Math.max(...allRates)
+      } else if (allRates.length === 1) {
+        payload.rateMin = allRates[0]
+        payload.rateMax = allRates[0]
+      }
+
+      // Default job title becomes the profile's displayed role
+      if (defaultChunk?.jobTitle) payload.role = defaultChunk.jobTitle
+      // Persist all job title entries
+      payload.jobTitles = updatedChunks
+      try {
+        await UserAPI.updateProfile(userId, payload)
+      } catch {}
+      onSaved?.()
+    }
+
     reset(defaultValues)
+    resolveDone!()
   }
   const [clientRate, earning] = watch(["clientRate", "earning"])
   const previousClientRate = usePrevious(clientRate)
@@ -926,17 +1109,16 @@ export const MoreInfoDialog = ({
       return (value * percentage) / 100
     }
 
-    if (previousClientRate !== clientRate) {
-      setValue("earning", clientRate)
-    } else if (previousEarning !== earning) {
-      setValue("clientRate", earning)
-    }
-
-    if (previousClientRate !== clientRate || previousEarning !== earning) {
-      setValue(
-        "fee",
-        calculatePercentage({ percentage: 20, value: clientRate ?? earning })
-      )
+    if (previousClientRate !== clientRate && clientRate != null) {
+      const fee = Math.round(calculatePercentage({ percentage: 20, value: clientRate }))
+      setValue("fee", fee, { shouldValidate: true })
+      setValue("earning", clientRate - fee, { shouldValidate: true })
+    } else if (previousEarning !== earning && earning != null) {
+      // Reverse calculate: earning = clientRate * 0.8, so clientRate = earning / 0.8
+      const derivedRate = Math.round(earning / 0.8)
+      const fee = Math.round(calculatePercentage({ percentage: 20, value: derivedRate }))
+      setValue("clientRate", derivedRate, { shouldValidate: true })
+      setValue("fee", fee, { shouldValidate: true })
     }
   }, [previousClientRate, previousEarning, clientRate, earning, setValue])
 
@@ -945,7 +1127,8 @@ export const MoreInfoDialog = ({
       <Dialog open={open} onOpenChange={setOpen}>
         {trigger?.({ open, toggle: () => setOpen((prev) => !prev) })}
         <DialogContent className="max-w-[700px] rounded-[24px] p-0">
-          <form onSubmit={handleSubmit(onSubmit)}>
+          <DialogTitle className="sr-only">Job Title & Rates</DialogTitle>
+          <form onSubmit={handleSubmit(onSubmit)} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault() }}>
             <div className="pt-6 border-b border-gray-200">
               <div className="flex px-6 items-start gap-x-2">
                 <div className="flex-auto">
@@ -958,18 +1141,49 @@ export const MoreInfoDialog = ({
                 </div>
 
                 <div className="flex items-start gap-x-3">
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    type="button"
-                    onClick={() => {
-                      setCanPerformAction(true)
-                      reset(defaultValues)
-                    }}
-                  >
-                    <Plus className="size-[15px]" type="button" />
-                    Add Job Title
-                  </Button>
+                  {(infoChunks?.length ?? 0) >= 3 ? (
+                    <TooltipProvider delayDuration={0}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            tabIndex={0}
+                            onClick={() => {
+                              setMaxTitlesError(true)
+                              setTimeout(() => setMaxTitlesError(false), 4000)
+                            }}
+                          >
+                            <Button
+                              variant="outlined"
+                              visual="gray"
+                              type="button"
+                              disabled
+                              className="pointer-events-none"
+                            >
+                              <Plus className="size-[15px]" />
+                              Add Job Title
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent size="sm">
+                          You can have a maximum of 3 job titles
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      type="button"
+                      onClick={() => {
+                        setMaxTitlesError(false)
+                        setCanPerformAction(true)
+                        reset(defaultValues)
+                      }}
+                    >
+                      <Plus className="size-[15px]" type="button" />
+                      Add Job Title
+                    </Button>
+                  )}
 
                   <IconButton
                     variant="ghost"
@@ -982,6 +1196,13 @@ export const MoreInfoDialog = ({
                 </div>
               </div>
 
+              {maxTitlesError && (
+                <div className="mx-6 mt-4 flex items-center gap-x-2 rounded-md border border-error-300 bg-error-25 px-3 py-2.5 text-sm text-error-700">
+                  <AlertCircle className="size-4 shrink-0" />
+                  You've reached the maximum of 3 job titles. Remove one to add a new title.
+                </div>
+              )}
+
               <ScrollArea
                 className="mt-8 px-6 pb-6"
                 scrollBar={<ScrollBar className="w-4 p-1" />}
@@ -991,7 +1212,7 @@ export const MoreInfoDialog = ({
                   {canPerformAction && (
                     <MoreInfoForm
                       onShow={() => setShow(true)}
-                      onSubmit={() => submitTriggerRef.current?.click()}
+                      onSubmit={() => handleSubmit(onSubmit)()}
                     />
                   )}
 
@@ -1000,7 +1221,7 @@ export const MoreInfoDialog = ({
                       <MoreInfoForm
                         key={index}
                         onShow={() => setShow(true)}
-                        onSubmit={() => submitTriggerRef.current?.click()}
+                        onSubmit={() => handleSubmit(onSubmit)()}
                       />
                     ) : (
                       <article
@@ -1015,11 +1236,11 @@ export const MoreInfoDialog = ({
                           <div className="mt-1 flex items-center gap-x-3">
                             <div className="flex items-center flex-none gap-x-2">
                               <span className="text-xs leading-none font-light text-dark-blue-400">
-                                Client rate {infoChunk.clientRate}/hr
+                                Client rate ${infoChunk.clientRate}/hr
                               </span>
                               <span className="inline-block size-1 bg-gray-300 rounded-full" />
                               <span className="text-xs leading-none font-light text-dark-blue-400">
-                                Your earnings {infoChunk.earning}/hr
+                                Your earnings ${infoChunk.earning}/hr
                               </span>
                             </div>
 
@@ -1070,8 +1291,9 @@ export const MoreInfoDialog = ({
                     Delete Job Title?
                   </DialogTitle>
                   <DialogDescription className="text-dark-blue-400 mt-2">
-                    Your &quot;Chief Technical Offer (CTO)&quot; job title will be
-                    removed. This cannot be undone.
+                    Your {indexToRemove !== undefined && infoChunks?.[indexToRemove]
+                      ? `"${infoChunks[indexToRemove].jobTitle}"`
+                      : ""} job title will be removed. This cannot be undone.
                   </DialogDescription>
                 </div>
 
@@ -1083,12 +1305,48 @@ export const MoreInfoDialog = ({
                   </DialogClose>
 
                   <DialogClose
-                    onClick={() => {
+                    onClick={async () => {
                       if (indexToRemove !== undefined) {
-                        setInfoChunks(
-                          (prev) => prev?.filter((_, i) => i !== indexToRemove)
-                        )
+                        const remaining = infoChunks?.filter((_, i) => i !== indexToRemove) ?? []
+
+                        // If only one left, auto-set as default
+                        if (remaining.length === 1 && !remaining[0].saveAsDefault) {
+                          remaining[0] = { ...remaining[0], saveAsDefault: true }
+                        }
+                        // If deleted the default, promote the first one
+                        if (remaining.length > 0 && !remaining.some((c) => c.saveAsDefault)) {
+                          remaining[0] = { ...remaining[0], saveAsDefault: true }
+                        }
+
+                        setInfoChunks(remaining.length > 0 ? remaining : undefined)
                         setIndexToRemove(undefined)
+
+                        // Update API
+                        if (userId) {
+                          const payload: Record<string, unknown> = {}
+                          if (remaining.length > 0) {
+                            const allRates = remaining.map((c) => c.clientRate).filter((r) => r != null && r > 0)
+                            const defaultChunk = remaining.find((c) => c.saveAsDefault) ?? remaining[0]
+                            if (allRates.length > 1) {
+                              payload.rateMin = Math.min(...allRates)
+                              payload.rateMax = Math.max(...allRates)
+                            } else if (allRates.length === 1) {
+                              payload.rateMin = allRates[0]
+                              payload.rateMax = allRates[0]
+                            }
+                            if (defaultChunk?.jobTitle) payload.role = defaultChunk.jobTitle
+                            payload.jobTitles = remaining
+                          } else {
+                            // All titles deleted — clear everything
+                            payload.rateMin = null
+                            payload.rateMax = null
+                            payload.role = null
+                            payload.jobTitles = null
+                          }
+                          try { await UserAPI.updateProfile(userId, payload) } catch {}
+                          onSaved?.()
+                          if (remaining.length === 0) setCanPerformAction(true)
+                        }
                       } else {
                         setCanPerformAction(false)
                       }
@@ -1108,23 +1366,32 @@ export const MoreInfoDialog = ({
                 variant="link"
                 visual="gray"
                 type="button"
-                onClick={() => setIsOpen(true)}
+                onClick={() => {
+                  if (isDirty) {
+                    setIsOpen(true)
+                  } else {
+                    setOpen(false)
+                  }
+                }}
               >
                 <X className="size-[15px]" />
                 Cancel
               </Button>
-              <DialogClose asChild>
-                <Button
-                  type="button"
-                  disabled={
-                    !Boolean(infoChunks?.length) ||
-                    typeof editingIndex == "number"
+              <Button
+                type="button"
+                disabled={(canPerformAction || typeof editingIndex === "number") && (!clientRate || clientRate > 1000 || !methods.getValues("jobTitle"))}
+                onClick={async () => {
+                  if (canPerformAction || typeof editingIndex === "number") {
+                    const valid = await methods.trigger()
+                    if (!valid) return
+                    await handleSubmit(onSubmit)()
                   }
-                >
-                  Save
-                </Button>
-              </DialogClose>
-              <Button ref={submitTriggerRef} className="sr-only">
+                  setOpen(false)
+                }}
+              >
+                Save
+              </Button>
+              <Button ref={submitTriggerRef} className="sr-only" type="submit">
                 Save
               </Button>
 
@@ -1182,10 +1449,16 @@ export const MoreInfoDialog = ({
 export const AvailabilityDialog = ({
   opened,
   onOpenedChange,
+  profile,
+  onSaved,
 }: {
   opened?: boolean
   onOpenedChange?: (open: boolean) => void
+  profile?: any
+  onSaved?: () => void
 }) => {
+  const { user } = useAuth()
+  const userId = profile?.id ?? user?.id ?? ""
   const [open, setOpen] = useControllableState({
     defaultValue: false,
     value: opened,
@@ -1195,14 +1468,28 @@ export const AvailabilityDialog = ({
     control,
     formState: { errors },
     handleSubmit,
+    reset,
   } = useForm<AvailabilityFormValues>({
     resolver: zodResolver(availabilityFormSchema),
     defaultValues: {
       availability: "",
     },
   })
-  const onSubmit: SubmitHandler<AvailabilityFormValues> = (values) => {
+
+  useEffect(() => {
+    if (open && profile?.availability) {
+      reset({ availability: profile.availability })
+    }
+  }, [open, profile?.availability, reset])
+
+  const onSubmit: SubmitHandler<AvailabilityFormValues> = async (values) => {
+    if (userId) {
+      try {
+        await UserAPI.updateProfile(userId, { availability: values.availability })
+      } catch {}
+    }
     setOpen(false)
+    onSaved?.()
   }
   const availability = useWatch({ control, name: "availability" })
   return (
@@ -1350,6 +1637,8 @@ export const WorkExperienceDialog = ({
 
   onValueChange,
   value: valueProp,
+  profile,
+  onSaved,
 }: {
   opened?: boolean
   onOpenedChange?: (open: boolean) => void
@@ -1361,7 +1650,11 @@ export const WorkExperienceDialog = ({
   }) => React.ReactNode
   value?: WorkExperienceFormValues[]
   onValueChange?: (value: WorkExperienceFormValues[] | undefined) => void
+  profile?: any
+  onSaved?: () => void
 }) => {
+  const { user } = useAuth()
+  const userId = profile?.id ?? user?.id ?? ""
   const [open, setOpen] = useControllableState({
     defaultValue: false,
     value: opened,
@@ -1422,7 +1715,27 @@ export const WorkExperienceDialog = ({
       skills: [],
     },
   })
-  const onSubmit: SubmitHandler<WorkExperienceFormValues> = (values) => {
+  const onSubmit: SubmitHandler<WorkExperienceFormValues> = async (values) => {
+    if (userId) {
+      const startDate = values.startDate
+        ? `${values.startDate.year}-${String(values.startDate.month).padStart(2, "0")}`
+        : undefined
+      const endDate = values.currentlyWorkHere
+        ? undefined
+        : values.endDate?.year && values.endDate?.month
+          ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}`
+          : undefined
+      try {
+        await UserAPI.addExperience(userId, {
+          company: values.employer,
+          role: values.jobTitle,
+          startDate: startDate ?? "",
+          endDate,
+          description: values.jobDescription,
+        })
+      } catch {}
+      onSaved?.()
+    }
     if (typeof editingIdx === "number") {
       setValueFn(
         value?.map((el, index) => (index === editingIdx ? values : el))
@@ -1441,6 +1754,36 @@ export const WorkExperienceDialog = ({
     setEditingIdx(idx)
     const workExperienceFormValues = value?.find((_, index) => index !== idx)
     reset(workExperienceFormValues)
+  }
+
+  useEffect(() => {
+    if (open && profile?.experience?.length && !value?.length) {
+      const mapped = profile.experience.map((exp: any) => {
+        const sd = exp.startDate ? exp.startDate.split("-") : []
+        const ed = exp.endDate ? exp.endDate.split("-") : []
+        return {
+          employer: exp.company ?? "",
+          jobTitle: exp.role ?? "",
+          startDate: { year: sd[0] ? Number(sd[0]) : undefined, month: sd[1] ? Number(sd[1]) : undefined },
+          endDate: { year: ed[0] ? Number(ed[0]) : undefined, month: ed[1] ? Number(ed[1]) : undefined },
+          currentlyWorkHere: !exp.endDate,
+          jobDescription: exp.description ?? "",
+          skills: [],
+        } as WorkExperienceFormValues
+      })
+      setValueFn(mapped)
+    }
+  }, [open, profile?.experience])
+
+  const handleDeleteExperience = async (idx: number) => {
+    const exp = profile?.experience?.[idx]
+    if (userId && exp?.id) {
+      try {
+        await UserAPI.removeExperience(userId, String(exp.id))
+      } catch {}
+      onSaved?.()
+    }
+    setValueFn((prev) => prev?.filter((_, i) => i !== idx))
   }
 
   return (
@@ -1898,6 +2241,8 @@ export const EducationDialog = ({
   defaultValue,
   onValueChange,
   value: valueProp,
+  profile,
+  onSaved,
 }: {
   opened?: boolean
   onOpenedChange?: (open: boolean) => void
@@ -1909,7 +2254,11 @@ export const EducationDialog = ({
   defaultValue?: EducationFormValues
   value?: EducationFormValues
   onValueChange?: (value: EducationFormValues) => void
+  profile?: any
+  onSaved?: () => void
 }) => {
+  const { user } = useAuth()
+  const userId = profile?.id ?? user?.id ?? ""
   const [open, setOpen] = useControllableState({
     defaultValue: false,
     value: opened,
@@ -1937,7 +2286,27 @@ export const EducationDialog = ({
     },
   })
 
-  const onSubmit: SubmitHandler<EducationFormValues> = (values) => {
+  const onSubmit: SubmitHandler<EducationFormValues> = async (values) => {
+    if (userId) {
+      const startDate = values.startDate
+        ? `${values.startDate.year}-${String(values.startDate.month).padStart(2, "0")}`
+        : ""
+      const endDate = values.currentlyAttending
+        ? undefined
+        : values.endDate?.year && values.endDate?.month
+          ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}`
+          : undefined
+      try {
+        await UserAPI.addEducation(userId, {
+          institution: values.schoolOrUniversity,
+          degree: values.degree,
+          field: values.major,
+          startDate,
+          endDate,
+        })
+      } catch {}
+      onSaved?.()
+    }
     setValue(values)
     setOpen(false)
   }
@@ -2290,6 +2659,8 @@ export const LanguagesDialog = ({
   defaultValue,
   onValueChange,
   value: valueProp,
+  profile,
+  onSaved,
 }: {
   opened?: boolean
   onOpenedChange?: (open: boolean) => void
@@ -2301,7 +2672,11 @@ export const LanguagesDialog = ({
   defaultValue?: LanguagesFormValues
   value?: LanguagesFormValues
   onValueChange?: (value: LanguagesFormValues) => void
+  profile?: any
+  onSaved?: () => void
 }) => {
+  const { user } = useAuth()
+  const userId = profile?.id ?? user?.id ?? ""
   const [value, setValueFn] = useControllableState({
     defaultValue: defaultValue ? defaultValue : languagesFormDefaultValue,
     value: valueProp,
@@ -2353,7 +2728,36 @@ export const LanguagesDialog = ({
     trigger()
   }
 
-  const onSubmit: SubmitHandler<LanguagesFormValues> = (values) => {
+  useEffect(() => {
+    if (open && profile?.languages?.length) {
+      const mapped = profile.languages.map((l: any, i: number) => ({
+        id: l.id ?? i + 1,
+        name: l.name ?? "",
+      }))
+      setValue("languages", mapped)
+    }
+  }, [open, profile?.languages])
+
+  const onSubmit: SubmitHandler<LanguagesFormValues> = async (values) => {
+    if (userId) {
+      try {
+        // Remove existing languages
+        if (profile?.languages?.length) {
+          await Promise.all(
+            profile.languages.map((lang: any) =>
+              UserAPI.removeLanguage(userId, String(lang.id))
+            )
+          )
+        }
+        // Add new languages
+        await Promise.all(
+          values.languages.map((lang) =>
+            UserAPI.addLanguage(userId, { name: lang.name })
+          )
+        )
+      } catch {}
+      onSaved?.()
+    }
     setValueFn(values)
     setOpen(false)
   }
@@ -2476,6 +2880,8 @@ export const SkillsDialog = ({
   defaultValue,
   onValueChange,
   value: valueProp,
+  profile,
+  onSaved,
 }: {
   opened?: boolean
   onOpenedChange?: (open: boolean) => void
@@ -2487,7 +2893,11 @@ export const SkillsDialog = ({
   defaultValue?: SkillsFormValues
   value?: SkillsFormValues
   onValueChange?: (value: SkillsFormValues) => void
+  profile?: any
+  onSaved?: () => void
 }) => {
+  const { user } = useAuth()
+  const userId = profile?.id ?? user?.id ?? ""
   const [value, setValueFn] = useControllableState({
     defaultValue: defaultValue ? defaultValue : skillsFormDefaultValue,
     value: valueProp,
@@ -2538,7 +2948,36 @@ export const SkillsDialog = ({
     trigger()
   }
 
-  const onSubmit: SubmitHandler<SkillsFormValues> = (values) => {
+  useEffect(() => {
+    if (open && profile?.skills?.length) {
+      const mapped = profile.skills.map((s: any, i: number) => ({
+        id: s.id ?? i + 1,
+        name: s.name ?? "",
+      }))
+      setValue("skills", mapped)
+    }
+  }, [open, profile?.skills])
+
+  const onSubmit: SubmitHandler<SkillsFormValues> = async (values) => {
+    if (userId) {
+      try {
+        // Remove existing skills
+        if (profile?.skills?.length) {
+          await Promise.all(
+            profile.skills.map((skill: any) =>
+              UserAPI.removeSkill(userId, String(skill.id))
+            )
+          )
+        }
+        // Add new skills
+        await Promise.all(
+          values.skills.map((skill) =>
+            UserAPI.addSkill(userId, { name: skill.name })
+          )
+        )
+      } catch {}
+      onSaved?.()
+    }
     setValueFn(values)
     setOpen(false)
   }
@@ -2660,6 +3099,8 @@ export const IndustryExpertiseDialog = ({
   defaultValue,
   onValueChange,
   value: valueProp,
+  profile,
+  onSaved,
 }: {
   opened?: boolean
   onOpenedChange?: (open: boolean) => void
@@ -2671,7 +3112,11 @@ export const IndustryExpertiseDialog = ({
   defaultValue?: IndustriesFormValues
   value?: IndustriesFormValues
   onValueChange?: (value: IndustriesFormValues) => void
+  profile?: any
+  onSaved?: () => void
 }) => {
+  const { user } = useAuth()
+  const userId = profile?.id ?? user?.id ?? ""
   const [value, setValueFn] = useControllableState({
     defaultValue: defaultValue ? defaultValue : industriesFormDefaultValue,
     value: valueProp,
@@ -2720,7 +3165,36 @@ export const IndustryExpertiseDialog = ({
     setValue("industries", selected?.filter((_, i) => i !== index))
     trigger()
   }
-  const onSubmit: SubmitHandler<IndustriesFormValues> = (values) => {
+  useEffect(() => {
+    if (open && profile?.industries?.length) {
+      const mapped = profile.industries.map((ind: any, i: number) => ({
+        id: ind.id ?? i + 1,
+        name: ind.name ?? "",
+      }))
+      setValue("industries", mapped)
+    }
+  }, [open, profile?.industries])
+
+  const onSubmit: SubmitHandler<IndustriesFormValues> = async (values) => {
+    if (userId) {
+      try {
+        // Remove existing industries
+        if (profile?.industries?.length) {
+          await Promise.all(
+            profile.industries.map((ind: any) =>
+              UserAPI.removeIndustry(userId, String(ind.id))
+            )
+          )
+        }
+        // Add new industries
+        await Promise.all(
+          values.industries.map((ind) =>
+            UserAPI.addIndustry(userId, { name: ind.name })
+          )
+        )
+      } catch {}
+      onSaved?.()
+    }
     setValueFn(values)
     setOpen(false)
   }
@@ -2841,6 +3315,8 @@ export const CertificationsDialog = ({
   trigger: triggerProp,
   onValueChange,
   value: valueProp,
+  profile,
+  onSaved,
 }: {
   opened?: boolean
   onOpenedChange?: (open: boolean) => void
@@ -2851,7 +3327,11 @@ export const CertificationsDialog = ({
   }) => React.ReactNode
   value?: CertificationsFormValues[]
   onValueChange?: (value: CertificationsFormValues[] | undefined) => void
+  profile?: any
+  onSaved?: () => void
 }) => {
+  const { user } = useAuth()
+  const userId = profile?.id ?? user?.id ?? ""
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useControllableState({
     defaultValue: false,
@@ -2910,7 +3390,19 @@ export const CertificationsDialog = ({
             .replace(/\s+/g, "")
             .includes(query.toLowerCase().replace(/\s+/g, ""))
         )
-  const onSubmit: SubmitHandler<CertificationsFormValues> = (values) => {
+  const onSubmit: SubmitHandler<CertificationsFormValues> = async (values) => {
+    if (userId) {
+      try {
+        await UserAPI.addCertification(userId, {
+          name: values.name,
+          issuingOrganization: "",
+          issueDate: values.issuedDate?.toISOString(),
+          expiryDate: values.expirationDate?.toISOString(),
+          credentialUrl: values.credentialsUrl || undefined,
+        })
+      } catch {}
+      onSaved?.()
+    }
     setValueFn((prev) => (prev ? [...prev, values] : [values]))
     setOpen(false)
     reset()
@@ -3534,7 +4026,7 @@ const OfferCard = () => {
       </div>
 
       <div className="mt-5 flex items-end justify-between">
-        <TooltipProvider>
+        <TooltipProvider delayDuration={0}>
           <Tooltip>
             <TooltipTrigger asChild>
               <AvatarGroup

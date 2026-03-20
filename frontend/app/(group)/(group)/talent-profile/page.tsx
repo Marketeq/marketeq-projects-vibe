@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
@@ -86,6 +86,7 @@ import {
   CarouselPreviousTrigger,
   Dialog,
   DialogContent,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -182,6 +183,7 @@ const SaveButton = () => {
 
       <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
         <DialogContent>
+          <DialogTitle className="sr-only">Save to List</DialogTitle>
           <form className="flex items-center gap-x-3">
             <Input placeholder="Enter List Name" className="flex-auto" />
             <Button size="lg">Save</Button>
@@ -251,31 +253,49 @@ const SectionSearchBar = () => {
   )
 }
 
+const Shimmer = ({ className }: { className?: string }) => (
+  <div className={cn("relative bg-gray-100 rounded overflow-hidden", className)}>
+    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+  </div>
+)
+
 export default function Default() {
   const { user } = useAuth()
   const searchParams = useSearchParams()
   const usernameParam = searchParams.get("username")
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [isProfileLoading, setIsProfileLoading] = useState(true)
 
   useEffect(() => {
+    setIsProfileLoading(true)
     if (usernameParam) {
-      // Viewing another user's profile by username
       UserAPI.getByUsername(usernameParam)
         .then((res) => {
           if (res?.data) setProfile(res.data)
         })
         .catch(() => {})
+        .finally(() => setIsProfileLoading(false))
     } else if (user?.id) {
-      // Viewing own profile
       UserAPI.getProfile(user.id)
         .then((res) => {
           if (res?.data) setProfile(res.data)
         })
         .catch(() => {})
+        .finally(() => setIsProfileLoading(false))
+    } else {
+      setIsProfileLoading(false)
     }
   }, [user?.id, usernameParam])
 
-  const isOwnProfile = Boolean(!usernameParam && user?.id && profile?.id && user.id === profile.id)
+  const isOwnProfile = Boolean(user?.id && profile?.id && user.id === profile.id)
+
+  const refreshProfile = useCallback(() => {
+    if (!profile?.id) return
+    UserAPI.getProfile(profile.id)
+      .then((res) => { if (res?.data) setProfile(res.data) })
+      .catch(() => {})
+  }, [profile?.id])
+
   const [isEditMode, setIsEditMode] = useState(true)
 
   // Edit modal open states
@@ -502,6 +522,41 @@ export default function Default() {
       <div className="py-[50px]">
         <div className="max-w-[1440px] mx-auto px-[100px]">
           <div className="border border-gray-200 rounded-lg bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
+            {isProfileLoading ? (
+              /* Skeleton loading state */
+              <>
+                <div className="p-10 flex items-start gap-x-10">
+                  <Shimmer className="size-[318px] rounded-lg shrink-0" />
+                  <div className="flex-auto space-y-4 pt-2">
+                    <Shimmer className="h-8 w-64" />
+                    <Shimmer className="h-6 w-48" />
+                    <Shimmer className="h-4 w-36" />
+                    <div className="flex items-center gap-x-3 pt-2">
+                      <Shimmer className="h-6 w-16 rounded-[4px]" />
+                      <Shimmer className="h-4 w-20" />
+                    </div>
+                    <div className="space-y-3 pt-2">
+                      <Shimmer className="h-4 w-52" />
+                      <Shimmer className="h-4 w-60" />
+                    </div>
+                    <div className="flex gap-x-2 pt-4">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Shimmer key={i} className="h-7 w-24 rounded-full" />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="py-3 px-8 border-t border-gray-200 grid grid-cols-5 divide-x divide-gray-200 bg-[#122A4B]/[.02]">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="flex gap-x-2 justify-center items-center py-1">
+                      <Shimmer className="h-4 w-16" />
+                      <Shimmer className="h-5 w-12" />
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+            <>
             <div className="p-10 flex items-start gap-x-10">
               <Avatar className="size-[318px]">
                 <AvatarImage src={profile?.avatarUrl ?? "/man.jpg"} alt={profile?.firstName ?? "User"} />
@@ -519,9 +574,21 @@ export default function Default() {
                         </span>
                       )}
                     </h1>
-                    <h2 className="text-[22px] mt-1 leading-[27px] text-dark-blue-400 font-medium">
-                      {profile?.role ?? "Professional"}
-                    </h2>
+                    <div className="flex items-center gap-x-1 mt-1">
+                      <h2 className="text-[22px] leading-[27px] text-dark-blue-400 font-medium">
+                        {profile?.role || "Unknown"}
+                      </h2>
+                      {isEditMode && isOwnProfile && (
+                        <IconButton
+                          className="rounded-full text-gray-500 hover:text-gray-800"
+                          variant="ghost"
+                          visual="gray"
+                          onClick={() => setJobTitleOpen(true)}
+                        >
+                          <Edit03 className="size-4" />
+                        </IconButton>
+                      )}
+                    </div>
 
                     <p className="mt-2 text-sm leading-none text-gray-500">
                       {(() => {
@@ -614,7 +681,7 @@ export default function Default() {
                       </>
                     ) : (
                       <>
-                        <TooltipProvider delayDuration={75}>
+                        <TooltipProvider delayDuration={0}>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button size="md">
@@ -729,11 +796,28 @@ export default function Default() {
                   Rate
                 </span>
                 <span className="text-xl font-bold leading-none text-dark-blue-400">
-                  $85 - $120
-                  <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                    /hr
-                  </span>
+                  {profile?.rateMin || profile?.rateMax
+                    ? <>
+                        {profile.rateMin && profile.rateMax && Math.round(profile.rateMin) !== Math.round(profile.rateMax)
+                          ? `$${Math.round(profile.rateMin)} - $${Math.round(profile.rateMax)}`
+                          : `$${Math.round(profile?.rateMax ?? profile?.rateMin ?? 0)}`}
+                        <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                          /hr
+                        </span>
+                      </>
+                    : "Unknown"
+                  }
                 </span>
+                {isEditMode && isOwnProfile && (
+                  <IconButton
+                    className="rounded-full text-gray-500 hover:text-gray-800"
+                    variant="ghost"
+                    visual="gray"
+                    onClick={() => setJobTitleOpen(true)}
+                  >
+                    <Edit03 className="size-4" />
+                  </IconButton>
+                )}
               </div>
               <div className="flex gap-x-2 justify-center  items-center">
                 <span className="text-sm font-extralight leading-none text-dark-blue-400">
@@ -768,6 +852,8 @@ export default function Default() {
                 </span>
               </div>
             </div>
+            </>
+            )}
           </div>
         </div>
 
@@ -862,7 +948,7 @@ export default function Default() {
                       </>
                     ) : (
                       <>
-                        <TooltipProvider delayDuration={75}>
+                        <TooltipProvider delayDuration={0}>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button size="md">
@@ -1801,7 +1887,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -1939,7 +2025,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -2077,7 +2163,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -2252,7 +2338,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -2390,7 +2476,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -2528,7 +2614,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -2703,7 +2789,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -2841,7 +2927,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -2979,7 +3065,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -3156,7 +3242,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -3386,7 +3472,7 @@ export default function Default() {
 
                                     <FavoriteRoot>
                                       {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
+                                        <TooltipProvider delayDuration={0}>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <span className="inline-block">
@@ -3464,7 +3550,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -3694,7 +3780,7 @@ export default function Default() {
 
                                     <FavoriteRoot>
                                       {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
+                                        <TooltipProvider delayDuration={0}>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <span className="inline-block">
@@ -3772,7 +3858,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -4002,7 +4088,7 @@ export default function Default() {
 
                                     <FavoriteRoot>
                                       {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
+                                        <TooltipProvider delayDuration={0}>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <span className="inline-block">
@@ -4080,7 +4166,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -4310,7 +4396,7 @@ export default function Default() {
 
                                     <FavoriteRoot>
                                       {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
+                                        <TooltipProvider delayDuration={0}>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <span className="inline-block">
@@ -4388,7 +4474,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -4618,7 +4704,7 @@ export default function Default() {
 
                                     <FavoriteRoot>
                                       {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
+                                        <TooltipProvider delayDuration={0}>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <span className="inline-block">
@@ -4734,7 +4820,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -4964,7 +5050,7 @@ export default function Default() {
 
                                     <FavoriteRoot>
                                       {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
+                                        <TooltipProvider delayDuration={0}>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <span className="inline-block">
@@ -5041,7 +5127,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -5271,7 +5357,7 @@ export default function Default() {
 
                                     <FavoriteRoot>
                                       {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
+                                        <TooltipProvider delayDuration={0}>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <span className="inline-block">
@@ -5348,7 +5434,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -5578,7 +5664,7 @@ export default function Default() {
 
                                     <FavoriteRoot>
                                       {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
+                                        <TooltipProvider delayDuration={0}>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <span className="inline-block">
@@ -5655,7 +5741,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -5885,7 +5971,7 @@ export default function Default() {
 
                                     <FavoriteRoot>
                                       {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
+                                        <TooltipProvider delayDuration={0}>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <span className="inline-block">
@@ -5962,7 +6048,7 @@ export default function Default() {
                                   </div>
 
                                   <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider>
+                                    <TooltipProvider delayDuration={0}>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <AvatarGroup
@@ -6192,7 +6278,7 @@ export default function Default() {
 
                                     <FavoriteRoot>
                                       {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
+                                        <TooltipProvider delayDuration={0}>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <span className="inline-block">
@@ -6297,44 +6383,66 @@ export default function Default() {
                               }}
                             >
                               <ShowMoreLessComp max={3}>
-                                <div className="flex gap-x-6">
+                                {(profile?.experience && profile.experience.length > 0) ? profile.experience
+                                  .sort((a: any, b: any) => (b.startDate || "").localeCompare(a.startDate || ""))
+                                  .map((exp: any, idx: number) => {
+                                    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"]
+                                    const fmtDate = (d: string | null) => {
+                                      if (!d) return "Present"
+                                      const [y, m] = d.split("-")
+                                      return `${months[parseInt(m, 10) - 1]} ${y}`
+                                    }
+                                    const calcDuration = (start: string, end: string | null) => {
+                                      const s = new Date(start + "-01")
+                                      const e = end ? new Date(end + "-01") : new Date()
+                                      let totalMonths = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth())
+                                      const yrs = Math.floor(totalMonths / 12)
+                                      const mos = totalMonths % 12
+                                      const parts = []
+                                      if (yrs > 0) parts.push(`${yrs} yr${yrs > 1 ? "s" : ""}`)
+                                      if (mos > 0) parts.push(`${mos} mo${mos > 1 ? "s" : ""}`)
+                                      return parts.join(" ") || "< 1 mo"
+                                    }
+                                    return (
+                                <div key={exp.id || idx} className="flex gap-x-6">
                                   <div className="relative flex flex-col items-center">
-                                    <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-                                      <NextImage
-                                        className="object-contain"
-                                        src="/android.png"
-                                        alt="Android"
-                                        height={45}
-                                        width={45}
-                                      />
+                                    <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-gray-50 overflow-hidden">
+                                      {exp.companyLogoUrl ? (
+                                        <NextImage src={exp.companyLogoUrl} alt={exp.company || ""} width={45} height={45} className="object-contain" />
+                                      ) : (
+                                        <span className="text-lg font-bold text-gray-400">{exp.company?.charAt(0) || "W"}</span>
+                                      )}
                                     </div>
 
+                                    {idx < (profile.experience?.length ?? 0) - 1 && (
                                     <div className="absolute flex py-1.5 justify-center top-[55px] inset-x-0 bottom-0">
                                       <span className="inline-block border-dashed border-[1.5px] border-gray-200" />
                                     </div>
+                                    )}
                                   </div>
 
                                   <div className="flex-auto">
                                     <div className="pb-8">
                                       <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                        Lead Front-End Developer
+                                        {exp.role}
                                       </h1>
                                       <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
-                                        Android
+                                        {exp.company}
                                       </p>
                                       <div className="mt-1.5 inline-flex items-center gap-x-2">
                                         <span className="text-xs leading-none text-dark-blue-400">
-                                          December 2020 - Present
+                                          {fmtDate(exp.startDate)} - {fmtDate(exp.endDate)}
                                         </span>
                                         <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
                                         <span className="text-xs leading-none font-semibold text-dark-blue-400">
-                                          5 yrs 2 mos
+                                          {calcDuration(exp.startDate, exp.endDate)}
                                         </span>
                                       </div>
 
+                                      {exp.description && (
                                       <ReadMoreLess
                                         max={52}
-                                        text="Lorem ipsum dolor sit amet consectetur. Cursus vitae purus in convallis nulla arcu sed. Diam pellentesque ornare nec consectetur maecenas leo lectus. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur."
+                                        text={exp.description}
                                       >
                                         {({ readMore, text, toggle }) => (
                                           <>
@@ -6355,516 +6463,14 @@ export default function Default() {
                                           </>
                                         )}
                                       </ReadMoreLess>
-
-                                      <div className="mt-3 flex items-center justify-between">
-                                        <div className="flex flex-auto items-center gap-x-3">
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    <div className="pb-8">
-                                      <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                        Lead Front-End Developer
-                                      </h1>
-                                      <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
-                                        Android
-                                      </p>
-                                      <div className="mt-1.5 inline-flex items-center gap-x-2">
-                                        <span className="text-xs leading-none text-dark-blue-400">
-                                          December 2020 - Present
-                                        </span>
-                                        <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                        <span className="text-xs leading-none font-semibold text-dark-blue-400">
-                                          5 yrs 2 mos
-                                        </span>
-                                      </div>
-                                      <ReadMoreLess
-                                        max={52}
-                                        text="Lorem ipsum dolor sit amet consectetur. Cursus vitae purus in convallis nulla arcu sed. Diam pellentesque ornare nec consectetur maecenas leo lectus. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur."
-                                      >
-                                        {({ readMore, text, toggle }) => (
-                                          <>
-                                            <p className="mt-3 text-sm leading-none font-extralight   text-gray-700">
-                                              {text}{" "}
-                                              <Button
-                                                className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                                size="sm"
-                                                variant="link"
-                                                visual="gray"
-                                                onClick={toggle}
-                                              >
-                                                {readMore
-                                                  ? null
-                                                  : "...Read More"}
-                                              </Button>
-                                            </p>
-                                          </>
-                                        )}
-                                      </ReadMoreLess>
-
-                                      <div className="mt-3 flex items-center justify-between">
-                                        <div className="flex flex-auto items-center gap-x-3">
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                        </div>
-                                      </div>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
-
-                                <div className="flex gap-x-6">
-                                  <div className="relative flex flex-col items-center">
-                                    <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-                                      <NextImage
-                                        className="object-contain"
-                                        src="/android.png"
-                                        alt="Android"
-                                        height={45}
-                                        width={45}
-                                      />
-                                    </div>
-
-                                    <div className="absolute flex py-1.5 justify-center top-[55px] inset-x-0 bottom-0">
-                                      <span className="inline-block border-dashed border-[1.5px] border-gray-200" />
-                                    </div>
-                                  </div>
-
-                                  <div className="flex-auto">
-                                    <div className="pb-8">
-                                      <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                        Lead Front-End Developer
-                                      </h1>
-                                      <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
-                                        Android
-                                      </p>
-                                      <div className="mt-1.5 inline-flex items-center gap-x-2">
-                                        <span className="text-xs leading-none text-dark-blue-400">
-                                          December 2020 - Present
-                                        </span>
-                                        <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                        <span className="text-xs leading-none font-semibold text-dark-blue-400">
-                                          5 yrs 2 mos
-                                        </span>
-                                      </div>
-                                      <ReadMoreLess
-                                        max={52}
-                                        text="Lorem ipsum dolor sit amet consectetur. Cursus vitae purus in convallis nulla arcu sed. Diam pellentesque ornare nec consectetur maecenas leo lectus. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur."
-                                      >
-                                        {({ readMore, text, toggle }) => (
-                                          <>
-                                            <p className="mt-3 text-sm leading-none font-extralight   text-gray-700">
-                                              {text}{" "}
-                                              <Button
-                                                className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                                size="sm"
-                                                variant="link"
-                                                visual="gray"
-                                                onClick={toggle}
-                                              >
-                                                {readMore
-                                                  ? null
-                                                  : "...Read More"}
-                                              </Button>
-                                            </p>
-                                          </>
-                                        )}
-                                      </ReadMoreLess>
-
-                                      <div className="mt-3 flex items-center justify-between">
-                                        <div className="flex flex-auto items-center gap-x-3">
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    <div className="pb-8">
-                                      <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                        Lead Front-End Developer
-                                      </h1>
-                                      <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
-                                        Android
-                                      </p>
-                                      <div className="mt-1.5 inline-flex items-center gap-x-2">
-                                        <span className="text-xs leading-none text-dark-blue-400">
-                                          December 2020 - Present
-                                        </span>
-                                        <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                        <span className="text-xs leading-none font-semibold text-dark-blue-400">
-                                          5 yrs 2 mos
-                                        </span>
-                                      </div>
-                                      <ReadMoreLess
-                                        max={52}
-                                        text="Lorem ipsum dolor sit amet consectetur. Cursus vitae purus in convallis nulla arcu sed. Diam pellentesque ornare nec consectetur maecenas leo lectus. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur."
-                                      >
-                                        {({ readMore, text, toggle }) => (
-                                          <>
-                                            <p className="mt-3 text-sm leading-none font-extralight   text-gray-700">
-                                              {text}{" "}
-                                              <Button
-                                                className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                                size="sm"
-                                                variant="link"
-                                                visual="gray"
-                                                onClick={toggle}
-                                              >
-                                                {readMore
-                                                  ? null
-                                                  : "...Read More"}
-                                              </Button>
-                                            </p>
-                                          </>
-                                        )}
-                                      </ReadMoreLess>
-
-                                      <div className="mt-3 flex items-center justify-between">
-                                        <div className="flex flex-auto items-center gap-x-3">
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="flex gap-x-6">
-                                  <div className="relative flex flex-col items-center">
-                                    <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-                                      <NextImage
-                                        className="object-contain"
-                                        src="/android.png"
-                                        alt="Android"
-                                        height={45}
-                                        width={45}
-                                      />
-                                    </div>
-
-                                    <div className="absolute flex py-1.5 justify-center top-[55px] inset-x-0 bottom-0">
-                                      <span className="inline-block border-dashed border-[1.5px] border-gray-200" />
-                                    </div>
-                                  </div>
-
-                                  <div className="flex-auto">
-                                    <div className="pb-8">
-                                      <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                        Lead Front-End Developer
-                                      </h1>
-                                      <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
-                                        Android
-                                      </p>
-                                      <div className="mt-1.5 inline-flex items-center gap-x-2">
-                                        <span className="text-xs leading-none text-dark-blue-400">
-                                          December 2020 - Present
-                                        </span>
-                                        <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                        <span className="text-xs leading-none font-semibold text-dark-blue-400">
-                                          5 yrs 2 mos
-                                        </span>
-                                      </div>
-                                      <ReadMoreLess
-                                        max={52}
-                                        text="Lorem ipsum dolor sit amet consectetur. Cursus vitae purus in convallis nulla arcu sed. Diam pellentesque ornare nec consectetur maecenas leo lectus. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur."
-                                      >
-                                        {({ readMore, text, toggle }) => (
-                                          <>
-                                            <p className="mt-3 text-sm leading-none font-extralight   text-gray-700">
-                                              {text}{" "}
-                                              <Button
-                                                className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                                size="sm"
-                                                variant="link"
-                                                visual="gray"
-                                                onClick={toggle}
-                                              >
-                                                {readMore
-                                                  ? null
-                                                  : "...Read More"}
-                                              </Button>
-                                            </p>
-                                          </>
-                                        )}
-                                      </ReadMoreLess>
-
-                                      <div className="mt-3 flex items-center justify-between">
-                                        <div className="flex flex-auto items-center gap-x-3">
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    <div className="pb-8">
-                                      <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                        Lead Front-End Developer
-                                      </h1>
-                                      <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
-                                        Android
-                                      </p>
-                                      <div className="mt-1.5 inline-flex items-center gap-x-2">
-                                        <span className="text-xs leading-none text-dark-blue-400">
-                                          December 2020 - Present
-                                        </span>
-                                        <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                        <span className="text-xs leading-none font-semibold text-dark-blue-400">
-                                          5 yrs 2 mos
-                                        </span>
-                                      </div>
-                                      <ReadMoreLess
-                                        max={52}
-                                        text="Lorem ipsum dolor sit amet consectetur. Cursus vitae purus in convallis nulla arcu sed. Diam pellentesque ornare nec consectetur maecenas leo lectus. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur."
-                                      >
-                                        {({ readMore, text, toggle }) => (
-                                          <>
-                                            <p className="mt-3 text-sm leading-none font-extralight   text-gray-700">
-                                              {text}{" "}
-                                              <Button
-                                                className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                                size="sm"
-                                                variant="link"
-                                                visual="gray"
-                                                onClick={toggle}
-                                              >
-                                                {readMore
-                                                  ? null
-                                                  : "...Read More"}
-                                              </Button>
-                                            </p>
-                                          </>
-                                        )}
-                                      </ReadMoreLess>
-
-                                      <div className="mt-3 flex items-center justify-between">
-                                        <div className="flex flex-auto items-center gap-x-3">
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="flex gap-x-6">
-                                  <div className="relative flex flex-col items-center">
-                                    <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-                                      <NextImage
-                                        className="object-contain"
-                                        src="/android.png"
-                                        alt="Android"
-                                        height={45}
-                                        width={45}
-                                      />
-                                    </div>
-
-                                    <div className="absolute flex py-1.5 justify-center top-[55px] inset-x-0 bottom-0">
-                                      <span className="inline-block border-dashed border-[1.5px] border-gray-200" />
-                                    </div>
-                                  </div>
-
-                                  <div className="flex-auto">
-                                    <div className="pb-8">
-                                      <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                        Lead Front-End Developer
-                                      </h1>
-                                      <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
-                                        Android
-                                      </p>
-                                      <div className="mt-1.5 inline-flex items-center gap-x-2">
-                                        <span className="text-xs leading-none text-dark-blue-400">
-                                          December 2020 - Present
-                                        </span>
-                                        <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                        <span className="text-xs leading-none font-semibold text-dark-blue-400">
-                                          5 yrs 2 mos
-                                        </span>
-                                      </div>
-                                      <ReadMoreLess
-                                        max={52}
-                                        text="Lorem ipsum dolor sit amet consectetur. Cursus vitae purus in convallis nulla arcu sed. Diam pellentesque ornare nec consectetur maecenas leo lectus. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur."
-                                      >
-                                        {({ readMore, text, toggle }) => (
-                                          <>
-                                            <p className="mt-3 text-sm leading-none font-extralight   text-gray-700">
-                                              {text}{" "}
-                                              <Button
-                                                className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                                size="sm"
-                                                variant="link"
-                                                visual="gray"
-                                                onClick={toggle}
-                                              >
-                                                {readMore
-                                                  ? null
-                                                  : "...Read More"}
-                                              </Button>
-                                            </p>
-                                          </>
-                                        )}
-                                      </ReadMoreLess>
-
-                                      <div className="mt-3 flex items-center justify-between">
-                                        <div className="flex flex-auto items-center gap-x-3">
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    <div className="pb-8">
-                                      <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                        Lead Front-End Developer
-                                      </h1>
-                                      <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
-                                        Android
-                                      </p>
-                                      <div className="mt-1.5 inline-flex items-center gap-x-2">
-                                        <span className="text-xs leading-none text-dark-blue-400">
-                                          December 2020 - Present
-                                        </span>
-                                        <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                        <span className="text-xs leading-none font-semibold text-dark-blue-400">
-                                          5 yrs 2 mos
-                                        </span>
-                                      </div>
-                                      <ReadMoreLess
-                                        max={52}
-                                        text="Lorem ipsum dolor sit amet consectetur. Cursus vitae purus in convallis nulla arcu sed. Diam pellentesque ornare nec consectetur maecenas leo lectus. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur. Risus nunc sit urna neque volutpat at sed. Tortor integer faucibus sed viverra malesuada ornare tellus enim sollicitudin. Id odio porttitor interdum nulla. Lorem ipsum dolor sit amet consectetur."
-                                      >
-                                        {({ readMore, text, toggle }) => (
-                                          <>
-                                            <p className="mt-3 text-sm leading-none font-extralight   text-gray-700">
-                                              {text}{" "}
-                                              <Button
-                                                className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                                size="sm"
-                                                variant="link"
-                                                visual="gray"
-                                                onClick={toggle}
-                                              >
-                                                {readMore
-                                                  ? null
-                                                  : "...Read More"}
-                                              </Button>
-                                            </p>
-                                          </>
-                                        )}
-                                      </ReadMoreLess>
-
-                                      <div className="mt-3 flex items-center justify-between">
-                                        <div className="flex flex-auto items-center gap-x-3">
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                          <Badge visual="gray">
-                                            Sketch App
-                                          </Badge>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
+                                    )
+                                  }) : (
+                                <div className="mt-6 text-sm text-gray-500">No work experience added yet.</div>
+                                  )}
                               </ShowMoreLessComp>
                             </div>
 
@@ -6901,161 +6507,49 @@ export default function Default() {
                               }}
                             >
                               <ShowMoreLessComp max={4}>
-                                <div className="flex pb-5 items-start gap-x-6">
-                                  <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200">
-                                    <NextImage
-                                      className="object-cover"
-                                      src="/university-of-florida.png"
-                                      alt="University Of Florida"
-                                      fill
-                                      sizes="20vw"
-                                    />
+                                {(profile?.education && profile.education.length > 0) ? profile.education
+                                  .sort((a: any, b: any) => (b.startDate || "").localeCompare(a.startDate || ""))
+                                  .map((edu: any, idx: number) => {
+                                    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"]
+                                    const fmtDate = (d: string | null) => {
+                                      if (!d) return "Present"
+                                      const [y, m] = d.split("-")
+                                      return `${months[parseInt(m, 10) - 1]} ${y}`
+                                    }
+                                    return (
+                                <div key={edu.id || idx} className="flex pb-5 items-start gap-x-6">
+                                  <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
+                                    {edu.institutionLogoUrl ? (
+                                      <NextImage src={edu.institutionLogoUrl} alt={edu.institution || ""} fill sizes="55px" className="object-contain p-1" />
+                                    ) : (
+                                      <span className="text-lg font-bold text-gray-400">{edu.institution?.charAt(0) || "E"}</span>
+                                    )}
                                   </div>
 
                                   <div className="flex-auto">
                                     <h1 className="text-base leading-none font-bold text-dark-blue-400">
-                                      University of Florida
+                                      {edu.institution}
                                     </h1>
                                     <div className="mt-1.5 flex items-center gap-x-2">
                                       <span className="text-dark-blue-400 text-xs leading-none">
-                                        Master of Science
+                                        {edu.degree}
                                       </span>
                                       <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
                                       <span className="text-dark-blue-400 font-semibold text-xs leading-none">
-                                        Computer Science
+                                        {edu.field}
                                       </span>
                                     </div>
                                     <div className="mt-1.5">
                                       <span className="text-dark-blue-400 text-xs leading-none">
-                                        August 2012 - September 2014
+                                        {fmtDate(edu.startDate)} - {fmtDate(edu.endDate)}
                                       </span>
                                     </div>
                                   </div>
                                 </div>
-                                <div className="flex pb-5 items-start gap-x-6">
-                                  <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200">
-                                    <NextImage
-                                      className="object-cover"
-                                      src="/university-of-florida.png"
-                                      alt="University Of Florida"
-                                      fill
-                                      sizes="20vw"
-                                    />
-                                  </div>
-
-                                  <div className="flex-auto">
-                                    <h1 className="text-base leading-none font-bold text-dark-blue-400">
-                                      University of Florida
-                                    </h1>
-                                    <div className="mt-1.5 flex items-center gap-x-2">
-                                      <span className="text-dark-blue-400 text-xs leading-none">
-                                        Master of Science
-                                      </span>
-                                      <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                      <span className="text-dark-blue-400 font-semibold text-xs leading-none">
-                                        Computer Science
-                                      </span>
-                                    </div>
-                                    <div className="mt-1.5">
-                                      <span className="text-dark-blue-400 text-xs leading-none">
-                                        August 2012 - September 2014
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="flex pb-5 items-start gap-x-6">
-                                  <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200">
-                                    <NextImage
-                                      className="object-cover"
-                                      src="/university-of-florida.png"
-                                      alt="University Of Florida"
-                                      fill
-                                      sizes="20vw"
-                                    />
-                                  </div>
-
-                                  <div className="flex-auto">
-                                    <h1 className="text-base leading-none font-bold text-dark-blue-400">
-                                      University of Florida
-                                    </h1>
-                                    <div className="mt-1.5 flex items-center gap-x-2">
-                                      <span className="text-dark-blue-400 text-xs leading-none">
-                                        Master of Science
-                                      </span>
-                                      <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                      <span className="text-dark-blue-400 font-semibold text-xs leading-none">
-                                        Computer Science
-                                      </span>
-                                    </div>
-                                    <div className="mt-1.5">
-                                      <span className="text-dark-blue-400 text-xs leading-none">
-                                        August 2012 - September 2014
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="flex pb-5 items-start gap-x-6">
-                                  <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200">
-                                    <NextImage
-                                      className="object-cover"
-                                      src="/university-of-florida.png"
-                                      alt="University Of Florida"
-                                      fill
-                                      sizes="20vw"
-                                    />
-                                  </div>
-
-                                  <div className="flex-auto">
-                                    <h1 className="text-base leading-none font-bold text-dark-blue-400">
-                                      University of Florida
-                                    </h1>
-                                    <div className="mt-1.5 flex items-center gap-x-2">
-                                      <span className="text-dark-blue-400 text-xs leading-none">
-                                        Master of Science
-                                      </span>
-                                      <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                      <span className="text-dark-blue-400 font-semibold text-xs leading-none">
-                                        Computer Science
-                                      </span>
-                                    </div>
-                                    <div className="mt-1.5">
-                                      <span className="text-dark-blue-400 text-xs leading-none">
-                                        August 2012 - September 2014
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="flex pb-5 items-start gap-x-6">
-                                  <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200">
-                                    <NextImage
-                                      className="object-cover"
-                                      src="/university-of-florida.png"
-                                      alt="University Of Florida"
-                                      fill
-                                      sizes="20vw"
-                                    />
-                                  </div>
-
-                                  <div className="flex-auto">
-                                    <h1 className="text-base leading-none font-bold text-dark-blue-400">
-                                      University of Florida
-                                    </h1>
-                                    <div className="mt-1.5 flex items-center gap-x-2">
-                                      <span className="text-dark-blue-400 text-xs leading-none">
-                                        Master of Science
-                                      </span>
-                                      <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                      <span className="text-dark-blue-400 font-semibold text-xs leading-none">
-                                        Computer Science
-                                      </span>
-                                    </div>
-                                    <div className="mt-1.5">
-                                      <span className="text-dark-blue-400 text-xs leading-none">
-                                        August 2012 - September 2014
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
+                                    )
+                                  }) : (
+                                <div className="mt-6 text-sm text-gray-500">No education added yet.</div>
+                                  )}
                               </ShowMoreLessComp>
                             </div>
 
@@ -7065,14 +6559,16 @@ export default function Default() {
                                 isShowing && "justify-center"
                               )}
                             >
+                              {(profile?.education?.length ?? 0) > 4 && (
                               <Button
                                 size="sm"
                                 variant="link"
                                 visual="gray"
                                 onClick={() => setIsShowing((prev) => !prev)}
                               >
-                                {isShowing ? "View Less" : "1 More..."}
+                                {isShowing ? "View Less" : `${(profile?.education?.length ?? 0) - 4} More...`}
                               </Button>
+                              )}
                             </div>
                           </>
                         )}
@@ -8553,11 +8049,26 @@ export default function Default() {
                   <div className="p-6 rounded-t-lg relative bg-white border border-gray-200">
                     <div className="flex items-center gap-x-1 justify-center">
                       <span className="inline-flex text-sm leading-none text-dark-blue-400 font-bold items-center gap-x-1">
-                        <span className="size-2 inline-block bg-gray-500 rounded-full" />{" "}
-                        Offline
+                        <span className={`size-2 inline-block rounded-full ${isOwnProfile ? "bg-green-500" : "bg-gray-500"}`} />{" "}
+                        {isOwnProfile ? "Online" : "Offline"}
                       </span>
                       <span className="font-extralight text-sm leading-none text-dark-blue-400">
-                        3:30 PM local time
+                        {(() => {
+                          const tz = profile?.timezone
+                          if (!tz) return ""
+                          try {
+                            const now = new Date()
+                            const timeStr = now.toLocaleTimeString("en-US", {
+                              timeZone: tz,
+                              hour: "numeric",
+                              minute: "2-digit",
+                              hour12: true,
+                            })
+                            return `${timeStr} local time`
+                          } catch {
+                            return ""
+                          }
+                        })()}
                       </span>
                     </div>
 
@@ -8992,16 +8503,16 @@ export default function Default() {
       {/* Edit Profile Modals */}
       {isOwnProfile && (
         <>
-          <AvailabilityDialog opened={availabilityOpen} onOpenedChange={setAvailabilityOpen} />
-          <SkillsDialog opened={skillsOpen} onOpenedChange={setSkillsOpen} />
-          <AboutMeDialog opened={overviewOpen} onOpenedChange={setOverviewOpen} />
+          <AvailabilityDialog opened={availabilityOpen} onOpenedChange={setAvailabilityOpen} profile={profile} onSaved={refreshProfile} />
+          <SkillsDialog opened={skillsOpen} onOpenedChange={setSkillsOpen} profile={profile} onSaved={refreshProfile} />
+          <AboutMeDialog opened={overviewOpen} onOpenedChange={setOverviewOpen} profile={profile} onSaved={refreshProfile} />
           <MyOffersDialog opened={offersOpen} onOpenedChange={setOffersOpen} />
-          <MoreInfoDialog opened={jobTitleOpen} onOpenedChange={setJobTitleOpen} />
-          <LanguagesDialog opened={languagesOpen} onOpenedChange={setLanguagesOpen} />
-          <IndustryExpertiseDialog opened={industriesOpen} onOpenedChange={setIndustriesOpen} />
-          <CertificationsDialog opened={certificationsOpen} onOpenedChange={setCertificationsOpen} />
-          <WorkExperienceDialog opened={workExperienceOpen} onOpenedChange={setWorkExperienceOpen} />
-          <EducationDialog opened={educationOpen} onOpenedChange={setEducationOpen} />
+          <MoreInfoDialog opened={jobTitleOpen} onOpenedChange={setJobTitleOpen} profile={profile} onSaved={refreshProfile} />
+          <LanguagesDialog opened={languagesOpen} onOpenedChange={setLanguagesOpen} profile={profile} onSaved={refreshProfile} />
+          <IndustryExpertiseDialog opened={industriesOpen} onOpenedChange={setIndustriesOpen} profile={profile} onSaved={refreshProfile} />
+          <CertificationsDialog opened={certificationsOpen} onOpenedChange={setCertificationsOpen} profile={profile} onSaved={refreshProfile} />
+          <WorkExperienceDialog opened={workExperienceOpen} onOpenedChange={setWorkExperienceOpen} profile={profile} onSaved={refreshProfile} />
+          <EducationDialog opened={educationOpen} onOpenedChange={setEducationOpen} profile={profile} onSaved={refreshProfile} />
           <AffiliatedTeamsDialog opened={affiliatedTeamsOpen} onOpenedChange={setAffiliatedTeamsOpen} />
         </>
       )}

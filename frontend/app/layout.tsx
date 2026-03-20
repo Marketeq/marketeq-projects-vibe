@@ -10,6 +10,7 @@ import "swiper/css/effect-fade"
 import "swiper/css/navigation"
 import "swiper/css/pagination"
 import { InviteWindow } from "@/components/invite-window"
+import { TimezoneSync } from "@/components/timezone-sync"
 import { NProgressBar } from "@/components/n-progress-bar"
 import { Toaster } from "@/components/ui"
 import "@/styles/globals.css"
@@ -44,6 +45,7 @@ export default function RootLayout({
                 <NProgressBar />
               </Suspense>
               <Toaster />
+              <TimezoneSync />
               <InviteWindow />
             </QueryProvider>
           </AuthProvider>

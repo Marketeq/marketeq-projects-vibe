@@ -36,6 +36,7 @@ const config: Config = {
           700: "#344054",
           800: "#1D2939",
           900: "#101828",
+          black: "#101828",
         },
         "light-gray": {
           25: "#FDFDFE",

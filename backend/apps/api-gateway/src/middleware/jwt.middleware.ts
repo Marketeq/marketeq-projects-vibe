@@ -7,6 +7,7 @@ const PUBLIC_ROUTES = [
   '/auth/login', '/auth/signup', '/auth/refresh',
   '/auth/google', '/auth/linkedin', '/auth/magic-link', '/auth/verify',
   '/search', '/autocomplete', '/suggestions',
+  '/v1/users/username',
 ]
 
 function isPublic(path: string): boolean {
@@ -18,7 +19,8 @@ export class JwtMiddleware implements NestMiddleware {
   constructor(private readonly jwt: JwtService) {}
 
   use(req: Request, _res: Response, next: NextFunction) {
-    if (isPublic(req.path)) return next()
+    const reqPath = req.originalUrl.split('?')[0]
+    if (isPublic(reqPath)) return next()
 
     const authHeader = req.headers.authorization
     const cookieToken = (req as any).cookies?.access_token

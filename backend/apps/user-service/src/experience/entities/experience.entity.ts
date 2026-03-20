@@ -28,6 +28,11 @@ export class Experience {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  companyId: string;
+
+  companyLogoUrl?: string;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }
