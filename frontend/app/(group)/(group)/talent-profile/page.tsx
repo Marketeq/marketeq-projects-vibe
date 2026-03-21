@@ -281,43 +281,39 @@ function Default() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
 
-  // Load profile: for own profile, call /user/me directly (no need to wait for auth context).
-  // For other users, use username param. This avoids two sequential API calls.
-  const hasLoadedRef = React.useRef(false)
-
+  // Load profile: try /user/me first (returns own profile), fall back to /v1/users/:id (public).
   useEffect(() => {
+    setIsProfileLoading(true)
     if (usernameParam) {
       // Viewing someone else's profile by username
-      setIsProfileLoading(true)
       UserAPI.getByUsername(usernameParam)
         .then((res) => {
           if (res?.data) setProfile(res.data)
         })
         .catch((err) => { console.error("[profile] getByUsername error:", err?.response?.status, err?.message) })
         .finally(() => setIsProfileLoading(false))
-    } else if (!hasLoadedRef.current) {
-      // Own profile — call /user/me directly, no need to wait for auth context
-      setIsProfileLoading(true)
+    } else {
+      // Own profile — try /user/me, if it fails fall back to /v1/users/:id
       UserAPI.me()
         .then((res) => {
-          if (res?.data) {
-            const profileData = res.data?.user ?? res.data?.data?.user ?? res.data
-            if (profileData && typeof profileData === "object") {
-              setProfile(profileData)
-              hasLoadedRef.current = true
-            }
+          const profileData = res?.data?.user ?? res?.data?.data?.user ?? res?.data
+          if (profileData && typeof profileData === "object" && profileData.id) {
+            setProfile(profileData)
+          } else {
+            throw new Error("No profile data from /user/me")
           }
         })
-        .catch((err) => { console.error("[profile] me() error:", err?.response?.status, err?.message) })
-        .finally(() => setIsProfileLoading(false))
-    } else if (user?.id && !profile) {
-      // Fallback: if me() failed but auth context resolved, try getProfile
-      setIsProfileLoading(true)
-      UserAPI.getProfile(user.id)
-        .then((res) => {
-          if (res?.data) setProfile(res.data)
+        .catch((meErr) => {
+          console.error("[profile] me() failed:", meErr?.response?.status, meErr?.message)
+          // Fallback: if auth context has user.id, fetch profile directly (public endpoint)
+          if (user?.id) {
+            return UserAPI.getProfile(user.id)
+              .then((res) => {
+                if (res?.data) setProfile(res.data)
+              })
+              .catch((err) => { console.error("[profile] getProfile fallback error:", err?.response?.status, err?.message) })
+          }
         })
-        .catch((err) => { console.error("[profile] getProfile error:", err?.response?.status, err?.message) })
         .finally(() => setIsProfileLoading(false))
     }
   }, [user?.id, usernameParam])
