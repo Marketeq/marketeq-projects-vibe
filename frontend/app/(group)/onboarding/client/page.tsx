@@ -9,6 +9,7 @@ import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { AuthAPI } from "@/service/http/auth"
 import { ClientAPI } from "@/service/http/client"
 import { UserAPI } from "@/service/http/user"
+import { useAutocomplete } from "@/libs/autocomplete"
 import { HOT_KEYS } from "@/utils/constants"
 import {
   cn,
@@ -114,7 +115,7 @@ const describeYourTeamFormSchema = z.object({
 
 type DescribeYourTeamFormValues = z.infer<typeof describeYourTeamFormSchema>
 
-const industryList = ["Technology", "Healthcard", "Retail"] as const
+const industryListFallback = ["Technology", "Healthcard", "Retail"] as const
 
 const DescribeYourTeam = ({
   sidebar,
@@ -140,6 +141,12 @@ const DescribeYourTeam = ({
     },
   })
   const values = watch()
+
+  const { suggestions: industrySuggestions } = useAutocomplete('industries', '')
+  const industryList = React.useMemo(() => {
+    if (industrySuggestions.length > 0) return industrySuggestions.map((item: any) => item.label)
+    return [...industryListFallback]
+  }, [industrySuggestions])
 
   const { toggleValidation } = useStepContext()
   const { nextStep, setStep } = useStepperContext()
@@ -1137,9 +1144,17 @@ const LookingToWorkWith = ({
     if (key === HOT_KEYS.ENTER) addValue()
   }
 
-  const filteredRoles = roles.filter((role) =>
-    role.toLowerCase().includes(inputValue.toLowerCase())
-  )
+  const { suggestions: jobTitleSuggestions } = useAutocomplete('job_titles', inputValue)
+  const filteredRoles = React.useMemo(() => {
+    if (jobTitleSuggestions.length > 0) {
+      return jobTitleSuggestions.map((item: any) => item.label).filter((label: string) =>
+        label.toLowerCase().includes(inputValue.toLowerCase())
+      )
+    }
+    return roles.filter((role) =>
+      role.toLowerCase().includes(inputValue.toLowerCase())
+    )
+  }, [jobTitleSuggestions, inputValue])
 
   useIsomorphicLayoutEffect(() => {
     setValues((prevValues) => {
@@ -1264,9 +1279,17 @@ const SkillsLookingFor = ({
     if (key === HOT_KEYS.ENTER) addValue()
   }
 
-  const filteredRoles = roles.filter((role) =>
-    role.toLowerCase().includes(inputValue.toLowerCase())
-  )
+  const { suggestions: skillsSuggestions } = useAutocomplete('skills', inputValue)
+  const filteredRoles = React.useMemo(() => {
+    if (skillsSuggestions.length > 0) {
+      return skillsSuggestions.map((item: any) => item.label).filter((label: string) =>
+        label.toLowerCase().includes(inputValue.toLowerCase())
+      )
+    }
+    return roles.filter((role) =>
+      role.toLowerCase().includes(inputValue.toLowerCase())
+    )
+  }, [skillsSuggestions, inputValue])
 
   useIsomorphicLayoutEffect(() => {
     setValues((prevValues) => {

@@ -1,0 +1,870 @@
+[
+  {
+    "id": "2.A.1.a",
+    "label": "Reading Comprehension",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.A.1.b",
+    "label": "Active Listening",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.A.1.c",
+    "label": "Writing",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.A.1.d",
+    "label": "Speaking",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.A.1.e",
+    "label": "Mathematics",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.A.1.f",
+    "label": "Science",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.A.2.a",
+    "label": "Critical Thinking",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.A.2.b",
+    "label": "Active Learning",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.A.2.c",
+    "label": "Learning Strategies",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.A.2.d",
+    "label": "Monitoring",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.1.a",
+    "label": "Social Perceptiveness",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.1.b",
+    "label": "Coordination",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.1.c",
+    "label": "Persuasion",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.1.d",
+    "label": "Negotiation",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.1.e",
+    "label": "Instructing",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.1.f",
+    "label": "Service Orientation",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.2.i",
+    "label": "Complex Problem Solving",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.3.a",
+    "label": "Operations Analysis",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.3.b",
+    "label": "Technology Design",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.3.c",
+    "label": "Equipment Selection",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.3.d",
+    "label": "Installation",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.3.e",
+    "label": "Programming",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.3.g",
+    "label": "Operations Monitoring",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.3.h",
+    "label": "Operation and Control",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.3.j",
+    "label": "Equipment Maintenance",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.3.k",
+    "label": "Troubleshooting",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.3.l",
+    "label": "Repairing",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.3.m",
+    "label": "Quality Control Analysis",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.4.e",
+    "label": "Judgment and Decision Making",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.4.g",
+    "label": "Systems Analysis",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.4.h",
+    "label": "Systems Evaluation",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.5.a",
+    "label": "Time Management",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.5.b",
+    "label": "Management of Financial Resources",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.5.c",
+    "label": "Management of Material Resources",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "2.B.5.d",
+    "label": "Management of Personnel Resources",
+    "category": "Basic Skills",
+    "domain": "General",
+    "source": "O*NET"
+  },
+  {
+    "id": "3.T.1.a",
+    "label": "Software Development",
+    "category": "Technical Skills",
+    "domain": "Software Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.1.b",
+    "label": "Frontend Development",
+    "category": "Technical Skills",
+    "domain": "Software Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.1.c",
+    "label": "Backend Development",
+    "category": "Technical Skills",
+    "domain": "Software Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.1.d",
+    "label": "Full Stack Development",
+    "category": "Technical Skills",
+    "domain": "Software Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.2.a",
+    "label": "Data Analysis",
+    "category": "Technical Skills",
+    "domain": "Data Science",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.2.b",
+    "label": "Data Cleaning",
+    "category": "Technical Skills",
+    "domain": "Data Science",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.2.c",
+    "label": "Data Visualization",
+    "category": "Technical Skills",
+    "domain": "Data Science",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.2.d",
+    "label": "SQL",
+    "category": "Technical Skills",
+    "domain": "Data Science",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.3.a",
+    "label": "Cloud Computing",
+    "category": "Technical Skills",
+    "domain": "Cloud",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.3.b",
+    "label": "AWS",
+    "category": "Technical Skills",
+    "domain": "Cloud",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.3.c",
+    "label": "Docker",
+    "category": "Technical Skills",
+    "domain": "DevOps",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.3.d",
+    "label": "Kubernetes",
+    "category": "Technical Skills",
+    "domain": "DevOps",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.4.a",
+    "label": "Machine Learning",
+    "category": "Technical Skills",
+    "domain": "AI/ML",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.4.b",
+    "label": "Deep Learning",
+    "category": "Technical Skills",
+    "domain": "AI/ML",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.4.c",
+    "label": "Natural Language Processing",
+    "category": "Technical Skills",
+    "domain": "AI/ML",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.4.d",
+    "label": "Model Deployment",
+    "category": "Technical Skills",
+    "domain": "AI/ML",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.5.a",
+    "label": "Cybersecurity",
+    "category": "Technical Skills",
+    "domain": "Security",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.5.b",
+    "label": "Penetration Testing",
+    "category": "Technical Skills",
+    "domain": "Security",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.5.c",
+    "label": "Network Security",
+    "category": "Technical Skills",
+    "domain": "Security",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.6.a",
+    "label": "Mobile App Development",
+    "category": "Technical Skills",
+    "domain": "Mobile Development",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.6.b",
+    "label": "iOS Development",
+    "category": "Technical Skills",
+    "domain": "Mobile Development",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.6.c",
+    "label": "Android Development",
+    "category": "Technical Skills",
+    "domain": "Mobile Development",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.7.a",
+    "label": "Data Engineering",
+    "category": "Technical Skills",
+    "domain": "Data Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.7.b",
+    "label": "ETL Pipelines",
+    "category": "Technical Skills",
+    "domain": "Data Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.7.c",
+    "label": "Big Data Processing",
+    "category": "Technical Skills",
+    "domain": "Data Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.8.a",
+    "label": "Product Management",
+    "category": "Technical Skills",
+    "domain": "Product",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.8.b",
+    "label": "Agile Methodologies",
+    "category": "Technical Skills",
+    "domain": "Product",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.9.a",
+    "label": "UI/UX Design",
+    "category": "Technical Skills",
+    "domain": "Design",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.9.b",
+    "label": "Wireframing",
+    "category": "Technical Skills",
+    "domain": "Design",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.9.c",
+    "label": "Prototyping",
+    "category": "Technical Skills",
+    "domain": "Design",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.10.a",
+    "label": "QA Testing",
+    "category": "Technical Skills",
+    "domain": "Quality Assurance",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.10.b",
+    "label": "Test Automation",
+    "category": "Technical Skills",
+    "domain": "Quality Assurance",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1000",
+    "label": "Version Control (Git)",
+    "category": "Technical Skills",
+    "domain": "DevOps",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1001",
+    "label": "CI/CD Pipelines",
+    "category": "Technical Skills",
+    "domain": "DevOps",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1002",
+    "label": "Terraform",
+    "category": "Technical Skills",
+    "domain": "DevOps",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1003",
+    "label": "Ansible",
+    "category": "Technical Skills",
+    "domain": "DevOps",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1004",
+    "label": "RESTful APIs",
+    "category": "Technical Skills",
+    "domain": "Software Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1005",
+    "label": "GraphQL",
+    "category": "Technical Skills",
+    "domain": "Software Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1006",
+    "label": "TypeScript",
+    "category": "Technical Skills",
+    "domain": "Software Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1007",
+    "label": "Python",
+    "category": "Technical Skills",
+    "domain": "Software Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1008",
+    "label": "Java",
+    "category": "Technical Skills",
+    "domain": "Software Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1009",
+    "label": "C++",
+    "category": "Technical Skills",
+    "domain": "Software Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1010",
+    "label": "React",
+    "category": "Technical Skills",
+    "domain": "Frontend",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1011",
+    "label": "Angular",
+    "category": "Technical Skills",
+    "domain": "Frontend",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1012",
+    "label": "Vue.js",
+    "category": "Technical Skills",
+    "domain": "Frontend",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1013",
+    "label": "Node.js",
+    "category": "Technical Skills",
+    "domain": "Backend",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1014",
+    "label": "Express.js",
+    "category": "Technical Skills",
+    "domain": "Backend",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1015",
+    "label": "MongoDB",
+    "category": "Technical Skills",
+    "domain": "Databases",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1016",
+    "label": "PostgreSQL",
+    "category": "Technical Skills",
+    "domain": "Databases",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1017",
+    "label": "Apache Spark",
+    "category": "Technical Skills",
+    "domain": "Big Data",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1018",
+    "label": "Hadoop",
+    "category": "Technical Skills",
+    "domain": "Big Data",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1019",
+    "label": "Airflow",
+    "category": "Technical Skills",
+    "domain": "Data Engineering",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1020",
+    "label": "Pandas",
+    "category": "Technical Skills",
+    "domain": "Data Science",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1021",
+    "label": "NumPy",
+    "category": "Technical Skills",
+    "domain": "Data Science",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1022",
+    "label": "Matplotlib",
+    "category": "Technical Skills",
+    "domain": "Data Science",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1023",
+    "label": "Scikit-learn",
+    "category": "Technical Skills",
+    "domain": "Machine Learning",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1024",
+    "label": "TensorFlow",
+    "category": "Technical Skills",
+    "domain": "Machine Learning",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.added.1025",
+    "label": "PyTorch",
+    "category": "Technical Skills",
+    "domain": "Machine Learning",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2000",
+    "label": "Next.js",
+    "category": "Technical Skills",
+    "domain": "Frontend",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2001",
+    "label": "NestJS",
+    "category": "Technical Skills",
+    "domain": "Backend",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2002",
+    "label": "FastAPI",
+    "category": "Technical Skills",
+    "domain": "Backend",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2003",
+    "label": "Flask",
+    "category": "Technical Skills",
+    "domain": "Backend",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2004",
+    "label": "Django",
+    "category": "Technical Skills",
+    "domain": "Backend",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2005",
+    "label": "Bootstrap",
+    "category": "Technical Skills",
+    "domain": "Frontend",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2006",
+    "label": "Tailwind CSS",
+    "category": "Technical Skills",
+    "domain": "Frontend",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2007",
+    "label": "Figma",
+    "category": "Technical Skills",
+    "domain": "Design",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2008",
+    "label": "Adobe XD",
+    "category": "Technical Skills",
+    "domain": "Design",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2009",
+    "label": "Jira",
+    "category": "Technical Skills",
+    "domain": "Project Management",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2010",
+    "label": "Confluence",
+    "category": "Technical Skills",
+    "domain": "Project Management",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2011",
+    "label": "Bitbucket",
+    "category": "Technical Skills",
+    "domain": "DevOps",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2012",
+    "label": "GitHub Actions",
+    "category": "Technical Skills",
+    "domain": "DevOps",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2013",
+    "label": "Azure DevOps",
+    "category": "Technical Skills",
+    "domain": "DevOps",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2014",
+    "label": "Google Cloud Platform",
+    "category": "Technical Skills",
+    "domain": "Cloud",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2015",
+    "label": "Microsoft Azure",
+    "category": "Technical Skills",
+    "domain": "Cloud",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2016",
+    "label": "Databricks",
+    "category": "Technical Skills",
+    "domain": "Big Data",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2017",
+    "label": "Snowflake",
+    "category": "Technical Skills",
+    "domain": "Big Data",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2018",
+    "label": "Redshift",
+    "category": "Technical Skills",
+    "domain": "Big Data",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2019",
+    "label": "Power BI",
+    "category": "Technical Skills",
+    "domain": "Data Visualization",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2020",
+    "label": "Tableau",
+    "category": "Technical Skills",
+    "domain": "Data Visualization",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2021",
+    "label": "Looker",
+    "category": "Technical Skills",
+    "domain": "Data Visualization",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2022",
+    "label": "LangChain",
+    "category": "Technical Skills",
+    "domain": "AI/ML",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2023",
+    "label": "Hugging Face Transformers",
+    "category": "Technical Skills",
+    "domain": "AI/ML",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2024",
+    "label": "OpenCV",
+    "category": "Technical Skills",
+    "domain": "AI/ML",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2025",
+    "label": "Jupyter Notebook",
+    "category": "Technical Skills",
+    "domain": "Data Science",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2026",
+    "label": "VS Code",
+    "category": "Technical Skills",
+    "domain": "Developer Tools",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2027",
+    "label": "Postman",
+    "category": "Technical Skills",
+    "domain": "API Testing",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2028",
+    "label": "Swagger",
+    "category": "Technical Skills",
+    "domain": "API Testing",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2029",
+    "label": "Kibana",
+    "category": "Technical Skills",
+    "domain": "Monitoring",
+    "source": "Generated"
+  },
+  {
+    "id": "3.T.extended.2030",
+    "label": "Grafana",
+    "category": "Technical Skills",
+    "domain": "Monitoring",
+    "source": "Generated"
+  }
+]

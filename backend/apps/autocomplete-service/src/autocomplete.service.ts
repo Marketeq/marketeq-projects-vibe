@@ -2,6 +2,8 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import Fuse from 'fuse.js';
+import * as fs from 'fs';
+import * as path from 'path';
 import { AutocompleteEntry, EntryStatus, EntryType } from './entities/autocomplete-entry.entity';
 import { AutocompleteReviewQueue, ReviewAction } from './entities/autocomplete-review-queue.entity';
 import { AutocompleteCategory } from './entities/autocomplete-category.entity';
@@ -10,6 +12,9 @@ import { SubmitAutocompleteDto } from './dto/submit-autocomplete.dto';
 import { ReviewAutocompleteDto } from './dto/review-autocomplete.dto';
 import { QueryAutocompleteDto } from './dto/query-autocomplete.dto';
 import { EntryFilter } from './filters/entry.filter';
+
+/** Set of types that have corresponding JSON data files */
+const JSON_DATA_TYPES = new Set(['skills', 'job_titles', 'certifications', 'industries', 'languages']);
 
 // Heuristic keyword-to-category mapping
 const CATEGORY_RULES: Record<string, string[]> = {
@@ -189,5 +194,30 @@ export class AutocompleteService {
       order: { createdAt: 'ASC' },
       take: 50,
     });
+  }
+
+  /**
+   * Check whether a JSON data file exists for the given type.
+   */
+  hasJsonData(type: string): boolean {
+    return JSON_DATA_TYPES.has(type);
+  }
+
+  /**
+   * Query autocomplete data from a local JSON file using Fuse.js fuzzy search.
+   * Falls back gracefully if the file does not exist.
+   */
+  queryFromJson(type: string, q?: string, limit = 10): { id: string; label: string }[] {
+    const filepath = path.join(__dirname, '../../data/autocomplete', `${type}.json`);
+    if (!fs.existsSync(filepath)) {
+      return [];
+    }
+    const raw = fs.readFileSync(filepath, 'utf-8');
+    const data: { id: string; label: string }[] = JSON.parse(raw);
+    if (!q || q.trim() === '') {
+      return data.slice(0, limit);
+    }
+    const fuse = new Fuse(data, { keys: ['label'], threshold: 0.3 });
+    return fuse.search(q, { limit }).map(r => r.item);
   }
 }

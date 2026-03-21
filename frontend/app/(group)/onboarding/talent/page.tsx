@@ -8,6 +8,7 @@ import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import industriesMock from "@/public/mock/industries.json"
 import jobTitlesMock from "@/public/mock/job_titles.json"
 import languagesMock from "@/public/mock/languages.json"
+import { useAutocomplete } from "@/libs/autocomplete"
 import { AuthAPI } from "@/service/http/auth"
 import { TalentAPI } from "@/service/http/talent"
 import { UserAPI } from "@/service/http/user"
@@ -864,10 +865,11 @@ const ShareYourLocation = ({
     parseMultiSelectString(stepData?.language)
   )
 
-  const languageFallbackOptions = useMemo(
-    () => languagesMock.map((item) => item.label),
-    []
-  )
+  const { suggestions: languageSuggestions } = useAutocomplete('languages', languagesQuery)
+  const languageFallbackOptions = useMemo(() => {
+    if (languageSuggestions.length > 0) return languageSuggestions.map((item: any) => item.label)
+    return languagesMock.map((item) => item.label)
+  }, [languageSuggestions])
   const filteredLocations = useMemo(() => {
     const query = locationQuery.trim().toLowerCase()
     if (!query) return LOCATION_FALLBACK_OPTIONS
@@ -1556,14 +1558,16 @@ const ShowcaseYourTalent = ({
     parseMultiSelectString(stepData?.industriesWorkedIn)
   )
 
-  const jobTitleOptions = useMemo(
-    () => jobTitlesMock.map((item) => item.label),
-    []
-  )
-  const industriesOptions = useMemo(
-    () => industriesMock.map((item) => item.label),
-    []
-  )
+  const { suggestions: jobTitleSuggestions } = useAutocomplete('job_titles', jobTitleQuery)
+  const jobTitleOptions = useMemo(() => {
+    if (jobTitleSuggestions.length > 0) return jobTitleSuggestions.map((item: any) => item.label)
+    return jobTitlesMock.map((item) => item.label)
+  }, [jobTitleSuggestions])
+  const { suggestions: industriesSuggestions } = useAutocomplete('industries', industriesQuery)
+  const industriesOptions = useMemo(() => {
+    if (industriesSuggestions.length > 0) return industriesSuggestions.map((item: any) => item.label)
+    return industriesMock.map((item) => item.label)
+  }, [industriesSuggestions])
   const filteredJobTitles = useMemo(() => {
     const query = jobTitleQuery.trim().toLowerCase()
     if (!query) return jobTitleOptions
