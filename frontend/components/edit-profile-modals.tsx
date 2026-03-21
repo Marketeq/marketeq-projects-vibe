@@ -504,8 +504,9 @@ export const AboutMeDialog = ({
     setValue(values)
     setOpen(false)
     if (userId) {
-      UserAPI.updateProfile(userId, { bio: values.aboutMe, overview: values.aboutMe }).catch(() => {})
-      onSaved?.()
+      UserAPI.updateProfile(userId, { bio: values.aboutMe, overview: values.aboutMe })
+        .then(() => onSaved?.())
+        .catch(() => {})
     }
   }
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
@@ -1111,8 +1112,9 @@ export const MoreInfoDialog = ({
       if (defaultChunk?.jobTitle) payload.role = defaultChunk.jobTitle
       // Persist all job title entries
       payload.jobTitles = updatedChunks
-      UserAPI.updateProfile(userId, payload).catch(() => {})
-      onSaved?.()
+      UserAPI.updateProfile(userId, payload)
+        .then(() => onSaved?.())
+        .catch(() => {})
     }
 
     reset(defaultValues)
@@ -1517,8 +1519,9 @@ export const AvailabilityDialog = ({
   const onSubmit: SubmitHandler<AvailabilityFormValues> = async (values) => {
     setOpen(false)
     if (userId) {
-      UserAPI.updateProfile(userId, { availability: values.availability }).catch(() => {})
-      onSaved?.()
+      UserAPI.updateProfile(userId, { availability: values.availability })
+        .then(() => onSaved?.())
+        .catch(() => {})
     }
   }
   const availability = useWatch({ control, name: "availability" })
@@ -1764,8 +1767,9 @@ export const WorkExperienceDialog = ({
         startDate: startDate ?? "",
         endDate,
         description: values.jobDescription,
-      }).catch(() => {})
-      onSaved?.()
+      })
+        .then(() => onSaved?.())
+        .catch(() => {})
     }
     if (typeof editingIdx === "number") {
       setValueFn(
@@ -2333,8 +2337,9 @@ export const EducationDialog = ({
         field: values.major,
         startDate,
         endDate,
-      }).catch(() => {})
-      onSaved?.()
+      })
+        .then(() => onSaved?.())
+        .catch(() => {})
     }
     setOpen(false)
     setValue(values)
@@ -3430,8 +3435,9 @@ export const CertificationsDialog = ({
         issueDate: values.issuedDate?.toISOString(),
         expiryDate: values.expirationDate?.toISOString(),
         credentialUrl: values.credentialsUrl || undefined,
-      }).catch(() => {})
-      onSaved?.()
+      })
+        .then(() => onSaved?.())
+        .catch(() => {})
     }
   }
 
