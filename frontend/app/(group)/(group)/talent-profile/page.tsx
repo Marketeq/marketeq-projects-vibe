@@ -281,28 +281,44 @@ function Default() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
 
+  // Load profile: for own profile, call /user/me directly (no need to wait for auth context).
+  // For other users, use username param. This avoids two sequential API calls.
+  const hasLoadedRef = React.useRef(false)
+
   useEffect(() => {
-    setIsProfileLoading(true)
-    console.log("[profile] loading effect fired — user?.id:", user?.id, "usernameParam:", usernameParam)
     if (usernameParam) {
+      // Viewing someone else's profile by username
+      setIsProfileLoading(true)
       UserAPI.getByUsername(usernameParam)
         .then((res) => {
-          console.log("[profile] getByUsername response:", res?.status, res?.data?.id)
           if (res?.data) setProfile(res.data)
         })
         .catch((err) => { console.error("[profile] getByUsername error:", err?.response?.status, err?.message) })
         .finally(() => setIsProfileLoading(false))
-    } else if (user?.id) {
+    } else if (!hasLoadedRef.current) {
+      // Own profile — call /user/me directly, no need to wait for auth context
+      setIsProfileLoading(true)
+      UserAPI.me()
+        .then((res) => {
+          if (res?.data) {
+            const profileData = res.data?.user ?? res.data?.data?.user ?? res.data
+            if (profileData && typeof profileData === "object") {
+              setProfile(profileData)
+              hasLoadedRef.current = true
+            }
+          }
+        })
+        .catch((err) => { console.error("[profile] me() error:", err?.response?.status, err?.message) })
+        .finally(() => setIsProfileLoading(false))
+    } else if (user?.id && !profile) {
+      // Fallback: if me() failed but auth context resolved, try getProfile
+      setIsProfileLoading(true)
       UserAPI.getProfile(user.id)
         .then((res) => {
-          console.log("[profile] getProfile response:", res?.status, res?.data?.id)
           if (res?.data) setProfile(res.data)
         })
         .catch((err) => { console.error("[profile] getProfile error:", err?.response?.status, err?.message) })
         .finally(() => setIsProfileLoading(false))
-    } else {
-      console.log("[profile] no user id and no username param — skipping load")
-      setIsProfileLoading(false)
     }
   }, [user?.id, usernameParam])
 
