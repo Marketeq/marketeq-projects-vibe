@@ -1413,6 +1413,7 @@ export const MoreInfoDialog = ({
               <Button
                 type="button"
                 disabled={(canPerformAction || typeof editingIndex === "number") && (!clientRate || clientRate > 1000 || !methods.getValues("jobTitle"))}
+                loading={isSubmitting}
                 onClick={async () => {
                   if (canPerformAction || typeof editingIndex === "number") {
                     const valid = await methods.trigger()
