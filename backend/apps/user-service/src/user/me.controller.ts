@@ -34,12 +34,28 @@ export class MeController {
     }
 
     const email: string = payload.email;
-    if (!email) {
-      throw new UnauthorizedException('Token missing email claim');
+    const sub: string | undefined = payload.sub;
+
+    this.logger.log(`[me] JWT email=${email ?? 'none'}, sub=${sub ?? 'none'}`);
+
+    // Try to find user by sub (user ID) first, then by email
+    let user: any = null;
+    if (sub) {
+      try {
+        user = await this.userService.findById(sub);
+      } catch {
+        // sub might not be a valid user ID, fall through to email lookup
+      }
     }
 
-    let user = await this.userService.findByEmail(email);
+    if (!user && email) {
+      user = await this.userService.findByEmail(email);
+    }
+
     if (!user) {
+      if (!email) {
+        throw new UnauthorizedException('Token missing email claim');
+      }
       user = await this.userService.create({
         email,
         firstName: payload.firstName ?? payload.given_name ?? null,
