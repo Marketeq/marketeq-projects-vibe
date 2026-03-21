@@ -501,14 +501,12 @@ export const AboutMeDialog = ({
   }, [open, profile?.bio, reset])
 
   const onSubmit: SubmitHandler<AboutMeFormValues> = async (values) => {
-    if (userId) {
-      try {
-        await UserAPI.updateProfile(userId, { bio: values.aboutMe, overview: values.aboutMe })
-      } catch {}
-    }
     setValue(values)
     setOpen(false)
-    onSaved?.()
+    if (userId) {
+      UserAPI.updateProfile(userId, { bio: values.aboutMe, overview: values.aboutMe }).catch(() => {})
+      onSaved?.()
+    }
   }
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
 
@@ -634,9 +632,13 @@ export const AboutMeDialog = ({
 const MoreInfoForm = ({
   onShow,
   onSubmit,
+  onCheckDuplicate,
+  duplicateError,
 }: {
   onShow: () => void
   onSubmit: () => void
+  onCheckDuplicate?: () => boolean
+  duplicateError?: boolean
 }) => {
   const {
     control,
@@ -660,7 +662,9 @@ const MoreInfoForm = ({
               type="button"
               onClick={async () => {
                 const valid = await trigger()
-                if (valid) onSubmit()
+                if (!valid) return
+                if (onCheckDuplicate?.()) return
+                onSubmit()
               }}
             >
               <Check className="size-4" />
@@ -683,13 +687,18 @@ const MoreInfoForm = ({
           {...register("jobTitle", {
             onChange: (e) => {
               e.target.value = e.target.value.replace(/[0-9]/g, "")
+              onCheckDuplicate?.()
             },
           })}
-          isInvalid={hookFormHasError({
+          isInvalid={duplicateError || hookFormHasError({
             errors,
             name: "jobTitle",
           })}
         />
+
+        {duplicateError && (
+          <ErrorMessage size="sm">This job title already exists. Please use a different title.</ErrorMessage>
+        )}
 
         <HookFormErrorMessage
           errors={errors}
@@ -982,6 +991,7 @@ export const MoreInfoDialog = ({
   } = methods
   const [canPerformAction, setCanPerformAction] = useState(false)
   const [maxTitlesError, setMaxTitlesError] = useState(false)
+  const [duplicateTitleError, setDuplicateTitleError] = useState(false)
   const [editingIndex, setEditingIndex] = useState<number>()
   const [indexToRemove, setIndexToRemove] = useState<number>()
   const [infoChunks, setInfoChunks] = useControllableState<
@@ -997,6 +1007,7 @@ export const MoreInfoDialog = ({
       // Reset editing state — all titles closed by default
       setEditingIndex(undefined)
       setMaxTitlesError(false)
+      setDuplicateTitleError(false)
 
       // Load saved job titles from profile
       if (profile?.jobTitles && profile.jobTitles.length > 0) {
@@ -1026,6 +1037,20 @@ export const MoreInfoDialog = ({
       }
     }
   }, [opened])
+
+  const checkDuplicate = (): boolean => {
+    const title = formatJobTitle(methods.getValues("jobTitle"))
+    const existingTitles = (infoChunks ?? []).filter((_, i) => i !== editingIndex)
+    const isDuplicate = existingTitles.some(
+      (chunk) => chunk.jobTitle.toLowerCase() === title.toLowerCase()
+    )
+    if (isDuplicate) {
+      setDuplicateTitleError(true)
+      return true
+    }
+    setDuplicateTitleError(false)
+    return false
+  }
 
   const onSubmit: SubmitHandler<MoreInfoFormValues> = async (values) => {
     let resolveDone: () => void
@@ -1085,9 +1110,7 @@ export const MoreInfoDialog = ({
       if (defaultChunk?.jobTitle) payload.role = defaultChunk.jobTitle
       // Persist all job title entries
       payload.jobTitles = updatedChunks
-      try {
-        await UserAPI.updateProfile(userId, payload)
-      } catch {}
+      UserAPI.updateProfile(userId, payload).catch(() => {})
       onSaved?.()
     }
 
@@ -1213,6 +1236,8 @@ export const MoreInfoDialog = ({
                     <MoreInfoForm
                       onShow={() => setShow(true)}
                       onSubmit={() => handleSubmit(onSubmit)()}
+                      onCheckDuplicate={checkDuplicate}
+                      duplicateError={duplicateTitleError}
                     />
                   )}
 
@@ -1220,8 +1245,13 @@ export const MoreInfoDialog = ({
                     editingIndex === index ? (
                       <MoreInfoForm
                         key={index}
-                        onShow={() => setShow(true)}
+                        onShow={() => {
+                          setIndexToRemove(index)
+                          setShow(true)
+                        }}
                         onSubmit={() => handleSubmit(onSubmit)()}
+                        onCheckDuplicate={checkDuplicate}
+                        duplicateError={duplicateTitleError}
                       />
                     ) : (
                       <article
@@ -1380,11 +1410,11 @@ export const MoreInfoDialog = ({
               <Button
                 type="button"
                 disabled={(canPerformAction || typeof editingIndex === "number") && (!clientRate || clientRate > 1000 || !methods.getValues("jobTitle"))}
-                loading={isSubmitting}
                 onClick={async () => {
                   if (canPerformAction || typeof editingIndex === "number") {
                     const valid = await methods.trigger()
                     if (!valid) return
+                    if (checkDuplicate()) return
                     await handleSubmit(onSubmit)()
                   }
                   setOpen(false)
@@ -1484,13 +1514,11 @@ export const AvailabilityDialog = ({
   }, [open, profile?.availability, reset])
 
   const onSubmit: SubmitHandler<AvailabilityFormValues> = async (values) => {
-    if (userId) {
-      try {
-        await UserAPI.updateProfile(userId, { availability: values.availability })
-      } catch {}
-    }
     setOpen(false)
-    onSaved?.()
+    if (userId) {
+      UserAPI.updateProfile(userId, { availability: values.availability }).catch(() => {})
+      onSaved?.()
+    }
   }
   const availability = useWatch({ control, name: "availability" })
   return (
@@ -1729,15 +1757,13 @@ export const WorkExperienceDialog = ({
         : values.endDate?.year && values.endDate?.month
           ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}`
           : undefined
-      try {
-        await UserAPI.addExperience(userId, {
-          company: values.employer,
-          role: values.jobTitle,
-          startDate: startDate ?? "",
-          endDate,
-          description: values.jobDescription,
-        })
-      } catch {}
+      UserAPI.addExperience(userId, {
+        company: values.employer,
+        role: values.jobTitle,
+        startDate: startDate ?? "",
+        endDate,
+        description: values.jobDescription,
+      }).catch(() => {})
       onSaved?.()
     }
     if (typeof editingIdx === "number") {
@@ -2300,19 +2326,17 @@ export const EducationDialog = ({
         : values.endDate?.year && values.endDate?.month
           ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}`
           : undefined
-      try {
-        await UserAPI.addEducation(userId, {
-          institution: values.schoolOrUniversity,
-          degree: values.degree,
-          field: values.major,
-          startDate,
-          endDate,
-        })
-      } catch {}
+      UserAPI.addEducation(userId, {
+        institution: values.schoolOrUniversity,
+        degree: values.degree,
+        field: values.major,
+        startDate,
+        endDate,
+      }).catch(() => {})
       onSaved?.()
     }
-    setValue(values)
     setOpen(false)
+    setValue(values)
   }
 
   const currentlyAttending = useWatch({ control, name: "currentlyAttending" })
@@ -2743,27 +2767,27 @@ export const LanguagesDialog = ({
   }, [open, profile?.languages])
 
   const onSubmit: SubmitHandler<LanguagesFormValues> = async (values) => {
+    setOpen(false)
+    setValueFn(values)
     if (userId) {
-      try {
-        // Remove existing languages
-        if (profile?.languages?.length) {
+      (async () => {
+        try {
+          if (profile?.languages?.length) {
+            await Promise.all(
+              profile.languages.map((lang: any) =>
+                UserAPI.removeLanguage(userId, String(lang.id))
+              )
+            )
+          }
           await Promise.all(
-            profile.languages.map((lang: any) =>
-              UserAPI.removeLanguage(userId, String(lang.id))
+            values.languages.map((lang) =>
+              UserAPI.addLanguage(userId, { name: lang.name })
             )
           )
-        }
-        // Add new languages
-        await Promise.all(
-          values.languages.map((lang) =>
-            UserAPI.addLanguage(userId, { name: lang.name })
-          )
-        )
-      } catch {}
-      onSaved?.()
+        } catch {}
+        onSaved?.()
+      })()
     }
-    setValueFn(values)
-    setOpen(false)
   }
 
   return (
@@ -2963,27 +2987,27 @@ export const SkillsDialog = ({
   }, [open, profile?.skills])
 
   const onSubmit: SubmitHandler<SkillsFormValues> = async (values) => {
+    setOpen(false)
+    setValueFn(values)
     if (userId) {
-      try {
-        // Remove existing skills
-        if (profile?.skills?.length) {
+      (async () => {
+        try {
+          if (profile?.skills?.length) {
+            await Promise.all(
+              profile.skills.map((skill: any) =>
+                UserAPI.removeSkill(userId, String(skill.id))
+              )
+            )
+          }
           await Promise.all(
-            profile.skills.map((skill: any) =>
-              UserAPI.removeSkill(userId, String(skill.id))
+            values.skills.map((skill) =>
+              UserAPI.addSkill(userId, { name: skill.name })
             )
           )
-        }
-        // Add new skills
-        await Promise.all(
-          values.skills.map((skill) =>
-            UserAPI.addSkill(userId, { name: skill.name })
-          )
-        )
-      } catch {}
-      onSaved?.()
+        } catch {}
+        onSaved?.()
+      })()
     }
-    setValueFn(values)
-    setOpen(false)
   }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -3180,27 +3204,27 @@ export const IndustryExpertiseDialog = ({
   }, [open, profile?.industries])
 
   const onSubmit: SubmitHandler<IndustriesFormValues> = async (values) => {
+    setOpen(false)
+    setValueFn(values)
     if (userId) {
-      try {
-        // Remove existing industries
-        if (profile?.industries?.length) {
+      (async () => {
+        try {
+          if (profile?.industries?.length) {
+            await Promise.all(
+              profile.industries.map((ind: any) =>
+                UserAPI.removeIndustry(userId, String(ind.id))
+              )
+            )
+          }
           await Promise.all(
-            profile.industries.map((ind: any) =>
-              UserAPI.removeIndustry(userId, String(ind.id))
+            values.industries.map((ind) =>
+              UserAPI.addIndustry(userId, { name: ind.name })
             )
           )
-        }
-        // Add new industries
-        await Promise.all(
-          values.industries.map((ind) =>
-            UserAPI.addIndustry(userId, { name: ind.name })
-          )
-        )
-      } catch {}
-      onSaved?.()
+        } catch {}
+        onSaved?.()
+      })()
     }
-    setValueFn(values)
-    setOpen(false)
   }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -3395,21 +3419,19 @@ export const CertificationsDialog = ({
             .includes(query.toLowerCase().replace(/\s+/g, ""))
         )
   const onSubmit: SubmitHandler<CertificationsFormValues> = async (values) => {
+    setOpen(false)
+    setValueFn((prev) => (prev ? [...prev, values] : [values]))
+    reset()
     if (userId) {
-      try {
-        await UserAPI.addCertification(userId, {
-          name: values.name,
-          issuingOrganization: "",
-          issueDate: values.issuedDate?.toISOString(),
-          expiryDate: values.expirationDate?.toISOString(),
-          credentialUrl: values.credentialsUrl || undefined,
-        })
-      } catch {}
+      UserAPI.addCertification(userId, {
+        name: values.name,
+        issuingOrganization: "",
+        issueDate: values.issuedDate?.toISOString(),
+        expiryDate: values.expirationDate?.toISOString(),
+        credentialUrl: values.credentialsUrl || undefined,
+      }).catch(() => {})
       onSaved?.()
     }
-    setValueFn((prev) => (prev ? [...prev, values] : [values]))
-    setOpen(false)
-    reset()
   }
 
   const onRemove = (index: number) => {
