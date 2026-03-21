@@ -1990,7 +1990,8 @@ function Default() {
                             <Edit03 className="size-[15px]" /> Edit Offers
                           </Button>
                         )}
-                        <TabsList className="inline-flex items-center gap-x-3">
+                        {/* Sub-filter tabs only shown when offers data exists */}
+                        {false && (<><TabsList className="inline-flex items-center gap-x-3">
                           <TabsTrigger
                             variant="unstyled"
                             showUnderline={false}
@@ -2021,9 +2022,61 @@ function Default() {
                           View All{" "}
                           <ArrowRight className="size-[15px] transition duration-300 group-hover:translate-x-[4px]" />
                         </Button>
+                        </>)}
                       </div>
                     </div>
 
+                    {/* Projects empty state — shown when no project offers exist */}
+                    <TabsContent value="Projects">
+                      <div className="mt-6 p-5 border border-gray-200 rounded-lg bg-gray-25">
+                        <div className="flex items-start justify-between gap-x-4">
+                          <div className="flex-auto">
+                            <h2 className="text-base font-bold text-dark-blue-400">Projects</h2>
+                            <p className="mt-2 text-sm font-extralight text-gray-500">
+                              Your project offers will be displayed here as you create your own listings or join existing projects in the marketplace. These offers help you gain visibility, attract clients, and help create more opportunities.
+                            </p>
+                          </div>
+                          {isEditMode && isOwnProfile && (
+                            <Button
+                              className="shrink-0"
+                              variant="outlined"
+                              visual="gray"
+                              size="sm"
+                              onClick={() => setOffersOpen(true)}
+                            >
+                              <Plus className="size-4" /> Add Project
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    {/* Services empty state — shown when no service offers exist */}
+                    <TabsContent value="Services">
+                      <div className="mt-6 p-5 border border-gray-200 rounded-lg bg-gray-25">
+                        <div className="flex items-start justify-between gap-x-4">
+                          <div className="flex-auto">
+                            <h2 className="text-base font-bold text-dark-blue-400">Services</h2>
+                            <p className="mt-2 text-sm font-extralight text-gray-500">
+                              Your service offers will be displayed here as you create your own listings or join existing services in the marketplace. These offers help you get discovered, attract clients, and generate consistent work.
+                            </p>
+                          </div>
+                          {isEditMode && isOwnProfile && (
+                            <Button
+                              className="shrink-0"
+                              variant="outlined"
+                              visual="gray"
+                              size="sm"
+                              onClick={() => setOffersOpen(true)}
+                            >
+                              <Plus className="size-4" /> Add Service
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    {/* Hardcoded offer cards — will be replaced with dynamic data when offers exist
                     <TabsContent value="Frontend">
                       <ShowMoreLessRoot
                         value={autoExpandOffers}
@@ -6530,6 +6583,7 @@ function Default() {
                         )}
                       </ShowMoreLessRoot>
                     </TabsContent>
+                    End of hardcoded offer cards */}
                   </Tabs>
                 </div>
 
