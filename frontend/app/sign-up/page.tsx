@@ -70,6 +70,9 @@ export default function SignUp() {
           response?.data?.user
         ) {
           Cookies.set("access_token", response?.data?.access_token, { path: "/" })
+          if (response?.data?.refresh_token) {
+            Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
+          }
           setUser(response?.data?.user)
           router.push("/onboarding")
           reset()

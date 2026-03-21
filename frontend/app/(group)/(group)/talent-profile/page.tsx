@@ -283,21 +283,25 @@ function Default() {
 
   useEffect(() => {
     setIsProfileLoading(true)
+    console.log("[profile] loading effect fired — user?.id:", user?.id, "usernameParam:", usernameParam)
     if (usernameParam) {
       UserAPI.getByUsername(usernameParam)
         .then((res) => {
+          console.log("[profile] getByUsername response:", res?.status, res?.data?.id)
           if (res?.data) setProfile(res.data)
         })
-        .catch(() => {})
+        .catch((err) => { console.error("[profile] getByUsername error:", err?.response?.status, err?.message) })
         .finally(() => setIsProfileLoading(false))
     } else if (user?.id) {
       UserAPI.getProfile(user.id)
         .then((res) => {
+          console.log("[profile] getProfile response:", res?.status, res?.data?.id)
           if (res?.data) setProfile(res.data)
         })
-        .catch(() => {})
+        .catch((err) => { console.error("[profile] getProfile error:", err?.response?.status, err?.message) })
         .finally(() => setIsProfileLoading(false))
     } else {
+      console.log("[profile] no user id and no username param — skipping load")
       setIsProfileLoading(false)
     }
   }, [user?.id, usernameParam])

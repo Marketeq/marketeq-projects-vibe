@@ -62,6 +62,7 @@ function useProvideAuth() {
     setIsLoading(true)
 
     const accessToken = Cookies.get("access_token")
+    console.log("[auth] access_token cookie:", accessToken ? "present" : "MISSING")
     if (!accessToken) {
       setUser(null)
       setIsAuthChecked(true)
@@ -74,18 +75,21 @@ function useProvideAuth() {
 
     UserAPI.me()
       .then((response) => {
+        console.log("[auth] /user/me response status:", response?.status, "data keys:", response?.data ? Object.keys(response.data) : "none")
         if (response?.status === 200) {
           const nextUser =
             response?.data?.user ??
             response?.data?.data?.user ??
             response?.data
 
+          console.log("[auth] resolved user id:", nextUser?.id, "email:", nextUser?.email)
           if (nextUser && typeof nextUser === "object") {
             setUser(nextUser)
           }
         }
       })
       .catch((error) => {
+        console.error("[auth] /user/me error:", error?.response?.status, error?.message)
         const status = error?.response?.status
         if (status === 401 || status === 403) {
           setUser(null)
@@ -103,6 +107,7 @@ function useProvideAuth() {
     setUser(null)
     document.cookie = "access_token=; Path=/; Max-Age=0; SameSite=None; Secure"
     document.cookie = "accessToken=; Path=/; Max-Age=0; SameSite=None; Secure"
+    document.cookie = "refresh_token=; Path=/; Max-Age=0; SameSite=None; Secure"
     router.push("/sign-in")
     AuthAPI.Logout().catch(() => {})
   }
