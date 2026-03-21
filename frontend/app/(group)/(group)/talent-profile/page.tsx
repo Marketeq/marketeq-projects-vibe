@@ -8431,10 +8431,29 @@ function Default() {
                   <div className="rounded-lg border border-gray-200 bg-white">
                     <div className="p-6">
                       <h1 className="text-sm font-bold leading-none text-dark-blue-400">
-                        Similar profiles
+                        Similar Profiles
                       </h1>
 
-                      <div className="mt-3">
+                      {/* Empty state per Figma — shown when own profile is incomplete */}
+                      {isOwnProfile && (
+                        <div className="mt-3 p-4 border border-gray-200 rounded-lg bg-gray-25">
+                          <p className="text-xs font-extralight text-gray-500">
+                            Complete your profile to start seeing similar profiles here.
+                          </p>
+                          <button
+                            className="mt-3 w-full flex items-center justify-center gap-x-1.5 text-xs font-semibold leading-5 h-8 rounded-[5px] border border-gray-300 bg-white text-dark-blue-400 hover:bg-gray-50 transition"
+                            onClick={() => {
+                              setStatusDialogOpen(true)
+                              setStatusDialogStep(null)
+                            }}
+                          >
+                            <User className="size-3" /> Complete My Profile
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Hardcoded similar profiles — shown when viewing other profiles */}
+                      {!isOwnProfile && (<><div className="mt-3">
                         <div className="py-3 flex items-start gap-x-2 border-b border-gray-200">
                           <Avatar
                             className="hover:ring-0 active:ring-primary-100"
@@ -8586,6 +8605,7 @@ function Default() {
                           View More
                         </Button>
                       </div>
+                    </>)}
                     </div>
                   </div>
                 </div>
@@ -8608,7 +8628,22 @@ function Default() {
                       )}
                     </div>
 
-                    <div className="mt-3">
+                    {/* Empty state per Figma */}
+                    {isOwnProfile && (
+                      <div className="mt-3 p-4 border border-gray-200 rounded-lg bg-gray-25">
+                        <p className="text-xs font-extralight text-gray-500">
+                          If you decide to join a team, those teams will be visible here.
+                        </p>
+                        <button
+                          className="mt-3 w-full flex items-center justify-center gap-x-1.5 text-xs font-semibold leading-5 h-8 rounded-[5px] border border-gray-300 bg-white text-dark-blue-400 hover:bg-gray-50 transition"
+                        >
+                          <Plus className="size-3" /> Browse Teams
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Hardcoded teams — shown when viewing other profiles */}
+                    {!isOwnProfile && (<><div className="mt-3">
                       <div className="py-3 flex items-center gap-x-2 border-b border-gray-200">
                         <Avatar
                           className="hover:ring-0 active:ring-primary-100"
@@ -8786,6 +8821,7 @@ function Default() {
                         View More
                       </Button>
                     </div>
+                    </>)}
                   </div>
                 </div>
               </div>
