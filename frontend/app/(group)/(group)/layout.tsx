@@ -363,6 +363,7 @@ const Footer = () => {
 }
 
 const TeamMemberLink = () => {
+  const router = useRouter()
   // Team count = external team members + active contractors
   // TODO: Wire up when external team API + contracts-service frontend client exist
   // External team = accountant, attorney, CFO, project manager, etc. (not talent network)
@@ -370,13 +371,15 @@ const TeamMemberLink = () => {
   const [teamCount, setTeamCount] = useState(0)
 
   return (
-    <NextLink
-      href="/my-team"
-      className="gap-x-0.5 text-[11px] leading-6 lg:text-[13px] lg:leading-6 text-dark-blue-400 inline-flex items-center hover:underline"
+    <Button
+      className="gap-x-0.5 text-[11px] leading-6 lg:text-[13px] lg:leading-6 text-dark-blue-400"
+      variant="link"
+      visual="gray"
+      onClick={() => router.push("/my-team")}
     >
       {teamCount} team member{teamCount !== 1 ? "s" : ""}
       <ChevronRight className="size-3 lg:size-3.5" />
-    </NextLink>
+    </Button>
   )
 }
 
