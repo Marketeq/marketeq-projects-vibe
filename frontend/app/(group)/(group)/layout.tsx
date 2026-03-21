@@ -1,8 +1,9 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { UserAPI } from "@/service/http/user"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   ArrowRight,
@@ -364,11 +365,19 @@ const Footer = () => {
 
 const TeamMemberLink = () => {
   const router = useRouter()
-  // Team count = external team members + active contractors
-  // TODO: Wire up when external team API + contracts-service frontend client exist
-  // External team = accountant, attorney, CFO, project manager, etc. (not talent network)
-  // Active contractors = pulled from contracts-service (getContractsByClient / getContractsByTalent)
+  const { user } = useAuth()
+  // Team count = talent network members + external team (when API exists)
   const [teamCount, setTeamCount] = useState(0)
+
+  useEffect(() => {
+    if (!user?.id) return
+    UserAPI.listUsers(50)
+      .then((res) => {
+        const users = Array.isArray(res?.data) ? res.data : []
+        setTeamCount(users.length)
+      })
+      .catch(() => {})
+  }, [user?.id])
 
   return (
     <Button
