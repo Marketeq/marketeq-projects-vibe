@@ -259,6 +259,30 @@ const Shimmer = ({ className }: { className?: string }) => (
   </div>
 )
 
+const LazySection = ({ children, minHeight = 200 }: { children: React.ReactNode; minHeight?: number }) => {
+  const [isVisible, setIsVisible] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: "200px" }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  if (isVisible) return <>{children}</>
+  return <div ref={ref} style={{ minHeight }} />
+}
+
 export default function TalentProfilePage() {
   return (
     <Suspense>
@@ -281,17 +305,31 @@ function Default() {
         .then((res) => {
           if (res?.data) setProfile(res.data)
         })
-        .catch(() => {})
+        .catch((err) => { console.error("[profile] getByUsername error:", err?.response?.status, err?.message) })
         .finally(() => setIsProfileLoading(false))
     } else if (user?.id) {
       UserAPI.getProfile(user.id)
         .then((res) => {
           if (res?.data) setProfile(res.data)
         })
-        .catch(() => {})
+        .catch((err) => { console.error("[profile] getProfile error:", err?.response?.status, err?.message) })
         .finally(() => setIsProfileLoading(false))
     } else {
-      setIsProfileLoading(false)
+      // No user yet from auth — try /user/me directly as fallback
+      UserAPI.me()
+        .then((res) => {
+          const data = res?.data?.user ?? res?.data?.data?.user ?? res?.data
+          if (data && typeof data === "object" && data.id) {
+            setProfile(data)
+          } else {
+            setIsProfileLoading(false)
+          }
+        })
+        .catch((err) => {
+          console.error("[profile] me() fallback error:", err?.response?.status, err?.message)
+          setIsProfileLoading(false)
+        })
+        .finally(() => setIsProfileLoading(false))
     }
   }, [user?.id, usernameParam])
 
@@ -1567,6 +1605,7 @@ function Default() {
                   )}
                 </ShowMoreLessRoot>
 
+                <LazySection minHeight={300}>
                 <div
                   className="p-6 bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[137.5px]"
                   id="skills"
@@ -1641,7 +1680,9 @@ function Default() {
                     )}
                   </ShowMoreLessRoot>
                 </div>
+                </LazySection>
 
+                <LazySection minHeight={300}>
                 <div className="mt-6 scroll-mt-[137.5px]" id="overview">
                   <div className="p-6 rounded-t-lg bg-white border border-gray-200 space-y-6">
                     <div className="flex items-center justify-between">
@@ -1756,7 +1797,9 @@ function Default() {
                     </TabsContent>
                   </Tabs>
                 </div>
+                </LazySection>
 
+                <LazySection minHeight={400}>
                 <div className="mt-6 scroll-mt-[137.5px]" id="offers">
                   <h1 className="text-xl font-bold leading-none text-dark-blue-400">
                     My Offers
@@ -6331,7 +6374,9 @@ function Default() {
                     </TabsContent>
                   </Tabs>
                 </div>
+                </LazySection>
 
+                <LazySection minHeight={400}>
                 <div
                   className="p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
                   id="background"
@@ -6584,7 +6629,9 @@ function Default() {
                     </TabsContent>
                   </Tabs>
                 </div>
+                </LazySection>
 
+                <LazySection minHeight={400}>
                 <div className="mt-6 scroll-mt-[137.5px]" id="project-history">
                   <div className="border border-gray-200 rounded-t-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] py-5 pl-5 pr-6">
                     <Carousel
@@ -8043,6 +8090,7 @@ function Default() {
                     </TabsContent>
                   </Tabs>
                 </div>
+                </LazySection>
               </div>
 
               <div className="shrink-0 flex flex-col gap-y-6 w-[289px] isolate">
