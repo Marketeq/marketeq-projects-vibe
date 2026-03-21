@@ -637,7 +637,7 @@ const MoreInfoForm = ({
 }: {
   onShow: () => void
   onSubmit: () => void
-  onCheckDuplicate?: () => boolean
+  onCheckDuplicate?: (title?: string) => boolean
   duplicateError?: boolean
 }) => {
   const {
@@ -687,7 +687,7 @@ const MoreInfoForm = ({
           {...register("jobTitle", {
             onChange: (e) => {
               e.target.value = e.target.value.replace(/[0-9]/g, "")
-              onCheckDuplicate?.()
+              onCheckDuplicate?.(e.target.value)
             },
           })}
           isInvalid={duplicateError || hookFormHasError({
@@ -1038,18 +1038,19 @@ export const MoreInfoDialog = ({
     }
   }, [opened])
 
-  const checkDuplicate = (): boolean => {
-    const title = formatJobTitle(methods.getValues("jobTitle"))
+  const checkDuplicate = (titleOverride?: string): boolean => {
+    const raw = titleOverride ?? methods.getValues("jobTitle")
+    if (!raw || !raw.trim()) {
+      setDuplicateTitleError(false)
+      return false
+    }
+    const title = formatJobTitle(raw)
     const existingTitles = (infoChunks ?? []).filter((_, i) => i !== editingIndex)
     const isDuplicate = existingTitles.some(
       (chunk) => chunk.jobTitle.toLowerCase() === title.toLowerCase()
     )
-    if (isDuplicate) {
-      setDuplicateTitleError(true)
-      return true
-    }
-    setDuplicateTitleError(false)
-    return false
+    setDuplicateTitleError(isDuplicate)
+    return isDuplicate
   }
 
   const onSubmit: SubmitHandler<MoreInfoFormValues> = async (values) => {
