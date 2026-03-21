@@ -92,6 +92,9 @@ function useProvideAuth() {
         console.error("[auth] /user/me error:", error?.response?.status, error?.message)
         const status = error?.response?.status
         if (status === 401 || status === 403) {
+          // Session is dead — clear user and cookies so AuthenticatedRoute redirects to sign-in
+          Cookies.remove("access_token", { path: "/" })
+          Cookies.remove("refresh_token", { path: "/" })
           setUser(null)
         }
         setIsAuthChecked(true)
