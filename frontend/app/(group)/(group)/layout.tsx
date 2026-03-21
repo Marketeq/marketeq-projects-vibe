@@ -21,7 +21,6 @@ import {
   Settings,
   Star,
   Users,
-  X,
 } from "@blend-metrics/icons"
 import {
   FacebookSolid,
@@ -40,10 +39,6 @@ import NextLink from "@/components/next-link"
 import { ThreeHorizontalLines } from "@/components/three-horizontal-lines"
 import {
   Button,
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogTrigger,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
@@ -367,115 +362,21 @@ const Footer = () => {
   )
 }
 
-const Sidebar = () => {
-  const [isOpen, toggleIsOpen] = useState(false)
+const TeamMemberLink = () => {
+  // Team count = external team members + active contractors
+  // TODO: Wire up when external team API + contracts-service frontend client exist
+  // External team = accountant, attorney, CFO, project manager, etc. (not talent network)
+  // Active contractors = pulled from contracts-service (getContractsByClient / getContractsByTalent)
+  const [teamCount, setTeamCount] = useState(0)
+
   return (
-    <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
-      <DialogTrigger asChild>
-        <Button
-          className="gap-x-0.5 text-[11px] leading-6 lg:text-[13px] lg:leading-6 text-dark-blue-400"
-          variant="link"
-          visual="gray"
-        >
-          10 team members
-          <ChevronRight className="size-3 lg:size-3.5" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent
-        variant="unanimated"
-        className="py-[68px] px-0 bg-[#F9FAFB] rounded-none data-[state=open]:duration-300 data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-left-1/2 data-[state=closed]:slide-out-to-left-1/2 left-0 inset-y-0 w-[241px]"
-      >
-        <div className="h-12 absolute top-0 border-b border-gray-200 inset-x-0 flex items-center bg-white justify-between pl-3.5 p-1">
-          <span className="text-base leading-[19.36px] font-semibold text-dark-blue-400">
-            Choose a Category
-          </span>
-          <DialogClose asChild>
-            <IconButton variant="ghost" visual="gray">
-              <X className="size-[18px]" />
-            </IconButton>
-          </DialogClose>
-        </div>
-        <ScrollArea
-          className="h-full"
-          scrollBar={<ScrollBar className="w-4 p-1" />}
-        >
-          <div className="p-3 flex flex-col gap-y-1">
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-          </div>
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
+    <NextLink
+      href="/my-team"
+      className="gap-x-0.5 text-[11px] leading-6 lg:text-[13px] lg:leading-6 text-dark-blue-400 inline-flex items-center hover:underline"
+    >
+      {teamCount} team member{teamCount !== 1 ? "s" : ""}
+      <ChevronRight className="size-3 lg:size-3.5" />
+    </NextLink>
   )
 }
 
@@ -497,7 +398,7 @@ export default function MarketPlaceLayout({
                 You currently have
               </span>
 
-              <Sidebar />
+              <TeamMemberLink />
             </div>
 
             <div className="flex items-center gap-x-6 lg:gap-x-[54.17px] lg:ml-[26.5px]">
