@@ -1562,7 +1562,10 @@ export const AvailabilityDialog = ({
                         key={day}
                       >
                         <div className="pt-2.5 inline-flex gap-x-2">
-                          <Switch id={day} />
+                          <Switch
+                            id={day}
+                            defaultChecked={["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].includes(day)}
+                          />
                           <Label
                             htmlFor={day}
                             className="text-gray-700"
