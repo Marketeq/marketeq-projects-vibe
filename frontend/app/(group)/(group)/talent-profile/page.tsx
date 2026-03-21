@@ -298,9 +298,17 @@ function Default() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
 
+  // Use auth user data immediately for hero while full profile loads
   useEffect(() => {
-    setIsProfileLoading(true)
+    if (!usernameParam && user && !profile) {
+      setProfile(user as any)
+      setIsProfileLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => {
     if (usernameParam) {
+      setIsProfileLoading(true)
       UserAPI.getByUsername(usernameParam)
         .then((res) => {
           if (res?.data) setProfile(res.data)
@@ -308,6 +316,7 @@ function Default() {
         .catch((err) => { console.error("[profile] getByUsername error:", err?.response?.status, err?.message) })
         .finally(() => setIsProfileLoading(false))
     } else if (user?.id) {
+      // Load full profile in background (hero already showing from auth user)
       UserAPI.getProfile(user.id)
         .then((res) => {
           if (res?.data) setProfile(res.data)
