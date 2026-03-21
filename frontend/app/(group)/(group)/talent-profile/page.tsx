@@ -929,46 +929,147 @@ function Default() {
               </div>
             </div>
 
-            <div className="py-3 px-8 border-t border-gray-200 flex justify-between divide-x divide-gray-200 bg-[#122A4B]/[.02]">
-              <div className="flex gap-x-2 justify-center items-center flex-1">
-                <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Rate
-                </span>
-                <span className="text-xl font-bold leading-none text-dark-blue-400">
-                  {profile?.rateMin || profile?.rateMax
-                    ? <>
-                        {profile.rateMin && profile.rateMax && Math.round(profile.rateMin) !== Math.round(profile.rateMax)
-                          ? `$${Math.round(profile.rateMin)} - $${Math.round(profile.rateMax)}`
-                          : `$${Math.round(profile?.rateMax ?? profile?.rateMin ?? 0)}`}
-                        <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                          /hr
-                        </span>
-                      </>
-                    : "Unknown"
-                  }
-                </span>
-                {isEditMode && isOwnProfile && (
-                  <IconButton
-                    className="rounded-full text-gray-500 hover:text-gray-800"
-                    variant="ghost"
-                    visual="gray"
-                    onClick={() => setJobTitleOpen(true)}
-                  >
-                    <Edit03 className="size-4" />
-                  </IconButton>
-                )}
-              </div>
-              <div className="flex gap-x-2 justify-center items-center flex-1">
-                <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Member since
-                </span>
-                <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  {profile?.createdAt
-                    ? new Date(profile.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
-                    : "—"}
-                </span>
-              </div>
-            </div>
+            {(() => {
+              const hasRate = Boolean(profile?.rateMin || profile?.rateMax)
+              const hasProjects = Boolean(profile?.totalProjectsCompleted && profile.totalProjectsCompleted > 0)
+              const hasSuccessRating = Boolean(profile?.clientSuccessRating && profile.clientSuccessRating > 0)
+              const hasRepeatHire = Boolean(profile?.repeatHireRate && profile.repeatHireRate > 0)
+
+              // Build visible stats array (excluding Member since — it's always shown)
+              const stats: { label: string; value: React.ReactNode }[] = []
+
+              // Rate is always shown
+              stats.push({
+                label: "Rate",
+                value: hasRate ? (
+                  <span className="text-xl font-bold leading-none text-dark-blue-400">
+                    {profile!.rateMin && profile!.rateMax && Math.round(profile!.rateMin) !== Math.round(profile!.rateMax)
+                      ? `$${Math.round(profile!.rateMin)} - $${Math.round(profile!.rateMax)}`
+                      : `$${Math.round(profile?.rateMax ?? profile?.rateMin ?? 0)}`}
+                    <span className="text-sm font-extralight leading-none text-dark-blue-400">/hr</span>
+                  </span>
+                ) : (
+                  <span className="text-xl font-bold leading-none text-dark-blue-400">Unknown</span>
+                ),
+              })
+
+              if (hasSuccessRating) {
+                stats.push({
+                  label: "Client success rating",
+                  value: <span className="text-sm font-bold leading-none text-dark-blue-400">{profile!.clientSuccessRating}%</span>,
+                })
+              }
+
+              if (hasProjects) {
+                stats.push({
+                  label: "Total projects completed",
+                  value: <span className="text-sm font-bold leading-none text-dark-blue-400">{profile!.totalProjectsCompleted!.toLocaleString()}</span>,
+                })
+              }
+
+              // Member since is always last
+              const memberSince = {
+                label: "Member since",
+                value: (
+                  <span className="text-sm font-bold leading-none text-dark-blue-400">
+                    {profile?.createdAt
+                      ? new Date(profile.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+                      : "—"}
+                  </span>
+                ),
+              }
+
+              if (hasRepeatHire) {
+                stats.push(memberSince)
+                stats.push({
+                  label: "Repeat hire rate",
+                  value: <span className="text-sm font-bold leading-none text-dark-blue-400">{profile!.repeatHireRate}%</span>,
+                })
+              }
+
+              const allStats = hasRepeatHire ? stats : [...stats, memberSince]
+              const isFull = allStats.length >= 5
+              const isMinimal = allStats.length <= 2
+
+              return (
+                <div className={cn(
+                  "py-3 px-4 sm:px-8 border-t border-gray-200 bg-[#122A4B]/[.02]",
+                  isMinimal
+                    ? "flex justify-between items-center"
+                    : isFull
+                      ? "grid grid-cols-2 sm:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-gray-200"
+                      : "flex flex-wrap items-center"
+                )}>
+                  {allStats.map((stat, idx) => {
+                    const isLast = idx === allStats.length - 1
+                    const isMemberSince = stat.label === "Member since"
+
+                    if (isMinimal) {
+                      return (
+                        <div key={stat.label} className="flex gap-x-2 items-center">
+                          <span className="text-sm font-extralight leading-none text-dark-blue-400">{stat.label}</span>
+                          {stat.value}
+                          {idx === 0 && isEditMode && isOwnProfile && (
+                            <IconButton
+                              className="rounded-full text-gray-500 hover:text-gray-800"
+                              variant="ghost"
+                              visual="gray"
+                              onClick={() => setJobTitleOpen(true)}
+                            >
+                              <Edit03 className="size-4" />
+                            </IconButton>
+                          )}
+                        </div>
+                      )
+                    }
+
+                    if (isFull) {
+                      return (
+                        <div key={stat.label} className="flex gap-x-2 justify-center items-center py-2 sm:py-0">
+                          <span className="text-sm font-extralight leading-none text-dark-blue-400">{stat.label}</span>
+                          {stat.value}
+                          {idx === 0 && isEditMode && isOwnProfile && (
+                            <IconButton
+                              className="rounded-full text-gray-500 hover:text-gray-800"
+                              variant="ghost"
+                              visual="gray"
+                              onClick={() => setJobTitleOpen(true)}
+                            >
+                              <Edit03 className="size-4" />
+                            </IconButton>
+                          )}
+                        </div>
+                      )
+                    }
+
+                    // Progressive layout (3-4 items): left stats with dividers, Member since pushed right
+                    return (
+                      <div
+                        key={stat.label}
+                        className={cn(
+                          "flex gap-x-2 items-center py-2 sm:py-0",
+                          isMemberSince && !isFull && "sm:ml-auto",
+                          !isMemberSince && idx > 0 && "sm:border-l sm:border-gray-200 sm:pl-4 sm:ml-4"
+                        )}
+                      >
+                        <span className="text-sm font-extralight leading-none text-dark-blue-400">{stat.label}</span>
+                        {stat.value}
+                        {idx === 0 && isEditMode && isOwnProfile && (
+                          <IconButton
+                            className="rounded-full text-gray-500 hover:text-gray-800"
+                            variant="ghost"
+                            visual="gray"
+                            onClick={() => setJobTitleOpen(true)}
+                          >
+                            <Edit03 className="size-4" />
+                          </IconButton>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
             </>
             )}
           </div>

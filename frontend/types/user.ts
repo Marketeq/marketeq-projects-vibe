@@ -88,6 +88,9 @@ export type UserProfile = User & {
   userType?: string | null
   industry?: string | null
   businessGoals?: string[] | null
+  totalProjectsCompleted?: number | null
+  clientSuccessRating?: number | null
+  repeatHireRate?: number | null
   skills?: UserSkill[]
   languages?: UserLanguage[]
   education?: UserEducation[]
