@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { type Favorite, getProjectFavorites, getTalentFavorites } from "@/src/lib/api/favorites"
 import { cn, getFirstItem } from "@/utils/functions"
 import {
@@ -60,7 +61,8 @@ interface ProjectCardProps {
 
 const ProjectCard = ({ favorite, itemCount }: ProjectCardProps) => {
   return (
-    <article className="bg-white border rounded-lg border-gray-200">
+    <NextLink href="/favorite-projects" className="block">
+    <article className="bg-white border rounded-lg border-gray-200 cursor-pointer hover:shadow-md transition-shadow">
       <div className="h-[163px] lg:h-[222px] grid grid-cols-2 grid-rows-3 bg-gray-50">
         <div className="relative">
           <NextImage className="object-cover" src="/dashboard.png" alt="Dashboard" sizes="25vw" fill />
@@ -104,12 +106,14 @@ const ProjectCard = ({ favorite, itemCount }: ProjectCardProps) => {
         </p>
       </div>
     </article>
+    </NextLink>
   )
 }
 
 const ProjectListCard = ({ favorite, itemCount }: ProjectCardProps) => {
   return (
-    <div className="flex md:flex-row flex-col md:gap-x-10 border overflow-hidden bg-white border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/[.04])] rounded-lg">
+    <NextLink href="/favorite-projects" className="block">
+    <div className="flex md:flex-row flex-col md:gap-x-10 border overflow-hidden bg-white border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/[.04])] rounded-lg cursor-pointer hover:shadow-md transition-shadow">
       <div className="py-3.5 lg:py-[16.5px] space-y-0.5 pl-5">
         <NextLink href={`/project-details/${favorite.itemId}`}>
           <h1 className="text-[11px] leading-[13.31px] lg:text-base lg:leading-[19.36px] font-bold text-dark-blue-400 hover:underline">
@@ -144,6 +148,7 @@ const ProjectListCard = ({ favorite, itemCount }: ProjectCardProps) => {
         <CardDropdown />
       </div>
     </div>
+    </NextLink>
   )
 }
 
@@ -151,7 +156,8 @@ const ProjectListCard = ({ favorite, itemCount }: ProjectCardProps) => {
 
 const TalentCard = () => {
   return (
-    <article className="relative bg-white py-[25px] px-5 lg:p-[35px] lg:pb-[25px] rounded-lg border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
+    <NextLink href="/favorite-talent" className="block">
+    <article className="relative bg-white py-[25px] px-5 lg:p-[35px] lg:pb-[25px] rounded-lg border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] cursor-pointer hover:shadow-md transition-shadow">
       <div className="flex justify-center items-center">
         <div className="relative size-[127.5px] lg:size-[176px] flex-none rounded-full isolate">
           <div className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto rotate-[--tw-rotate-root] [--tw-rotate-root:45deg]">
@@ -207,6 +213,7 @@ const TalentCard = () => {
         </h1>
       </div>
     </article>
+    </NextLink>
   )
 }
 
@@ -219,9 +226,9 @@ const TalentCardLandscapeRow = ({ value }: { value: string }) => {
       <div className="flex xs:max-md:p-3 xs:max-md:flex-col xs:max-md:gap-y-[17px]">
         <div className="md:contents flex items-center justify-between">
           <div className="xs:max-md:flex xs:max-md:flex-col xs:max-md:gap-y-1 md:flex-auto md:pl-6 lg:pl-[25px] md:py-3 lg:py-[25px] md:last:pr-3 lg:last:pr-[25px]">
-            <span className="text-sm leading-[15.73px] lg:text-base font-bold inline-block lg:leading-[19.07px] text-dark-blue-400">
+            <NextLink href="/favorite-talent" className="text-sm leading-[15.73px] lg:text-base font-bold inline-block lg:leading-[19.07px] text-dark-blue-400 hover:underline">
               Visual Designers
-            </span>
+            </NextLink>
             <div className="xs:max-md:flex hidden items-center gap-x-2">
               <span className="text-[10px] leading-[12.1px] lg:text-sm lg:leading-[16.94px] font-light inline-block text-dark-blue-400">
                 Created on
