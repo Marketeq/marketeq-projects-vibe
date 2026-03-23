@@ -738,6 +738,14 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => {
+                setMenuOpen(false)
+                router.push(user?.role === "TALENT" ? "/onboarding/client" : "/onboarding/talent")
+              }}>
+                <Repeat className="size-4" />
+                {user?.role === "TALENT" ? "Switch to Client" : "Switch to Talent"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <div className="grid grid-cols-2 gap-x-[9px]">
                 <DropdownMenuItem>
                   <LifeBuoy className="size-4" />

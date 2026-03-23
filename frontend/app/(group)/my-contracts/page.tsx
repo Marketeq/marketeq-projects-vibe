@@ -611,88 +611,84 @@ function GroupCard({
 }: {
   group: { groupName: string; type: ContractType; contracts: Contract[] }
 }) {
-  const [expanded, setExpanded] = useState(true)
   const TypeIcon = typeIcons[group.type]
   const activeCount = group.contracts.filter((c) => c.status === "Active").length
   const allMembers = group.contracts.map((c) => ({ name: c.talentName, avatar: c.talentAvatar }))
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      {/* Group header */}
-      <button
-        className="w-full flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors text-left"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="size-10 rounded-lg bg-primary-50 flex items-center justify-center flex-none">
-          <TypeIcon className="size-5 text-primary-500" />
+    <div className="space-y-3">
+      {/* Group label */}
+      <div className="flex items-center gap-3 px-1">
+        <div className="size-8 rounded-lg bg-primary-50 flex items-center justify-center flex-none">
+          <TypeIcon className="size-4 text-primary-500" />
         </div>
-        <div className="flex-auto min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-dark-blue-400 truncate">{group.groupName}</h3>
-            <Badge
-              className="rounded-full text-[10px] capitalize"
-              size="sm"
-              visual={typeColors[group.type] as any}
-            >
-              {typeLabels[group.type]}
-            </Badge>
-          </div>
-          <p className="text-xs text-gray-500 mt-0.5">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-dark-blue-400">{group.groupName}</h3>
+          <Badge
+            className="rounded-full text-[10px] capitalize"
+            size="sm"
+            visual={typeColors[group.type] as any}
+          >
+            {typeLabels[group.type]}
+          </Badge>
+          <span className="text-xs text-gray-400">
             {group.contracts.length} contract{group.contracts.length !== 1 ? "s" : ""} &middot; {activeCount} active
-          </p>
+          </span>
         </div>
-
-        <div className="flex items-center gap-4 flex-none">
-          <AvatarGroup size="xs" max={4} excess>
-            {allMembers.map((member, i) => (
-              <Avatar key={i} size="xs">
-                <AvatarImage src={member.avatar} alt={member.name} />
-                <AvatarFallback>{member.name[0]}</AvatarFallback>
-              </Avatar>
-            ))}
-          </AvatarGroup>
-
-          <ChevronDown className={`size-4 text-gray-400 transition-transform ${expanded ? "" : "-rotate-90"}`} />
-        </div>
-      </button>
-
-      {/* Expanded contracts */}
-      {expanded && (
-        <div className="border-t border-gray-100">
-          {group.contracts.map((contract) => (
-            <ContractCardInGroup key={contract.id} contract={contract} />
+        <AvatarGroup size="xs" max={4} excess className="ml-auto">
+          {allMembers.map((member, i) => (
+            <Avatar key={i} size="xs">
+              <AvatarImage src={member.avatar} alt={member.name} />
+              <AvatarFallback>{member.name[0]}</AvatarFallback>
+            </Avatar>
           ))}
-        </div>
-      )}
+        </AvatarGroup>
+      </div>
+
+      {/* Flat contract cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {group.contracts.map((contract) => (
+          <ContractCard key={contract.id} contract={contract} />
+        ))}
+      </div>
     </div>
   )
 }
 
-function ContractCardInGroup({ contract }: { contract: Contract }) {
+function ContractCard({ contract }: { contract: Contract }) {
   return (
-    <div className="flex items-center gap-4 px-4 py-3 border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition-colors">
-      <Avatar size="sm">
-        <AvatarImage src={contract.talentAvatar} alt={contract.talentName} />
-        <AvatarFallback>{contract.talentName[0]}</AvatarFallback>
-      </Avatar>
-
-      <div className="flex-auto min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-medium text-dark-blue-400 truncate">{contract.title}</p>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border flex-none ${statusColors[contract.status]}`}>
-            {contract.status}
-          </span>
+    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar size="sm">
+            <AvatarImage src={contract.talentAvatar} alt={contract.talentName} />
+            <AvatarFallback>{contract.talentName[0]}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-dark-blue-400 truncate">{contract.title}</p>
+            <p className="text-xs text-gray-500">{contract.talentName}</p>
+          </div>
         </div>
-        <p className="text-xs text-gray-500">{contract.talentName} &middot; {contract.rate} &middot; {contract.schedule}</p>
+        <ContractActions contract={contract} />
       </div>
 
-      <div className="flex items-center gap-6 flex-none text-xs text-gray-400">
-        <span className="hidden md:block">{contract.nextMilestone}</span>
+      <div className="mt-3 flex items-center gap-2">
+        <span className={`text-[10px] px-2 py-0.5 rounded-full border ${statusColors[contract.status]}`}>
+          {contract.status}
+        </span>
+        <span className="text-xs text-gray-400">{contract.rate} &middot; {contract.schedule}</span>
+      </div>
+
+      <div className="mt-3 text-xs text-gray-500">
+        {contract.nextMilestone}
+      </div>
+
+      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+        <span>{contract.duration}</span>
         <span className="flex items-center gap-1">
           <Clock className="size-3" />
           {contract.updatedAt}
         </span>
-        <ContractActions contract={contract} />
       </div>
     </div>
   )
