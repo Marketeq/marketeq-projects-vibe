@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import { useRouter } from "next/navigation"
 import { type Favorite, getFavoritesByGroup } from "@/src/lib/api/favorites"
-import { FavoritesAPI, type FavoriteGroup } from "@/service/http/favorites"
 import { getFirstItem } from "@/utils/functions"
 import {
   ArrowLeft,
@@ -46,16 +45,16 @@ const LIST_LAYOUT = "LIST"
 /* ─── Sample data for when the API is unavailable ─── */
 
 const sampleTalentFavorites: Favorite[] = [
-  { id: "t1", type: "talent", itemId: "talent-1", groupId: "g1", userSub: "", userId: "", createdAt: "2026-01-15T00:00:00Z", updatedAt: "2026-01-15T00:00:00Z" },
-  { id: "t2", type: "talent", itemId: "talent-2", groupId: "g1", userSub: "", userId: "", createdAt: "2026-02-10T00:00:00Z", updatedAt: "2026-02-10T00:00:00Z" },
-  { id: "t3", type: "talent", itemId: "talent-3", groupId: "g1", userSub: "", userId: "", createdAt: "2026-02-20T00:00:00Z", updatedAt: "2026-02-20T00:00:00Z" },
-  { id: "t4", type: "talent", itemId: "talent-4", groupId: "g1", userSub: "", userId: "", createdAt: "2026-03-01T00:00:00Z", updatedAt: "2026-03-01T00:00:00Z" },
+  { id: "t1", type: "talent", itemId: "talent-1", groupId: "g1", userId: "", createdAt: "2026-01-15T00:00:00Z" },
+  { id: "t2", type: "talent", itemId: "talent-2", groupId: "g1", userId: "", createdAt: "2026-02-10T00:00:00Z" },
+  { id: "t3", type: "talent", itemId: "talent-3", groupId: "g1", userId: "", createdAt: "2026-02-20T00:00:00Z" },
+  { id: "t4", type: "talent", itemId: "talent-4", groupId: "g1", userId: "", createdAt: "2026-03-01T00:00:00Z" },
 ]
 
 const sampleProjectFavorites: Favorite[] = [
-  { id: "p1", type: "project", itemId: "proj-1", groupId: "g2", userSub: "", userId: "", createdAt: "2026-01-20T00:00:00Z", updatedAt: "2026-01-20T00:00:00Z" },
-  { id: "p2", type: "project", itemId: "proj-2", groupId: "g2", userSub: "", userId: "", createdAt: "2026-02-05T00:00:00Z", updatedAt: "2026-02-05T00:00:00Z" },
-  { id: "p3", type: "project", itemId: "proj-3", groupId: "g2", userSub: "", userId: "", createdAt: "2026-03-12T00:00:00Z", updatedAt: "2026-03-12T00:00:00Z" },
+  { id: "p1", type: "project", itemId: "proj-1", groupId: "g2", userId: "", createdAt: "2026-01-20T00:00:00Z" },
+  { id: "p2", type: "project", itemId: "proj-2", userId: "", groupId: "g2", createdAt: "2026-02-05T00:00:00Z" },
+  { id: "p3", type: "project", itemId: "proj-3", groupId: "g2", userId: "", createdAt: "2026-03-12T00:00:00Z" },
 ]
 
 /* ─── Talent Card (grid) ─── */
