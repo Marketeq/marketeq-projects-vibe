@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
@@ -399,11 +399,40 @@ export default function MarketPlaceLayout({
 }) {
   const router = useRouter()
   const { user } = useAuth()
+  const [showSecondaryNav, setShowSecondaryNav] = useState(true)
+  const lastScrollY = useRef(0)
+  const secondaryNavRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentY = window.scrollY
+      if (currentY < 10) {
+        setShowSecondaryNav(true)
+      } else if (currentY < lastScrollY.current) {
+        setShowSecondaryNav(true)
+      } else if (currentY > lastScrollY.current) {
+        setShowSecondaryNav(false)
+      }
+      lastScrollY.current = currentY
+    }
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
+
+  // When secondary nav hides/shows, toggle primary nav shadow via data attribute
+  useEffect(() => {
+    document.documentElement.dataset.secondaryNav = showSecondaryNav ? "visible" : "hidden"
+    return () => { delete document.documentElement.dataset.secondaryNav }
+  }, [showSecondaryNav])
 
   return (
     <>
       {/* <AuthenticatedRoute> */}
-        <div className="px-3.5 md:px-6 lg:px-[50px] bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] xs:max-md:hidden">
+        <div
+          ref={secondaryNavRef}
+          className="px-3.5 md:px-6 lg:px-[50px] bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] xs:max-md:hidden sticky top-[57px] lg:top-[56px] z-40 transition-transform duration-300"
+          style={{ transform: showSecondaryNav ? "translateY(0)" : "translateY(-100%)" }}
+        >
           <div className="pt-0.5 pb-3.5 lg:py-3 flex items-end gap-x-6 lg:justify-between lg:gap-x-[30px] ">
             <div className="flex flex-col">
               <span className="inline-block text-[10px] leading-[12.1px] lg:text-xs lg:leading-[16.34px] text-dark-blue-400">

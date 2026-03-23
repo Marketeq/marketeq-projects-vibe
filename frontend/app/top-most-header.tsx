@@ -574,22 +574,39 @@ const ONBOARDING = "/onboarding"
 export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) => {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = React.useState(false)
+  const [secondaryNavHidden, setSecondaryNavHidden] = React.useState(false)
 
   const router = useRouter()
   const { logoutHandler, user } = useAuth()
+
+  const hasSecondaryNav = HAS_SECONDARY_NAV.includes(pathname) || pathname.startsWith("/c/") || pathname.startsWith("/project-details/")
+
+  // Listen for secondary nav visibility changes
+  React.useEffect(() => {
+    if (!hasSecondaryNav) return
+    const observer = new MutationObserver(() => {
+      const val = document.documentElement.dataset.secondaryNav
+      setSecondaryNavHidden(val === "hidden")
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-secondary-nav"] })
+    return () => observer.disconnect()
+  }, [hasSecondaryNav])
 
   if (pathname.startsWith(ONBOARDING)) {
     return null
   }
 
+  // Show shadow: always on pages without secondary nav, or when secondary nav is hidden (scrolled away)
+  const showNavShadow = !hasSecondaryNav || secondaryNavHidden
+
   return (
     <div
       className={cn(
-        "px-3.5 md:px-6 lg:px-[50px] relative bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5",
-        (HAS_SECONDARY_NAV.includes(pathname) || pathname.startsWith("/c/") || pathname.startsWith("/project-details/"))
-          ? "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] md:shadow-none"
-          : "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]",
-        PATHNAMES.includes(pathname) && "md:max-lg:pb-2.5 sticky top-0 z-50"
+        "px-3.5 md:px-6 lg:px-[50px] relative bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 sticky top-0 z-50",
+        showNavShadow
+          ? "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]"
+          : "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] md:shadow-none",
+        PATHNAMES.includes(pathname) && "md:max-lg:pb-2.5"
       )}
     >
       <div className="flex items-center justify-between md:gap-x-3 lg:gap-x-[50px] md:pt-2 md:pb-1 lg:py-3">
@@ -653,21 +670,14 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
               <div className="inline-flex items-center gap-x-2">
                 <Avatar>
                   <AvatarImage
-                    src={
-                      user?.avatarUrl
-                        ? user?.avatarUrl?.startsWith("https://") ||
-                          user?.avatarUrl?.startsWith("http://")
-                          ? user?.avatarUrl
-                          : `${process?.env?.NEXT_PUBLIC_API_URL}/${user?.avatarUrl}`
-                        : ""
-                    }
-                    alt="Man"
+                    src={user?.avatarUrl ?? ""}
+                    alt={user?.firstName ?? "User"}
                   />
                   <AvatarFallback>
                     {user?.firstName?.[0]?.toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex flex-col">
+                <div className="flex flex-col text-left">
                   <span className="text-xs font-semibold leading-[15px] text-gray-700">
                     {user?.firstName || ""} {user?.lastName || ""}
                   </span>
