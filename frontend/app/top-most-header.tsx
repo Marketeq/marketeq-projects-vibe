@@ -566,9 +566,12 @@ const SearchBar = () => {
 
 const PATHNAMES = ["/talent-dashboard", "/client-dashboard", "/talent-profile"]
 
+// Pages that have a secondary nav bar below the primary nav — shadow should only appear on the secondary nav, not the primary
+const HAS_SECONDARY_NAV = ["/", "/talent-profile", "/my-team", "/favorite-projects", "/favorite-talent", "/browser-history", "/search", "/talent-search"]
+
 const ONBOARDING = "/onboarding"
 
-export const TopMostHeader = () => {
+export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) => {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = React.useState(false)
 
@@ -582,7 +585,10 @@ export const TopMostHeader = () => {
   return (
     <div
       className={cn(
-        "px-3.5 md:px-6 lg:px-[50px] relative bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5",
+        "px-3.5 md:px-6 lg:px-[50px] relative bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5",
+        (HAS_SECONDARY_NAV.includes(pathname) || pathname.startsWith("/c/") || pathname.startsWith("/project-details/"))
+          ? "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] md:shadow-none"
+          : "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]",
         PATHNAMES.includes(pathname) && "md:max-lg:pb-2.5 sticky top-0 z-50"
       )}
     >
