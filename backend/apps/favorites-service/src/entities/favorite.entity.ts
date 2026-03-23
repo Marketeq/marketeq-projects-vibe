@@ -1,11 +1,37 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Unique } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, Index, JoinColumn } from 'typeorm';
+import { FavoriteGroup } from './favorite-group.entity';
+
+export enum FavoriteType {
+  TALENT = 'talent',
+  PROJECT = 'project',
+  SERVICE = 'service',
+  JOB = 'job',
+  TEAM = 'team',
+}
 
 @Entity('favorites')
-@Unique(['userId', 'itemId', 'itemType'])
 export class Favorite {
-  @PrimaryGeneratedColumn('uuid') id: string;
-  @Column() userId: string;
-  @Column() itemId: string;
-  @Column() itemType: string; // 'project' | 'service' | 'talent' | 'team'
-  @CreateDateColumn() createdAt: Date;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Index()
+  @Column('uuid')
+  userId: string;
+
+  @Index()
+  @Column('uuid')
+  groupId: string;
+
+  @ManyToOne(() => FavoriteGroup, (group) => group.favorites, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'groupId' })
+  group: FavoriteGroup;
+
+  @Column({ type: 'enum', enum: FavoriteType })
+  type: FavoriteType;
+
+  @Column({ length: 100 })
+  itemId: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
 }
