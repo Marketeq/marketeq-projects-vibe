@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Delete, Query, Body, Param, HttpCode, HttpStatus } from '@nestjs/common'
+import { Controller, Get, Post, Delete, Query, Body, Param, HttpCode, HttpStatus, UseGuards } from '@nestjs/common'
 import { MessagePattern, Payload } from '@nestjs/microservices'
 import { SearchService } from './search.service'
 import { SearchDto, IndexRecordDto } from '../dto/search.dto'
+import { JwtAuthGuard } from '../guards/jwt-auth.guard'
 
 @Controller('search')
 export class SearchController {
@@ -14,12 +15,14 @@ export class SearchController {
 
   // Index management (called by other services via RabbitMQ or REST)
   @Post('index')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   index(@Body() dto: IndexRecordDto) {
     return this.svc.indexRecord(dto.indexName, dto.objectID, dto.record)
   }
 
   @Post('index/:index/:id')
+  @UseGuards(JwtAuthGuard)
   update(
     @Param('index') index: string,
     @Param('id') id: string,
@@ -29,6 +32,7 @@ export class SearchController {
   }
 
   @Delete('index/:index/:id')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('index') index: string, @Param('id') id: string) {
     return this.svc.removeRecord(index, id)

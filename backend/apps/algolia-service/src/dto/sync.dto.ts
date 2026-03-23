@@ -23,5 +23,5 @@ export class SyncRecordDto {
   objectID: string
 
   @IsOptional()
-  record?: Record<string, any>
+  record?: Record<string, unknown>
 }
