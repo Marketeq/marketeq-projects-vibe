@@ -177,10 +177,10 @@ export const LeftSidebar = () => {
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/publish-project"
+            href="/my-listings"
           >
             <Briefcase className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            My Projects
+            My Listings
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
@@ -224,7 +224,7 @@ export const LeftSidebar = () => {
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="#"
+            href="/notifications"
           >
             <AlertCircle className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Notifications
@@ -234,7 +234,7 @@ export const LeftSidebar = () => {
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="#"
+            href="/settings"
           >
             <Settings02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Settings

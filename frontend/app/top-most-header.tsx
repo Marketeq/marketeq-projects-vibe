@@ -58,6 +58,7 @@ import {
 import { ScrollBar } from "@/components/ui"
 
 const Notifications = () => {
+  const router = useRouter()
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -252,7 +253,7 @@ const Notifications = () => {
             </div>
 
             <div className="py-3.5 grid">
-              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium">
+              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/notifications")}>
                 View All
               </button>
             </div>
@@ -388,7 +389,7 @@ const Notifications = () => {
               </ScrollArea>
             </div>
             <div className="py-3.5 grid">
-              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium">
+              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/inbox")}>
                 View All
               </button>
             </div>
@@ -447,22 +448,7 @@ const suggestions = [
   { id: 6, value: "Magento development" },
 ]
 
-interface Person {
-  name: string
-}
-
-type People = Person[]
-
-const people: People = [
-  { name: "Wade Cooper" },
-  { name: "Arlene Mccoy" },
-  { name: "Devon Webb" },
-  { name: "Tom Cook" },
-  { name: "Tanya Fox" },
-  { name: "Hellen Schmidt" },
-  { name: "Hellen Walker" },
-  { name: "Hellen Waller" },
-]
+const listingTypes = ["Projects", "Services", "Teams", "Talent"]
 
 const SearchBar = () => {
   const [state, setState] = useState<string>()
@@ -472,6 +458,16 @@ const SearchBar = () => {
     icon?: React.JSXElementConstructor<any>
   }>()
   const [query, setQuery] = React.useState("")
+
+  const searchPlaceholder = (() => {
+    switch (state) {
+      case "Projects": return "Search by skills or project type"
+      case "Services": return "Search by skills or service type"
+      case "Teams": return "Search by skills or team type"
+      case "Talent": return "Search by skills or expertise"
+      default: return "Search by skills or keyword"
+    }
+  })()
 
   const filteredSuggestions =
     query === ""
@@ -494,7 +490,7 @@ const SearchBar = () => {
         <div className="flex items-center gap-x-2 flex-auto">
           <SearchMd className="size-4 shrink-0 text-gray-400" />
           <ComboboxInput
-            placeholder="Search by skills or project type"
+            placeholder={searchPlaceholder}
             className="p-0 border-0 text-xs leading-5 h-auto rounded-none hover:ring-0 hover:border-gray-300 focus:ring-0 focus:border-gray-300 ui-open:rounded-b-none"
             size="lg"
             displayValue={(value: {
@@ -509,13 +505,13 @@ const SearchBar = () => {
         <Listbox className="w-auto" value={state} onChange={setState}>
           <ListboxButton
             className="p-0 border-0 text-[11px] leading-[16.67px] lg:text-sm lg:leading-5 font-semibold gap-x-[6.67px] lg:gap-x-1.5 w-auto h-auto rounded-none hover:ring-0 focus:ring-0"
-            placeholder="Category"
+            placeholder="View All"
             iconClassName="size-[12.5px]"
           />
           <ListboxOptions className="w-max -right-3 left-auto mt-3.5">
-            {people.map((person) => (
-              <ListboxOption key={person.name} value={person.name}>
-                {person.name}
+            {listingTypes.map((type) => (
+              <ListboxOption key={type} value={type}>
+                {type}
               </ListboxOption>
             ))}
           </ListboxOptions>
@@ -725,7 +721,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                 <CoinStack className="size-4" />
                 Billing
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setMenuOpen(false); router.push("/settings") }}>
                 <Settings className="size-4" />
                 Settings
               </DropdownMenuItem>
