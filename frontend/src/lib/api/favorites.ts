@@ -113,6 +113,17 @@ export async function isFavorited(itemId: string): Promise<boolean> {
     }
 }
 
+// Get favorites by groupId
+export async function getFavoritesByGroup(groupId: string): Promise<Favorite[]> {
+    try {
+        const favorites = await getAllFavorites();
+        return favorites.filter(fav => fav.groupId === groupId);
+    } catch (error) {
+        console.error('Error getting group favorites:', error);
+        return [];
+    }
+}
+
 // Get favorites count
 export async function getFavoritesCount(): Promise<number> {
     try {

@@ -59,9 +59,9 @@ interface ProjectCardProps {
   itemCount: number
 }
 
-const ProjectCard = ({ favorite, itemCount }: ProjectCardProps) => {
+const ProjectCard = ({ favorite, itemCount, groupId, groupName }: ProjectCardProps & { groupId: string; groupName: string }) => {
   return (
-    <NextLink href="/favorite-projects" className="block">
+    <NextLink href={`/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=project`} className="block">
     <article className="bg-white border rounded-lg border-gray-200 cursor-pointer hover:shadow-md transition-shadow">
       <div className="h-[163px] lg:h-[222px] grid grid-cols-2 grid-rows-3 bg-gray-50">
         <div className="relative">
@@ -110,9 +110,9 @@ const ProjectCard = ({ favorite, itemCount }: ProjectCardProps) => {
   )
 }
 
-const ProjectListCard = ({ favorite, itemCount }: ProjectCardProps) => {
+const ProjectListCard = ({ favorite, itemCount, groupId, groupName }: ProjectCardProps & { groupId: string; groupName: string }) => {
   return (
-    <NextLink href="/favorite-projects" className="block">
+    <NextLink href={`/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=project`} className="block">
     <div className="flex md:flex-row flex-col md:gap-x-10 border overflow-hidden bg-white border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/[.04])] rounded-lg cursor-pointer hover:shadow-md transition-shadow">
       <div className="py-3.5 lg:py-[16.5px] space-y-0.5 pl-5">
         <NextLink href={`/project-details/${favorite.itemId}`}>
@@ -154,9 +154,9 @@ const ProjectListCard = ({ favorite, itemCount }: ProjectCardProps) => {
 
 /* ─── Talent Cards ─── */
 
-const TalentCard = () => {
+const TalentCard = ({ groupId, groupName }: { groupId: string; groupName: string }) => {
   return (
-    <NextLink href="/favorite-talent" className="block">
+    <NextLink href={`/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=talent`} className="block">
     <article className="relative bg-white py-[25px] px-5 lg:p-[35px] lg:pb-[25px] rounded-lg border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] cursor-pointer hover:shadow-md transition-shadow">
       <div className="flex justify-center items-center">
         <div className="relative size-[127.5px] lg:size-[176px] flex-none rounded-full isolate">
@@ -206,7 +206,7 @@ const TalentCard = () => {
 
       <div className="mt-[13.24px] lg:mt-[17px]">
         <h1 className="text-[13px] leading-[15.73px] lg:text-base text-center lg:leading-[19.36px] font-bold text-dark-blue-400">
-          Visual Designers
+          {groupName}
         </h1>
         <h1 className="text-[11px] lg:text-sm mt-[2px] text-center lg:leading-[16.94px] text-[#585C65]">
           Created Jan 2024
@@ -226,7 +226,7 @@ const TalentCardLandscapeRow = ({ value }: { value: string }) => {
       <div className="flex xs:max-md:p-3 xs:max-md:flex-col xs:max-md:gap-y-[17px]">
         <div className="md:contents flex items-center justify-between">
           <div className="xs:max-md:flex xs:max-md:flex-col xs:max-md:gap-y-1 md:flex-auto md:pl-6 lg:pl-[25px] md:py-3 lg:py-[25px] md:last:pr-3 lg:last:pr-[25px]">
-            <NextLink href="/favorite-talent" className="text-sm leading-[15.73px] lg:text-base font-bold inline-block lg:leading-[19.07px] text-dark-blue-400 hover:underline">
+            <NextLink href={`/favorites/sample-group-1?name=${encodeURIComponent("Visual Designers")}&type=talent`} className="text-sm leading-[15.73px] lg:text-base font-bold inline-block lg:leading-[19.07px] text-dark-blue-400 hover:underline">
               Visual Designers
             </NextLink>
             <div className="xs:max-md:flex hidden items-center gap-x-2">
@@ -498,13 +498,13 @@ export default function FavoritesPage() {
           <div className="pt-[14px] lg:pt-6">
             {getFirstItem(value) === GRID_LAYOUT ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-6">
-                <TalentCard />
-                <TalentCard />
-                <TalentCard />
-                <TalentCard />
-                <TalentCard />
-                <TalentCard />
-                <TalentCard />
+                <TalentCard groupId="grp-visual-designers" groupName="Visual Designers" />
+                <TalentCard groupId="grp-ux-researchers" groupName="UX Researchers" />
+                <TalentCard groupId="grp-frontend-devs" groupName="Frontend Developers" />
+                <TalentCard groupId="grp-backend-devs" groupName="Backend Developers" />
+                <TalentCard groupId="grp-product-managers" groupName="Product Managers" />
+                <TalentCard groupId="grp-data-analysts" groupName="Data Analysts" />
+                <TalentCard groupId="grp-copywriters" groupName="Copywriters" />
               </div>
             ) : (
               <Accordion type="multiple" className="flex flex-col gap-y-3">
@@ -534,13 +534,13 @@ export default function FavoritesPage() {
           ) : getFirstItem(value) === GRID_LAYOUT ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
               {projectFavorites.map((fav) => (
-                <ProjectCard key={fav.id} favorite={fav} itemCount={projectFavorites.length} />
+                <ProjectCard key={fav.id} favorite={fav} itemCount={projectFavorites.length} groupId={fav.groupId ?? fav.id} groupName={`Project ${fav.itemId}`} />
               ))}
             </div>
           ) : (
             <div className="grid gap-y-3 pt-3.5 lg:pt-6">
               {projectFavorites.map((fav) => (
-                <ProjectListCard key={fav.id} favorite={fav} itemCount={projectFavorites.length} />
+                <ProjectListCard key={fav.id} favorite={fav} itemCount={projectFavorites.length} groupId={fav.groupId ?? fav.id} groupName={`Project ${fav.itemId}`} />
               ))}
             </div>
           )}
