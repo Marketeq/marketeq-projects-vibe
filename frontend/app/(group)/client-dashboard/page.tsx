@@ -11,6 +11,7 @@ import {
   BarChartSquare02,
   Briefcase,
   Check,
+  FileCheck02,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -95,6 +96,13 @@ const LeftSidebar = () => {
           >
             <Briefcase className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             My Listings
+          </NextLink>
+          <NextLink
+            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
+            href="/my-contracts"
+          >
+            <FileCheck02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
+            My Contracts
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"

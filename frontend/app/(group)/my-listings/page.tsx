@@ -467,7 +467,7 @@ function ListingRow({ listing }: { listing: Listing }) {
         <span className="text-sm text-gray-500">{listing.views}</span>
       </td>
       <td className="px-4 py-3">
-        <span className="text-sm text-gray-500">{listing.proposals}</span>
+        <span className="text-sm text-gray-500">{listing.activeContracts}</span>
       </td>
       <td className="px-4 py-3">
         <DropdownMenu>

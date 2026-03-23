@@ -9,7 +9,10 @@ import {
   Bell,
   ChevronDown,
   CoinStack,
+  FileCheck02,
+  LayoutGrid02,
   LifeBuoy,
+  List,
   LogOut,
   Monitor,
   Plus,
@@ -17,6 +20,7 @@ import {
   SearchMd,
   Settings,
   Star,
+  User,
   Users,
   X,
 } from "@blend-metrics/icons"
@@ -700,15 +704,23 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                   <Button className="w-full" onClick={() => { setMenuOpen(false); router.push(user?.role === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>My Account</Button>
                 </div>
               </DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => router.push("/publish-project")}>
-                <Monitor className="size-4" />
-                My Projects
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <BarChart2 className="size-4" />
-                My Campaigns
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push(user?.role === "TALENT" ? "/talent-profile" : "/client-profile")}>
+                <User className="size-4" />
+                My Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(user?.role === "TALENT" ? "/talent-dashboard" : "/client-dashboard")}>
+                <LayoutGrid02 className="size-4" />
+                My Dashboard
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/my-listings")}>
+                <List className="size-4" />
+                My Listings
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/my-contracts")}>
+                <FileCheck02 className="size-4" />
+                My Contracts
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push("/my-team")}>
                 <Users className="size-4" />
                 My Team
@@ -717,7 +729,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                 <Star className="size-4" />
                 My Favorites
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setMenuOpen(false); router.push("/billing") }}>
                 <CoinStack className="size-4" />
                 Billing
               </DropdownMenuItem>
