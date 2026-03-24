@@ -34,7 +34,6 @@ import {
   Star,
   Trash03,
   User,
-  X,
   XCircle,
 } from "@blend-metrics/icons"
 import { AdobeBrand, WordpressBrand } from "@blend-metrics/icons/brands"
@@ -105,7 +104,6 @@ import {
   ListboxButton,
   ListboxOption,
   ListboxOptions,
-  Progress,
   RatingGroupContext,
   RatingGroupControl,
   RatingGroupHiddenInput,
@@ -611,18 +609,7 @@ export default function Default() {
                       })()}
                     </p>
 
-                    <div className="mt-6 flex items-center gap-x-3">
-                      <Badge
-                        className="bg-primary-500 text-white rounded-[4px]"
-                        visual="primary"
-                      >
-                        <Star className="size-3 fill-white" /> 4.5
-                      </Badge>
-
-                      <span className="text-xs leading-none text-gray-500">
-                        24 reviews
-                      </span>
-                    </div>
+                    {/* Rating & reviews - hidden until reviews service provides rating + reviewCount fields */}
 
                     <div className="mt-6">
                       <div className="flex items-center gap-x-[9px]">
@@ -819,22 +806,8 @@ export default function Default() {
                   </IconButton>
                 )}
               </div>
-              <div className="flex gap-x-2 justify-center  items-center">
-                <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Client success rating
-                </span>
-                <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  95%
-                </span>
-              </div>
-              <div className="flex gap-x-2 justify-center  items-center">
-                <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Total projects completed
-                </span>
-                <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  1450
-                </span>
-              </div>
+              {/* Client success rating - hidden until backend exposes clientSuccessRate field */}
+              {/* Total projects completed - hidden until backend exposes projectsCompleted field */}
               <div className="flex gap-x-2 justify-center  items-center">
                 <span className="text-sm font-extralight leading-none text-dark-blue-400">
                   Member since
@@ -845,14 +818,7 @@ export default function Default() {
                     : "—"}
                 </span>
               </div>
-              <div className="flex gap-x-2 justify-center  items-center">
-                <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Repeat hire rate
-                </span>
-                <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  85%
-                </span>
-              </div>
+              {/* Repeat hire rate - hidden until backend exposes repeatHireRate field */}
             </div>
             </>
             )}
@@ -1011,7 +977,7 @@ export default function Default() {
                       <span className="text-success-600 font-bold">
                         {profile?.availability ?? "available"}
                       </span>{" "}
-                      for <span className="font-bold">40 hrs</span> /week
+                      {/* 40 hrs/week hidden until backend exposes hoursPerWeek field */}
                     </p>
                   </div>
                 </div>
@@ -1024,80 +990,100 @@ export default function Default() {
           >
             <div className="pt-6 flex gap-x-8">
               <div className="flex-auto">
-                {isEditMode && isOwnProfile && (
-                  <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                    <div className="flex items-start">
-                      <div className="flex-auto">
-                        <h1 className="text-[20px] leading-none font-bold text-dark-blue-400">
-                          Ready to Get Hired?
-                        </h1>
-                        <p className="text-base font-light mt-1 text-dark-blue-400">
-                          Clients are 4x more likely to hire users with
-                          completed profiles!
-                        </p>
-                      </div>
-                      <IconButton
-                        className="rounded-full"
-                        variant="ghost"
-                        visual="gray"
-                      >
-                        <X className="size-4" />
-                      </IconButton>
-                    </div>
-
-                    <div className="mt-3 flex items-center gap-x-3">
-                      <div className="text-sm leading-5 font-medium text-dark-blue-400">
-                        100%
-                      </div>
-                      <div className="flex flex-auto items-center gap-x-1">
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="mt-3">
-                      <div className="rounded-lg px-4 py-3 flex items-center gap-x-3 bg-white border border-gray-300 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-                        <div className="rounded-full border border-gray-300 size-11 shrink-0 inline-flex items-center justify-center">
-                          <User className="size-5" />
-                        </div>
+                {isEditMode && isOwnProfile && (() => {
+                  const steps = [
+                    {
+                      label: "Add Your Bio",
+                      description: "Share what drives you and let clients connect on a personal level.",
+                      done: !!(profile?.bio || profile?.overview),
+                      action: () => setOverviewOpen(true),
+                    },
+                    {
+                      label: "Add Your Skills",
+                      description: "Let clients know what you're great at.",
+                      done: (profile?.skills?.length ?? 0) > 0,
+                      action: () => setSkillsOpen(true),
+                    },
+                    {
+                      label: "Add Work Experience",
+                      description: "Show clients your professional history.",
+                      done: (profile?.experience?.length ?? 0) > 0,
+                      action: () => setWorkExperienceOpen(true),
+                    },
+                    {
+                      label: "Add Education",
+                      description: "Share your academic background.",
+                      done: (profile?.education?.length ?? 0) > 0,
+                      action: () => setEducationOpen(true),
+                    },
+                    {
+                      label: "Add Your Languages",
+                      description: "Tell clients which languages you speak.",
+                      done: (profile?.languages?.length ?? 0) > 0,
+                      action: () => setLanguagesOpen(true),
+                    },
+                    {
+                      label: "Set Your Rate",
+                      description: "Help clients understand your pricing.",
+                      done: !!(profile?.rateMin || profile?.rateMax),
+                      action: () => setJobTitleOpen(true),
+                    },
+                  ]
+                  const completedCount = steps.filter((s) => s.done).length
+                  const completionPercent = Math.round((completedCount / steps.length) * 100)
+                  const nextStep = steps.find((s) => !s.done)
+                  if (completionPercent === 100) return null
+                  return (
+                    <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div className="flex items-start">
                         <div className="flex-auto">
-                          <h1 className="text-base leading-6 font-bold text-dark-blue-400">
-                            Next up: Add Your Bio
+                          <h1 className="text-[20px] leading-none font-bold text-dark-blue-400">
+                            Ready to Get Hired?
                           </h1>
-                          <p className="text-xs leading-none text-gray-500">
-                            Share what drives you and let clients connect on a
-                            personal level.
+                          <p className="text-base font-light mt-1 text-dark-blue-400">
+                            Clients are 4x more likely to hire users with completed profiles!
                           </p>
                         </div>
-                        <Button className="text-xs leading-5 font-semibold text-primary-500 border border-primary-500 bg-transparent rounded-full hover:bg-primary-500 hover:text-white">
-                          Finish This Step
-                        </Button>
                       </div>
+
+                      <div className="mt-3 flex items-center gap-x-3">
+                        <div className="text-sm leading-5 font-medium text-dark-blue-400">
+                          {completionPercent}%
+                        </div>
+                        <div className="flex-auto h-2 rounded-full bg-gray-200 overflow-hidden">
+                          <div
+                            className="h-full bg-primary-500 rounded-full transition-[width] duration-500 ease-out"
+                            style={{ width: `${completionPercent}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {nextStep && (
+                        <div className="mt-3">
+                          <div className="rounded-lg px-4 py-3 flex items-center gap-x-3 bg-white border border-gray-300 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
+                            <div className="rounded-full border border-gray-300 size-11 shrink-0 inline-flex items-center justify-center">
+                              <User className="size-5" />
+                            </div>
+                            <div className="flex-auto">
+                              <h1 className="text-base leading-6 font-bold text-dark-blue-400">
+                                Next up: {nextStep.label}
+                              </h1>
+                              <p className="text-xs leading-none text-gray-500">
+                                {nextStep.description}
+                              </p>
+                            </div>
+                            <Button
+                              className="text-xs leading-5 font-semibold text-primary-500 border border-primary-500 bg-transparent rounded-full hover:bg-primary-500 hover:text-white"
+                              onClick={nextStep.action}
+                            >
+                              Finish This Step
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
 
 {/* Portfolio grid - temporarily commented out for MVP
                 <ShowMoreLessRoot
@@ -1677,18 +1663,11 @@ export default function Default() {
                   </div>
 
                   <Tabs
-                    defaultValue="Featured Clients"
+                    defaultValue="Certifications"
                     className="p-6 h-[134px] border-x border-b rounded-b-lg border-gray-200 bg-white"
                   >
+                    {/* Featured Clients tab hidden until backend exposes featuredClients field */}
                     <RadixTabs.List className="flex items-center gap-x-3">
-                      <TabsTrigger
-                        variant="unstyled"
-                        showUnderline={false}
-                        value="Featured Clients"
-                        className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                      >
-                        Featured Clients
-                      </TabsTrigger>
                       <TabsTrigger
                         variant="unstyled"
                         showUnderline={false}
@@ -1707,14 +1686,6 @@ export default function Default() {
                       </TabsTrigger>
                     </RadixTabs.List>
 
-                    <TabsContent value="Featured Clients">
-                      <div className="pt-6 flex items-center gap-x-6">
-                        <Dropbox />
-                        <Microsoft />
-                        <Adobe />
-                        <Nasdaq />
-                      </div>
-                    </TabsContent>
                     <TabsContent value="Certifications">
                       <div className="pt-6 flex items-center flex-wrap gap-x-6 gap-y-3">
                         {(profile?.certifications && profile.certifications.length > 0)
@@ -8045,39 +8016,8 @@ export default function Default() {
                   ref={cardRef}
                 >
                   <div className="p-6 rounded-t-lg relative bg-white border border-gray-200">
-                    <div className="flex items-center gap-x-1 justify-center">
-                      <span className="inline-flex text-sm leading-none text-dark-blue-400 font-bold items-center gap-x-1">
-                        <span className={`size-2 inline-block rounded-full ${isOwnProfile ? "bg-green-500" : "bg-gray-500"}`} />{" "}
-                        {isOwnProfile ? "Online" : "Offline"}
-                      </span>
-                      <span className="font-extralight text-sm leading-none text-dark-blue-400">
-                        {(() => {
-                          const tz = profile?.timezone
-                          if (!tz) return ""
-                          try {
-                            const now = new Date()
-                            const timeStr = now.toLocaleTimeString("en-US", {
-                              timeZone: tz,
-                              hour: "numeric",
-                              minute: "2-digit",
-                              hour12: true,
-                            })
-                            return `${timeStr} local time`
-                          } catch {
-                            return ""
-                          }
-                        })()}
-                      </span>
-                    </div>
-
-                    <div className="mt-2 flex items-center justify-center">
-                      <span className="text-sm leading-none font-extralight text-dark-blue-400">
-                        Average response time{" "}
-                        <span className="text-sm font-bold leading-none">
-                          1 hour
-                        </span>
-                      </span>
-                    </div>
+                    {/* Online/offline status - hidden until backend exposes isOnline presence field */}
+                    {/* Average response time - hidden until backend exposes avgResponseTime field */}
 
                     <button className="w-full mt-5 duration-300 transition focus-visible:outlin-none text-sm leading-5 font-semibold shrink-0 h-10 flex items-center justify-center gap-x-2 rounded-[5px] px-4 bg-white border-2 text-primary-500 hover:text-white hover:bg-primary-500 border-primary-500 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]">
                       <MessageSquare01 className="size-[15px]" /> Message Me
