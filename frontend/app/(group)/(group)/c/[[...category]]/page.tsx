@@ -51,6 +51,136 @@ import {
   TooltipTrigger,
 } from "@/components/ui"
 
+// ── Static category taxonomy (will be replaced by CMS data later) ──
+
+interface SubcategoryData {
+  name: string
+  slug: string
+  description: string
+}
+
+interface CategoryMeta {
+  name: string
+  slug: string
+  description: string
+  heroImage: string
+  subcategories: SubcategoryData[]
+}
+
+const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
+  research: {
+    name: "Research",
+    slug: "research",
+    description: "Discover research projects, meet expert analysts, and find the insights you need to succeed.",
+    heroImage: "/coding.png",
+    subcategories: [
+      { name: "Market Research", slug: "market-research", description: "Consumer insights, competitive analysis, and market sizing." },
+      { name: "User Research", slug: "user-research", description: "Usability testing, interviews, and persona development." },
+      { name: "Academic Research", slug: "academic-research", description: "Literature reviews, white papers, and scholarly analysis." },
+      { name: "Data Analysis", slug: "data-analysis", description: "Statistical analysis, data visualization, and reporting." },
+      { name: "Competitive Intelligence", slug: "competitive-intelligence", description: "Competitor tracking, benchmarking, and strategic insights." },
+    ],
+  },
+  "software-development": {
+    name: "Software Development",
+    slug: "software-development",
+    description: "Discover exciting projects, meet talented teams, and find the skills you need to succeed.",
+    heroImage: "/coding.png",
+    subcategories: [
+      { name: "Front-end Development", slug: "front-end-development", description: "Create the interface that users interact with directly." },
+      { name: "Back-end Development", slug: "back-end-development", description: "Build the server logic, APIs, and databases." },
+      { name: "Mobile Development", slug: "mobile-development", description: "Native and cross-platform mobile applications." },
+      { name: "DevOps & Cloud", slug: "devops-cloud", description: "Infrastructure, CI/CD, and cloud deployment." },
+      { name: "Blockchain", slug: "blockchain", description: "Smart contracts, DeFi, and Web3 development." },
+    ],
+  },
+  "design-creative": {
+    name: "Design & Creative",
+    slug: "design-creative",
+    description: "Find creative talent for branding, UI/UX, illustration, and visual storytelling.",
+    heroImage: "/coding.png",
+    subcategories: [
+      { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile." },
+      { name: "Graphic Design", slug: "graphic-design", description: "Visual branding, print design, and marketing materials." },
+      { name: "Illustration", slug: "illustration", description: "Custom illustrations, icons, and digital art." },
+      { name: "Motion Design", slug: "motion-design", description: "Animations, motion graphics, and video effects." },
+      { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems." },
+    ],
+  },
+  marketing: {
+    name: "Marketing",
+    slug: "marketing",
+    description: "Grow your brand with expert marketers, strategists, and campaign specialists.",
+    heroImage: "/coding.png",
+    subcategories: [
+      { name: "Digital Marketing", slug: "digital-marketing", description: "SEO, SEM, social media, and online advertising." },
+      { name: "Content Marketing", slug: "content-marketing", description: "Blog posts, whitepapers, and content strategy." },
+      { name: "Email Marketing", slug: "email-marketing", description: "Campaigns, automation, and newsletter strategy." },
+      { name: "Social Media", slug: "social-media", description: "Social strategy, community management, and growth." },
+      { name: "Analytics & SEO", slug: "analytics-seo", description: "Performance tracking, keyword research, and optimization." },
+    ],
+  },
+  "data-analytics": {
+    name: "Data & Analytics",
+    slug: "data-analytics",
+    description: "Turn data into decisions with expert analysts, engineers, and data scientists.",
+    heroImage: "/coding.png",
+    subcategories: [
+      { name: "Data Engineering", slug: "data-engineering", description: "Pipelines, ETL, and data infrastructure." },
+      { name: "Data Science", slug: "data-science", description: "Machine learning, modeling, and predictive analytics." },
+      { name: "Business Intelligence", slug: "business-intelligence", description: "Dashboards, reporting, and KPI tracking." },
+      { name: "Data Visualization", slug: "data-visualization", description: "Charts, infographics, and interactive dashboards." },
+      { name: "Big Data", slug: "big-data", description: "Large-scale data processing and distributed systems." },
+    ],
+  },
+  writing: {
+    name: "Writing & Content",
+    slug: "writing",
+    description: "Find skilled writers for copywriting, technical documentation, and creative content.",
+    heroImage: "/coding.png",
+    subcategories: [
+      { name: "Copywriting", slug: "copywriting", description: "Marketing copy, ad copy, and persuasive writing." },
+      { name: "Technical Writing", slug: "technical-writing", description: "Documentation, API guides, and knowledge bases." },
+      { name: "Creative Writing", slug: "creative-writing", description: "Storytelling, scripts, and editorial content." },
+      { name: "Translation", slug: "translation", description: "Localization, multilingual content, and transcription." },
+      { name: "Editing & Proofreading", slug: "editing-proofreading", description: "Quality assurance for written content." },
+    ],
+  },
+  "business-consulting": {
+    name: "Business & Consulting",
+    slug: "business-consulting",
+    description: "Strategic advice, project management, and operational expertise for your business.",
+    heroImage: "/coding.png",
+    subcategories: [
+      { name: "Strategy Consulting", slug: "strategy-consulting", description: "Business strategy, go-to-market, and growth planning." },
+      { name: "Project Management", slug: "project-management", description: "Agile, Scrum, and project delivery." },
+      { name: "Financial Consulting", slug: "financial-consulting", description: "Financial modeling, budgeting, and forecasting." },
+      { name: "HR & Recruiting", slug: "hr-recruiting", description: "Talent acquisition, org design, and people ops." },
+      { name: "Legal & Compliance", slug: "legal-compliance", description: "Contracts, regulatory compliance, and legal ops." },
+    ],
+  },
+}
+
+/** Convert a slug like "software-development" to title case "Software Development" */
+function slugToTitle(slug: string): string {
+  return slug
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+}
+
+/** Look up category metadata — falls back to generating from slug */
+function getCategoryMeta(slug: string): CategoryMeta {
+  if (CATEGORY_TAXONOMY[slug]) return CATEGORY_TAXONOMY[slug]
+  return {
+    name: slugToTitle(slug),
+    slug,
+    description: `Discover exciting projects, meet talented teams, and find the skills you need to succeed.`,
+    heroImage: "/coding.png",
+    subcategories: [],
+  }
+}
+
 // Interface for project items
 interface ProjectItem extends BlockItem {
   featured?: boolean
@@ -94,16 +224,16 @@ export default function Projects() {
   const l2 = categoryPath?.l2
   const l3 = categoryPath?.l3
 
-  console.log("🔍 URL category:", category)
-  console.log("🔍 actualCategory:", actualCategory)
-  console.log("🔍 categoryPath:", categoryPath)
-  console.log("🔍 l1, l2, l3:", l1, l2, l3)
-  console.log(
-    "🔍 Which hook will be called?",
-    l3 && l2 && l1 ? "L3" : l2 && l1 ? "L2" : l1 ? "L1" : "NONE"
-  )
+  // Resolve category metadata from the static taxonomy
+  const l1Meta = useMemo(() => getCategoryMeta(l1 ?? ""), [l1])
+  const l2Meta = useMemo(() => l2 ? (l1Meta.subcategories.find((s) => s.slug === l2) ?? { name: slugToTitle(l2), slug: l2, description: "" }) : null, [l1Meta, l2])
+  const l3Meta = useMemo(() => l3 ? { name: slugToTitle(l3), slug: l3, description: "" } : null, [l3])
 
-  // ✅ Call hooks unconditionally to satisfy React rules
+  // The "current" category is the deepest level
+  const currentName = l3Meta?.name ?? l2Meta?.name ?? l1Meta.name
+  const currentDescription = (l2Meta && "description" in l2Meta ? l2Meta.description : null) ?? l1Meta.description
+
+  // Call hooks unconditionally to satisfy React rules
   const l1Query = useCategoryPageL1(
     l1 ?? "",
     { kind: "projects" },
@@ -135,18 +265,19 @@ export default function Projects() {
     isLoading: boolean
   }
 
-  console.log("🔍 pageData:", pageData)
-  console.log("🔍 isLoading:", isLoading)
+  // Subcategories: prefer API data, fall back to static taxonomy
+  const subcategories = useMemo(() => {
+    if (pageData?.children && pageData.children.length > 0) return pageData.children
+    if (!l2 && !l3) return l1Meta.subcategories.map((s) => ({ ...s, uuid: s.slug }))
+    return []
+  }, [pageData?.children, l1Meta.subcategories, l2, l3])
 
-  // ✅ Use actualCategory for categorySlugPath fallback
+  // Use actualCategory for categorySlugPath fallback
   const categorySlugPath =
     pageData?.breadcrumbs?.map((b: any) => b.slug) || actualCategory || []
-  console.log("🔍 categorySlugPath:", categorySlugPath)
 
   // Extract projects when data changes
   useEffect(() => {
-    console.log("🔍🔍🔍 useEffect triggered! pageData:", pageData)
-
     if (pageData?.blocks) {
       const allItems: any[] = []
       pageData.blocks.forEach((block: any) => {
@@ -155,12 +286,8 @@ export default function Projects() {
         }
       })
 
-      console.log("🔍 Extracted projects:", allItems.length, allItems)
-
       setAllProjects(allItems)
       setDisplayedProjects(allItems)
-    } else {
-      console.log("🔍 No blocks found in pageData")
     }
   }, [pageData])
 
@@ -234,41 +361,46 @@ export default function Projects() {
         <div className="max-w-[1440px] mx-auto px-[50px]">
           <div className="relative rounded-lg overflow-hidden h-[227px]">
             <NextImage
-              src="/coding.png"
+              src={l1Meta.heroImage}
               fill
               className="object-cover"
               sizes="100vw"
             />
             <div className="absolute inset-0 bg-black/60" />
             <div className="absolute inset-0 p-6">
+              {/* Dynamic breadcrumbs */}
               <div className="flex items-center gap-x-2">
-                <Home03 className="size-[18px]  text-white opacity-60" />
-
-                <div className="flex items-center gap-x-2">
-                  <span className="text-xs leading-6 font-semibold text-white opacity-60">
-                    /
-                  </span>
-                  <span className="text-xs leading-6 font-semibold text-white opacity-60">
-                    Software Development
-                  </span>
-                </div>
-                <div className="flex items-center gap-x-2">
-                  <span className="text-xs leading-6 font-semibold text-white opacity-60">
-                    /
-                  </span>
-                  <span className="text-xs leading-6 font-semibold text-white opacity-60">
-                    Projects
-                  </span>
-                </div>
+                <NextLink href="/">
+                  <Home03 className="size-[18px] text-white opacity-60" />
+                </NextLink>
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                <NextLink href={`/c/${l1Meta.slug}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
+                  {l1Meta.name}
+                </NextLink>
+                {l2Meta && (
+                  <>
+                    <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                    <NextLink href={`/c/${l1Meta.slug}/${l2Meta.slug}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
+                      {l2Meta.name}
+                    </NextLink>
+                  </>
+                )}
+                {l3Meta && (
+                  <>
+                    <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                    <span className="text-xs leading-6 font-semibold text-white">
+                      {l3Meta.name}
+                    </span>
+                  </>
+                )}
               </div>
 
               <div className="mt-[50px] px-[50px]">
                 <h1 className="text-[36px] font-bold leading-none text-white">
-                  Software Development Services
+                  {currentName}
                 </h1>
                 <p className="text-xl mt-3 leading-none text-white">
-                  Discover exciting projects, meet talented teams, and find the
-                  skills you need to succeed.
+                  {currentDescription}
                 </p>
               </div>
             </div>
@@ -278,7 +410,7 @@ export default function Projects() {
           <div className="mt-[50px]">
             <div className="flex items-center justify-between">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Browse Projects by Category
+                Explore {currentName}
               </h1>
 
               <div className="flex items-center gap-x-3">
@@ -301,23 +433,22 @@ export default function Projects() {
             </div>
 
             <div className="mt-6 grid grid-cols-5 gap-[15px]">
-              {/* ✅ Pull from pageData.children */}
-              {pageData?.children && pageData.children.length > 0 ? (
-                pageData.children.map((subcat: any) => (
+              {subcategories.length > 0 ? (
+                subcategories.map((subcat: any) => (
                   <NextLink
-                    key={subcat.uuid}
-                    href={`/c/${categorySlugPath.join("/")}/${subcat.slug}`}
-                    className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:shadow-lg hover:border-blue-500 transition-all cursor-pointer"
+                    key={subcat.uuid ?? subcat.slug}
+                    href={`/c/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`}
+                    className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300"
                   >
                     <article>
                       <div className="size-[35px] rounded-lg bg-gray-200" />
 
                       <div className="mt-5">
-                        <h1 className="text-base leading-none font-semibold text-dark-blue-400">
+                        <h1 className="text-base leading-none font-semibold text-dark-blue-400 transition duration-300">
                           {subcat.name}
                         </h1>
                         <p className="text-[13px] leading-none font-light text-dark-blue-400 mt-1">
-                          Explore {subcat.name} category
+                          {subcat.description || `Explore ${subcat.name} category`}
                         </p>
                       </div>
                     </article>
@@ -335,7 +466,7 @@ export default function Projects() {
           <div className="mt-[50px]">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Top Software Development Projects
+                Recommended in {currentName}
               </h1>
               <div className="mt-6 flex justify-between items-center">
                 <TabsList className="flex items-center gap-x-3">
@@ -926,7 +1057,7 @@ export default function Projects() {
           <div className="mt-[50px]">
             <Tabs defaultValue="Back-End Development">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Recommended Software Development Projects
+                Recommended {currentName} Projects
               </h1>
               <div className="mt-6 flex justify-between items-center">
                 <TabsList className="flex items-center gap-x-3">
@@ -1381,7 +1512,7 @@ export default function Projects() {
           <div className="mt-[50px]">
             <div className="flex justify-between items-center">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Guides Related to Software Development
+                Guides Related to {currentName}
               </h1>
 
               <Button size="lg" variant="link" visual="gray">
