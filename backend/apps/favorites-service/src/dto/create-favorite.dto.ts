@@ -25,3 +25,10 @@ export class UpdateFavoriteDto {
   @IsUUID()
   groupId: string;
 }
+
+export class RenameGroupDto {
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(100)
+  name: string;
+}

@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Favorite, FavoriteType } from '../entities/favorite.entity';
@@ -8,6 +8,8 @@ import { AiService } from './ai.service';
 
 @Injectable()
 export class FavoritesService {
+  private readonly logger = new Logger(FavoritesService.name);
+
   constructor(
     @InjectRepository(Favorite)
     private readonly favRepo: Repository<Favorite>,
@@ -16,7 +18,11 @@ export class FavoritesService {
     private readonly aiService: AiService,
   ) {}
 
+  // ── Groups ──────────────────────────────────────────────
+
   async createGroup(dto: CreateGroupDto, userId: string): Promise<FavoriteGroup> {
+    const existing = await this.groupRepo.findOne({ where: { userId, name: dto.name } });
+    if (existing) throw new BadRequestException('A group with this name already exists');
     return this.groupRepo.save(this.groupRepo.create({ name: dto.name, userId }));
   }
 
@@ -28,17 +34,28 @@ export class FavoritesService {
     });
   }
 
+  async renameGroup(groupId: string, name: string, userId: string): Promise<FavoriteGroup> {
+    const group = await this.groupRepo.findOne({ where: { id: groupId, userId } });
+    if (!group) throw new NotFoundException('Group not found');
+    const duplicate = await this.groupRepo.findOne({ where: { userId, name } });
+    if (duplicate && duplicate.id !== groupId) throw new BadRequestException('A group with this name already exists');
+    group.name = name;
+    return this.groupRepo.save(group);
+  }
+
   async deleteGroup(groupId: string, userId: string): Promise<void> {
     const group = await this.groupRepo.findOne({ where: { id: groupId, userId } });
     if (!group) throw new NotFoundException('Group not found');
     await this.groupRepo.remove(group);
   }
 
+  // ── Favorites ───────────────────────────────────────────
+
   async create(dto: CreateFavoriteDto, userId: string): Promise<Favorite> {
     let groupId = dto.groupId;
 
     if (!groupId) {
-      const group = await this.aiService.assignGroup(userId, dto.type);
+      const group = await this.aiService.assignGroup(userId, dto.type, dto.itemId);
       groupId = group.id;
     } else {
       const groupExists = await this.groupRepo.findOne({ where: { id: groupId, userId } });
@@ -51,15 +68,36 @@ export class FavoritesService {
     });
     if (existing) return existing;
 
+    this.logger.debug(`Creating favorite for user ${userId}: ${dto.type}/${dto.itemId}`);
     return this.favRepo.save(
       this.favRepo.create({ userId, groupId, type: dto.type, itemId: dto.itemId }),
     );
   }
 
-  async findAll(userId: string, type?: FavoriteType): Promise<Favorite[]> {
-    const where: any = { userId };
-    if (type) where.type = type;
-    return this.favRepo.find({ where, order: { createdAt: 'DESC' } });
+  /**
+   * GET /favorites — returns groups with nested favorites (per Integration Guide).
+   * Optional type filter narrows which favorites appear inside each group.
+   */
+  async findAll(userId: string, type?: FavoriteType | FavoriteType[]): Promise<FavoriteGroup[]> {
+    const groups = await this.groupRepo.find({
+      where: { userId },
+      relations: ['favorites'],
+      order: { createdAt: 'ASC' },
+    });
+
+    if (type) {
+      // Normalize type (gateway may send duplicated query params as array)
+      const filterType = Array.isArray(type) ? type[0] : type;
+      // Filter favorites within each group by type, drop empty groups
+      return groups
+        .map((g) => ({
+          ...g,
+          favorites: g.favorites.filter((f) => f.type === filterType),
+        }))
+        .filter((g) => g.favorites.length > 0) as FavoriteGroup[];
+    }
+
+    return groups;
   }
 
   async move(id: string, dto: UpdateFavoriteDto, userId: string): Promise<Favorite> {

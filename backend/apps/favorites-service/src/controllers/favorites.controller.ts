@@ -3,7 +3,7 @@ import {
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { FavoritesService } from '../services/favorites.service';
-import { CreateFavoriteDto, CreateGroupDto, UpdateFavoriteDto } from '../dto/create-favorite.dto';
+import { CreateFavoriteDto, CreateGroupDto, UpdateFavoriteDto, RenameGroupDto } from '../dto/create-favorite.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { User } from '../decorators/user.decorator';
 import { FavoriteType } from '../entities/favorite.entity';
@@ -13,7 +13,8 @@ import { FavoriteType } from '../entities/favorite.entity';
 export class FavoritesController {
   constructor(private readonly svc: FavoritesService) {}
 
-  // Groups
+  // ── Groups ──────────────────────────────────────────────
+
   @Post('groups')
   @HttpCode(HttpStatus.CREATED)
   createGroup(@Body() dto: CreateGroupDto, @User() user: any) {
@@ -25,19 +26,33 @@ export class FavoritesController {
     return this.svc.getGroups(user.sub ?? user.id);
   }
 
+  @Patch('groups/:groupId')
+  renameGroup(
+    @Param('groupId') groupId: string,
+    @Body() dto: RenameGroupDto,
+    @User() user: any,
+  ) {
+    return this.svc.renameGroup(groupId, dto.name, user.sub ?? user.id);
+  }
+
   @Delete('groups/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteGroup(@Param('id') id: string, @User() user: any) {
     return this.svc.deleteGroup(id, user.sub ?? user.id);
   }
 
-  // Favorites
+  // ── Favorites ───────────────────────────────────────────
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateFavoriteDto, @User() user: any) {
     return this.svc.create(dto, user.sub ?? user.id);
   }
 
+  /**
+   * GET /favorites — returns groups with nested favorites (per docs).
+   * Optional ?type= filter to narrow by listing type.
+   */
   @Get()
   findAll(@User() user: any, @Query('type') type?: FavoriteType) {
     return this.svc.findAll(user.sub ?? user.id, type);
@@ -54,7 +69,8 @@ export class FavoritesController {
     return this.svc.remove(id, user.sub ?? user.id);
   }
 
-  // RabbitMQ
+  // ── RabbitMQ ────────────────────────────────────────────
+
   @MessagePattern('favorites.create')
   handleCreate(@Payload() data: { dto: CreateFavoriteDto; userId: string }) {
     return this.svc.create(data.dto, data.userId);

@@ -9,6 +9,7 @@ export enum FavoriteType {
   TEAM = 'team',
 }
 
+@Index(['userId', 'type'])
 @Entity('favorites')
 export class Favorite {
   @PrimaryGeneratedColumn('uuid')
