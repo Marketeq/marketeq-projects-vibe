@@ -770,6 +770,7 @@ const SortDropdown = ({ value, onChange }: { value: GroupSortOption; onChange: (
 
 export default function FavoritesPage() {
   const [value, setValue] = useState([GRID_LAYOUT])
+  const [activeTab, setActiveTab] = useState("Projects")
   const [projectGroups, setProjectGroups] = useState<FavGroup[]>([])
   const [serviceGroups, setServiceGroups] = useState<FavGroup[]>([])
   const [talentFavorites, setTalentFavorites] = useState<Favorite[]>([])
@@ -882,10 +883,10 @@ export default function FavoritesPage() {
 
   const handleGroupCreated = useCallback((group: FavGroup) => {
     const newGroup = { ...group, favorites: group.favorites ?? [] }
-    setProjectGroups((prev) => [...prev, newGroup])
-    setServiceGroups((prev) => [...prev, newGroup])
+    if (activeTab === "Projects") setProjectGroups((prev) => [...prev, newGroup])
+    else if (activeTab === "Services") setServiceGroups((prev) => [...prev, newGroup])
     setApiGroups((prev) => [...prev, newGroup])
-  }, [])
+  }, [activeTab])
 
   const allGroupNames = [...new Set([...projectGroups, ...serviceGroups, ...apiGroups].map((g) => g.name))]
 
@@ -925,7 +926,7 @@ export default function FavoritesPage() {
         My Favorites
       </h1>
 
-      <Tabs className="mt-7 lg:mt-[19px]" defaultValue="Projects">
+      <Tabs className="mt-7 lg:mt-[19px]" value={activeTab} onValueChange={setActiveTab}>
         <div className="border-b h-[60px] flex items-end justify-between border-gray-200">
           <div className="items-end inline-flex gap-x-3">
             <Button className="text-gray-500" variant="ghost" visual="gray" size="md">
