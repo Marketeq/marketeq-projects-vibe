@@ -78,6 +78,13 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  @ApiOperation({ summary: 'Dev-only login by email (no password). Disabled in production.' })
+  @Post('dev-login')
+  @HttpCode(HttpStatus.OK)
+  devLogin(@Body() body: { email: string }) {
+    return this.authService.devLogin(body.email);
+  }
+
   @ApiOperation({ summary: 'Forgot Password' })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)

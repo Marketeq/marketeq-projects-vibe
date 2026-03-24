@@ -43,6 +43,10 @@ export const AuthAPI = {
     })
   },
 
+  DevLogin: (email: string) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/dev-login`, { email })
+  },
+
   Logout: () => {
     return AxiosRequest.post(`${AUTH_BASE}/auth/logout`, null, {
       withCredentials: true,

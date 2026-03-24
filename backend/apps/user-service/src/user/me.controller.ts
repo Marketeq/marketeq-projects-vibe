@@ -38,18 +38,20 @@ export class MeController {
 
     this.logger.log(`[me] JWT email=${email ?? 'none'}, sub=${sub ?? 'none'}`);
 
-    // Try to find user by sub (user ID) first, then by email
+    // Find user by email first (fast, no relations), then load full profile once
     let user: any = null;
-    if (sub) {
-      try {
-        user = await this.userService.findById(sub);
-      } catch {
-        // sub might not be a valid user ID, fall through to email lookup
-      }
+
+    if (email) {
+      user = await this.userService.findByEmail(email);
     }
 
-    if (!user && email) {
-      user = await this.userService.findByEmail(email);
+    // Fallback: try sub as user-service ID (only if email lookup failed)
+    if (!user && sub) {
+      try {
+        user = await this.userService.findByEmail(sub); // not findById — avoid expensive relation load
+      } catch {
+        // sub might not be a valid user ID in this DB
+      }
     }
 
     if (!user) {
@@ -64,6 +66,7 @@ export class MeController {
       });
     }
 
+    // Single expensive query — load full profile with all relations only once
     return this.userService.findById(user.id);
   }
 

@@ -222,6 +222,33 @@ export class AuthService {
     return this.issueTokens({ sub: user.id, email: user.email });
   }
 
+  /**
+   * Dev-only login: issue real RS256 tokens for an existing user by email.
+   * Disabled in production. Behaves identically to real login (same token format,
+   * same gateway verification) so local dev matches cloud behavior exactly.
+   */
+  async devLogin(email: string): Promise<JwtPair & { user: { id: string; username: string; email: string } }> {
+    if (process.env.NODE_ENV === 'production') {
+      throw new UnauthorizedException('Dev login is not available in production');
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { email },
+      select: ['id', 'email', 'username'],
+    });
+
+    if (!user) {
+      throw new UnauthorizedException(`No user found with email: ${email}`);
+    }
+
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email });
+
+    return {
+      ...tokens,
+      user: { id: user.id, username: user.username, email: user.email },
+    };
+  }
+
   async forgotPassword(dto: ForgotPasswordDto) {
     const user = await this.userRepository.findOne({
       where: { email: dto.email },
