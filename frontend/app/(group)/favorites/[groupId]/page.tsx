@@ -3,29 +3,26 @@
 import { useEffect, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import { useRouter } from "next/navigation"
-import { type Favorite, getFavoritesByGroup } from "@/src/lib/api/favorites"
+import { type Favorite, getFavoritesByGroup, removeFavorite } from "@/src/lib/api/favorites"
+import { type TalentCardData, getUsernamesForGroup, userProfileToCardData } from "@/src/lib/data/sample-talents"
+import { UserAPI } from "@/service/http/user"
 import { getFirstItem } from "@/utils/functions"
 import {
   ArrowLeft,
   Copy,
   Edit03,
   MoreHorizontal,
-  Plus,
   SearchMd,
   Star,
   Trash2,
-  Zap,
 } from "@blend-metrics/icons"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Grid, List, SortAs } from "@/components/icons"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
-import { TalentCardLandscape } from "@/components/talent-card-landscape"
+import { TalentSearchCard } from "@/components/talent-search-card"
+import { TalentSearchCardLandscape } from "@/components/talent-search-card-landscape"
 import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-  Badge,
   Button,
   DropdownMenu,
   DropdownMenuCheckItem,
@@ -33,7 +30,6 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  IconButton,
   Input,
   ScrollArea,
   ScrollBar,
@@ -44,90 +40,15 @@ const LIST_LAYOUT = "LIST"
 
 /* ─── Sample data for when the API is unavailable ─── */
 
-const sampleTalentFavorites: Favorite[] = [
-  { id: "t1", type: "talent", itemId: "talent-1", groupId: "g1", userId: "", createdAt: "2026-01-15T00:00:00Z" },
-  { id: "t2", type: "talent", itemId: "talent-2", groupId: "g1", userId: "", createdAt: "2026-02-10T00:00:00Z" },
-  { id: "t3", type: "talent", itemId: "talent-3", groupId: "g1", userId: "", createdAt: "2026-02-20T00:00:00Z" },
-  { id: "t4", type: "talent", itemId: "talent-4", groupId: "g1", userId: "", createdAt: "2026-03-01T00:00:00Z" },
-]
-
 const sampleProjectFavorites: Favorite[] = [
   { id: "p1", type: "project", itemId: "proj-1", groupId: "g2", userId: "", createdAt: "2026-01-20T00:00:00Z" },
   { id: "p2", type: "project", itemId: "proj-2", userId: "", groupId: "g2", createdAt: "2026-02-05T00:00:00Z" },
   { id: "p3", type: "project", itemId: "proj-3", groupId: "g2", userId: "", createdAt: "2026-03-12T00:00:00Z" },
 ]
 
-/* ─── Talent Card (grid) ─── */
-
-const TalentGridCard = ({ favorite }: { favorite: Favorite }) => {
-  return (
-    <article className="relative bg-white py-[25px] px-5 lg:p-[35px] lg:pb-[25px] rounded-lg border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-      <div className="flex justify-center">
-        <Avatar className="size-16 lg:size-20" size="2xl">
-          <AvatarImage src="/man.jpg" alt="Talent" />
-          <AvatarFallback>T</AvatarFallback>
-        </Avatar>
-      </div>
-
-      <ItemDropdown className="absolute top-[10px] right-[9.8px]" />
-
-      <div className="mt-3 text-center">
-        <h2 className="text-sm lg:text-base font-bold text-dark-blue-400">
-          Talent {favorite.itemId}
-        </h2>
-        <p className="text-xs lg:text-sm text-[#585C65] mt-0.5">
-          UX/UI Designer
-        </p>
-        <div className="flex items-center justify-center gap-1.5 mt-2">
-          <Badge className="rounded-full text-[10px]" size="sm" visual="primary">
-            Available
-          </Badge>
-          <div className="flex items-center gap-0.5">
-            <Star className="size-3 text-yellow-400 fill-yellow-400" />
-            <span className="text-xs text-gray-500">4.9</span>
-          </div>
-        </div>
-        <p className="text-[10px] lg:text-xs text-gray-400 mt-2">
-          Saved {new Date(favorite.createdAt).toLocaleDateString()}
-        </p>
-      </div>
-    </article>
-  )
-}
-
-/* ─── Talent List Card ─── */
-
-const TalentListCard = ({ favorite }: { favorite: Favorite }) => {
-  return (
-    <div className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-lg shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-      <Avatar className="size-12" size="lg">
-        <AvatarImage src="/man.jpg" alt="Talent" />
-        <AvatarFallback>T</AvatarFallback>
-      </Avatar>
-      <div className="flex-auto min-w-0">
-        <h2 className="text-sm font-bold text-dark-blue-400">Talent {favorite.itemId}</h2>
-        <p className="text-xs text-[#585C65]">UX/UI Designer</p>
-      </div>
-      <div className="flex items-center gap-3 flex-none">
-        <Badge className="rounded-full text-[10px]" size="sm" visual="primary">
-          Available
-        </Badge>
-        <div className="flex items-center gap-0.5">
-          <Star className="size-3 text-yellow-400 fill-yellow-400" />
-          <span className="text-xs text-gray-500">4.9</span>
-        </div>
-        <span className="text-xs text-gray-400">
-          Saved {new Date(favorite.createdAt).toLocaleDateString()}
-        </span>
-        <ItemDropdown />
-      </div>
-    </div>
-  )
-}
-
 /* ─── Project Card (grid) ─── */
 
-const ProjectGridCard = ({ favorite }: { favorite: Favorite }) => {
+const ProjectGridCard = ({ favorite, onRemove }: { favorite: Favorite; onRemove: () => void }) => {
   return (
     <article className="bg-white border rounded-lg border-gray-200">
       <div className="h-[163px] lg:h-[222px] grid grid-cols-2 grid-rows-3 bg-gray-50">
@@ -152,7 +73,7 @@ const ProjectGridCard = ({ favorite }: { favorite: Favorite }) => {
       </div>
 
       <div className="relative pt-5 p-5 lg:p-[25px]">
-        <ItemDropdown className="absolute top-1.5 right-1.5" />
+        <ItemDropdown className="absolute top-1.5 right-1.5" onRemove={onRemove} />
 
         <NextLink href={`/project-details/${favorite.itemId}`}>
           <h2 className="text-[11px] leading-[13.31px] lg:text-base text-center lg:leading-[21.79px] font-bold text-dark-blue-400 hover:underline">
@@ -169,7 +90,7 @@ const ProjectGridCard = ({ favorite }: { favorite: Favorite }) => {
 
 /* ─── Project List Card ─── */
 
-const ProjectListCard = ({ favorite }: { favorite: Favorite }) => {
+const ProjectListCard = ({ favorite, onRemove }: { favorite: Favorite; onRemove: () => void }) => {
   return (
     <div className="flex md:flex-row flex-col md:gap-x-10 border overflow-hidden bg-white border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/[.04])] rounded-lg">
       <div className="py-3.5 lg:py-[16.5px] space-y-0.5 pl-5">
@@ -192,7 +113,7 @@ const ProjectListCard = ({ favorite }: { favorite: Favorite }) => {
       </div>
 
       <div className="justify-end py-2.5 space-y-1 pl-5 pr-2.5 lg:flex hidden">
-        <ItemDropdown />
+        <ItemDropdown onRemove={onRemove} />
       </div>
     </div>
   )
@@ -200,7 +121,7 @@ const ProjectListCard = ({ favorite }: { favorite: Favorite }) => {
 
 /* ─── Shared ─── */
 
-const ItemDropdown = ({ className }: { className?: string }) => {
+const ItemDropdown = ({ className, onRemove }: { className?: string; onRemove?: () => void }) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -216,7 +137,7 @@ const ItemDropdown = ({ className }: { className?: string }) => {
           <Copy className="h-4 w-4" /> Duplicate
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem visual="destructive">
+        <DropdownMenuItem visual="destructive" onClick={onRemove}>
           <Trash2 className="h-4 w-4" /> Remove from Group
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -256,35 +177,70 @@ export default function FavoriteGroupDetailPage() {
 
   const [value, setValue] = useState([GRID_LAYOUT])
   const [favorites, setFavorites] = useState<Favorite[]>([])
+  const [talents, setTalents] = useState<TalentCardData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [showSearch, setShowSearch] = useState(false)
+
+  const isTalent = groupType === "talent"
 
   useEffect(() => {
     async function load() {
       setIsLoading(true)
       try {
-        const data = await getFavoritesByGroup(groupId)
-        if (data.length > 0) {
-          setFavorites(data)
+        if (isTalent) {
+          // Fetch real user profiles from the API for each group member
+          const usernames = getUsernamesForGroup(groupId)
+          const fallbackUsernames = usernames.length > 0 ? usernames : getUsernamesForGroup("grp-visual-designers")
+          const profiles = await Promise.all(
+            fallbackUsernames.map(async (username) => {
+              try {
+                const res = await UserAPI.getByUsername(username)
+                return res?.data ? userProfileToCardData(res.data) : null
+              } catch {
+                return null
+              }
+            })
+          )
+          setTalents(profiles.filter((p): p is TalentCardData => p !== null))
         } else {
-          // Fallback sample data based on type
-          setFavorites(groupType === "project" ? sampleProjectFavorites : sampleTalentFavorites)
+          const data = await getFavoritesByGroup(groupId)
+          setFavorites(data.length > 0 ? data : sampleProjectFavorites)
         }
       } catch {
-        setFavorites(groupType === "project" ? sampleProjectFavorites : sampleTalentFavorites)
+        if (!isTalent) {
+          setFavorites(sampleProjectFavorites)
+        }
       } finally {
         setIsLoading(false)
       }
     }
     load()
-  }, [groupId, groupType])
+  }, [groupId, groupType, isTalent])
 
-  const filtered = searchQuery
+  const handleRemoveTalent = (talentId: string) => {
+    setTalents((prev) => prev.filter((t) => t.id !== talentId))
+  }
+
+  const handleRemoveFavorite = async (favoriteId: string) => {
+    const success = await removeFavorite(favoriteId)
+    if (success) {
+      setFavorites((prev) => prev.filter((f) => f.id !== favoriteId))
+    }
+  }
+
+  const filteredTalents = searchQuery
+    ? talents.filter((t) =>
+        `${t.firstName} ${t.lastName} ${t.username} ${t.role}`.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : talents
+
+  const filteredProjects = searchQuery
     ? favorites.filter((f) => f.itemId.toLowerCase().includes(searchQuery.toLowerCase()))
     : favorites
 
-  const isTalent = groupType === "talent"
+  const itemCount = isTalent ? talents.length : favorites.length
+  const filteredCount = isTalent ? filteredTalents.length : filteredProjects.length
 
   return (
     <div className="p-3.5 md:p-10 lg:py-[60px] lg:px-[200px]">
@@ -305,7 +261,7 @@ export default function FavoriteGroupDetailPage() {
             {groupName}
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            {favorites.length} saved {isTalent ? "talent" : "projects"}
+            {itemCount} saved {isTalent ? "talent" : "projects"}
           </p>
         </div>
 
@@ -344,7 +300,7 @@ export default function FavoriteGroupDetailPage() {
           />
         )}
         <span className="text-xs text-gray-400 ml-auto">
-          {filtered.length} of {favorites.length} shown
+          {filteredCount} of {itemCount} shown
         </span>
       </div>
 
@@ -356,7 +312,7 @@ export default function FavoriteGroupDetailPage() {
               <div key={i} className="bg-white border rounded-lg h-[250px] animate-pulse" />
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : (isTalent ? filteredTalents.length === 0 : filteredProjects.length === 0) ? (
           <div className="text-center py-20">
             <Star className="size-10 text-gray-300 mx-auto" />
             <p className="text-dark-blue-400 mt-4 mb-2 font-medium">
@@ -371,27 +327,48 @@ export default function FavoriteGroupDetailPage() {
         ) : isTalent ? (
           getFirstItem(value) === GRID_LAYOUT ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-6">
-              {filtered.map((fav) => (
-                <TalentGridCard key={fav.id} favorite={fav} />
+              {filteredTalents.map((talent) => (
+                <TalentSearchCard
+                  key={talent.id}
+                  id={talent.id}
+                  name={talent.firstName}
+                  handle={`@${talent.username}`}
+                  role={talent.role}
+                  photo={talent.avatarUrl}
+                  rate={talent.rate}
+                  experience={talent.experience}
+                  country={talent.country}
+                  localTime={talent.localTime}
+                  rating={talent.rating}
+                  projects={talent.projects}
+                  skills={talent.skills}
+                  profileHref={talent.profileHref}
+                  showOptionsMenu
+                  onRemove={() => handleRemoveTalent(talent.id)}
+                />
               ))}
             </div>
           ) : (
             <div className="flex flex-col gap-y-3">
-              {filtered.map((fav) => (
-                <TalentListCard key={fav.id} favorite={fav} />
+              {filteredTalents.map((talent) => (
+                <TalentSearchCardLandscape
+                  key={talent.id}
+                  showOptionsMenu
+                  onRemove={() => handleRemoveTalent(talent.id)}
+                />
               ))}
             </div>
           )
         ) : getFirstItem(value) === GRID_LAYOUT ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6">
-            {filtered.map((fav) => (
-              <ProjectGridCard key={fav.id} favorite={fav} />
+            {filteredProjects.map((fav) => (
+              <ProjectGridCard key={fav.id} favorite={fav} onRemove={() => handleRemoveFavorite(fav.id)} />
             ))}
           </div>
         ) : (
           <div className="grid gap-y-3">
-            {filtered.map((fav) => (
-              <ProjectListCard key={fav.id} favorite={fav} />
+            {filteredProjects.map((fav) => (
+              <ProjectListCard key={fav.id} favorite={fav} onRemove={() => handleRemoveFavorite(fav.id)} />
             ))}
           </div>
         )}

@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { type Favorite, getProjectFavorites, getTalentFavorites } from "@/src/lib/api/favorites"
+import { type TalentCardData, sampleGroups, getUsernamesForGroup, userProfileToCardData } from "@/src/lib/data/sample-talents"
+import { UserAPI } from "@/service/http/user"
+import { motion } from "framer-motion"
 import { cn, getFirstItem } from "@/utils/functions"
 import {
   ChevronDown,
@@ -154,51 +157,97 @@ const ProjectListCard = ({ favorite, itemCount, groupId, groupName }: ProjectCar
 
 /* ─── Talent Cards ─── */
 
-const TalentCard = ({ groupId, groupName }: { groupId: string; groupName: string }) => {
+const formatGroupDate = (isoDate: string) => {
+  const d = new Date(isoDate)
+  return `Created ${d.toLocaleDateString("en-US", { month: "short", year: "numeric" })}`
+}
+
+const formatGroupDateLong = (isoDate: string) => {
+  const d = new Date(isoDate)
+  const month = d.toLocaleDateString("en-US", { month: "long" })
+  const year = d.getFullYear()
+  return { month, year }
+}
+
+const TalentCard = ({ groupId, groupName, talents, createdAt }: { groupId: string; groupName: string; talents: TalentCardData[]; createdAt: string }) => {
+  // Show the most recently added talents (last in array = most recent)
+  const recentTalents = [...talents].reverse().slice(0, 5)
+  // Rotation angles for circular layout: positions around the circle
+  const rotationAngles = [0, -45, -90, -135, -180]
+
+  // Staggered entrance: avatars appear one-by-one from bottom
+  const avatarVariants = {
+    hidden: { opacity: 0, scale: 0.3, y: 20 },
+    visible: (i: number) => ({
+      opacity: 1,
+      scale: 1,
+      y: 0,
+      transition: { delay: i * 0.1, duration: 0.35, ease: "easeOut" },
+    }),
+  }
+
   return (
     <NextLink href={`/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=talent`} className="block">
     <article className="relative bg-white py-[25px] px-5 lg:p-[35px] lg:pb-[25px] rounded-lg border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] cursor-pointer hover:shadow-md transition-shadow">
       <div className="flex justify-center items-center">
         <div className="relative size-[127.5px] lg:size-[176px] flex-none rounded-full isolate">
-          <div className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto rotate-[--tw-rotate-root] [--tw-rotate-root:45deg]">
-            <button className="inline-flex items-center justify-center shrink-0 size-[44.96px] lg:size-[61px] rounded-full border-dashed border-[1.5px] border-gray-300 text-gray-300 focus-visible:outline-none rotate-[--tw-rotate] [--tw-rotate:calc(-1*var(--tw-rotate-root))]">
+          {/* Add button slot */}
+          <motion.div
+            className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto rotate-[--tw-rotate-root] [--tw-rotate-root:45deg]"
+            initial={{ opacity: 0, scale: 0.3 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: recentTalents.length * 0.1 + 0.05, duration: 0.3 }}
+          >
+            <button className="inline-flex items-center justify-center shrink-0 size-[44.96px] lg:size-[61px] rounded-full border-dashed border-[1.5px] border-gray-300 text-gray-300 focus-visible:outline-none rotate-[--tw-rotate] [--tw-rotate:calc(-1*var(--tw-rotate-root))] pointer-events-none">
               <Plus className="size-5" />
             </button>
-          </div>
-          <div className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto rotate-[--tw-rotate-root] [--tw-rotate-root:0deg]">
-            <Avatar className="border-2 border-white size-[44.96px] lg:size-[61px] rotate-[--tw-rotate] [--tw-rotate:calc(-1*var(--tw-rotate-root))]" size="2xl">
-              <AvatarImage src="/man.jpg" alt="Man" />
-              <AvatarFallback>M</AvatarFallback>
-            </Avatar>
-          </div>
-          <div className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto rotate-[--tw-rotate-root] [--tw-rotate-root:-45deg]">
-            <Avatar className="border-2 border-white size-[44.96px] lg:size-[61px] rotate-[--tw-rotate] [--tw-rotate:calc(-1*var(--tw-rotate-root))]" size="2xl">
-              <AvatarImage src="/man.jpg" alt="Man" />
-              <AvatarFallback>M</AvatarFallback>
-            </Avatar>
-          </div>
-          <div className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto rotate-[--tw-rotate-root] [--tw-rotate-root:-90deg]">
-            <Avatar className="border-2 border-white size-[44.96px] lg:size-[61px] rotate-[--tw-rotate] [--tw-rotate:calc(-1*var(--tw-rotate-root))]" size="2xl">
-              <AvatarImage src="/man.jpg" alt="Man" />
-              <AvatarFallback>M</AvatarFallback>
-            </Avatar>
-          </div>
-          <div className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto rotate-[--tw-rotate-root] [--tw-rotate-root:-135deg]">
-            <Avatar className="border-2 border-white size-[44.96px] lg:size-[61px] rotate-[--tw-rotate] [--tw-rotate:calc(-1*var(--tw-rotate-root))]" size="2xl">
-              <AvatarImage src="/man.jpg" alt="Man" />
-              <AvatarFallback>M</AvatarFallback>
-            </Avatar>
-          </div>
-          <div className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto rotate-[--tw-rotate-root] [--tw-rotate-root:-180deg]">
-            <div className="size-[44.96px] lg:size-[61px] bg-white border border-gray-300 flex rounded-full flex-col shrink-0 justify-center items-center rotate-[--tw-rotate] [--tw-rotate:calc(-1*var(--tw-rotate-root))]">
-              <span className="inline-block text-[11.79px] leading-[14.27px] lg:text-base lg:leading-[19.36px] font-semibold text-dark-blue-400">
-                4
-              </span>
-              <span className="inline-block text-[8.84px] leading-[10.7px] lg:text-xs lg:leading-[14.52px] font-light text-dark-blue-400">
-                saved
-              </span>
-            </div>
-          </div>
+          </motion.div>
+
+          {/* Dynamic avatar slots — staggered entrance, no hover */}
+          {recentTalents.map((talent, i) => (
+            <motion.div
+              key={talent.id}
+              className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto"
+              style={{ rotate: `${rotationAngles[i]}deg` } as React.CSSProperties}
+              custom={i}
+              initial="hidden"
+              animate="visible"
+              variants={avatarVariants}
+            >
+              <Avatar
+                className="border-2 border-white size-[44.96px] lg:size-[61px] pointer-events-none !ring-0 hover:!ring-0"
+                style={{ rotate: `${-rotationAngles[i]}deg` } as React.CSSProperties}
+                size="2xl"
+              >
+                <AvatarImage src={talent.avatarUrl} alt={`${talent.firstName} ${talent.lastName}`} />
+                <AvatarFallback>{talent.firstName[0]}{talent.lastName[0]}</AvatarFallback>
+              </Avatar>
+            </motion.div>
+          ))}
+
+          {/* Saved count — fill remaining slot if fewer than 5 talents */}
+          {recentTalents.length < 5 && (
+            <motion.div
+              className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto"
+              style={{ rotate: `${rotationAngles[recentTalents.length]}deg` } as React.CSSProperties}
+              custom={recentTalents.length}
+              initial="hidden"
+              animate="visible"
+              variants={avatarVariants}
+            >
+              <div
+                className="size-[44.96px] lg:size-[61px] bg-white border border-gray-300 flex rounded-full flex-col shrink-0 justify-center items-center"
+                style={{ rotate: `${-rotationAngles[recentTalents.length]}deg` } as React.CSSProperties}
+              >
+                <span className="inline-block text-[11.79px] leading-[14.27px] lg:text-base lg:leading-[19.36px] font-semibold text-dark-blue-400">
+                  {talents.length}
+                </span>
+                <span className="inline-block text-[8.84px] leading-[10.7px] lg:text-xs lg:leading-[14.52px] font-light text-dark-blue-400">
+                  saved
+                </span>
+              </div>
+            </motion.div>
+          )}
         </div>
       </div>
 
@@ -209,7 +258,7 @@ const TalentCard = ({ groupId, groupName }: { groupId: string; groupName: string
           {groupName}
         </h1>
         <h1 className="text-[11px] lg:text-sm mt-[2px] text-center lg:leading-[16.94px] text-[#585C65]">
-          Created Jan 2024
+          {formatGroupDate(createdAt)}
         </h1>
       </div>
     </article>
@@ -217,7 +266,10 @@ const TalentCard = ({ groupId, groupName }: { groupId: string; groupName: string
   )
 }
 
-const TalentCardLandscapeRow = ({ value }: { value: string }) => {
+const TalentCardLandscapeRow = ({ value, groupId, groupName, talents, createdAt }: { value: string; groupId: string; groupName: string; talents: TalentCardData[]; createdAt: string }) => {
+  // Most recently added first for avatar display
+  const recentTalents = [...talents].reverse().slice(0, 6)
+
   return (
     <AccordionItem
       className="border border-gray-200 bg-white shadow-[0px_2px_5px_0px_theme(colors.black/.04)] rounded-lg"
@@ -226,16 +278,16 @@ const TalentCardLandscapeRow = ({ value }: { value: string }) => {
       <div className="flex xs:max-md:p-3 xs:max-md:flex-col xs:max-md:gap-y-[17px]">
         <div className="md:contents flex items-center justify-between">
           <div className="xs:max-md:flex xs:max-md:flex-col xs:max-md:gap-y-1 md:flex-auto md:pl-6 lg:pl-[25px] md:py-3 lg:py-[25px] md:last:pr-3 lg:last:pr-[25px]">
-            <NextLink href={`/favorites/sample-group-1?name=${encodeURIComponent("Visual Designers")}&type=talent`} className="text-sm leading-[15.73px] lg:text-base font-bold inline-block lg:leading-[19.07px] text-dark-blue-400 hover:underline">
-              Visual Designers
+            <NextLink href={`/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=talent`} className="text-sm leading-[15.73px] lg:text-base font-bold inline-block lg:leading-[19.07px] text-dark-blue-400 hover:underline">
+              {groupName}
             </NextLink>
             <div className="xs:max-md:flex hidden items-center gap-x-2">
               <span className="text-[10px] leading-[12.1px] lg:text-sm lg:leading-[16.94px] font-light inline-block text-dark-blue-400">
                 Created on
               </span>
               <span className="inline-flex gap-x-2 items-center text-[10px] leading-[12.1px] lg:text-sm lg:leading-[16.94px] font-light text-dark-blue-400">
-                <span className="font-bold">January</span>
-                2024
+                <span className="font-bold">{formatGroupDateLong(createdAt).month}</span>
+                {formatGroupDateLong(createdAt).year}
               </span>
             </div>
           </div>
@@ -247,17 +299,17 @@ const TalentCardLandscapeRow = ({ value }: { value: string }) => {
             <div className="flex items-center gap-x-3">
               <div className="flex flex-col">
                 <span className="text-xs leading-[14.52px] lg:text-base font-semibold inline-block lg:leading-[19.07px] text-dark-blue-400">
-                  34
+                  {talents.length}
                 </span>
                 <span className="text-[9px] leading-[10.89px] lg:text-xs lg:leading-[14.52px] inline-block font-light text-dark-blue-400">
                   saved
                 </span>
               </div>
               <div className="flex items-center -space-x-2 lg:-space-x-1.5">
-                {Array(6).fill(0).map((_, i) => (
-                  <Avatar key={i} className="border-2 border-white xs:max-lg:size-6" size="sm">
-                    <AvatarImage src="/man.jpg" alt="Man" />
-                    <AvatarFallback>M</AvatarFallback>
+                {recentTalents.map((talent) => (
+                  <Avatar key={talent.id} className="border-2 border-white xs:max-lg:size-6" size="sm">
+                    <AvatarImage src={talent.avatarUrl} alt={`${talent.firstName} ${talent.lastName}`} />
+                    <AvatarFallback>{talent.firstName[0]}{talent.lastName[0]}</AvatarFallback>
                   </Avatar>
                 ))}
               </div>
@@ -270,8 +322,8 @@ const TalentCardLandscapeRow = ({ value }: { value: string }) => {
                 Created on
               </span>
               <span className="inline-flex gap-x-2 items-center text-[10px] leading-[12.1px] lg:text-sm lg:leading-[16.94px] font-light text-dark-blue-400">
-                <span className="font-bold">January</span>
-                2024
+                <span className="font-bold">{formatGroupDateLong(createdAt).month}</span>
+                {formatGroupDateLong(createdAt).year}
               </span>
             </div>
           </div>
@@ -415,6 +467,8 @@ export default function FavoritesPage() {
   const [projectFavorites, setProjectFavorites] = useState<Favorite[]>([])
   const [talentFavorites, setTalentFavorites] = useState<Favorite[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  // Map of groupId → TalentCardData[] fetched from the API
+  const [groupTalents, setGroupTalents] = useState<Record<string, TalentCardData[]>>({})
 
   useEffect(() => {
     async function loadFavorites() {
@@ -433,6 +487,33 @@ export default function FavoritesPage() {
       }
     }
     loadFavorites()
+
+    // Fetch user profiles for all groups in parallel
+    async function loadGroupTalents() {
+      const allUsernames = new Set<string>()
+      for (const group of sampleGroups) {
+        for (const u of getUsernamesForGroup(group.id)) allUsernames.add(u)
+      }
+      // Fetch all unique users
+      const profileMap: Record<string, TalentCardData> = {}
+      await Promise.all(
+        Array.from(allUsernames).map(async (username) => {
+          try {
+            const res = await UserAPI.getByUsername(username)
+            if (res?.data) profileMap[username] = userProfileToCardData(res.data)
+          } catch { /* skip unavailable users */ }
+        })
+      )
+      // Build group → talents mapping
+      const result: Record<string, TalentCardData[]> = {}
+      for (const group of sampleGroups) {
+        result[group.id] = getUsernamesForGroup(group.id)
+          .map((u) => profileMap[u])
+          .filter((t): t is TalentCardData => t != null)
+      }
+      setGroupTalents(result)
+    }
+    loadGroupTalents()
   }, [])
 
   return (
@@ -498,19 +579,28 @@ export default function FavoritesPage() {
           <div className="pt-[14px] lg:pt-6">
             {getFirstItem(value) === GRID_LAYOUT ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-6">
-                <TalentCard groupId="grp-visual-designers" groupName="Visual Designers" />
-                <TalentCard groupId="grp-ux-researchers" groupName="UX Researchers" />
-                <TalentCard groupId="grp-frontend-devs" groupName="Frontend Developers" />
-                <TalentCard groupId="grp-backend-devs" groupName="Backend Developers" />
-                <TalentCard groupId="grp-product-managers" groupName="Product Managers" />
-                <TalentCard groupId="grp-data-analysts" groupName="Data Analysts" />
-                <TalentCard groupId="grp-copywriters" groupName="Copywriters" />
+                {sampleGroups.map((group) => (
+                  <TalentCard
+                    key={group.id}
+                    groupId={group.id}
+                    groupName={group.name}
+                    talents={groupTalents[group.id] ?? []}
+                    createdAt={group.createdAt}
+                  />
+                ))}
               </div>
             ) : (
               <Accordion type="multiple" className="flex flex-col gap-y-3">
-                <TalentCardLandscapeRow value="first" />
-                <TalentCardLandscapeRow value="second" />
-                <TalentCardLandscapeRow value="third" />
+                {sampleGroups.map((group) => (
+                  <TalentCardLandscapeRow
+                    key={group.id}
+                    value={group.id}
+                    groupId={group.id}
+                    groupName={group.name}
+                    talents={groupTalents[group.id] ?? []}
+                    createdAt={group.createdAt}
+                  />
+                ))}
               </Accordion>
             )}
           </div>
