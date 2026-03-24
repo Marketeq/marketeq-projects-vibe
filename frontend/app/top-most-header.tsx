@@ -701,15 +701,15 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                     </span>
                   </div>
 
-                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push(user?.role === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>My Account</Button>
+                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>My Account</Button>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push(user?.role === "TALENT" ? "/talent-profile" : "/client-profile")}>
+              <DropdownMenuItem onClick={() => router.push("/talent-profile")}>
                 <User className="size-4" />
                 My Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push(user?.role === "TALENT" ? "/talent-dashboard" : "/client-dashboard")}>
+              <DropdownMenuItem onClick={() => router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard")}>
                 <LayoutGrid02 className="size-4" />
                 My Dashboard
               </DropdownMenuItem>
@@ -740,10 +740,10 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => {
                 setMenuOpen(false)
-                router.push(user?.role === "TALENT" ? "/onboarding/client" : "/onboarding/talent")
+                router.push(user?.accountType === "TALENT" ? "/onboarding/client" : "/onboarding/talent")
               }}>
                 <Repeat className="size-4" />
-                {user?.role === "TALENT" ? "Switch to Client" : "Switch to Talent"}
+                {user?.accountType === "TALENT" ? "Switch to Client" : "Switch to Talent"}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <div className="grid grid-cols-2 gap-x-[9px]">

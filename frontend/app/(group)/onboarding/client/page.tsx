@@ -2150,8 +2150,17 @@ const ClientOnboarding = ({
 }
 
 export default function ClientOnboardingRoot() {
+  const { user, setUser } = useAuth()
   const [clientUser, setClientUser] = React.useState<User | null>(null)
   const [stepData, setStepData] = React.useState<CreateClientType | null>(null)
+
+  // Persist userType immediately so it survives page refreshes / abandoned onboarding
+  React.useEffect(() => {
+    if (!user?.id || user.userType === "client") return
+    UserAPI.updateProfile(user.id, { userType: "client" })
+      .then(() => setUser((prev) => prev ? { ...prev, userType: "client", role: ROLE.CLIENT } : prev))
+      .catch(() => {})
+  }, [user?.id])
 
   return (
     <AuthenticatedRoute>

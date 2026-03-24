@@ -15,10 +15,10 @@ const UnauthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
     setIsPageLoading(true)
 
     if (user && !isLoading) {
-      if (user?.role) {
-        if (user.role === ROLE.TALENT) {
+      if (user?.accountType) {
+        if (user.accountType === ROLE.TALENT) {
           router.push(`/talent-dashboard`)
-        } else if (user.role === ROLE.CLIENT) {
+        } else if (user.accountType === ROLE.CLIENT) {
           router.push(`/client-dashboard`)
         } else {
           router.push(`/`)

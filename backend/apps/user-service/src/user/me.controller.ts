@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Patch, Req, Body, UnauthorizedException, Logger,
+  Controller, Get, Patch, Req, Body, UnauthorizedException, Logger, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { UserService } from './user.service';
@@ -63,6 +63,43 @@ export class MeController {
         userType: 'talent',
       });
     }
+
+    return this.userService.findById(user.id);
+  }
+
+  @Patch('onboarding-dismissed')
+  @HttpCode(HttpStatus.OK)
+  async dismissOnboarding(
+    @Req() req: Request,
+    @Body() body: { role?: string },
+  ) {
+    const auth = req.headers.authorization;
+    if (!auth?.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Missing bearer token');
+    }
+
+    const payload = this.decodeJwtPayload(auth.slice(7));
+    if (!payload?.sub && !payload?.email) {
+      throw new UnauthorizedException('Invalid token payload');
+    }
+
+    let user: any = null;
+    if (payload.sub) {
+      try { user = await this.userService.findById(payload.sub); } catch {}
+    }
+    if (!user && payload.email) {
+      user = await this.userService.findByEmail(payload.email);
+    }
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    // Set the user's role/userType if provided and not already set
+    if (body.role && !user.userType) {
+      await this.userService.update(user.id, { userType: body.role } as any);
+    }
+
+    await this.userService.dismissOnboarding(user.id);
 
     return this.userService.findById(user.id);
   }

@@ -292,12 +292,13 @@ const Table = () => {
 }
 
 const Welcome = ({ onOpenProfile }: { onOpenProfile?: () => void }) => {
+  const { user } = useAuth()
   return (
     <div className="space-y-3.5 md:space-y-5">
       <div className="md:contents flex flex-col space-y-5">
         <div className="flex items-end justify-between">
           <h1 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
-            Welcome, Christopher!
+            Welcome, {user?.firstName || "there"}!
           </h1>
 
           <div className="flex items-center gap-x-3">

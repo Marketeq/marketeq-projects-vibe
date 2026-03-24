@@ -39,13 +39,13 @@ function useProvideAuth() {
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [isAuthChecked, setIsAuthChecked] = useState<boolean>(false)
 
-  // Wrap setUser to always normalize userType → role
+  // Wrap setUser to derive accountType from userType (without overwriting role, which is the job title)
   const setUser: Dispatch<React.SetStateAction<User | null>> = (action) => {
     setUserRaw((prev) => {
       const next = typeof action === "function" ? action(prev) : action
       if (next && next.userType) {
         const typeMap: Record<string, ROLE> = { talent: ROLE.TALENT, client: ROLE.CLIENT }
-        next.role = typeMap[next.userType] ?? next.role
+        next.accountType = typeMap[next.userType] ?? next.accountType
       }
       return next
     })

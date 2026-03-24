@@ -475,14 +475,14 @@ export default function ProjectDetails() {
         )
 
         if (!foundProject) {
-          router.push("/404")
+          router.push("/")
           return
         }
 
         setProject(foundProject)
       } catch (err) {
         console.error(err)
-        router.push("/404")
+        router.push("/")
       } finally {
         setLoading(false)
       }

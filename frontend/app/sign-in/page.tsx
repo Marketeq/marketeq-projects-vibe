@@ -228,6 +228,8 @@ export default function SignIn() {
                       firstName: "Taylor",
                       lastName: "Kim",
                       role: "CLIENT" as any,
+                      accountType: "CLIENT" as any,
+                      userType: "client",
                       provider: "EMAIL" as any,
                       hasPassword: true,
                       emailVerified: true,
@@ -254,7 +256,7 @@ export default function SignIn() {
                       const res = await UserAPI.me()
                       const u = res?.data
                       if (u?.id) {
-                        setUser({ ...u, role: "TALENT", provider: "EMAIL", hasPassword: true, emailVerified: true, deletedAt: null })
+                        setUser({ ...u, accountType: "TALENT" as any, provider: "EMAIL", hasPassword: true, emailVerified: true, deletedAt: null })
                         router.push("/talent-dashboard")
                         return
                       }
@@ -266,6 +268,8 @@ export default function SignIn() {
                       firstName: "Jordan",
                       lastName: "Patel",
                       role: "TALENT" as any,
+                      accountType: "TALENT" as any,
+                      userType: "talent",
                       provider: "EMAIL" as any,
                       hasPassword: true,
                       emailVerified: true,

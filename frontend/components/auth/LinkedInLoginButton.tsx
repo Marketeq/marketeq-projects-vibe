@@ -76,12 +76,12 @@ const LinkedInLogin = () => {
               UserAPI.me().then((me) => {
                 if (me?.status === 200) {
                   const user = me.data?.user ?? me.data
-                  // Backend `role` is job title, `userType` is account type
+                  // Derive accountType from userType (don't overwrite role — it's the job title)
                   if (user?.userType) {
                     const typeMap: Record<string, ROLE> = { talent: ROLE.TALENT, client: ROLE.CLIENT }
-                    user.role = typeMap[user.userType] ?? user.role
+                    user.accountType = typeMap[user.userType]
                   }
-                  if (user?.role || user?.userType) {
+                  if (user?.accountType || user?.userType) {
                     setUser(user)
                     router.push("/")
                   } else {

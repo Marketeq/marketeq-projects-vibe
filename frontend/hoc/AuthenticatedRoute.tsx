@@ -22,11 +22,12 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
       return
     }
 
-    const hasRole = !!user?.role
+    const accountType = user?.accountType
+    const hasAccountType = !!accountType
     const onboardingDismissed = user?.onboardingDismissed
 
-    //New user, no role yet
-    if (!hasRole) {
+    //New user, no account type yet
+    if (!hasAccountType) {
       if (!pathname?.includes("onboarding")) {
         router.push("/onboarding")
       } else {
@@ -35,23 +36,24 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
       return
     }
 
-    //Has role, but onboarding not dismissed
-    if (hasRole && !onboardingDismissed) {
+    //Has account type, but onboarding not dismissed — send to the correct onboarding flow
+    if (hasAccountType && !onboardingDismissed) {
       if (!pathname?.includes("onboarding")) {
-        router.push("/onboarding")
+        const onboardingPath = accountType === ROLE.TALENT ? "/onboarding/talent" : "/onboarding/client"
+        router.push(onboardingPath)
       } else {
         setIsPageLoading(false)
       }
       return
     }
 
-    //Has role and onboarding is dismissed
-    if (hasRole && onboardingDismissed) {
+    //Has account type and onboarding is dismissed
+    if (hasAccountType && onboardingDismissed) {
       if (pathname?.includes("onboarding")) {
         // User already completed onboarding, redirect away from onboarding pages
-        if (user.role === ROLE.TALENT) {
+        if (accountType === ROLE.TALENT) {
           router.push(`/talent-dashboard`)
-        } else if (user.role === ROLE.CLIENT) {
+        } else if (accountType === ROLE.CLIENT) {
           router.push(`/client-dashboard`)
         } else {
           router.push(`/`)

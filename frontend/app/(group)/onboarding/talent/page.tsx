@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { USERNAME_SUGGESTIONS_LIST } from "@/constants/username-suggestions"
 import { useAuth } from "@/contexts/auth"
@@ -3079,8 +3079,17 @@ const TalentOnboarding = ({
 }
 
 export default function TalentOnboardingRoot() {
+  const { user, setUser } = useAuth()
   const [talentUser, setTalentUser] = useState<User | null>(null)
   const [stepData, setStepData] = React.useState<CreateTalentType | null>(null)
+
+  // Persist userType immediately so it survives page refreshes / abandoned onboarding
+  useEffect(() => {
+    if (!user?.id || user.userType === "talent") return
+    UserAPI.updateProfile(user.id, { userType: "talent" })
+      .then(() => setUser((prev) => prev ? { ...prev, userType: "talent", role: ROLE.TALENT } : prev))
+      .catch(() => {})
+  }, [user?.id])
 
   return (
     <AuthenticatedRoute>

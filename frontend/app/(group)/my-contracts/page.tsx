@@ -366,7 +366,7 @@ export default function MyContractsPage() {
     if (!user?.id) return
     setLoading(true)
     try {
-      const data = user.role === "TALENT"
+      const data = user.accountType === "TALENT"
         ? await getTalentContracts(user.id)
         : await getClientContracts(user.id)
 

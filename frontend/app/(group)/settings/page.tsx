@@ -120,7 +120,7 @@ export default function SettingsPage() {
                       <p className="text-sm font-medium text-dark-blue-400">Account Type</p>
                       <p className="text-xs text-gray-500">Your current account role</p>
                     </div>
-                    <span className="text-sm text-gray-500 capitalize">{user?.role?.toLowerCase() ?? "—"}</span>
+                    <span className="text-sm text-gray-500 capitalize">{user?.userType?.toLowerCase() ?? user?.accountType?.toLowerCase() ?? "—"}</span>
                   </div>
                 </div>
               </div>
