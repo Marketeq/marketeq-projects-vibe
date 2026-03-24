@@ -27,6 +27,9 @@ export const FavoritesAPI = {
   createGroup: (name: string) =>
     AxiosRequest.post("/favorites/groups", { name }),
 
+  renameGroup: (groupId: string, name: string) =>
+    AxiosRequest.patch(`/favorites/groups/${groupId}`, { name }),
+
   deleteGroup: (groupId: string) =>
     AxiosRequest.del(`/favorites/groups/${groupId}`),
 

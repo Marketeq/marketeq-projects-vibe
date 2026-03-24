@@ -1,22 +1,51 @@
-export function extractIdFromSlug(slugId: string): string {
-    const parts = slugId.split('-');
-    const lastPart = parts[parts.length - 1];
-    if (/^\d+$/.test(lastPart)) return lastPart;
-    throw new Error('Invalid slug-id format');
+/**
+ * URL helpers for project and service detail pages.
+ *
+ * Doc-compliant pattern: /c/:l1/projects/:slug-:shortId
+ *   where shortId = first 8 chars of the UUID
+ */
+
+/** Extract the UUID prefix (shortId) appended after the last `-` in a slug-id combo */
+export function extractShortIdFromSlug(slugWithId: string): string {
+  const parts = slugWithId.split('-')
+  return parts[parts.length - 1]
 }
 
+/** Extract the slug portion (everything before the final shortId segment) */
+export function extractSlugFromParam(slugWithId: string): string {
+  const parts = slugWithId.split('-')
+  return parts.slice(0, -1).join('-')
+}
+
+/**
+ * Build a project detail URL.
+ * Pattern: /c/{category}/projects/{slug}-{shortId}
+ */
 export function buildProjectUrl(
-    categorySlugPath: string[], // Not used in Option 2, but keep for future
-    slug: string,
-    id: number | string
+  category: string,
+  slug: string,
+  id: string,
 ): string {
-    // Simple MVP version - /project-details/{slug}-{id}
-    return `/project-details/${slug}-${id}`;
+  const shortId = id.split('-')[0] // first 8 hex chars of UUID
+  return `/c/${category}/projects/${slug}-${shortId}`
+}
+
+/**
+ * Build a service detail URL.
+ * Pattern: /c/{category}/services/{slug}-{shortId}
+ */
+export function buildServiceUrl(
+  category: string,
+  slug: string,
+  id: string,
+): string {
+  const shortId = id.split('-')[0]
+  return `/c/${category}/services/${slug}-${shortId}`
 }
 
 export function parseCategoryParams(params: { category?: string[] }) {
-    const parts = (params.category ?? []).map(String);
-    if (parts.length < 1 || parts.length > 3) throw new Error('Invalid category depth');
-    const [l1, l2, l3] = parts;
-    return { l1, l2, l3, slugPath: parts.filter(Boolean) as string[] };
+  const parts = (params.category ?? []).map(String)
+  if (parts.length < 1 || parts.length > 3) throw new Error('Invalid category depth')
+  const [l1, l2, l3] = parts
+  return { l1, l2, l3, slugPath: parts.filter(Boolean) as string[] }
 }

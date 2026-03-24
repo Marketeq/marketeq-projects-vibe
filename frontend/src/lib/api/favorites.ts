@@ -49,6 +49,10 @@ export interface UpdateFavoriteDto {
   groupId: string
 }
 
+export interface RenameGroupDto {
+  name: string
+}
+
 // ── Group Endpoints ────────────────────────────────────
 
 /** Create a new favorites group */
@@ -82,6 +86,22 @@ export async function getGroups(): Promise<FavoriteGroup[]> {
   }
 }
 
+/** Rename a favorites group */
+export async function renameGroup(groupId: string, dto: RenameGroupDto): Promise<FavoriteGroup | null> {
+  try {
+    const res = await fetch(`${FAVORITES_API_URL}/groups/${groupId}`, {
+      method: "PATCH",
+      headers: authHeaders(),
+      body: JSON.stringify(dto),
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch (error) {
+    console.error("Error renaming group:", error)
+    return null
+  }
+}
+
 /** Delete a favorites group (cascades to all favorites in it) */
 export async function deleteGroup(groupId: string): Promise<boolean> {
   try {
@@ -98,8 +118,11 @@ export async function deleteGroup(groupId: string): Promise<boolean> {
 
 // ── Favorite Endpoints ─────────────────────────────────
 
-/** Get all favorites, optionally filtered by type */
-export async function getAllFavorites(type?: FavoriteType): Promise<Favorite[]> {
+/**
+ * GET /favorites — returns groups with nested favorites (per docs).
+ * Optional type filter narrows which favorites appear.
+ */
+export async function getAllFavoritesGrouped(type?: FavoriteType): Promise<FavoriteGroup[]> {
   try {
     const url = type
       ? `${FAVORITES_API_URL}?type=${type}`
@@ -114,6 +137,15 @@ export async function getAllFavorites(type?: FavoriteType): Promise<Favorite[]> 
     console.error("Error fetching favorites:", error)
     return []
   }
+}
+
+/**
+ * Flatten groups into a flat array of favorites.
+ * Used by helpers that need to search across all favorites.
+ */
+export async function getAllFavorites(type?: FavoriteType): Promise<Favorite[]> {
+  const groups = await getAllFavoritesGrouped(type)
+  return groups.flatMap((g) => g.favorites)
 }
 
 /** Add a favorite */
