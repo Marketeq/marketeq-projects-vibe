@@ -25,7 +25,7 @@ import { Industry } from './industries/entities/industry.entity';
           url: config.get<string>('DATABASE_URL') ?? 'postgres://postgres:password@localhost:5432/postgres',
           schema: 'user_service',
           entities: [User, Education, Experience, Skill, Language, Certification, Industry],
-          synchronize: false,
+          synchronize: !isProd,
           migrationsRun: true,
           migrations: [__dirname + '/../migrations/*{.ts,.js}'],
           logging: !isProd,

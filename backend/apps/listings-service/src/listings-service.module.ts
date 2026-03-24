@@ -19,7 +19,7 @@ import { Team } from './teams/entities/team.entity';
       url: process.env.DATABASE_URL,
       schema: process.env.DATABASE_SCHEMA || 'listings',
       entities: [Project, Service, Job, Team],
-      synchronize: false,
+      synchronize: process.env.NODE_ENV !== 'production',
       migrationsRun: true,
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,

@@ -36,7 +36,7 @@ import { Tooltip } from './tooltips/tooltip.entity';
           type: 'postgres' as const,
           url: config.get<string>('DATABASE_URL') ?? 'postgres://postgres:password@localhost:5432/marketeq',
           entities: [ActivityWatchEvent, Screenshot, ManualTime, AdminSettings, UserPreferences, Tooltip],
-          synchronize: false,
+          synchronize: !isProd,
           migrationsRun: true,
           migrations: [__dirname + '/../migrations/*{.ts,.js}'],
           schema: 'time_tracking',

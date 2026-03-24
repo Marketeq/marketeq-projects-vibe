@@ -21,7 +21,7 @@ import { WebhooksController } from './controllers/webhooks.controller';
         type: 'postgres',
         url: config.get<string>('DATABASE_URL'),
         entities: [BillingSubscription, BillingInvoice, PaymentRetryLog],
-        synchronize: false,
+        synchronize: config.get('NODE_ENV') !== 'production',
         migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
