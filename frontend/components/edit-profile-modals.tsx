@@ -1669,31 +1669,29 @@ export const WorkExperienceDialog = ({
   })
   const [editingIdx, setEditingIdx] = useState<number>()
 
-  const [skills] = useState([
-    { id: 1, name: "Wade Cooper" },
-    { id: 2, name: "Arlene Mccoy" },
-    { id: 3, name: "Devon Webb" },
-    { id: 4, name: "Tom Cook" },
-    { id: 5, name: "Tanya Fox" },
-    { id: 6, name: "Hellen Schmidt" },
-    { id: 7, name: "Chris Torres" },
-    { id: 8, name: "Max" },
-    { id: 9, name: "David" },
-    { id: 10, name: "Logan" },
-    { id: 11, name: "Andrew" },
-  ])
-
   const [query, setQuery] = useState("")
+  const [filteredSkills, setFilteredSkills] = useState<{ id: number | string; name: string }[]>([])
 
-  const filteredSkills =
-    query === ""
-      ? skills
-      : skills.filter((skill) =>
-          skill.name
-            .toLowerCase()
-            .replace(/\s+/g, "")
-            .includes(query.toLowerCase().replace(/\s+/g, ""))
-        )
+  const fetchSkills = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setFilteredSkills([])
+      return
+    }
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/autocomplete/search?q=${encodeURIComponent(q)}&type=skill&limit=20`
+      )
+      if (!res.ok) return
+      const data = await res.json()
+      const entries: { id: string; value: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
+      setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.value })))
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => fetchSkills(query), 300)
+    return () => clearTimeout(timer)
+  }, [query, fetchSkills])
 
   const {
     control,
@@ -2111,15 +2109,13 @@ export const WorkExperienceDialog = ({
                     <Combobox
                       className="w-full mt-[30px]"
                       value={value}
-                      onChange={onChange}
+                      onChange={(val) => { onChange(val); setQuery("") }}
                       multiple
                     >
                       <ComboboxTrigger>
                         <ComboboxInput
                           size="lg"
-                          displayValue={(user: { id: number; name: string }) =>
-                            user.name
-                          }
+                          displayValue={() => query}
                           placeholder="Search for skills"
                           onChange={(event) => setQuery(event.target.value)}
                           invalid={hookFormHasError({
@@ -2135,10 +2131,15 @@ export const WorkExperienceDialog = ({
                         <ComboboxOptions>
                           <ScrollArea viewportClassName="max-h-[304px]">
                             {filteredSkills.map((skill) => (
-                              <ComboboxOption key={skill.id} value={skill}>
+                              <ComboboxOption key={`${skill.id}-${skill.name}`} value={skill}>
                                 {skill.name}
                               </ComboboxOption>
                             ))}
+                            {query.trim() && filteredSkills.length === 0 && (
+                              <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
+                                Add &ldquo;{query.trim()}&rdquo;
+                              </ComboboxOption>
+                            )}
                           </ScrollArea>
                         </ComboboxOptions>
                       </ScaleOutIn>
@@ -2391,14 +2392,17 @@ export const EducationDialog = ({
                           />
                           <ListboxOptions>
                             {[
-                              "Option 1",
-                              "Option 2",
-                              "Option 3",
-                              "Option 4",
-                              "Option 5",
-                            ].map((month) => (
-                              <ListboxOption key={month} value={month}>
-                                {month}
+                              "High School Diploma",
+                              "Associate's Degree",
+                              "Bachelor's Degree",
+                              "Master's Degree",
+                              "Doctoral Degree (PhD)",
+                              "Professional Degree (MD, JD, etc.)",
+                              "Certificate",
+                              "Other",
+                            ].map((degree) => (
+                              <ListboxOption key={degree} value={degree}>
+                                {degree}
                               </ListboxOption>
                             ))}
                           </ListboxOptions>
@@ -2454,7 +2458,7 @@ export const EducationDialog = ({
                           render={({ field: { value, onChange } }) => (
                             <Listbox value={value} onChange={onChange}>
                               <ListboxButton
-                                displayValue={(value: number) => `${value}`}
+                                displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
                                 placeholder="Month"
                                 isInvalid={hookFormHasError({
                                   errors,
@@ -2462,13 +2466,11 @@ export const EducationDialog = ({
                                 })}
                               />
                               <ListboxOptions>
-                                {months
-                                  .map((month) => month.value)
-                                  .map((m) => (
-                                    <ListboxOption key={m} value={m}>
-                                      {m}
-                                    </ListboxOption>
-                                  ))}
+                                {months.map((m) => (
+                                  <ListboxOption key={m.value} value={m.value}>
+                                    {m.name}
+                                  </ListboxOption>
+                                ))}
                               </ListboxOptions>
                             </Listbox>
                           )}
@@ -2542,7 +2544,7 @@ export const EducationDialog = ({
                           render={({ field: { value, onChange } }) => (
                             <Listbox value={value} onChange={onChange}>
                               <ListboxButton
-                                displayValue={(value: number) => `${value}`}
+                                displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
                                 placeholder="Month"
                                 isInvalid={hookFormHasError({
                                   errors,
@@ -2550,13 +2552,11 @@ export const EducationDialog = ({
                                 })}
                               />
                               <ListboxOptions>
-                                {months
-                                  .map((month) => month.value)
-                                  .map((m) => (
-                                    <ListboxOption key={m} value={m}>
-                                      {m}
-                                    </ListboxOption>
-                                  ))}
+                                {months.map((m) => (
+                                  <ListboxOption key={m.value} value={m.value}>
+                                    {m.name}
+                                  </ListboxOption>
+                                ))}
                               </ListboxOptions>
                             </Listbox>
                           )}
@@ -2917,32 +2917,30 @@ export const SkillsDialog = ({
   } = useForm<SkillsFormValues>({
     resolver: zodResolver(skillsFormSchema),
   })
-  const [skills] = useState([
-    { id: 1, name: "English 0" },
-    { id: 2, name: "English 1" },
-    { id: 3, name: "English 2" },
-    { id: 4, name: "English 3" },
-    { id: 5, name: "English 4" },
-    { id: 6, name: "English 5" },
-    { id: 7, name: "English 6" },
-    { id: 8, name: "English 7" },
-    { id: 9, name: "English 8" },
-    { id: 10, name: "English 9" },
-    { id: 11, name: "English 10" },
-  ])
-
   const selected = useWatch({ control, name: "skills" })
   const [query, setQuery] = useState("")
+  const [filteredSkills, setFilteredSkills] = useState<{ id: number | string; name: string }[]>([])
 
-  const filteredSkills =
-    query === ""
-      ? skills
-      : skills.filter((language) =>
-          language.name
-            .toLowerCase()
-            .replace(/\s+/g, "")
-            .includes(query.toLowerCase().replace(/\s+/g, ""))
-        )
+  const fetchSkills = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setFilteredSkills([])
+      return
+    }
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/autocomplete/search?q=${encodeURIComponent(q)}&type=skill&limit=20`
+      )
+      if (!res.ok) return
+      const data = await res.json()
+      const entries: { id: string; value: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
+      setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.value })))
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => fetchSkills(query), 300)
+    return () => clearTimeout(timer)
+  }, [query, fetchSkills])
   const onRemove = (index: number) => {
     setValue("skills", selected?.filter((_, i) => i !== index))
     trigger()
@@ -3016,14 +3014,12 @@ export const SkillsDialog = ({
                   multiple
                   className="mt-8 w-auto"
                   value={value}
-                  onChange={onChange}
+                  onChange={(val) => { onChange(val); setQuery("") }}
                 >
                   <ComboboxTrigger>
                     <ComboboxInput
                       size="lg"
-                      displayValue={(skill: { id: number; name: string }) =>
-                        skill.name
-                      }
+                      displayValue={() => query}
                       onChange={(event) => setQuery(event.target.value)}
                       placeholder="Search for skills"
                       invalid={hookFormHasError({ errors, name: "skills" })}
@@ -3036,10 +3032,15 @@ export const SkillsDialog = ({
                     <ComboboxOptions>
                       <ScrollArea viewportClassName="max-h-[304px]">
                         {filteredSkills.map((skill) => (
-                          <ComboboxOption key={skill.id} value={skill}>
+                          <ComboboxOption key={`${skill.id}-${skill.name}`} value={skill}>
                             {skill.name}
                           </ComboboxOption>
                         ))}
+                        {query.trim() && filteredSkills.length === 0 && (
+                          <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
+                            Add &ldquo;{query.trim()}&rdquo;
+                          </ComboboxOption>
+                        )}
                       </ScrollArea>
                     </ComboboxOptions>
                   </ScaleOutIn>

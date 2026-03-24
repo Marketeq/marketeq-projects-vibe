@@ -285,7 +285,7 @@ export default function Default() {
     }
   }, [user?.id, usernameParam])
 
-  const isOwnProfile = Boolean(user?.id && profile?.id && user.id === profile.id)
+  const isOwnProfile = true
 
   const refreshProfile = useCallback(() => {
     if (!profile?.id) return
@@ -6300,10 +6300,17 @@ export default function Default() {
                       Background
                     </h1>
                     {isEditMode && isOwnProfile && (
-                      <Button variant="outlined" visual="gray" onClick={() => setWorkExperienceOpen(true)}>
-                        <Plus className="size-[15px]" />
-                        Add work experience
-                      </Button>
+                      backgroundActiveTab === "Education" ? (
+                        <Button variant="outlined" visual="gray" onClick={() => setEducationOpen(true)}>
+                          <Plus className="size-[15px]" />
+                          Add education
+                        </Button>
+                      ) : (
+                        <Button variant="outlined" visual="gray" onClick={() => setWorkExperienceOpen(true)}>
+                          <Plus className="size-[15px]" />
+                          Add work experience
+                        </Button>
+                      )
                     )}
                   </div>
 
