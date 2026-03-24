@@ -671,12 +671,15 @@ const NewGroupModal = ({ onCreated, existingNames }: { onCreated: (group: FavGro
     }
     setIsCreating(true)
     setError("")
+    await ensureDevAuth()
     const group = await createGroupApi({ name: trimmed })
     setIsCreating(false)
     if (group) {
       onCreated(group)
       setName("")
       setOpen(false)
+    } else {
+      setError("Failed to create group. Please try again.")
     }
   }
 
@@ -855,6 +858,7 @@ export default function FavoritesPage() {
   }, [])
 
   const handleRenameGroup = useCallback(async (groupId: string, newName: string) => {
+    await ensureDevAuth()
     const updated = await renameGroupApi(groupId, { name: newName })
     if (updated) {
       const updateGroups = (groups: FavGroup[]) =>
@@ -866,6 +870,7 @@ export default function FavoritesPage() {
   }, [])
 
   const handleDeleteGroup = useCallback(async (groupId: string) => {
+    await ensureDevAuth()
     const success = await deleteGroupApi(groupId)
     if (success) {
       const removeGroup = (groups: FavGroup[]) => groups.filter((g) => g.id !== groupId)
@@ -876,7 +881,10 @@ export default function FavoritesPage() {
   }, [])
 
   const handleGroupCreated = useCallback((group: FavGroup) => {
-    setApiGroups((prev) => [...prev, group])
+    const newGroup = { ...group, favorites: group.favorites ?? [] }
+    setProjectGroups((prev) => [...prev, newGroup])
+    setServiceGroups((prev) => [...prev, newGroup])
+    setApiGroups((prev) => [...prev, newGroup])
   }, [])
 
   const allGroupNames = [...new Set([...projectGroups, ...serviceGroups, ...apiGroups].map((g) => g.name))]
