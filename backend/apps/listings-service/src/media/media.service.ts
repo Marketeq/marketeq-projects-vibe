@@ -8,16 +8,18 @@ export class MediaService {
   private readonly s3: S3Client;
   private readonly bucket: string;
   private readonly endpoint: string;
+  private readonly publicUrl: string;
 
   constructor(private readonly config: ConfigService) {
-    this.endpoint = config.get('CLOUDFLARE_R2_ENDPOINT');
-    this.bucket = config.get('CLOUDFLARE_R2_BUCKET');
+    this.endpoint = config.get('CLOUDFLARE_R2_ENDPOINT') || '';
+    this.bucket = config.get('CLOUDFLARE_R2_BUCKET') || '';
+    this.publicUrl = config.get('CLOUDFLARE_PUBLIC_URL') || '';
     this.s3 = new S3Client({
       region: 'auto',
       endpoint: this.endpoint,
       credentials: {
-        accessKeyId: config.get('CLOUDFLARE_R2_ACCESS_KEY'),
-        secretAccessKey: config.get('CLOUDFLARE_R2_SECRET_KEY'),
+        accessKeyId: config.get('CLOUDFLARE_R2_ACCESS_KEY') || '',
+        secretAccessKey: config.get('CLOUDFLARE_R2_SECRET_KEY') || '',
       },
     });
   }
@@ -41,7 +43,8 @@ export class MediaService {
       }),
     );
 
-    return { url: `${this.endpoint}/${this.bucket}/${key}`, key };
+    const baseUrl = this.publicUrl || `${this.endpoint}/${this.bucket}`;
+    return { url: `${baseUrl}/${key}`, key };
   }
 
   async delete(key: string): Promise<void> {
