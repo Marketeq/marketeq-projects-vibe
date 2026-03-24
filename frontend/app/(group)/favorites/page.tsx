@@ -128,7 +128,7 @@ const ProjectGroupCard = ({ group, itemMeta, onRename, onDelete, existingNames, 
           <CardDropdown className="absolute top-1.5 right-1.5 lg:top-[9px] lg:right-[9px] lg:py-1" groupId={group.id} groupName={group.name} onRename={onRename} onDelete={onDelete} existingNames={existingNames} />
         </div>
 
-        <h1 className="text-[11px] leading-[13.31px] lg:text-base text-center lg:leading-[21.79px] font-bold text-dark-blue-400">
+        <h1 className="text-[11px] leading-[13.31px] lg:text-base text-center lg:leading-[21.79px] font-bold text-dark-blue-400 line-clamp-2">
           {group.name}
         </h1>
         <p className="text-[9px] leading-[10.89px] lg:text-sm text-center lg:leading-[19.07px] font-light text-[#585C65] xs:max-lg:mt-0.5">
@@ -156,7 +156,7 @@ const ProjectGroupListCard = ({ group, itemMeta, onRename, onDelete, existingNam
       }}
     >
       <div className="py-3.5 lg:py-[16.5px] space-y-0.5 pl-5">
-        <h1 className="text-[11px] leading-[13.31px] lg:text-base lg:leading-[19.36px] font-bold text-dark-blue-400">
+        <h1 className="text-[11px] leading-[13.31px] lg:text-base lg:leading-[19.36px] font-bold text-dark-blue-400 line-clamp-2">
           {group.name}
         </h1>
         <p className="text-[9px] leading-[10.89px] lg:text-sm lg:leading-[16.94px] font-light text-[#585C65]">
@@ -304,7 +304,7 @@ const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete
       </div>
 
       <div className="mt-[13.24px] lg:mt-[17px]">
-        <h1 className="text-[13px] leading-[15.73px] lg:text-base text-center lg:leading-[19.36px] font-bold text-dark-blue-400">
+        <h1 className="text-[13px] leading-[15.73px] lg:text-base text-center lg:leading-[19.36px] font-bold text-dark-blue-400 line-clamp-2">
           {groupName}
         </h1>
         <h1 className="text-[11px] lg:text-sm mt-[2px] text-center lg:leading-[16.94px] text-[#585C65]">
@@ -327,7 +327,7 @@ const TalentCardLandscapeRow = ({ value, groupId, groupName, talents, createdAt,
       <div className="flex xs:max-md:p-3 xs:max-md:flex-col xs:max-md:gap-y-[17px]">
         <div className="md:contents flex items-center justify-between">
           <div className="xs:max-md:flex xs:max-md:flex-col xs:max-md:gap-y-1 md:flex-auto md:pl-6 lg:pl-[25px] md:py-3 lg:py-[25px] md:last:pr-3 lg:last:pr-[25px]">
-            <NextLink href={`/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=talent`} className="text-sm leading-[15.73px] lg:text-base font-bold inline-block lg:leading-[19.07px] text-dark-blue-400 hover:underline">
+            <NextLink href={`/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=talent`} className="text-sm leading-[15.73px] lg:text-base font-bold inline-block lg:leading-[19.07px] text-dark-blue-400 hover:underline line-clamp-2">
               {groupName}
             </NextLink>
             <div className="xs:max-md:flex hidden items-center gap-x-2">
@@ -562,13 +562,13 @@ const RenameGroupDialog = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const trimmed = name.trim()
-    if (!trimmed || trimmed === groupName) return
-    if (existingNames.some((n) => n.toLowerCase() === trimmed.toLowerCase() && n.toLowerCase() !== groupName.toLowerCase())) {
+    const capitalized = titleCase(name.trim())
+    if (!capitalized || capitalized === groupName) return
+    if (existingNames.some((n) => n.toLowerCase() === capitalized.toLowerCase() && n.toLowerCase() !== groupName.toLowerCase())) {
       setError("A group with this name already exists")
       return
     }
-    onConfirm(trimmed)
+    onConfirm(capitalized)
     onOpenChange(false)
   }
 
@@ -583,7 +583,7 @@ const RenameGroupDialog = ({
               placeholder="Enter Group Name"
               className="flex-auto"
               value={name}
-              onChange={(e) => { setName(e.target.value); setError("") }}
+              onChange={(e) => { setName(titleCase(e.target.value)); setError("") }}
             />
             <Button type="submit" size="lg" disabled={!name.trim() || name.trim() === groupName}>
               Save
@@ -655,7 +655,12 @@ const DeleteGroupDialog = ({
 
 /* ─── New Group Modal ─── */
 
-const NewGroupModal = ({ onCreated, existingNames }: { onCreated: (group: FavGroup) => void; existingNames: string[] }) => {
+/** Capitalize first letter of each word */
+function titleCase(str: string): string {
+  return str.replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+const NewGroupModal = ({ onCreated, existingNames, activeTab }: { onCreated: (group: FavGroup) => void; existingNames: string[]; activeTab: string }) => {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [isCreating, setIsCreating] = useState(false)
@@ -663,16 +668,17 @@ const NewGroupModal = ({ onCreated, existingNames }: { onCreated: (group: FavGro
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const trimmed = name.trim()
-    if (!trimmed) return
-    if (existingNames.some((n) => n.toLowerCase() === trimmed.toLowerCase())) {
+    const capitalized = titleCase(name.trim())
+    if (!capitalized) return
+    if (existingNames.some((n) => n.toLowerCase() === capitalized.toLowerCase())) {
       setError("A group with this name already exists")
       return
     }
     setIsCreating(true)
     setError("")
     await ensureDevAuth()
-    const group = await createGroupApi({ name: trimmed })
+    const defaultType = activeTab === "Projects" ? "project" : activeTab === "Services" ? "service" : activeTab === "Talent" ? "talent" : undefined
+    const group = await createGroupApi({ name: capitalized, defaultType: defaultType as any })
     setIsCreating(false)
     if (group) {
       onCreated(group)
@@ -703,7 +709,7 @@ const NewGroupModal = ({ onCreated, existingNames }: { onCreated: (group: FavGro
               placeholder="Enter Group Name"
               className="flex-auto"
               value={name}
-              onChange={(e) => { setName(e.target.value); setError("") }}
+              onChange={(e) => { setName(titleCase(e.target.value)); setError("") }}
               autoFocus
             />
             <Button type="submit" size="lg" disabled={!name.trim() || isCreating}>
@@ -919,7 +925,7 @@ export default function FavoritesPage() {
           </ToggleGroupRoot>
         </div>
 
-        <NewGroupModal onCreated={handleGroupCreated} existingNames={allGroupNames} />
+        <NewGroupModal onCreated={handleGroupCreated} existingNames={allGroupNames} activeTab={activeTab} />
       </div>
 
       <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400 xs:max-md:mt-6">
@@ -960,7 +966,7 @@ export default function FavoritesPage() {
               </ToggleGroupRoot>
             </div>
 
-            <NewGroupModal onCreated={handleGroupCreated} existingNames={allGroupNames} />
+            <NewGroupModal onCreated={handleGroupCreated} existingNames={allGroupNames} activeTab={activeTab} />
           </div>
         </div>
 

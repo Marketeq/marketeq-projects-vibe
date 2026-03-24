@@ -30,6 +30,7 @@ export interface FavoriteGroup {
   id: string
   name: string
   userId: string
+  defaultType?: FavoriteType | null
   favorites: Favorite[]
   createdAt: string
   updatedAt: string
@@ -43,6 +44,7 @@ export interface CreateFavoriteDto {
 
 export interface CreateGroupDto {
   name: string
+  defaultType?: FavoriteType
 }
 
 export interface UpdateFavoriteDto {

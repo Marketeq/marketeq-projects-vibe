@@ -19,6 +19,10 @@ export class CreateGroupDto {
   @IsString()
   @MaxLength(100)
   name: string;
+
+  @IsEnum(FavoriteType)
+  @IsOptional()
+  defaultType?: FavoriteType;
 }
 
 export class UpdateFavoriteDto {

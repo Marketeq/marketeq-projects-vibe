@@ -18,12 +18,18 @@ export class FavoritesService {
     private readonly aiService: AiService,
   ) {}
 
+  /** Capitalize first letter of each word */
+  private titleCase(str: string): string {
+    return str.replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
   // ── Groups ──────────────────────────────────────────────
 
   async createGroup(dto: CreateGroupDto, userId: string): Promise<FavoriteGroup> {
-    const existing = await this.groupRepo.findOne({ where: { userId, name: dto.name } });
+    const name = this.titleCase(dto.name);
+    const existing = await this.groupRepo.findOne({ where: { userId, name } });
     if (existing) throw new BadRequestException('A group with this name already exists');
-    return this.groupRepo.save(this.groupRepo.create({ name: dto.name, userId }));
+    return this.groupRepo.save(this.groupRepo.create({ name, userId, defaultType: dto.defaultType ?? null }));
   }
 
   async getGroups(userId: string): Promise<FavoriteGroup[]> {
@@ -37,9 +43,10 @@ export class FavoritesService {
   async renameGroup(groupId: string, name: string, userId: string): Promise<FavoriteGroup> {
     const group = await this.groupRepo.findOne({ where: { id: groupId, userId } });
     if (!group) throw new NotFoundException('Group not found');
-    const duplicate = await this.groupRepo.findOne({ where: { userId, name } });
+    const capitalized = this.titleCase(name);
+    const duplicate = await this.groupRepo.findOne({ where: { userId, name: capitalized } });
     if (duplicate && duplicate.id !== groupId) throw new BadRequestException('A group with this name already exists');
-    group.name = name;
+    group.name = capitalized;
     return this.groupRepo.save(group);
   }
 
@@ -88,13 +95,14 @@ export class FavoritesService {
     if (type) {
       // Normalize type (gateway may send duplicated query params as array)
       const filterType = Array.isArray(type) ? type[0] : type;
-      // Filter favorites within each group by type, drop empty groups
+      // Filter favorites within each group by type
+      // Keep groups that either have matching favorites OR were created for this type (defaultType)
       return groups
         .map((g) => ({
           ...g,
           favorites: g.favorites.filter((f) => f.type === filterType),
         }))
-        .filter((g) => g.favorites.length > 0) as FavoriteGroup[];
+        .filter((g) => g.favorites.length > 0 || g.defaultType === filterType) as FavoriteGroup[];
     }
 
     return groups;
