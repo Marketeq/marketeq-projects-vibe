@@ -67,7 +67,8 @@ export class ProxyService {
       url,
       headers,
       data: req.body,
-      params: req.query,
+      // Query params are already included in the URL path from the proxy controller
+      // Do NOT also set params here — that would duplicate them
       validateStatus: () => true,
       responseType: 'stream',
     }

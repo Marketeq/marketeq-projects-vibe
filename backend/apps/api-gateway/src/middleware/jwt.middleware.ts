@@ -11,6 +11,9 @@ const PUBLIC_ROUTES = [
   '/search', '/autocomplete', '/suggestions',
   '/v1/users/username',
   '/v1/users/health',
+  '/v1/projects',
+  '/v1/services',
+  '/v1/users',
 ]
 
 // Routes that need special pattern matching (e.g. /v1/users/:uuid for public profiles)
