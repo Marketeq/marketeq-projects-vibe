@@ -16,6 +16,7 @@ import {
 } from "@/src/lib/api/favorites"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { parseCategoryParams } from "@/src/lib/urlHelpers"
+import { fromLength } from "@/utils/functions"
 import {
   ArrowRight,
   Check,
@@ -24,19 +25,31 @@ import {
   Clock,
   Home03,
   Mail,
+  MarkerPin02,
   Star,
 } from "@blend-metrics/icons"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs"
+import { SwiperSlide } from "swiper/react"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import {
+  SwiperContent,
+  SwiperNextTrigger,
+  SwiperPrevTrigger,
+  SwiperRoot,
+} from "@/components/swiper"
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
   Avatar,
   AvatarFallback,
   AvatarGroup,
   AvatarImage,
   Badge,
   Button,
+  DisclosureContent,
   Favorite,
   FavoriteRoot,
   IconButton,
@@ -217,7 +230,6 @@ export default function Projects() {
   // State management
   const [allProjects, setAllProjects] = useState<ProjectItem[]>([])
   const [displayedProjects, setDisplayedProjects] = useState<ProjectItem[]>([])
-  const [activeTab, setActiveTab] = useState("Featured")
 
   // ✅ Extract l1, l2, l3
   const l1 = categoryPath?.l1
@@ -291,56 +303,16 @@ export default function Projects() {
     }
   }, [pageData])
 
-  // Sort projects when tab changes
+  // Sort projects by featured status
   useEffect(() => {
     if (allProjects.length === 0) return
-
-    let sorted = [...allProjects]
-
-    switch (activeTab) {
-      case "Featured":
-        sorted = sorted.sort((a: any, b: any) => {
-          if (a.featured && !b.featured) return -1
-          if (!a.featured && b.featured) return 1
-          return 0
-        })
-        break
-
-      case "Newest":
-        sorted = sorted.sort((a: any, b: any) => {
-          const dateA = new Date(a.createdAt || 0).getTime()
-          const dateB = new Date(b.createdAt || 0).getTime()
-          return dateB - dateA
-        })
-        break
-
-      case "Most Popular":
-        sorted = sorted.sort((a: any, b: any) => {
-          const reviewsA = a.reviewCount || a.reviews || 0
-          const reviewsB = b.reviewCount || b.reviews || 0
-          return reviewsB - reviewsA
-        })
-        break
-
-      case "Trending":
-        sorted = sorted.sort((a: any, b: any) => {
-          const dateA = new Date(a.updatedAt || 0).getTime()
-          const dateB = new Date(b.updatedAt || 0).getTime()
-          return dateB - dateA
-        })
-        break
-
-      case "Top-Rated":
-        sorted = sorted.sort((a: any, b: any) => {
-          const ratingA = a.rating || 0
-          const ratingB = b.rating || 0
-          return ratingB - ratingA
-        })
-        break
-    }
-
+    const sorted = [...allProjects].sort((a: any, b: any) => {
+      if (a.featured && !b.featured) return -1
+      if (!a.featured && b.featured) return 1
+      return 0
+    })
     setDisplayedProjects(sorted)
-  }, [activeTab, allProjects])
+  }, [allProjects])
 
   // Load favorites on page mount
   useEffect(() => {
@@ -462,349 +434,448 @@ export default function Projects() {
             </div>
           </div>
 
-          {/* MAIN SECTION - Top Software Development Projects */}
+          {/* Recommended in {Category} — Swiper carousel with entity tabs */}
           <div className="mt-[50px]">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <Tabs defaultValue="Projects">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
                 Recommended in {currentName}
               </h1>
+              <SwiperRoot>
+                <div className="mt-6 flex justify-between items-center">
+                  <TabsList className="flex items-center gap-x-3">
+                    {["Projects", "Services", "Teams", "Talent"].map((tab) => (
+                      <Badge
+                        key={tab}
+                        variant="circular"
+                        visual="gray"
+                        size="lg"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        asChild
+                      >
+                        <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                      </Badge>
+                    ))}
+                  </TabsList>
+
+                  <div className="flex items-center gap-x-3">
+                    <SwiperPrevTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronLeft className="size-[18px]" />
+                      </IconButton>
+                    </SwiperPrevTrigger>
+                    <SwiperNextTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronRight className="size-[18px]" />
+                      </IconButton>
+                    </SwiperNextTrigger>
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <TabsContent className="gap-5 flex items-center" value="Projects">
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {(displayedProjects.length > 0
+                        ? displayedProjects.slice(0, 6)
+                        : fromLength(6)
+                      ).map((item: any, idx: number) => {
+                        const project = displayedProjects.length > 0 ? item : null
+                        const key = project?.id ?? idx
+                        return (
+                          <SwiperSlide className="w-[355px]" key={key}>
+                            <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                              <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border cursor-pointer border-black/15">
+                                <NextImage
+                                  className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                                  src={project?.coverImage || project?.thumbnail || "/dashboard.png"}
+                                  alt={project?.title || "Project"}
+                                  fill
+                                  sizes="33vw"
+                                />
+                              </div>
+
+                              <div className="mt-3 flex items-start gap-x-3">
+                                <NextLink
+                                  href={project ? buildProjectUrl(categorySlugPath, project.slug, project.id) : "#"}
+                                  className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
+                                >
+                                  {project?.title || "The Ultimate Mobile App Experience"}
+                                </NextLink>
+                                <div className="inline-flex items-center gap-x-1">
+                                  <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                                  <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                                    {project?.rating || "4.9"}{" "}
+                                    <span className="font-extralight">({project?.reviewCount || 5})</span>
+                                  </span>
+                                </div>
+                              </div>
+
+                              <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
+                                {project?.summary || project?.description || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}
+                              </p>
+
+                              <div className="mt-5">
+                                <div className="flex items-center gap-x-[6.4px]">
+                                  <Money className="size-[18px] shrink-0 text-primary-500" />
+                                  <span className="font-medium text-sm leading-none text-dark-blue-400">
+                                    ${project?.scopeTotal?.budget || project?.price || "50,000"}/month
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="mt-5 flex items-end justify-between">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
+                                        {fromLength(6).map((k) => (
+                                          <Avatar key={k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0">
+                                            <AvatarImage src="/woman.jpg" alt="Woman" />
+                                            <AvatarFallback>W</AvatarFallback>
+                                          </Avatar>
+                                        ))}
+                                      </AvatarGroup>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="p-0 max-w-[262px]" size="md">
+                                      <ScrollArea className="h-[192px] p-3" scrollBar={<ScrollBar className="w-4 p-1" thumbClassName="bg-white/20" />}>
+                                        <div className="space-y-3 pr-5">
+                                          {fromLength(4).map((k) => (
+                                            <div key={k} className="flex items-center gap-x-[18px]">
+                                              <div className="flex items-center gap-x-2 flex-auto">
+                                                <Avatar>
+                                                  <AvatarImage src="/woman.jpg" alt="Woman" />
+                                                  <AvatarFallback>W</AvatarFallback>
+                                                </Avatar>
+                                                <div className="flex flex-col flex-auto">
+                                                  <div className="flex items-center gap-x-0.5">
+                                                    <span className="text-xs leading-5 font-semibold text-white">Sevil</span>
+                                                    <span className="text-[10px] leading-none font-light text-white">@designsuperstar23</span>
+                                                  </div>
+                                                  <span className="text-[10px] font-light text-white">Full-stack Developer</span>
+                                                </div>
+                                              </div>
+                                              <span className="text-sm font-semibold text-white leading-5">$75 <span className="text-[10px] font-light leading-5">/hr</span></span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </ScrollArea>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+
+                                <FavoriteRoot
+                                  value={project ? favoritedItems.has(String(project.id)) : false}
+                                  onValueChange={project ? async (pressed) => {
+                                    if (pressed) {
+                                      setFavoritedItems((prev) => { const next = new Set(prev); next.add(String(project.id)); return next })
+                                      const result = await addFavorite({ type: "project", itemId: String(project.id) })
+                                      if (!result) setFavoritedItems((prev) => { const next = new Set(prev); next.delete(String(project.id)); return next })
+                                    } else {
+                                      setFavoritedItems((prev) => { const next = new Set(prev); next.delete(String(project.id)); return next })
+                                      const fav = await findFavoriteByItemId(String(project.id))
+                                      if (fav) { const ok = await removeFavorite(fav.id); if (!ok) setFavoritedItems((prev) => { const next = new Set(prev); next.add(String(project.id)); return next }) }
+                                    }
+                                  } : undefined}
+                                >
+                                  {({ pressed }) => (
+                                    <TooltipProvider delayDuration={75}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="inline-block"><Favorite /></span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                </FavoriteRoot>
+                              </div>
+                            </article>
+                          </SwiperSlide>
+                        )
+                      })}
+                    </SwiperContent>
+                  </TabsContent>
+
+                  <TabsContent className="gap-5 flex items-center" value="Services">
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {fromLength(6).map((key) => (
+                        <SwiperSlide className="w-[355px]" key={key}>
+                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                            <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src="/dashboard.png" alt="Service" fill sizes="33vw" />
+                            </div>
+                            <div className="mt-3 flex items-start gap-x-3">
+                              <NextLink href="#" className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">Professional {currentName} Service</NextLink>
+                              <div className="inline-flex items-center gap-x-1">
+                                <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                                <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span>
+                              </div>
+                            </div>
+                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">Professional service offering for {currentName}. Expert team ready to deliver results.</p>
+                            <div className="mt-5"><div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">$25,000/month</span></div></div>
+                            <div className="mt-5 flex items-end justify-between">
+                              <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
+                                {fromLength(4).map((k) => (<Avatar key={k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src="/woman.jpg" alt="Woman" /><AvatarFallback>W</AvatarFallback></Avatar>))}
+                              </AvatarGroup>
+                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                            </div>
+                          </article>
+                        </SwiperSlide>
+                      ))}
+                    </SwiperContent>
+                  </TabsContent>
+
+                  <TabsContent className="gap-5 flex items-center" value="Teams">
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {fromLength(6).map((key) => (
+                        <SwiperSlide className="w-[355px]" key={key}>
+                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                            <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src="/dashboard.png" alt="Team" fill sizes="33vw" />
+                            </div>
+                            <div className="mt-3 flex items-start gap-x-3">
+                              <NextLink href="#" className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{currentName} Expert Team</NextLink>
+                              <div className="inline-flex items-center gap-x-1">
+                                <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                                <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.8 <span className="font-extralight">(12)</span></span>
+                              </div>
+                            </div>
+                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">Experienced team specializing in {currentName}. Ready to tackle complex challenges.</p>
+                            <div className="mt-5"><div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">$85 - $120/hr</span></div></div>
+                            <div className="mt-5 flex items-end justify-between">
+                              <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
+                                {fromLength(4).map((k) => (<Avatar key={k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src="/woman.jpg" alt="Woman" /><AvatarFallback>W</AvatarFallback></Avatar>))}
+                              </AvatarGroup>
+                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                            </div>
+                          </article>
+                        </SwiperSlide>
+                      ))}
+                    </SwiperContent>
+                  </TabsContent>
+
+                  <TabsContent className="gap-5 flex items-center" value="Talent">
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {fromLength(6).map((key) => (
+                        <SwiperSlide className="w-[355px]" key={key}>
+                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                            <div className="flex items-center gap-x-3">
+                              <Avatar size="lg"><AvatarImage src="/woman.jpg" alt="Talent" /><AvatarFallback>T</AvatarFallback></Avatar>
+                              <div>
+                                <h3 className="text-base font-bold text-dark-blue-400">Expert Freelancer</h3>
+                                <p className="text-xs font-light text-dark-blue-400">{currentName} Specialist</p>
+                              </div>
+                            </div>
+                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">Experienced {currentName} professional with 8+ years of hands-on experience.</p>
+                            <div className="mt-3 flex items-center gap-x-2">
+                              <div className="flex items-center gap-x-1"><Star className="size-3 text-primary-500 fill-primary-500" /><span className="text-xs font-semibold text-dark-blue-400">4.9</span></div>
+                              <span className="text-xs text-dark-blue-400">12 Projects</span>
+                            </div>
+                            <div className="mt-3 flex gap-2 flex-wrap">
+                              <Badge className="bg-transparent" visual="gray">React</Badge>
+                              <Badge className="bg-transparent" visual="gray">TypeScript</Badge>
+                              <Badge className="bg-transparent" visual="gray">Node.js</Badge>
+                            </div>
+                            <div className="mt-5 flex items-end justify-between">
+                              <span className="text-sm font-bold text-dark-blue-400">$75 <span className="text-[10px] font-light">/hr</span></span>
+                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                            </div>
+                          </article>
+                        </SwiperSlide>
+                      ))}
+                    </SwiperContent>
+                  </TabsContent>
+                </div>
+              </SwiperRoot>
+            </Tabs>
+          </div>
+
+          {/* Top-Rated {Category} Projects — Swiper with subcategory tabs */}
+          <div className="mt-[50px]">
+            <Tabs defaultValue={subcategories[0]?.name || "All"}>
+              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                Top-Rated {currentName} Projects
+              </h1>
+              <SwiperRoot>
+                <div className="mt-6 flex justify-between items-center">
+                  <TabsList className="flex items-center gap-x-3">
+                    {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                      <Badge
+                        key={sub.name}
+                        variant="circular"
+                        visual="gray"
+                        size="lg"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        asChild
+                      >
+                        <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
+                      </Badge>
+                    ))}
+                  </TabsList>
+                  <div className="flex items-center gap-x-3">
+                    <SwiperPrevTrigger asChild>
+                      <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
+                        <ChevronLeft className="size-[18px]" />
+                      </IconButton>
+                    </SwiperPrevTrigger>
+                    <SwiperNextTrigger asChild>
+                      <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
+                        <ChevronRight className="size-[18px]" />
+                      </IconButton>
+                    </SwiperNextTrigger>
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <TabsContent value={subcategories[0]?.name || "All"}>
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      <SwiperSlide className="w-[355px] h-auto">
+                        <article className="py-[50px] h-full rounded-lg bg-warning-600 flex flex-col items-start justify-end px-6">
+                          <h1 className="text-[28px] font-bold leading-none text-white">
+                            {subcategories[0]?.name || currentName} Projects
+                          </h1>
+                          <p className="mt-3 text-lg font-light leading-none text-white">
+                            Discover high-quality {(subcategories[0]?.name || currentName).toLowerCase()} projects ready to launch.
+                          </p>
+                          <Button className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-warning-800 hover:bg-white text-warning-700 mt-8" size="lg">
+                            Explore More <ArrowRight className="size-[15px]" />
+                          </Button>
+                        </article>
+                      </SwiperSlide>
+                      {fromLength(6).map((key) => (
+                        <SwiperSlide key={key} className="w-[355px]">
+                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                            <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src="/dashboard.png" alt="Dashboard" fill sizes="33vw" />
+                            </div>
+                            <div className="mt-3 flex items-start gap-x-3">
+                              <NextLink href="#" className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">The Ultimate Mobile App Experience</NextLink>
+                              <div className="inline-flex items-center gap-x-1">
+                                <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                                <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span>
+                              </div>
+                            </div>
+                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.</p>
+                            <div className="mt-[14.5px] flex flex-col gap-y-3">
+                              <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from 12 weeks</span></div>
+                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">$50,000 budget</span></div>
+                            </div>
+                            <div className="mt-5 flex items-end justify-between">
+                              <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
+                                {fromLength(6).map((k) => (<Avatar key={k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src="/woman.jpg" alt="Woman" /><AvatarFallback>W</AvatarFallback></Avatar>))}
+                              </AvatarGroup>
+                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                            </div>
+                          </article>
+                        </SwiperSlide>
+                      ))}
+                    </SwiperContent>
+                  </TabsContent>
+                </div>
+              </SwiperRoot>
+            </Tabs>
+          </div>
+
+          {/* {Category} Teams — grid with filter tabs */}
+          <div className="mt-[50px]">
+            <Tabs defaultValue="Featured">
+              <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
+                {currentName} Teams
+              </h1>
               <div className="mt-6 flex justify-between items-center">
                 <TabsList className="flex items-center gap-x-3">
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Featured">Featured</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Newest">Newest</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Most Popular">Most Popular</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Trending">Trending</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Top-Rated">Top-Rated</TabsTrigger>
-                  </Badge>
+                  {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tab) => (
+                    <Badge
+                      key={tab}
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                    </Badge>
+                  ))}
                 </TabsList>
-
-                <NextLink href="../../level-3/projects">
-                  <Button
-                    variant="link"
-                    visual="gray"
-                    size="lg"
-                    className="underline"
-                  >
-                    Explore More Projects
-                  </Button>
-                </NextLink>
+                <div className="flex items-center gap-x-8">
+                  <Button variant="link" visual="gray" size="lg" className="underline">Explore More Teams</Button>
+                  <div className="flex items-center gap-x-3">
+                    <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton>
+                    <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton>
+                  </div>
+                </div>
               </div>
-
               <div className="mt-6">
-                <TabsContent
-                  className="gap-5 grid grid-cols-4"
-                  value={activeTab}
-                >
-                  {isLoading ? (
-                    Array(8)
-                      .fill(0)
-                      .map((_, index) => (
-                        <article
-                          key={index}
-                          className="p-5 bg-white border rounded-lg animate-pulse"
-                        >
-                          <div className="h-[169px] bg-gray-200 rounded-[6px]"></div>
-                          <div className="mt-3 h-4 bg-gray-200 rounded"></div>
-                          <div className="mt-3 h-3 bg-gray-200 rounded"></div>
-                        </article>
-                      ))
-                  ) : displayedProjects.length > 0 ? (
-                    displayedProjects.slice(0, 8).map((project) => (
-                      <article
-                        key={project.id}
-                        className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] flex flex-col"
-                      >
-                        {/* Image */}
-                        <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                          <NextImage
-                            className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                            src={
-                              project.coverImage ||
-                              project.thumbnail ||
-                              "/dashboard.png"
-                            }
-                            alt={project.title || "Project"}
-                            fill
-                            sizes="33vw"
-                          />
+                <TabsContent className="gap-x-5 gap-y-6 grid grid-cols-4" value="Featured">
+                  {fromLength(8).map((key) => (
+                    <article key={key} className="p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white">
+                      <div className="flex items-start justify-between">
+                        <AvatarGroup max={3} size="md" excess excessClassName="border-gray-300 text-gray-500">
+                          {fromLength(6).map((k) => (<Avatar key={k} size="md" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src="/woman.jpg" alt="Woman" /><AvatarFallback>W</AvatarFallback></Avatar>))}
+                        </AvatarGroup>
+                        <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                      </div>
+                      <div className="mt-5 flex items-center">
+                        <span className="text-sm font-bold text-dark-blue-400 leading-none">$85 - $120</span>
+                        <span className="text-[10px] text-dark-blue-400 leading-none font-light">/hr</span>
+                      </div>
+                      <div className="mt-5">
+                        <h1 className="text-base leading-none text-dark-blue-400 font-bold">Team Name <span className="font-light text-gray-500">@Tech Sentinel</span></h1>
+                        <h3 className="mt-0.5 text-xs font-medium text-dark-blue-400 leading-none">{currentName} team</h3>
+                        <p className="mt-2 text-[11px] font-light leading-none text-dark-blue-400">Average 10 years of experience</p>
+                        <div className="mt-3.5 flex items-center gap-x-1">
+                          <MarkerPin02 className="size-3 text-gray-500" />
+                          <span className="leading-4 text-[10px] font-medium text-gray-500">UK, USA, Brazil, Philippines, more...</span>
                         </div>
-
-                        {/* Title and Rating */}
-                        <div className="mt-3 flex items-start gap-x-3">
-                          <NextLink
-                            href={buildProjectUrl(
-                              categorySlugPath,
-                              project.slug,
-                              project.id
-                            )}
-                            className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                          >
-                            {project.title}
-                          </NextLink>
-
-                          {/* Only show rating if reviews exist */}
-                          {project.rating && (project.reviewCount ?? 0) > 0 && (
-                            <div className="inline-flex items-center gap-x-1">
-                              <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                              <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                {project.rating}{" "}
-                                <span className="font-extralight">
-                                  ({project.reviewCount})
-                                </span>
-                              </span>
+                        <div className="mt-3.5 flex items-center gap-x-2">
+                          <div className="flex items-center gap-x-2">
+                            <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
+                              <div className="flex items-center gap-x-[3px]">
+                                {fromLength(5).map((k) => (<Star key={k} className="size-3 text-primary-500 fill-primary-500 shrink-0" />))}
+                              </div>
                             </div>
-                          )}
-                        </div>
-
-                        {/* Description - 3 lines truncated */}
-                        <p className="mt-3 text-sm leading-[1.4] font-extralight text-dark-blue-400 line-clamp-3">
-                          {project.summary ||
-                            project.description ||
-                            "No description available"}
-                        </p>
-
-                        {/* Timeline and Budget from scopeTotal */}
-                        <div className="mt-[14.5px] flex flex-col gap-y-3">
-                          <div className="flex items-center gap-x-[6.4px]">
-                            <Clock className="size-[18px] shrink-0 text-primary-500" />
-                            <span className="font-medium text-sm leading-none text-dark-blue-400">
-                              Starting from{" "}
-                              {project.scopeTotal?.timeline || "12 weeks"}
-                            </span>
+                            <span className="text-xs font-semibold leading-none text-dark-blue-400">4.7</span>
                           </div>
-
-                          <div className="flex items-center gap-x-[6.4px]">
-                            <Money className="size-[18px] shrink-0 text-primary-500" />
-                            <span className="font-medium text-sm leading-none text-dark-blue-400">
-                              $
-                              {project.scopeTotal?.budget ||
-                                project.price ||
-                                "50,000"}{" "}
-                              budget
-                            </span>
-                          </div>
+                          <span className="text-xs font-semibold leading-none text-dark-blue-400">2 Projects</span>
                         </div>
-
-                        {/* Pinned to bottom with mt-auto */}
-                        <div className="mt-auto pt-5 flex items-end justify-between">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <AvatarGroup
-                                  max={5}
-                                  size="sm"
-                                  excess
-                                  excessClassName="border-gray-300 text-gray-500"
-                                >
-                                  {Array(3)
-                                    .fill(0)
-                                    .map((_, i) => (
-                                      <Avatar
-                                        key={i}
-                                        size="sm"
-                                        className="border-2 border-white hover:ring-0 active:ring-0"
-                                      >
-                                        <AvatarImage
-                                          src="/woman.jpg"
-                                          alt="Team member"
-                                        />
-                                        <AvatarFallback>U</AvatarFallback>
-                                      </Avatar>
-                                    ))}
-                                </AvatarGroup>
-                              </TooltipTrigger>
-                              <TooltipContent
-                                className="p-0 max-w-[262px]"
-                                size="md"
-                              >
-                                <ScrollArea
-                                  className="h-[192px] p-3"
-                                  scrollBar={
-                                    <ScrollBar
-                                      className="w-4 p-1"
-                                      thumbClassName="bg-white/20"
-                                    />
-                                  }
-                                >
-                                  <div className="space-y-3 pr-5">
-                                    {Array(4)
-                                      .fill(0)
-                                      .map((_, i) => (
-                                        <div
-                                          key={i}
-                                          className="flex items-center gap-x-[18px]"
-                                        >
-                                          <div className="flex items-center gap-x-2 flex-auto">
-                                            <Avatar>
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Team member"
-                                              />
-                                              <AvatarFallback>U</AvatarFallback>
-                                            </Avatar>
-                                            <div className="flex flex-col flex-auto">
-                                              <div className="flex items-center gap-x-0.5">
-                                                <span className="text-xs leading-5 font-semibold text-white">
-                                                  Sevil
-                                                </span>
-                                                <span className="text-[10px] leading-none font-light text-white">
-                                                  @designsuperstar23
-                                                </span>
-                                              </div>
-                                              <span className="text-[10px] font-light text-white">
-                                                Full-stack Developer
-                                              </span>
-                                            </div>
-                                          </div>
-                                          <span className="text-sm font-semibold text-white leading-5">
-                                            $75{" "}
-                                            <span className="text-[10px] font-light leading-5">
-                                              /hr
-                                            </span>
-                                          </span>
-                                        </div>
-                                      ))}
-                                  </div>
-                                </ScrollArea>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-
-                          <FavoriteRoot
-                            value={favoritedItems.has(String(project.id))}
-                            onValueChange={async (pressed) => {
-                              if (pressed) {
-                                // ✅ Update UI immediately (optimistic update)
-                                setFavoritedItems((prev) => {
-                                  const next = new Set(prev)
-                                  next.add(String(project.id))
-                                  return next
-                                })
-
-                                // Then save to database
-                                const result = await addFavorite({
-                                  type: "project",
-                                  itemId: String(project.id),
-                                })
-
-                                if (result) {
-                                  console.log("✅ Added to favorites:", result)
-                                } else {
-                                  // ❌ Rollback if failed
-                                  setFavoritedItems((prev) => {
-                                    const next = new Set(prev)
-                                    next.delete(String(project.id))
-                                    return next
-                                  })
-                                  console.error("❌ Failed to add favorite")
-                                }
-                              } else {
-                                // ✅ Update UI immediately (optimistic update)
-                                setFavoritedItems((prev) => {
-                                  const next = new Set(prev)
-                                  next.delete(String(project.id))
-                                  return next
-                                })
-
-                                // Then remove from database
-                                const favorite = await findFavoriteByItemId(
-                                  String(project.id)
-                                )
-
-                                if (favorite) {
-                                  const success = await removeFavorite(
-                                    favorite.id
-                                  )
-
-                                  if (!success) {
-                                    // ❌ Rollback if failed
-                                    setFavoritedItems((prev) => {
-                                      const next = new Set(prev)
-                                      next.add(String(project.id))
-                                      return next
-                                    })
-                                    console.error(
-                                      "❌ Failed to remove favorite"
-                                    )
-                                  } else {
-                                    console.log("✅ Removed from favorites")
-                                  }
-                                }
-                              }
-                            }}
-                          >
-                            {({ pressed }) => (
-                              <TooltipProvider delayDuration={75}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-block">
-                                      <Favorite />
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {pressed ? (
-                                      <span className="inline-flex items-center gap-x-1">
-                                        <Check className="size-[15px] shrink-0 text-green-500" />
-                                        Saved
-                                      </span>
-                                    ) : (
-                                      "Save to favorites"
-                                    )}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </FavoriteRoot>
+                        <div className="mt-5 flex gap-2 flex-wrap">
+                          <Badge className="bg-transparent" visual="gray">React</Badge>
+                          <Badge className="bg-transparent" visual="gray">Node.js</Badge>
+                          <Badge className="bg-transparent" visual="gray">AWS</Badge>
                         </div>
-                      </article>
-                    ))
-                  ) : (
-                    <div className="col-span-4 text-center py-12">
-                      <p className="text-dark-blue-400">No projects found</p>
-                    </div>
-                  )}
+                      </div>
+                    </article>
+                  ))}
                 </TabsContent>
               </div>
             </Tabs>
+          </div>
+
+          {/* Popular Searches */}
+          <div className="mt-[50px]">
+            <div className="flex items-center justify-between">
+              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">Popular Searches</h1>
+              <div className="flex items-center gap-x-3">
+                <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton>
+                <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100" visual="gray" variant="outlined" data-state="active"><ChevronRight className="size-[18px]" /></IconButton>
+              </div>
+            </div>
+            <div className="mt-6 flex items-center flex-wrap gap-3">
+              {["API Development", "Cloud Migration", "Data Pipeline", "Machine Learning", "Mobile App", "Web Application", "Microservices", "DevOps", "UI/UX Design", "Database Optimization"].map((term) => (
+                <Badge key={term} variant="circular" visual="gray" size="lg" className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700 hover:border-gray-400 transition duration-300 cursor-pointer">
+                  {term}
+                </Badge>
+              ))}
+            </div>
           </div>
 
           <div className="mt-[50px]">
@@ -874,36 +945,11 @@ export default function Projects() {
                   className="grid grid-cols-5 gap-[15px]"
                   value="Project Type"
                 >
-                  <article className="h-[62px] bg-white text-lg leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-                    Agriculture
-                  </article>
-                  <article className="h-[62px] bg-white text-lg leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-                    Oil & Gas
-                  </article>
-                  <article className="h-[62px] bg-white text-lg leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-                    Manufacturing
-                  </article>
-                  <article className="h-[62px] bg-white text-lg leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-                    Construction
-                  </article>
-                  <article className="h-[62px] bg-white text-lg leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-                    Utilities
-                  </article>
-                  <article className="h-[62px] bg-white text-lg leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-                    Retail & Wholesale
-                  </article>
-                  <article className="h-[62px] bg-white text-lg leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-                    Transportation
-                  </article>
-                  <article className="h-[62px] bg-white text-lg leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-                    Finance & Banking
-                  </article>
-                  <article className="h-[62px] bg-white text-lg leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-                    Real Estate
-                  </article>
-                  <article className="h-[62px] bg-white text-lg leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-                    Healthcare
-                  </article>
+                  {["Agriculture", "Oil & Gas", "Manufacturing", "Construction", "Utilities", "Retail & Wholesale", "Transportation", "Finance & Banking", "Real Estate", "Healthcare"].map((industry) => (
+                    <article key={industry} className="cursor-pointer transition duration-300 h-[62px] bg-white text-lg leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300">
+                      {industry}
+                    </article>
+                  ))}
                 </TabsContent>
               </div>
             </Tabs>
@@ -935,94 +981,17 @@ export default function Projects() {
             </div>
 
             <div className="mt-6 flex items-center flex-wrap gap-3">
-              <Badge
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700"
-              >
-                Project Length
-              </Badge>
-              <Badge
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700"
-              >
-                Project Length
-              </Badge>
-              <Badge
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700"
-              >
-                Project Length
-              </Badge>
-              <Badge
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700"
-              >
-                Project Length
-              </Badge>
-              <Badge
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700"
-              >
-                Project Length
-              </Badge>
-              <Badge
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700"
-              >
-                Project Length
-              </Badge>
-              <Badge
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700"
-              >
-                Project Length
-              </Badge>
-              <Badge
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700"
-              >
-                Project Length
-              </Badge>
-              <Badge
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700"
-              >
-                Project Length
-              </Badge>
-              <Badge
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700"
-              >
-                Project Length
-              </Badge>
-              <Badge
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700"
-              >
-                Project Length
-              </Badge>
+              {["JavaScript", "Python", "React", "Node.js", "TypeScript", "AWS", "Docker", "Kubernetes", "GraphQL", "PostgreSQL", "MongoDB"].map((skill) => (
+                <Badge
+                  key={skill}
+                  variant="circular"
+                  visual="gray"
+                  size="lg"
+                  className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700 hover:border-gray-400 transition duration-300 cursor-pointer"
+                >
+                  {skill}
+                </Badge>
+              ))}
             </div>
           </div>
 
@@ -1052,6 +1021,52 @@ export default function Projects() {
                 </Button>
               </div>
             </div>
+          </div>
+
+          {/* Browse by Type — grid with Projects/Services tabs */}
+          <div className="mt-[50px]">
+            <Tabs defaultValue="Projects">
+              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                Browse by Type
+              </h1>
+              <div className="mt-6 flex justify-between items-center">
+                <TabsList className="flex items-center gap-x-3">
+                  {["Projects", "Services"].map((tab) => (
+                    <Badge
+                      key={tab}
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                    </Badge>
+                  ))}
+                </TabsList>
+                <div className="flex items-center gap-x-3">
+                  <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton>
+                  <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100" visual="gray" variant="outlined" data-state="active"><ChevronRight className="size-[18px]" /></IconButton>
+                </div>
+              </div>
+              <div className="mt-6">
+                <TabsContent className="grid grid-cols-5 gap-[15px]" value="Projects">
+                  {["Infrastructure as Code", "API Development", "Cloud Migration", "CI/CD Pipeline", "Database Design", "Microservices", "Containerization", "Serverless", "Monitoring", "Security Audit"].map((name) => (
+                    <article key={name} className="p-5 rounded-lg bg-white border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
+                      <div className="size-[35px] bg-gray-200 rounded-lg" />
+                      <div className="mt-5">
+                        <span className="text-[10px] leading-none font-medium text-dark-blue-400">DevOps</span>
+                        <h1 className="mt-1 text-base leading-none font-semibold text-dark-blue-400">{name}</h1>
+                      </div>
+                      <div className="mt-3 flex flex-col gap-y-2">
+                        <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from 12 weeks</span></div>
+                        <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">$50,000 budget</span></div>
+                      </div>
+                    </article>
+                  ))}
+                </TabsContent>
+              </div>
+            </Tabs>
           </div>
 
           <div className="mt-[50px]">
@@ -1446,6 +1461,184 @@ export default function Projects() {
             </Tabs>
           </div>
 
+          {/* Top {Category} Projects — Swiper with filter tabs */}
+          <div className="mt-[50px]">
+            <Tabs defaultValue="Featured">
+              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                Top {currentName} Projects
+              </h1>
+              <SwiperRoot>
+                <div className="mt-6 flex justify-between items-center">
+                  <TabsList className="flex items-center gap-x-3">
+                    {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tab) => (
+                      <Badge key={tab} variant="circular" visual="gray" size="lg" className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400" asChild>
+                        <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                      </Badge>
+                    ))}
+                  </TabsList>
+                  <div className="flex items-center gap-x-8">
+                    <Button variant="link" visual="gray" size="lg" className="underline">Explore More Projects</Button>
+                    <div className="flex items-center gap-x-3">
+                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-6">
+                  <TabsContent value="Featured">
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {fromLength(6).map((key) => (
+                        <SwiperSlide className="w-[355px]" key={key}>
+                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                            <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src="/dashboard.png" alt="Dashboard" fill sizes="33vw" />
+                            </div>
+                            <div className="mt-3 flex items-start gap-x-3">
+                              <NextLink href="#" className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">The Ultimate Mobile App Experience</NextLink>
+                              <div className="inline-flex items-center gap-x-1"><Star className="size-[15px] text-primary-500 fill-primary-500" /><span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span></div>
+                            </div>
+                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.</p>
+                            <div className="mt-[14.5px] flex flex-col gap-y-3">
+                              <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from 12 weeks</span></div>
+                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">$50,000 budget</span></div>
+                            </div>
+                            <div className="mt-5 flex items-end justify-between">
+                              <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
+                                {fromLength(6).map((k) => (<Avatar key={k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src="/woman.jpg" alt="Woman" /><AvatarFallback>W</AvatarFallback></Avatar>))}
+                              </AvatarGroup>
+                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                            </div>
+                          </article>
+                        </SwiperSlide>
+                      ))}
+                    </SwiperContent>
+                  </TabsContent>
+                </div>
+              </SwiperRoot>
+            </Tabs>
+          </div>
+
+          {/* Top {Category} Services — Swiper with filter tabs */}
+          <div className="mt-[50px]">
+            <Tabs defaultValue="Featured">
+              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                Top {currentName} Services
+              </h1>
+              <SwiperRoot>
+                <div className="mt-6 flex justify-between items-center">
+                  <TabsList className="flex items-center gap-x-3">
+                    {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tab) => (
+                      <Badge key={tab} variant="circular" visual="gray" size="lg" className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400" asChild>
+                        <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                      </Badge>
+                    ))}
+                  </TabsList>
+                  <div className="flex items-center gap-x-8">
+                    <Button variant="link" visual="gray" size="lg" className="underline">Explore More Services</Button>
+                    <div className="flex items-center gap-x-3">
+                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-6">
+                  <TabsContent value="Featured">
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {fromLength(6).map((key) => (
+                        <SwiperSlide className="w-[355px]" key={key}>
+                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                            <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src="/dashboard.png" alt="Service" fill sizes="33vw" />
+                            </div>
+                            <div className="mt-3 flex items-start gap-x-3">
+                              <NextLink href="#" className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">Professional {currentName} Service</NextLink>
+                              <div className="inline-flex items-center gap-x-1"><Star className="size-[15px] text-primary-500 fill-primary-500" /><span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span></div>
+                            </div>
+                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">Professional service offering for {currentName}. Expert team ready to deliver results.</p>
+                            <div className="mt-[14.5px] flex flex-col gap-y-3">
+                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">$25,000/month</span></div>
+                            </div>
+                            <div className="mt-5 flex items-end justify-between">
+                              <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
+                                {fromLength(6).map((k) => (<Avatar key={k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src="/woman.jpg" alt="Woman" /><AvatarFallback>W</AvatarFallback></Avatar>))}
+                              </AvatarGroup>
+                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                            </div>
+                          </article>
+                        </SwiperSlide>
+                      ))}
+                    </SwiperContent>
+                  </TabsContent>
+                </div>
+              </SwiperRoot>
+            </Tabs>
+          </div>
+
+          {/* {Category} All Stars — talent Swiper with filter tabs */}
+          <div className="mt-[50px]">
+            <Tabs defaultValue="Featured">
+              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                {currentName} All Stars
+              </h1>
+              <SwiperRoot>
+                <div className="mt-6 flex justify-between items-center">
+                  <TabsList className="flex items-center gap-x-3">
+                    {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tab) => (
+                      <Badge key={tab} variant="circular" visual="gray" size="lg" className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400" asChild>
+                        <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                      </Badge>
+                    ))}
+                  </TabsList>
+                  <div className="flex items-center gap-x-8">
+                    <Button variant="link" visual="gray" size="lg" className="underline">Explore More Talent</Button>
+                    <div className="flex items-center gap-x-3">
+                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-6">
+                  <TabsContent value="Featured">
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {fromLength(6).map((key) => (
+                        <SwiperSlide className="w-[355px]" key={key}>
+                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                            <div className="flex items-center gap-x-3">
+                              <Avatar size="lg"><AvatarImage src="/woman.jpg" alt="Talent" /><AvatarFallback>T</AvatarFallback></Avatar>
+                              <div>
+                                <h3 className="text-base font-bold text-dark-blue-400">Expert Freelancer</h3>
+                                <p className="text-xs font-light text-dark-blue-400">{currentName} Specialist</p>
+                              </div>
+                            </div>
+                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">Experienced {currentName} professional with 8+ years of hands-on experience.</p>
+                            <div className="mt-3 flex items-center gap-x-2">
+                              <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
+                                <div className="flex items-center gap-x-[3px]">
+                                  {fromLength(5).map((k) => (<Star key={k} className="size-3 text-primary-500 fill-primary-500 shrink-0" />))}
+                                </div>
+                              </div>
+                              <span className="text-xs font-semibold text-dark-blue-400">4.9</span>
+                              <span className="text-xs font-semibold text-dark-blue-400">12 Projects</span>
+                            </div>
+                            <div className="mt-3 flex gap-2 flex-wrap">
+                              <Badge className="bg-transparent" visual="gray">React</Badge>
+                              <Badge className="bg-transparent" visual="gray">TypeScript</Badge>
+                              <Badge className="bg-transparent" visual="gray">Node.js</Badge>
+                            </div>
+                            <div className="mt-5 flex items-end justify-between">
+                              <span className="text-sm font-bold text-dark-blue-400">$75 <span className="text-[10px] font-light">/hr</span></span>
+                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                            </div>
+                          </article>
+                        </SwiperSlide>
+                      ))}
+                    </SwiperContent>
+                  </TabsContent>
+                </div>
+              </SwiperRoot>
+            </Tabs>
+          </div>
+
           <div className="mt-[50px]">
             <div className="flex items-center justify-between">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -1458,54 +1651,12 @@ export default function Projects() {
             </div>
 
             <div className="gap-[15px] mt-6 grid grid-cols-6">
-              <article className="h-[80px] flex flex-col items-center gap-y-0.5 px-[20px] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] justify-center rounded-lg border-gray-200">
-                <div className="size-8 bg-gray-100 shrink-0" />
-                <h1 className="text-xs font-medium leading-none text-dark-blue-400">
-                  Dreamweaver
-                </h1>
-              </article>
-              <article className="h-[80px] flex flex-col items-center gap-y-0.5 px-[20px] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] justify-center rounded-lg border-gray-200">
-                <div className="size-8 bg-gray-100 shrink-0" />
-                <h1 className="text-xs font-medium leading-none text-dark-blue-400">
-                  Dreamweaver
-                </h1>
-              </article>
-              <article className="h-[80px] flex flex-col items-center gap-y-0.5 px-[20px] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] justify-center rounded-lg border-gray-200">
-                <div className="size-8 bg-gray-100 shrink-0" />
-                <h1 className="text-xs font-medium leading-none text-dark-blue-400">
-                  Dreamweaver
-                </h1>
-              </article>
-              <article className="h-[80px] flex flex-col items-center gap-y-0.5 px-[20px] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] justify-center rounded-lg border-gray-200">
-                <div className="size-8 bg-gray-100 shrink-0" />
-                <h1 className="text-xs font-medium leading-none text-dark-blue-400">
-                  Dreamweaver
-                </h1>
-              </article>
-              <article className="h-[80px] flex flex-col items-center gap-y-0.5 px-[20px] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] justify-center rounded-lg border-gray-200">
-                <div className="size-8 bg-gray-100 shrink-0" />
-                <h1 className="text-xs font-medium leading-none text-dark-blue-400">
-                  Dreamweaver
-                </h1>
-              </article>
-              <article className="h-[80px] flex flex-col items-center gap-y-0.5 px-[20px] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] justify-center rounded-lg border-gray-200">
-                <div className="size-8 bg-gray-100 shrink-0" />
-                <h1 className="text-xs font-medium leading-none text-dark-blue-400">
-                  Dreamweaver
-                </h1>
-              </article>
-              <article className="h-[80px] flex flex-col items-center gap-y-0.5 px-[20px] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] justify-center rounded-lg border-gray-200">
-                <div className="size-8 bg-gray-100 shrink-0" />
-                <h1 className="text-xs font-medium leading-none text-dark-blue-400">
-                  Dreamweaver
-                </h1>
-              </article>
-              <article className="h-[80px] flex flex-col items-center gap-y-0.5 px-[20px] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] justify-center rounded-lg border-gray-200">
-                <div className="size-8 bg-gray-100 shrink-0" />
-                <h1 className="text-xs font-medium leading-none text-dark-blue-400">
-                  Dreamweaver
-                </h1>
-              </article>
+              {["React", "Vue.js", "Angular", "Next.js", "Django", "Rails", "Flutter", "Swift"].map((tech) => (
+                <article key={tech} className="h-[80px] flex flex-col items-center gap-y-0.5 px-[20px] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] justify-center rounded-lg border-gray-200 cursor-pointer hover:ring-1 hover:ring-gray-200 transition duration-300">
+                  <div className="size-8 bg-gray-100 shrink-0 rounded" />
+                  <h1 className="text-xs font-medium leading-none text-dark-blue-400">{tech}</h1>
+                </article>
+              ))}
             </div>
           </div>
 
