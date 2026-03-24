@@ -47,11 +47,12 @@ const GoogleLoginButton = () => {
               const typeMap: Record<string, ROLE> = { talent: ROLE.TALENT, client: ROLE.CLIENT }
               user.accountType = typeMap[user.userType]
             }
-            if (user?.accountType || user?.userType) {
-              setUser(user)
-              router.push("/")
+            setUser(user)
+            if (user?.userType) {
+              router.push(user.userType === "talent" ? "/talent-dashboard" : "/")
             } else {
-              console.warn("User missing role", me.data)
+              // New user — send to onboarding to pick role
+              router.push("/onboarding")
             }
           }
         })

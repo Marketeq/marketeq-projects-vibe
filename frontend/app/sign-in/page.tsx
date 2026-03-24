@@ -96,8 +96,12 @@ export default function SignIn() {
             setUser(nextUser)
           }
 
-          // Route based on user type
-          const destination = nextUser?.userType === "talent" ? "/talent-dashboard" : "/"
+          // Route based on user type — new users go to onboarding
+          const destination = nextUser?.userType === "talent"
+            ? "/talent-dashboard"
+            : nextUser?.userType
+              ? "/"
+              : "/onboarding"
           router.push(destination)
           reset()
         }
@@ -219,7 +223,7 @@ export default function SignIn() {
                   type="button"
                   onClick={async () => {
                     try {
-                      const res = await AuthAPI.DevLogin("taylor.kim@example.com")
+                      const res = await AuthAPI.DevLogin("olivia.brooks@example.com")
                       if (res?.data?.access_token) {
                         Cookies.set("access_token", res.data.access_token, { path: "/" })
                         if (res.data.refresh_token) {
@@ -245,7 +249,7 @@ export default function SignIn() {
                   type="button"
                   onClick={async () => {
                     try {
-                      const res = await AuthAPI.DevLogin("jordan.patel@example.com")
+                      const res = await AuthAPI.DevLogin("maya.johnson@example.com")
                       if (res?.data?.access_token) {
                         Cookies.set("access_token", res.data.access_token, { path: "/" })
                         if (res.data.refresh_token) {

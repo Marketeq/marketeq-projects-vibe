@@ -17,7 +17,7 @@ export class InternalUserController {
   @Post()
   async syncProfile(
     @Headers('x-internal-token') token: string,
-    @Body() dto: { id: string; email: string; username?: string; provider?: string; hasPassword?: boolean },
+    @Body() dto: { id: string; email: string; username?: string; provider?: string; hasPassword?: boolean; firstName?: string; lastName?: string },
   ) {
     const expected = this.config.get<string>('INTERNAL_SERVICE_TOKEN');
     if (!token || token !== expected) {
@@ -26,9 +26,12 @@ export class InternalUserController {
 
     const existing = await this.userService.findByEmail(dto.email);
     if (existing) {
-      // Update if needed
-      if (dto.username && !existing.username) {
-        await this.userService.update(existing.id, { username: dto.username });
+      const updates: Record<string, any> = {};
+      if (dto.username && !existing.username) updates.username = dto.username;
+      if (dto.firstName && !existing.firstName) updates.firstName = dto.firstName;
+      if (dto.lastName && !existing.lastName) updates.lastName = dto.lastName;
+      if (Object.keys(updates).length) {
+        await this.userService.update(existing.id, updates);
       }
       return { synced: true, userId: existing.id };
     }
@@ -38,6 +41,8 @@ export class InternalUserController {
       id: dto.id,
       email: dto.email,
       username: dto.username,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
     });
     this.logger.log(`Synced new user profile: ${user.id}`);
     return { synced: true, userId: user.id };
