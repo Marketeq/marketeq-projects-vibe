@@ -840,7 +840,9 @@ export default function Default() {
                   Member since
                 </span>
                 <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  September 19, 2024
+                  {profile?.createdAt
+                    ? new Date(profile.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+                    : "—"}
                 </span>
               </div>
               <div className="flex gap-x-2 justify-center  items-center">
@@ -882,7 +884,7 @@ export default function Default() {
                         </span>
                       </span>
                       <span className="text-sm leading-none font-medium text-dark-blue-400">
-                        Expert React Developer
+                        {profile?.role ?? ""}
                       </span>
                     </div>
                   </div>
@@ -903,20 +905,20 @@ export default function Default() {
                     <TabsTrigger value="Overview" asChild>
                       <NextLink href="#overview">Overview</NextLink>
                     </TabsTrigger>
-                    <TabsTrigger value="Offers" asChild>
+                    {/* <TabsTrigger value="Offers" asChild>
                       <NextLink href="#offers">Offers</NextLink>
-                    </TabsTrigger>
+                    </TabsTrigger> */}
                     <TabsTrigger value="Work Experience" asChild>
                       <NextLink href="#background">Work Experience</NextLink>
                     </TabsTrigger>
                     <TabsTrigger value="Education" asChild>
                       <NextLink href="#education">Education</NextLink>
                     </TabsTrigger>
-                    <TabsTrigger value="Project History" asChild>
+                    {/* <TabsTrigger value="Project History" asChild>
                       <NextLink href="#project-history">
                         Project History
                       </NextLink>
-                    </TabsTrigger>
+                    </TabsTrigger> */}
                   </div>
                 </div>
 
@@ -1097,6 +1099,7 @@ export default function Default() {
                   </div>
                 )}
 
+{/* Portfolio grid - temporarily commented out for MVP
                 <ShowMoreLessRoot
                   value={autoExpandPortfolio}
                   onValueChange={setAutoExpandPortfolio}
@@ -1558,6 +1561,7 @@ export default function Default() {
                     </>
                   )}
                 </ShowMoreLessRoot>
+*/}
 
                 <div
                   className="p-6 bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[137.5px]"
@@ -1712,43 +1716,34 @@ export default function Default() {
                       </div>
                     </TabsContent>
                     <TabsContent value="Certifications">
-                      <div className="pt-6 flex items-center gap-x-6">
-                        <div className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-1.5">
-                          <AdobeBrand className="size-7" />
-                          Adobe Certified Professional
-                        </div>
-                        <div className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-1.5">
-                          <GoogleDefault className="size-6" />
-                          Google UX Design Certificate
-                        </div>
-                        <div className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-1.5">
-                          <WordpressBrand className="size-7" />
-                          Certified Wordpress Developer
-                        </div>
+                      <div className="pt-6 flex items-center flex-wrap gap-x-6 gap-y-3">
+                        {(profile?.certifications && profile.certifications.length > 0)
+                          ? profile.certifications.map((cert) => (
+                              <div key={cert.id} className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-1.5">
+                                {cert.name}
+                                {cert.issuingOrganization && (
+                                  <span className="text-xs font-extralight text-gray-500">· {cert.issuingOrganization}</span>
+                                )}
+                              </div>
+                            ))
+                          : <span className="text-sm text-gray-500">No certifications added yet.</span>
+                        }
                       </div>
                     </TabsContent>
                     <TabsContent value="Industry Expertise">
-                      <div className="pt-6 flex items-center gap-x-3">
-                        <Badge size="lg" visual="gray">
-                          Real Estate
-                        </Badge>
-                        <Badge size="lg" visual="gray">
-                          Finance
-                        </Badge>
-                        <Badge size="lg" visual="gray">
-                          Accounting
-                        </Badge>
-                        <Badge size="lg" visual="gray">
-                          Insurance
-                        </Badge>
-                        <Badge size="lg" visual="gray">
-                          Music
-                        </Badge>
+                      <div className="pt-6 flex items-center flex-wrap gap-x-3 gap-y-2">
+                        {(profile?.industries && profile.industries.length > 0)
+                          ? profile.industries.map((ind) => (
+                              <Badge key={ind.id} size="lg" visual="gray">{ind.name}</Badge>
+                            ))
+                          : <span className="text-sm text-gray-500">No industry expertise added yet.</span>
+                        }
                       </div>
                     </TabsContent>
                   </Tabs>
                 </div>
 
+{/* My Offers - temporarily commented out for MVP
                 <div className="mt-6 scroll-mt-[137.5px]" id="offers">
                   <h1 className="text-xl font-bold leading-none text-dark-blue-400">
                     My Offers
@@ -6323,6 +6318,7 @@ export default function Default() {
                     </TabsContent>
                   </Tabs>
                 </div>
+*/}
 
                 <div
                   className="p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
@@ -6577,6 +6573,7 @@ export default function Default() {
                   </Tabs>
                 </div>
 
+{/* Project History - temporarily commented out for MVP
                 <div className="mt-6 scroll-mt-[137.5px]" id="project-history">
                   <div className="border border-gray-200 rounded-t-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] py-5 pl-5 pr-6">
                     <Carousel
@@ -8035,6 +8032,7 @@ export default function Default() {
                     </TabsContent>
                   </Tabs>
                 </div>
+*/}
               </div>
 
               <div className="shrink-0 flex flex-col gap-y-6 w-[289px] isolate">
@@ -8103,7 +8101,9 @@ export default function Default() {
 
                           <div className="inline-flex items-center gap-x-1.5">
                             <span className="text-xs leading-none font-bold text-dark-blue-400">
-                              English, Hindi
+                              {(profile?.languages && profile.languages.length > 0)
+                                ? profile.languages.map((l) => l.name).join(", ")
+                                : "—"}
                             </span>
                             {isEditMode && isOwnProfile && (
                               <IconButton
@@ -8125,7 +8125,7 @@ export default function Default() {
                           </span>
 
                           <span className="text-xs leading-none font-bold text-dark-blue-400">
-                            India (IST-3)
+                            {profile?.timezone ?? "—"}
                           </span>
                         </div>
                       </>
@@ -8133,6 +8133,7 @@ export default function Default() {
                   </div>
                 </div>
 
+{/* Similar Profiles - temporarily commented out for MVP
                 <div className="space-y-6 mt-6">
                   <div className="rounded-lg border border-gray-200 bg-white">
                     <div className="p-6">
@@ -8295,7 +8296,9 @@ export default function Default() {
                     </div>
                   </div>
                 </div>
+*/}
 
+{/* Affiliated Teams - temporarily commented out for MVP
                 <div className="rounded-lg border border-gray-200 bg-white">
                   <div className="p-6">
                     <div className="flex items-center justify-between">
@@ -8494,6 +8497,7 @@ export default function Default() {
                     </div>
                   </div>
                 </div>
+*/}
               </div>
             </div>
           </div>
