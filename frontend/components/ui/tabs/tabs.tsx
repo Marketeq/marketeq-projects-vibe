@@ -66,7 +66,7 @@ const Tabs = React.forwardRef<
 
     return (
       <TabsProvider value={ctxValue}>
-        <TabsPrimitive.Root ref={ref} {...props} />
+        <TabsPrimitive.Root ref={ref} value={value} onValueChange={onValueChange} {...props} />
       </TabsProvider>
     )
   }

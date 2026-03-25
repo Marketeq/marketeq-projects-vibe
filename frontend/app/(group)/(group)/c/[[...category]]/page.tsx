@@ -28,8 +28,11 @@ import {
   Mail,
   MarkerPin02,
   Star,
+  Star01,
+  Stars02,
 } from "@blend-metrics/icons"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs"
+import { TabsList, TabsTrigger } from "@radix-ui/react-tabs"
+import { Tabs, TabsContent } from "@/components/ui"
 import { SwiperSlide } from "swiper/react"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
@@ -719,24 +722,41 @@ export default function Projects() {
                     <SwiperContent slidesPerView="auto" spaceBetween={20}>
                       {fromLength(8).map((key) => (
                         <SwiperSlide className="w-[355px]" key={key}>
-                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                            <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src="/dashboard.png" alt="Team" fill sizes="33vw" />
-                            </div>
-                            <div className="mt-3 flex items-start gap-x-3">
-                              <NextLink href="#" className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{currentName} Expert Team</NextLink>
-                              <div className="inline-flex items-center gap-x-1">
-                                <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.8 <span className="font-extralight">(12)</span></span>
-                              </div>
-                            </div>
-                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">Experienced team specializing in {currentName}. Ready to tackle complex challenges.</p>
-                            <div className="mt-5"><div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">$85 - $120/hr</span></div></div>
-                            <div className="mt-5 flex items-end justify-between">
-                              <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
-                                {(talentUsers.length > 0 ? talentUsers.slice(0, 4) : fromLength(4)).map((u: any, k: number) => (<Avatar key={u?.id ?? k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src={u?.avatarUrl || "/woman.jpg"} alt={u?.firstName || "Team"} /><AvatarFallback>{u?.firstName?.[0] || "T"}</AvatarFallback></Avatar>))}
+                          <article className="p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white">
+                            <div className="flex items-start justify-between">
+                              <AvatarGroup max={3} size="md" excess excessClassName="border-gray-300 text-gray-500">
+                                {fromLength(6).map((k) => (<Avatar key={k} size="md" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src="/woman.jpg" alt="Team member" /><AvatarFallback>T</AvatarFallback></Avatar>))}
                               </AvatarGroup>
                               <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                            </div>
+                            <div className="mt-5 flex items-center">
+                              <span className="text-sm font-bold text-dark-blue-400 leading-none">$85 - $120</span>
+                              <span className="text-[10px] text-dark-blue-400 leading-none font-light">/hr</span>
+                            </div>
+                            <div className="mt-5">
+                              <h1 className="text-base leading-none text-dark-blue-400 font-bold">Team Name <span className="font-light text-gray-500">@Tech Sentinel</span></h1>
+                              <h3 className="mt-0.5 text-xs font-medium text-dark-blue-400 leading-none">{currentName} team</h3>
+                              <p className="mt-2 text-[11px] font-light leading-none text-dark-blue-400">Average 10 years of experience</p>
+                              <div className="mt-3.5 flex items-center gap-x-1">
+                                <MarkerPin02 className="size-3 text-gray-500" />
+                                <span className="leading-4 text-[10px] font-medium text-gray-500">UK, USA, Brazil, Philippines, more...</span>
+                              </div>
+                              <div className="mt-3.5 flex items-center gap-x-2">
+                                <div className="flex items-center gap-x-2">
+                                  <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
+                                    <div className="flex items-center gap-x-[3px]">
+                                      {fromLength(5).map((k) => (<Star key={k} className="size-3 text-primary-500 fill-primary-500 shrink-0" />))}
+                                    </div>
+                                  </div>
+                                  <span className="text-xs font-semibold leading-none text-dark-blue-400">4.7</span>
+                                </div>
+                                <span className="text-xs font-semibold leading-none text-dark-blue-400">2 Projects</span>
+                              </div>
+                              <div className="mt-5 flex gap-2 flex-wrap">
+                                <Badge className="bg-transparent" visual="gray">React</Badge>
+                                <Badge className="bg-transparent" visual="gray">Node.js</Badge>
+                                <Badge className="bg-transparent" visual="gray">AWS</Badge>
+                              </div>
                             </div>
                           </article>
                         </SwiperSlide>
@@ -746,33 +766,76 @@ export default function Projects() {
 
                   <TabsContent className="gap-5 flex items-center" value="Talent">
                     <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {fromLength(8).map((key) => (
-                        <SwiperSlide className="w-[355px]" key={key}>
-                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                            <div className="flex items-center gap-x-3">
-                              <Avatar size="lg"><AvatarImage src="/woman.jpg" alt="Talent" /><AvatarFallback>T</AvatarFallback></Avatar>
-                              <div>
-                                <h3 className="text-base font-bold text-dark-blue-400">Expert Freelancer</h3>
-                                <p className="text-xs font-light text-dark-blue-400">{currentName} Specialist</p>
+                      {(talentUsers.length > 0 ? talentUsers.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
+                        const u = talentUsers.length > 0 ? item : null
+                        return (
+                        <SwiperSlide className="w-[355px]" key={u?.id ?? idx}>
+                          <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
+                            <div className="p-5">
+                              <div className="relative">
+                                <NextLink href={u?.username ? `/talent-profile?username=${u.username}` : "#"}>
+                                  <div className="relative h-[140px] overflow-hidden rounded-[6px] group cursor-pointer">
+                                    <NextImage src={u?.avatarUrl || "/man.jpg"} sizes="25vw" fill className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" />
+                                  </div>
+                                </NextLink>
+                                <div className="flex items-center absolute px-2.5 pt-2.5 justify-between top-0 inset-x-0">
+                                  {idx % 5 === 0 && (
+                                  <div className="font-bold rounded-[5px] py-0.5 px-1.5 bg-black/[.57] inline-flex items-center gap-x-1 text-white text-[10px]">
+                                    <Stars02 /> All Stars
+                                  </div>
+                                  )}
+                                  {idx % 5 !== 0 && <div />}
+                                  <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                                </div>
+                                <div className="absolute grid rounded-full shrink-0 border-[2.53px] bg-white size-[29.53px] -left-[7px] -bottom-1 border-white">
+                                  <div className="bg-success-500 flex items-center justify-center rounded-full text-white">
+                                    <Check className="size-[13.97px]" />
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="mt-3">
+                                <h1 className="text-sm font-bold leading-none text-dark-blue-400">
+                                  {u?.rateMin ? `$${u.rateMin}` : "$85"} - {u?.rateMax ? `$${u.rateMax}` : "$120"}
+                                  <span className="text-[10px] leading-none font-light">/hr</span>
+                                </h1>
+                                <NextLink href={u?.username ? `/talent-profile?username=${u.username}` : "#"} className="text-sm mt-3 font-bold leading-none text-dark-blue-400 hover:underline block">
+                                  {u?.firstName || "Ngozi"}{" "}
+                                  <span className="text-[12px] text-gray-500 leading-none font-light">@{u?.username || "BlueberryBelle"}</span>
+                                </NextLink>
+                                <h2 className="text-[12px] text-dark-blue-400 leading-none font-medium mt-0.5">{u?.jobTitles?.[0]?.jobTitle || u?.role || "Marketing Technologist"}</h2>
+                                <p className="text-[11px] text-dark-blue-400 leading-none font-light mt-2">5 years of experience</p>
+                                <div className="flex items-center text-gray-500 gap-x-1 mt-3.5">
+                                  <MarkerPin02 className="size-3" />
+                                  <p className="text-[10px] leading-5 font-semibold">
+                                    {u?.location || "Australia"}{" "}
+                                    <span className="font-light">(7:30pm local time)</span>
+                                  </p>
+                                </div>
+                                <div className="mt-3.5 flex items-center gap-x-2">
+                                  <div className="flex items-center gap-x-2">
+                                    <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
+                                      <div className="flex items-center gap-x-[3px]">
+                                        {fromLength(5).map((k) => (<Star key={k} className="size-3 text-primary-500 fill-primary-500 shrink-0" />))}
+                                      </div>
+                                      <span className="text-xs font-semibold leading-none text-dark-blue-400">4.7</span>
+                                    </div>
+                                  </div>
+                                  <span className="text-xs font-semibold leading-none text-dark-blue-400">2 Projects</span>
+                                </div>
                               </div>
                             </div>
-                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">Experienced {currentName} professional with 8+ years of hands-on experience.</p>
-                            <div className="mt-3 flex items-center gap-x-2">
-                              <div className="flex items-center gap-x-1"><Star className="size-3 text-primary-500 fill-primary-500" /><span className="text-xs font-semibold text-dark-blue-400">4.9</span></div>
-                              <span className="text-xs text-dark-blue-400">12 Projects</span>
-                            </div>
-                            <div className="mt-3 flex gap-2 flex-wrap">
-                              <Badge className="bg-transparent" visual="gray">React</Badge>
-                              <Badge className="bg-transparent" visual="gray">TypeScript</Badge>
-                              <Badge className="bg-transparent" visual="gray">Node.js</Badge>
-                            </div>
-                            <div className="mt-5 flex items-end justify-between">
-                              <span className="text-sm font-bold text-dark-blue-400">$75 <span className="text-[10px] font-light">/hr</span></span>
-                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                            <div className="relative p-3 flex flex-wrap gap-2 border-t border-gray-200 bg-[#122A4B]/[.02]">
+                              <div className="absolute right-3 bottom-3">
+                                <Button variant="link" visual="gray">More...</Button>
+                              </div>
+                              {(u?.skills && u.skills.length > 0 ? u.skills.slice(0, 6) : [{name:"AR/VR Design"},{name:"UX Research"},{name:"Prototyping"},{name:"Figma"},{name:"User Testing"},{name:"Wireframing"}]).map((s: any, si: number) => (
+                                <Button key={si} className="text-gray-500/60 hover:text-gray-500 text-[12px]" variant="link" visual="gray">{s.name}</Button>
+                              ))}
                             </div>
                           </article>
                         </SwiperSlide>
-                      ))}
+                        )
+                      })}
                     </SwiperContent>
                   </TabsContent>
                 </div>
@@ -1749,7 +1812,7 @@ export default function Projects() {
             </div>
 
             <div className="gap-[15px] mt-6 grid grid-cols-6">
-              {["React", "Vue.js", "Angular", "Next.js", "Django", "Rails", "Flutter", "Swift"].map((tech) => (
+              {["React", "Vue.js", "Angular", "Next.js", "Django", "Rails", "Flutter", "Swift", "Node.js", "PostgreSQL", "Docker", "Kubernetes"].map((tech) => (
                 <article key={tech} className="h-[80px] flex flex-col items-center gap-y-0.5 px-[20px] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] justify-center rounded-lg border-gray-200 cursor-pointer hover:ring-1 hover:ring-gray-200 transition duration-300">
                   <div className="size-8 bg-gray-100 shrink-0 rounded" />
                   <h1 className="text-xs font-medium leading-none text-dark-blue-400">{tech}</h1>

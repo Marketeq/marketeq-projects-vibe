@@ -52,6 +52,7 @@ export const SwiperContent = (props: React.ComponentProps<typeof Swiper>) => {
       freeMode={{ enabled: true, momentum: true, momentumRatio: 0.6, sticky: true }}
       mousewheel={{ forceToAxis: true }}
       grabCursor={false}
+      simulateTouch={false}
       {...props}
       onSwiper={callAll(props.onSwiper, updateEdgeState)}
       onSlideChange={callAll(props.onSlideChange as any, updateEdgeState)}
