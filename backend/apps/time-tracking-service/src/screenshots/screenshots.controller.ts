@@ -34,12 +34,25 @@ import {
   UpdateScreenshotMetaDto,
 } from '../dtos/update-screenshot.dto';
 
-type PresignBody = {
-  userId: string;
+import { IsIn, IsISO8601, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+
+class PresignBodyDto {
+  @IsNotEmpty()
+  @IsString()
+  userId!: string;
+
+  @IsOptional()
+  @IsIn(['jpg', 'jpeg', 'png', 'webp'])
   ext?: 'jpg' | 'jpeg' | 'png' | 'webp';
+
+  @IsOptional()
+  @IsString()
   mimeType?: string;
+
+  @IsOptional()
+  @IsISO8601()
   tsIso?: string;
-};
+}
 
 function keyFor(userId: string, ext = 'jpg', tsIso?: string) {
   const ts = tsIso ? new Date(tsIso) : new Date();
@@ -55,7 +68,7 @@ function keyFor(userId: string, ext = 'jpg', tsIso?: string) {
   return `screens/${yyyy}/${mm}/${dd}/${safeUser}/${safeIso}-${randomUUID()}.${ext}`;
 }
 
-@Controller(['screenshots', 'api/screenshots'])
+@Controller('screenshots')
 @UseGuards(BearerGuard)
 export class ScreenshotsController {
   constructor(
@@ -67,10 +80,9 @@ export class ScreenshotsController {
   // ── Machine-to-machine endpoints (BearerGuard) ─────────────────────
 
   @Post('presign')
-  async presign(@Body() body: PresignBody) {
+  async presign(@Body() body: PresignBodyDto) {
     try {
-      if (!body?.userId) throw new HttpException({ message: 'userId is required' }, 400);
-      const ext = (body.ext ?? 'jpg').toLowerCase() as PresignBody['ext'];
+      const ext = (body.ext ?? 'jpg').toLowerCase() as PresignBodyDto['ext'];
       const mime =
         body.mimeType ?? (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
       const key = keyFor(body.userId, ext, body.tsIso);
@@ -105,11 +117,10 @@ export class ScreenshotsController {
   async deleteScreenshot(
     @Param('id') id: string,
     @Req() req: any,
-    @Query('userId') userIdFromQuery?: string,
     @Query('scopeId') scopeId?: string,
     @Body() dto: DeleteScreenshotDto = {},
   ) {
-    const userId = req?.user?.sub ?? req?.user?.id ?? req?.headers?.['x-user-id'] ?? userIdFromQuery;
+    const userId = req?.user?.sub ?? req?.headers?.['x-user-id'];
     if (!userId) throw new UnauthorizedException('Missing user identity');
     const role = req?.user?.role ?? 'user';
     const result = await this.svc.deleteScreenshot(id, String(userId), role, dto, scopeId);
@@ -173,7 +184,9 @@ export class ScreenshotsController {
     @Req() req: any,
     @Body() dto: CreateFlagDto,
   ) {
-    return this.svc.flagScreenshot(id, req.user.sub, req.user.role, dto);
+    const screenshot = await this.svc.flagScreenshot(id, req.user.sub, req.user.role, dto);
+    this.events.screenshotFlagged(id, screenshot.userId, req.user.sub, dto.reason ?? null);
+    return screenshot;
   }
 
   @Put(':id/review')
@@ -183,7 +196,9 @@ export class ScreenshotsController {
     @Req() req: any,
     @Body() dto: ReviewScreenshotDto,
   ) {
-    return this.svc.reviewScreenshot(id, req.user.sub, dto);
+    const screenshot = await this.svc.reviewScreenshot(id, req.user.sub, dto);
+    this.events.screenshotReviewed(id, req.user.sub, dto.status, dto.comment ?? null);
+    return screenshot;
   }
 
   @Patch(':id/blur')
@@ -193,7 +208,9 @@ export class ScreenshotsController {
     @Req() req: any,
     @Query('scopeId') scopeId?: string,
   ) {
-    return this.svc.blur(id, req.user.sub, req.user.role, scopeId);
+    const screenshot = await this.svc.blur(id, req.user.sub, req.user.role, scopeId);
+    this.events.screenshotBlurred(id, req.user.sub, screenshot.blurredAt ?? new Date());
+    return screenshot;
   }
 
   @Patch(':id/meta')

@@ -109,5 +109,16 @@ module.exports = {
       restart_delay: 2000,
       env: { PORT: 3010, NODE_ENV: 'development' },
     },
+    {
+      name: 'time-tracking-service',
+      script: 'npx',
+      args: 'nest start time-tracking-service',
+      cwd: __dirname,
+      autorestart: true,
+      watch: false,
+      max_restarts: 10,
+      restart_delay: 2000,
+      env: { PORT: 3017, NODE_ENV: 'development' },
+    },
   ],
 };

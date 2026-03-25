@@ -2,7 +2,7 @@ import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
 import { TooltipsService } from './tooltips.service';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
-@Controller('api/tooltips')
+@Controller('tooltips')
 @UseGuards(JwtAuthGuard)
 export class TooltipsController {
   constructor(private readonly tooltipsService: TooltipsService) {}

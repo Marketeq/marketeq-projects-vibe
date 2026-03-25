@@ -10,8 +10,7 @@ import { TimelineModule } from './timeline/timeline.module';
 import { ManualTimeModule } from './manual-time/manual-time.module';
 import { SettingsModule } from './settings/settings.module';
 import { TooltipsModule } from './tooltips/tooltips.module';
-
-import { MetadataController } from './controllers/metadata.controller';
+import { TimeTrackingConsumer } from './consumers/time-tracking.consumer';
 
 // Entities for TypeORM root registration
 import { ActivityWatchEvent } from './entities/activity-watch-event.entity';
@@ -36,7 +35,7 @@ import { Tooltip } from './tooltips/tooltip.entity';
           type: 'postgres' as const,
           url: config.get<string>('DATABASE_URL') ?? 'postgres://postgres:password@localhost:5432/marketeq',
           entities: [ActivityWatchEvent, Screenshot, ManualTime, AdminSettings, UserPreferences, Tooltip],
-          synchronize: !isProd,
+          synchronize: false,
           migrationsRun: true,
           migrations: [__dirname + '/../migrations/*{.ts,.js}'],
           schema: 'time_tracking',
@@ -56,6 +55,6 @@ import { Tooltip } from './tooltips/tooltip.entity';
     SettingsModule,
     TooltipsModule,
   ],
-  controllers: [MetadataController],
+  controllers: [TimeTrackingConsumer],
 })
 export class AppModule {}

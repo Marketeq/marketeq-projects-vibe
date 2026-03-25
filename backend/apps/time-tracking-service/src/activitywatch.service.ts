@@ -5,10 +5,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 
 import { ActivityWatchEvent } from './entities/activity-watch-event.entity';
-import { IngestActivityWatchEventsDto } from './dto/ingest-activitywatch-events.dto';
-import { QueryActivityWatchEventsDto } from './dto/query-activitywatch-events.dto';
+import { IngestActivityWatchEventsDto } from './dtos/ingest-activitywatch-events.dto';
+import { QueryActivityWatchEventsDto } from './dtos/query-activitywatch-events.dto';
 import { PageResult } from './infra/pagination';
-import { ScanActivityDto } from './dto/scan-activity.dto';
+import { ScanActivityDto } from './dtos/scan-activity.dto';
 
 @Injectable()
 export class ActivityWatchService {
@@ -32,24 +32,29 @@ export class ActivityWatchService {
     return { ok: true, service: 'activitywatch' };
   }
 
-  async ingest(dto: IngestActivityWatchEventsDto): Promise<{ inserted: number; ids: string[] }> {
+  async ingest(dto: IngestActivityWatchEventsDto, userId?: string): Promise<{ inserted: number; ids: string[] }> {
     for (const e of dto.events) {
-      const start = new Date(e.startTime);
-      const end = new Date(e.endTime);
-      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        throw new BadRequestException('Invalid timestamp(s) in payload');
+      const start = new Date(e.timestamp);
+      if (isNaN(start.getTime())) {
+        throw new BadRequestException('Invalid timestamp in payload');
       }
-      if (start > end) throw new BadRequestException('startTime must be <= endTime');
+      if (e.duration < 0) {
+        throw new BadRequestException('duration must be >= 0');
+      }
     }
 
-    const values = dto.events.map((e) => ({
-      userId: e.userId ?? null,
-      bucketId: e.bucketId,
-      eventType: e.eventType,
-      data: e.data,
-      startTime: new Date(e.startTime),
-      endTime: new Date(e.endTime),
-    }));
+    const values = dto.events.map((e) => {
+      const startTime = new Date(e.timestamp);
+      const endTime = new Date(startTime.getTime() + e.duration * 1000);
+      return {
+        userId: userId ?? 'unknown',
+        bucketId: dto.bucketId,
+        eventType: e.data?.app ? 'window' : e.data?.status ? 'afk' : 'unknown',
+        data: e.data,
+        startTime,
+        endTime,
+      };
+    });
 
     const saved = await this.repo.save(values as any[]);
     const savedArr = Array.isArray(saved) ? saved : [saved];

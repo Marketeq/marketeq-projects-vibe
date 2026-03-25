@@ -13,30 +13,30 @@ export class AdminSettings {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'text', unique: true })
+  @Column({ name: 'scope_id', type: 'text', unique: true })
   scopeId: string;
 
-  @Column({ default: true })
+  @Column({ name: 'allow_delete', default: true })
   allowDelete: boolean;
 
-  @Column({ default: true })
+  @Column({ name: 'allow_blur', default: true })
   allowBlur: boolean;
 
-  @Column({ default: false })
+  @Column({ name: 'auto_approve_blur', default: false })
   autoApproveBlur: boolean;
 
-  @Column({ default: true })
+  @Column({ name: 'allow_reassign', default: true })
   allowReassign: boolean;
 
-  @Column({ default: true })
+  @Column({ name: 'deleted_non_billable', default: true })
   deletedNonBillable: boolean;
 
-  @Column({ default: true })
+  @Column({ name: 'blurred_billable', default: true })
   blurredBillable: boolean;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }

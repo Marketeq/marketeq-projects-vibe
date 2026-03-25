@@ -15,19 +15,19 @@ export class ManualTime {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'text' })
+  @Column({ name: 'user_id', type: 'text' })
   userId: string;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'project_id', type: 'text', nullable: true })
   projectId: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'task_id', type: 'text', nullable: true })
   taskId: string | null;
 
-  @Column({ type: 'timestamptz' })
+  @Column({ name: 'start_time', type: 'timestamptz' })
   startTime: Date;
 
-  @Column({ type: 'timestamptz' })
+  @Column({ name: 'end_time', type: 'timestamptz' })
   endTime: Date;
 
   @Column({ type: 'text', nullable: true })
@@ -40,15 +40,15 @@ export class ManualTime {
   })
   status: ManualTimeStatus;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'reviewed_by', type: 'text', nullable: true })
   reviewedBy: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'review_comment', type: 'text', nullable: true })
   reviewComment: string | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }
