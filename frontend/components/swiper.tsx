@@ -4,7 +4,7 @@ import * as React from "react"
 import { callAll } from "@/utils/functions"
 import { createContext } from "@/utils/react-utils"
 import { Slot } from "@radix-ui/react-slot"
-import { Navigation, FreeMode } from "swiper/modules"
+import { Navigation, FreeMode, Mousewheel } from "swiper/modules"
 import { Swiper } from "swiper/react"
 import { Swiper as SwiperInstance } from "swiper/types"
 
@@ -48,8 +48,9 @@ export const SwiperContent = (props: React.ComponentProps<typeof Swiper>) => {
 
   return (
     <Swiper
-      modules={[Navigation, FreeMode]}
-      freeMode={{ enabled: true, momentum: true, momentumRatio: 0.6 }}
+      modules={[Navigation, FreeMode, Mousewheel]}
+      freeMode={{ enabled: true, momentum: true, momentumRatio: 0.6, sticky: true }}
+      mousewheel={{ forceToAxis: true }}
       grabCursor
       {...props}
       onSwiper={callAll(props.onSwiper, updateEdgeState)}
@@ -57,6 +58,9 @@ export const SwiperContent = (props: React.ComponentProps<typeof Swiper>) => {
       onProgress={callAll(props.onProgress as any, updateEdgeState)}
       onReachBeginning={callAll(props.onReachBeginning as any, updateEdgeState)}
       onReachEnd={callAll(props.onReachEnd as any, updateEdgeState)}
+      onTouchEnd={callAll(props.onTouchEnd as any, updateEdgeState)}
+      onTransitionEnd={callAll(props.onTransitionEnd as any, updateEdgeState)}
+      onScroll={callAll(props.onScroll as any, updateEdgeState)}
     />
   )
 }
@@ -79,18 +83,29 @@ export const SwiperFadeContainer = ({ children }: { children: React.ReactNode })
   )
 }
 
+function getVisibleSlideCount(swiper: SwiperInstance) {
+  const containerWidth = swiper.width
+  const slideWidth = swiper.slides[0]?.offsetWidth || 355
+  return Math.max(1, Math.floor(containerWidth / slideWidth))
+}
+
 export function SwiperNextTrigger({
   asChild = false,
   ...props
 }: React.ComponentPropsWithRef<"button"> & { asChild?: boolean }) {
-  const { swiper } = useSwiperRootContext()
+  const { swiper, isEnd } = useSwiperRootContext()
   const Comp = asChild ? Slot : "button"
 
   return (
     <Comp
-      data-state={swiper?.allowSlideNext ? "active" : "inactive"}
+      data-state={!isEnd ? "active" : "inactive"}
       {...props}
-      onClick={() => swiper?.slideNext()}
+      onClick={() => {
+        if (!swiper) return
+        const jump = getVisibleSlideCount(swiper)
+        const target = Math.min(swiper.slides.length - 1, swiper.activeIndex + jump)
+        swiper.slideTo(target, 300)
+      }}
     />
   )
 }
@@ -99,14 +114,19 @@ export function SwiperPrevTrigger({
   asChild = false,
   ...props
 }: React.ComponentPropsWithRef<"button"> & { asChild?: boolean }) {
-  const { swiper } = useSwiperRootContext()
+  const { swiper, isBeginning } = useSwiperRootContext()
   const Comp = asChild ? Slot : "button"
 
   return (
     <Comp
-      data-state={swiper?.allowSlidePrev ? "active" : "inactive"}
+      data-state={!isBeginning ? "active" : "inactive"}
       {...props}
-      onClick={() => swiper?.slidePrev()}
+      onClick={() => {
+        if (!swiper) return
+        const jump = getVisibleSlideCount(swiper)
+        const target = Math.max(0, swiper.activeIndex - jump)
+        swiper.slideTo(target, 300)
+      }}
     />
   )
 }

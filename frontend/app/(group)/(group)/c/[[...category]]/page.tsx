@@ -36,7 +36,6 @@ import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import {
   SwiperContent,
-  SwiperFadeContainer,
   SwiperNextTrigger,
   SwiperPrevTrigger,
   SwiperRoot,
@@ -448,14 +447,14 @@ export default function Projects() {
 
               <div className="flex items-center gap-x-3">
                 <IconButton
-                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
                   visual="gray"
                   variant="outlined"
                 >
                   <ChevronLeft className="size-[18px]" />
                 </IconButton>
                 <IconButton
-                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
                   visual="gray"
                   variant="outlined"
                   data-state="active"
@@ -520,10 +519,10 @@ export default function Projects() {
                     ))}
                   </TabsList>
 
-                  <div className="flex items-center gap-x-3 opacity-0 group-hover/carousel:opacity-100 transition-opacity duration-200">
+                  <div className="flex items-center gap-x-3">
                     <SwiperPrevTrigger asChild>
                       <IconButton
-                        className="rounded-full border-dark-blue-400 text-dark-blue-400 size-8 data-[state=inactive]:opacity-[.19] hover:ring-1 hover:ring-dark-blue-400"
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
                         visual="gray"
                         variant="outlined"
                       >
@@ -532,7 +531,7 @@ export default function Projects() {
                     </SwiperPrevTrigger>
                     <SwiperNextTrigger asChild>
                       <IconButton
-                        className="rounded-full border-dark-blue-400 text-dark-blue-400 size-8 data-[state=inactive]:opacity-[.19] hover:ring-1 hover:ring-dark-blue-400"
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
                         visual="gray"
                         variant="outlined"
                       >
@@ -544,7 +543,7 @@ export default function Projects() {
 
                 <div className="mt-6">
                   <TabsContent className="gap-5 flex items-center" value="Projects">
-                    <SwiperFadeContainer><SwiperContent slidesPerView="auto" spaceBetween={20}>
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
                       {(listingsProjects.length > 0
                         ? listingsProjects.slice(0, 8)
                         : displayedProjects.length > 0
@@ -672,14 +671,14 @@ export default function Projects() {
                           </SwiperSlide>
                         )
                       })}
-                    </SwiperContent></SwiperFadeContainer>
+                    </SwiperContent>
                   </TabsContent>
 
                   <TabsContent className="gap-5 flex items-center" value="Services">
-                    <SwiperFadeContainer><SwiperContent slidesPerView="auto" spaceBetween={20}>
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
                       {(listingsServices.length > 0
-                        ? listingsServices.slice(0, 6)
-                        : fromLength(6)
+                        ? listingsServices.slice(0, 8)
+                        : fromLength(8)
                       ).map((item: any, idx: number) => {
                         const service = listingsServices.length > 0 ? item : null
                         const key = service?.id ?? idx
@@ -713,12 +712,12 @@ export default function Projects() {
                         </SwiperSlide>
                         )
                       })}
-                    </SwiperContent></SwiperFadeContainer>
+                    </SwiperContent>
                   </TabsContent>
 
                   <TabsContent className="gap-5 flex items-center" value="Teams">
-                    <SwiperFadeContainer><SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {fromLength(6).map((key) => (
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {fromLength(8).map((key) => (
                         <SwiperSlide className="w-[355px]" key={key}>
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
@@ -742,12 +741,12 @@ export default function Projects() {
                           </article>
                         </SwiperSlide>
                       ))}
-                    </SwiperContent></SwiperFadeContainer>
+                    </SwiperContent>
                   </TabsContent>
 
                   <TabsContent className="gap-5 flex items-center" value="Talent">
-                    <SwiperFadeContainer><SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {fromLength(6).map((key) => (
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {fromLength(8).map((key) => (
                         <SwiperSlide className="w-[355px]" key={key}>
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="flex items-center gap-x-3">
@@ -774,7 +773,7 @@ export default function Projects() {
                           </article>
                         </SwiperSlide>
                       ))}
-                    </SwiperContent></SwiperFadeContainer>
+                    </SwiperContent>
                   </TabsContent>
                 </div>
               </SwiperRoot>
@@ -803,14 +802,14 @@ export default function Projects() {
                       </Badge>
                     ))}
                   </TabsList>
-                  <div className="flex items-center gap-x-3 opacity-0 group-hover/carousel:opacity-100 transition-opacity duration-200">
+                  <div className="flex items-center gap-x-3">
                     <SwiperPrevTrigger asChild>
-                      <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 size-8 data-[state=inactive]:opacity-[.19] hover:ring-1 hover:ring-dark-blue-400" visual="gray" variant="outlined">
+                      <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
                         <ChevronLeft className="size-[18px]" />
                       </IconButton>
                     </SwiperPrevTrigger>
                     <SwiperNextTrigger asChild>
-                      <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 size-8 data-[state=inactive]:opacity-[.19] hover:ring-1 hover:ring-dark-blue-400" visual="gray" variant="outlined">
+                      <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
                         <ChevronRight className="size-[18px]" />
                       </IconButton>
                     </SwiperNextTrigger>
@@ -819,7 +818,7 @@ export default function Projects() {
 
                 <div className="mt-6">
                   <TabsContent value={subcategories[0]?.name || "All"}>
-                    <SwiperFadeContainer><SwiperContent slidesPerView="auto" spaceBetween={20}>
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
                       <SwiperSlide className="w-[355px] h-auto">
                         <article className="py-[50px] h-full rounded-lg bg-warning-600 flex flex-col items-start justify-end px-6">
                           <h1 className="text-[28px] font-bold leading-none text-white">
@@ -833,7 +832,7 @@ export default function Projects() {
                           </Button>
                         </article>
                       </SwiperSlide>
-                      {fromLength(6).map((key) => (
+                      {fromLength(8).map((key) => (
                         <SwiperSlide key={key} className="w-[355px]">
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
@@ -860,85 +859,91 @@ export default function Projects() {
                           </article>
                         </SwiperSlide>
                       ))}
-                    </SwiperContent></SwiperFadeContainer>
+                    </SwiperContent>
                   </TabsContent>
                 </div>
               </SwiperRoot>
             </Tabs>
           </div>
 
-          {/* {Category} Teams — grid with filter tabs */}
+          {/* {Category} Teams — Swiper carousel with filter tabs */}
           <div className="mt-[50px]">
             <Tabs defaultValue="Featured">
               <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
                 {currentName} Teams
               </h1>
-              <div className="mt-6 flex justify-between items-center">
-                <TabsList className="flex items-center gap-x-3">
-                  {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tab) => (
-                    <Badge
-                      key={tab}
-                      variant="circular"
-                      visual="gray"
-                      size="lg"
-                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                      asChild
-                    >
-                      <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                    </Badge>
-                  ))}
-                </TabsList>
-                <div className="flex items-center gap-x-8">
-                  <Button variant="link" visual="gray" size="lg" className="underline">Explore More Teams</Button>
-                  <div className="flex items-center gap-x-3">
-                    <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton>
-                    <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton>
+              <SwiperRoot>
+                <div className="mt-6 flex justify-between items-center">
+                  <TabsList className="flex items-center gap-x-3">
+                    {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tab) => (
+                      <Badge
+                        key={tab}
+                        variant="circular"
+                        visual="gray"
+                        size="lg"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        asChild
+                      >
+                        <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                      </Badge>
+                    ))}
+                  </TabsList>
+                  <div className="flex items-center gap-x-8">
+                    <Button variant="link" visual="gray" size="lg" className="underline">Explore More Teams</Button>
+                    <div className="flex items-center gap-x-3">
+                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="mt-6">
-                <TabsContent className="gap-x-5 gap-y-6 grid grid-cols-4" value="Featured">
-                  {fromLength(8).map((key) => (
-                    <article key={key} className="p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white">
-                      <div className="flex items-start justify-between">
-                        <AvatarGroup max={3} size="md" excess excessClassName="border-gray-300 text-gray-500">
-                          {fromLength(6).map((k) => (<Avatar key={k} size="md" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src="/woman.jpg" alt="Woman" /><AvatarFallback>W</AvatarFallback></Avatar>))}
-                        </AvatarGroup>
-                        <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
-                      </div>
-                      <div className="mt-5 flex items-center">
-                        <span className="text-sm font-bold text-dark-blue-400 leading-none">$85 - $120</span>
-                        <span className="text-[10px] text-dark-blue-400 leading-none font-light">/hr</span>
-                      </div>
-                      <div className="mt-5">
-                        <h1 className="text-base leading-none text-dark-blue-400 font-bold">Team Name <span className="font-light text-gray-500">@Tech Sentinel</span></h1>
-                        <h3 className="mt-0.5 text-xs font-medium text-dark-blue-400 leading-none">{currentName} team</h3>
-                        <p className="mt-2 text-[11px] font-light leading-none text-dark-blue-400">Average 10 years of experience</p>
-                        <div className="mt-3.5 flex items-center gap-x-1">
-                          <MarkerPin02 className="size-3 text-gray-500" />
-                          <span className="leading-4 text-[10px] font-medium text-gray-500">UK, USA, Brazil, Philippines, more...</span>
-                        </div>
-                        <div className="mt-3.5 flex items-center gap-x-2">
-                          <div className="flex items-center gap-x-2">
-                            <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
-                              <div className="flex items-center gap-x-[3px]">
-                                {fromLength(5).map((k) => (<Star key={k} className="size-3 text-primary-500 fill-primary-500 shrink-0" />))}
+                <div className="mt-6">
+                  <TabsContent value="Featured">
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {fromLength(8).map((key) => (
+                        <SwiperSlide className="w-[355px]" key={key}>
+                          <article className="p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white">
+                            <div className="flex items-start justify-between">
+                              <AvatarGroup max={3} size="md" excess excessClassName="border-gray-300 text-gray-500">
+                                {fromLength(6).map((k) => (<Avatar key={k} size="md" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src="/woman.jpg" alt="Woman" /><AvatarFallback>W</AvatarFallback></Avatar>))}
+                              </AvatarGroup>
+                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                            </div>
+                            <div className="mt-5 flex items-center">
+                              <span className="text-sm font-bold text-dark-blue-400 leading-none">$85 - $120</span>
+                              <span className="text-[10px] text-dark-blue-400 leading-none font-light">/hr</span>
+                            </div>
+                            <div className="mt-5">
+                              <h1 className="text-base leading-none text-dark-blue-400 font-bold">Team Name <span className="font-light text-gray-500">@Tech Sentinel</span></h1>
+                              <h3 className="mt-0.5 text-xs font-medium text-dark-blue-400 leading-none">{currentName} team</h3>
+                              <p className="mt-2 text-[11px] font-light leading-none text-dark-blue-400">Average 10 years of experience</p>
+                              <div className="mt-3.5 flex items-center gap-x-1">
+                                <MarkerPin02 className="size-3 text-gray-500" />
+                                <span className="leading-4 text-[10px] font-medium text-gray-500">UK, USA, Brazil, Philippines, more...</span>
+                              </div>
+                              <div className="mt-3.5 flex items-center gap-x-2">
+                                <div className="flex items-center gap-x-2">
+                                  <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
+                                    <div className="flex items-center gap-x-[3px]">
+                                      {fromLength(5).map((k) => (<Star key={k} className="size-3 text-primary-500 fill-primary-500 shrink-0" />))}
+                                    </div>
+                                  </div>
+                                  <span className="text-xs font-semibold leading-none text-dark-blue-400">4.7</span>
+                                </div>
+                                <span className="text-xs font-semibold leading-none text-dark-blue-400">2 Projects</span>
+                              </div>
+                              <div className="mt-5 flex gap-2 flex-wrap">
+                                <Badge className="bg-transparent" visual="gray">React</Badge>
+                                <Badge className="bg-transparent" visual="gray">Node.js</Badge>
+                                <Badge className="bg-transparent" visual="gray">AWS</Badge>
                               </div>
                             </div>
-                            <span className="text-xs font-semibold leading-none text-dark-blue-400">4.7</span>
-                          </div>
-                          <span className="text-xs font-semibold leading-none text-dark-blue-400">2 Projects</span>
-                        </div>
-                        <div className="mt-5 flex gap-2 flex-wrap">
-                          <Badge className="bg-transparent" visual="gray">React</Badge>
-                          <Badge className="bg-transparent" visual="gray">Node.js</Badge>
-                          <Badge className="bg-transparent" visual="gray">AWS</Badge>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </TabsContent>
-              </div>
+                          </article>
+                        </SwiperSlide>
+                      ))}
+                    </SwiperContent>
+                  </TabsContent>
+                </div>
+              </SwiperRoot>
             </Tabs>
           </div>
 
@@ -947,7 +952,7 @@ export default function Projects() {
             <div className="flex items-center justify-between">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">Popular Searches</h1>
               <div className="flex items-center gap-x-3">
-                <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton>
+                <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton>
                 <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100" visual="gray" variant="outlined" data-state="active"><ChevronRight className="size-[18px]" /></IconButton>
               </div>
             </div>
@@ -1045,14 +1050,14 @@ export default function Projects() {
 
               <div className="flex items-center gap-x-3">
                 <IconButton
-                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
                   visual="gray"
                   variant="outlined"
                 >
                   <ChevronLeft className="size-[18px]" />
                 </IconButton>
                 <IconButton
-                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
                   visual="gray"
                   variant="outlined"
                   data-state="active"
@@ -1127,7 +1132,7 @@ export default function Projects() {
                   ))}
                 </TabsList>
                 <div className="flex items-center gap-x-3">
-                  <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton>
+                  <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton>
                   <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100" visual="gray" variant="outlined" data-state="active"><ChevronRight className="size-[18px]" /></IconButton>
                 </div>
               </div>
@@ -1215,14 +1220,14 @@ export default function Projects() {
 
                 <div className="flex items-center gap-x-3">
                   <IconButton
-                    className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                    className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
                     visual="gray"
                     variant="outlined"
                   >
                     <ChevronLeft className="size-[18px]" />
                   </IconButton>
                   <IconButton
-                    className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                    className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
                     visual="gray"
                     variant="outlined"
                     data-state="active"
@@ -1560,16 +1565,16 @@ export default function Projects() {
                   </TabsList>
                   <div className="flex items-center gap-x-8">
                     <Button variant="link" visual="gray" size="lg" className="underline">Explore More Projects</Button>
-                    <div className="flex items-center gap-x-3 opacity-0 group-hover/carousel:opacity-100 transition-opacity duration-200">
-                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 size-8 data-[state=inactive]:opacity-[.19] hover:ring-1 hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
-                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 size-8 data-[state=inactive]:opacity-[.19] hover:ring-1 hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                    <div className="flex items-center gap-x-3">
+                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
                     </div>
                   </div>
                 </div>
                 <div className="mt-6">
                   <TabsContent value="Featured">
-                    <SwiperFadeContainer><SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {(listingsProjects.length > 0 ? listingsProjects.slice(0, 6) : fromLength(6)).map((item: any, idx: number) => {
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {(listingsProjects.length > 0 ? listingsProjects.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
                         const project = listingsProjects.length > 0 ? item : null
                         return (
                         <SwiperSlide className="w-[355px]" key={project?.id ?? idx}>
@@ -1598,7 +1603,7 @@ export default function Projects() {
                         </SwiperSlide>
                         )
                       })}
-                    </SwiperContent></SwiperFadeContainer>
+                    </SwiperContent>
                   </TabsContent>
                 </div>
               </SwiperRoot>
@@ -1622,16 +1627,16 @@ export default function Projects() {
                   </TabsList>
                   <div className="flex items-center gap-x-8">
                     <Button variant="link" visual="gray" size="lg" className="underline">Explore More Services</Button>
-                    <div className="flex items-center gap-x-3 opacity-0 group-hover/carousel:opacity-100 transition-opacity duration-200">
-                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 size-8 data-[state=inactive]:opacity-[.19] hover:ring-1 hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
-                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 size-8 data-[state=inactive]:opacity-[.19] hover:ring-1 hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                    <div className="flex items-center gap-x-3">
+                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
                     </div>
                   </div>
                 </div>
                 <div className="mt-6">
                   <TabsContent value="Featured">
-                    <SwiperFadeContainer><SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {(listingsServices.length > 0 ? listingsServices.slice(0, 6) : fromLength(6)).map((item: any, idx: number) => {
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {(listingsServices.length > 0 ? listingsServices.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
                         const service = listingsServices.length > 0 ? item : null
                         return (
                         <SwiperSlide className="w-[355px]" key={service?.id ?? idx}>
@@ -1660,7 +1665,7 @@ export default function Projects() {
                         </SwiperSlide>
                         )
                       })}
-                    </SwiperContent></SwiperFadeContainer>
+                    </SwiperContent>
                   </TabsContent>
                 </div>
               </SwiperRoot>
@@ -1684,16 +1689,16 @@ export default function Projects() {
                   </TabsList>
                   <div className="flex items-center gap-x-8">
                     <Button variant="link" visual="gray" size="lg" className="underline">Explore More Talent</Button>
-                    <div className="flex items-center gap-x-3 opacity-0 group-hover/carousel:opacity-100 transition-opacity duration-200">
-                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 size-8 data-[state=inactive]:opacity-[.19] hover:ring-1 hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
-                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 size-8 data-[state=inactive]:opacity-[.19] hover:ring-1 hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                    <div className="flex items-center gap-x-3">
+                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
                     </div>
                   </div>
                 </div>
                 <div className="mt-6">
                   <TabsContent value="Featured">
-                    <SwiperFadeContainer><SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {fromLength(6).map((key) => (
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {fromLength(8).map((key) => (
                         <SwiperSlide className="w-[355px]" key={key}>
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="flex items-center gap-x-3">
@@ -1725,7 +1730,7 @@ export default function Projects() {
                           </article>
                         </SwiperSlide>
                       ))}
-                    </SwiperContent></SwiperFadeContainer>
+                    </SwiperContent>
                   </TabsContent>
                 </div>
               </SwiperRoot>
