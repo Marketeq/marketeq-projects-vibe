@@ -92,6 +92,9 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
   DisclosureContent,
   DisclosureTrigger,
@@ -4662,13 +4665,34 @@ export default function ProjectDetails() {
                 </div>
               </div>
 
-              <Button
-                size="lg"
-                className="mt-6 w-full border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white"
-                variant="outlined"
-              >
-                Start Project
-              </Button>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    size="lg"
+                    className="mt-6 w-full border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white"
+                    variant="outlined"
+                  >
+                    Start Project
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>
+                      Would you like to customize the project scope before checkout?
+                    </DialogTitle>
+                  </DialogHeader>
+                  <DialogFooter className="mt-8">
+                    <DialogClose asChild>
+                      <Button variant="outlined" visual="gray">
+                        Edit Scope
+                      </Button>
+                    </DialogClose>
+                    <Button onClick={() => router.push(`/checkout/${params.slug}`)}>
+                      Continue to Checkout
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
               <div className="flex items-center gap-x-1 mt-6">
                 <span className="text-sm font-medium leading-none text-dark-blue-400">

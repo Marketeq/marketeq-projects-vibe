@@ -798,7 +798,7 @@ export default function Projects() {
                                   {u?.rateMin ? `$${u.rateMin}` : "$85"} - {u?.rateMax ? `$${u.rateMax}` : "$120"}
                                   <span className="text-[10px] leading-none font-light">/hr</span>
                                 </h1>
-                                <NextLink href={u?.username ? `/talent-profile?username=${u.username}` : "#"} className="text-sm mt-3 font-bold leading-none text-dark-blue-400 hover:underline block">
+                                <NextLink href={u?.username ? `/talent-profile?username=${u.username}` : "#"} className="text-sm mt-3 font-bold leading-none text-dark-blue-400 hover:underline block transition-colors duration-300">
                                   {u?.firstName || "Ngozi"}{" "}
                                   <span className="text-[12px] text-gray-500 leading-none font-light">@{u?.username || "BlueberryBelle"}</span>
                                 </NextLink>
@@ -824,13 +824,13 @@ export default function Projects() {
                                 </div>
                               </div>
                             </div>
-                            <div className="relative p-3 flex flex-wrap gap-2 border-t border-gray-200 bg-[#122A4B]/[.02]">
-                              <div className="absolute right-3 bottom-3">
-                                <Button variant="link" visual="gray">More...</Button>
+                            <div className="relative p-3 border-t border-gray-200 bg-[#122A4B]/[.02] h-[92px] overflow-hidden">
+                              <div className="flex flex-wrap gap-2 content-start h-full">
+                                {(() => { const defaults = [{name:"AR/VR Design"},{name:"UX Research"},{name:"Prototyping"},{name:"Figma"},{name:"User Testing"},{name:"Wireframing"},{name:"Adobe XD"},{name:"Sketch"},{name:"InVision"},{name:"Miro"},{name:"Design Systems"},{name:"Interaction Design"}]; const real = u?.skills && u.skills.length > 0 ? u.skills : []; const padded = real.length >= 12 ? real.slice(0, 12) : [...real, ...defaults.filter(d => !real.some((r: any) => r.name === d.name)).slice(0, 12 - real.length)]; return padded; })().map((s: any, si: number) => (
+                                  <NextLink key={si} href={`/search?skill=${encodeURIComponent(s.name)}`} className="text-gray-500/60 hover:text-gray-500 text-[12px] font-semibold hover:underline transition-colors duration-300">{s.name}</NextLink>
+                                ))}
                               </div>
-                              {(u?.skills && u.skills.length > 0 ? u.skills.slice(0, 6) : [{name:"AR/VR Design"},{name:"UX Research"},{name:"Prototyping"},{name:"Figma"},{name:"User Testing"},{name:"Wireframing"}]).map((s: any, si: number) => (
-                                <Button key={si} className="text-gray-500/60 hover:text-gray-500 text-[12px]" variant="link" visual="gray">{s.name}</Button>
-                              ))}
+                              <NextLink href={u?.username ? `/talent-profile?username=${u.username}#skills` : "#"} className="absolute right-3 bottom-3 text-[12px] font-bold text-gray-500 hover:underline transition-colors duration-300 bg-[#122A4B]/[.02]">More...</NextLink>
                             </div>
                           </article>
                         </SwiperSlide>
