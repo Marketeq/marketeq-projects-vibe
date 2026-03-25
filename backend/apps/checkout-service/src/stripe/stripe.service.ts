@@ -85,4 +85,49 @@ export class StripeService {
   async cancelSubscription(subscriptionId: string) {
     return this.stripe.subscriptions.cancel(subscriptionId);
   }
+
+  async createFinancialConnectionsSession(params: {
+    customerId: string;
+    permissions: Array<'balances' | 'ownership' | 'payment_method' | 'transactions'>;
+  }) {
+    return this.stripe.financialConnections.sessions.create({
+      account_holder: { type: 'customer', customer: params.customerId },
+      permissions: params.permissions,
+    });
+  }
+
+  async createPaymentMethodFromFinancialAccount(financialAccountId: string) {
+    return this.stripe.paymentMethods.create({
+      type: 'us_bank_account',
+      us_bank_account: { financial_connections_account: financialAccountId },
+    });
+  }
+
+  async detachPaymentMethod(paymentMethodId: string) {
+    return this.stripe.paymentMethods.detach(paymentMethodId);
+  }
+
+  async createPaymentIntent(params: {
+    amount: number;
+    currency?: string;
+    customerId?: string;
+    paymentMethodTypes?: string[];
+    paymentMethodId?: string;
+    metadata?: Record<string, string>;
+    confirm?: boolean;
+  }) {
+    return this.stripe.paymentIntents.create({
+      amount: Math.round(params.amount * 100),
+      currency: params.currency || 'usd',
+      customer: params.customerId,
+      payment_method_types: params.paymentMethodTypes || ['card'],
+      payment_method: params.paymentMethodId,
+      confirm: params.confirm || false,
+      metadata: params.metadata || {},
+    });
+  }
+
+  async retrievePaymentMethod(paymentMethodId: string) {
+    return this.stripe.paymentMethods.retrieve(paymentMethodId);
+  }
 }
