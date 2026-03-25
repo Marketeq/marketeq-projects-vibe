@@ -307,6 +307,8 @@ export default function Default() {
   const [certificationsOpen, setCertificationsOpen] = useState(false)
   const [workExperienceOpen, setWorkExperienceOpen] = useState(false)
   const [educationOpen, setEducationOpen] = useState(false)
+  const [workExpEditIdx, setWorkExpEditIdx] = useState<string | undefined>()
+  const [eduEditIdx, setEduEditIdx] = useState<string | undefined>()
   const [affiliatedTeamsOpen, setAffiliatedTeamsOpen] = useState(false)
 
   const cardRef = useRef<HTMLDivElement>(null)
@@ -1662,56 +1664,7 @@ export default function Default() {
                     </ReadMoreLess>
                   </div>
 
-                  <Tabs
-                    defaultValue="Certifications"
-                    className="p-6 h-[134px] border-x border-b rounded-b-lg border-gray-200 bg-white"
-                  >
-                    {/* Featured Clients tab hidden until backend exposes featuredClients field */}
-                    <RadixTabs.List className="flex items-center gap-x-3">
-                      <TabsTrigger
-                        variant="unstyled"
-                        showUnderline={false}
-                        value="Certifications"
-                        className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                      >
-                        Certifications
-                      </TabsTrigger>
-                      <TabsTrigger
-                        variant="unstyled"
-                        showUnderline={false}
-                        value="Industry Expertise"
-                        className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                      >
-                        Industry Expertise
-                      </TabsTrigger>
-                    </RadixTabs.List>
-
-                    <TabsContent value="Certifications">
-                      <div className="pt-6 flex items-center flex-wrap gap-x-6 gap-y-3">
-                        {(profile?.certifications && profile.certifications.length > 0)
-                          ? profile.certifications.map((cert) => (
-                              <div key={cert.id} className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-1.5">
-                                {cert.name}
-                                {cert.issuingOrganization && (
-                                  <span className="text-xs font-extralight text-gray-500">· {cert.issuingOrganization}</span>
-                                )}
-                              </div>
-                            ))
-                          : <span className="text-sm text-gray-500">No certifications added yet.</span>
-                        }
-                      </div>
-                    </TabsContent>
-                    <TabsContent value="Industry Expertise">
-                      <div className="pt-6 flex items-center flex-wrap gap-x-3 gap-y-2">
-                        {(profile?.industries && profile.industries.length > 0)
-                          ? profile.industries.map((ind) => (
-                              <Badge key={ind.id} size="lg" visual="gray">{ind.name}</Badge>
-                            ))
-                          : <span className="text-sm text-gray-500">No industry expertise added yet.</span>
-                        }
-                      </div>
-                    </TabsContent>
-                  </Tabs>
+{/* Certifications and Industry Expertise tabs hidden for MVP - pending backend support */}
                 </div>
 
 {/* My Offers - temporarily commented out for MVP
@@ -6397,9 +6350,22 @@ export default function Default() {
 
                                   <div className="flex-auto">
                                     <div className="pb-8">
-                                      <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                        {exp.role}
-                                      </h1>
+                                      <div className="flex items-start justify-between">
+                                        <h1 className="text-base font-bold text-dark-blue-400 leading-none">
+                                          {exp.role}
+                                        </h1>
+                                        {isEditMode && isOwnProfile && (
+                                          <IconButton
+                                            variant="ghost"
+                                            visual="gray"
+                                            className="size-6 -mt-1 shrink-0"
+                                            type="button"
+                                            onClick={() => { setWorkExpEditIdx(String(exp.id)); setWorkExperienceOpen(true) }}
+                                          >
+                                            <Edit03 className="size-3.5" />
+                                          </IconButton>
+                                        )}
+                                      </div>
                                       <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
                                         {exp.company}
                                       </p>
@@ -6501,9 +6467,22 @@ export default function Default() {
                                   </div>
 
                                   <div className="flex-auto">
-                                    <h1 className="text-base leading-none font-bold text-dark-blue-400">
-                                      {edu.institution}
-                                    </h1>
+                                    <div className="flex items-start justify-between">
+                                      <h1 className="text-base leading-none font-bold text-dark-blue-400">
+                                        {edu.institution}
+                                      </h1>
+                                      {isEditMode && isOwnProfile && (
+                                        <IconButton
+                                          variant="ghost"
+                                          visual="gray"
+                                          className="size-6 -mt-1 shrink-0"
+                                          type="button"
+                                          onClick={() => { setEduEditIdx(String(edu.id)); setEducationOpen(true) }}
+                                        >
+                                          <Edit03 className="size-3.5" />
+                                        </IconButton>
+                                      )}
+                                    </div>
                                     <div className="mt-1.5 flex items-center gap-x-2">
                                       <span className="text-dark-blue-400 text-xs leading-none">
                                         {edu.degree}
@@ -8460,10 +8439,22 @@ export default function Default() {
           <MyOffersDialog opened={offersOpen} onOpenedChange={setOffersOpen} />
           <MoreInfoDialog opened={jobTitleOpen} onOpenedChange={setJobTitleOpen} profile={profile} onSaved={refreshProfile} />
           <LanguagesDialog opened={languagesOpen} onOpenedChange={setLanguagesOpen} profile={profile} onSaved={refreshProfile} />
-          <IndustryExpertiseDialog opened={industriesOpen} onOpenedChange={setIndustriesOpen} profile={profile} onSaved={refreshProfile} />
-          <CertificationsDialog opened={certificationsOpen} onOpenedChange={setCertificationsOpen} profile={profile} onSaved={refreshProfile} />
-          <WorkExperienceDialog opened={workExperienceOpen} onOpenedChange={setWorkExperienceOpen} profile={profile} onSaved={refreshProfile} />
-          <EducationDialog opened={educationOpen} onOpenedChange={setEducationOpen} profile={profile} onSaved={refreshProfile} />
+          {/* IndustryExpertiseDialog hidden for MVP - pending backend support */}
+          {/* CertificationsDialog hidden for MVP - pending backend support */}
+          <WorkExperienceDialog
+            opened={workExperienceOpen}
+            onOpenedChange={(o) => { setWorkExperienceOpen(o); if (!o) setWorkExpEditIdx(undefined) }}
+            editIndex={workExpEditIdx}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
+          <EducationDialog
+            opened={educationOpen}
+            onOpenedChange={(o) => { setEducationOpen(o); if (!o) setEduEditIdx(undefined) }}
+            editIndex={eduEditIdx}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
           <AffiliatedTeamsDialog opened={affiliatedTeamsOpen} onOpenedChange={setAffiliatedTeamsOpen} />
         </>
       )}

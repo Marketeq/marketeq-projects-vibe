@@ -244,8 +244,7 @@ const workExperienceFormSchema = z
     currentlyWorkHere: z.boolean(),
     jobDescription: z.string().min(1, "Please enter at least 1 character(s)"),
     skills: z
-      .array(z.object({ id: z.number(), name: z.string() }))
-      .min(1, "Please select at least 1 skill(s)")
+      .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
       .max(50, "You have reached the maximum limit of 50 skills"),
   })
 
@@ -386,8 +385,8 @@ const languagesFormDefaultValue = {
 
 const skillsFormSchema = z.object({
   skills: z
-    .array(z.object({ id: z.number(), name: z.string() }))
-    .min(1, "Please at least provide 1 language(s)"),
+    .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
+    .min(1, "Please add at least 1 skill"),
 })
 
 type SkillsFormValues = z.infer<typeof skillsFormSchema>
@@ -1639,6 +1638,7 @@ export const WorkExperienceDialog = ({
   value: valueProp,
   profile,
   onSaved,
+  editIndex,
 }: {
   opened?: boolean
   onOpenedChange?: (open: boolean) => void
@@ -1646,12 +1646,13 @@ export const WorkExperienceDialog = ({
     open: boolean
     toggle: () => void
     formValues: WorkExperienceFormValues[] | undefined
-    edit: (idx: number) => void
+    edit: (id: string) => void
   }) => React.ReactNode
   value?: WorkExperienceFormValues[]
   onValueChange?: (value: WorkExperienceFormValues[] | undefined) => void
   profile?: any
   onSaved?: () => void
+  editIndex?: string
 }) => {
   const { user } = useAuth()
   const userId = profile?.id ?? user?.id ?? ""
@@ -1667,7 +1668,7 @@ export const WorkExperienceDialog = ({
     value: valueProp,
     onChange: onValueChange,
   })
-  const [editingIdx, setEditingIdx] = useState<number>()
+  const [editingId, setEditingId] = useState<string>()
 
   const [query, setQuery] = useState("")
   const [filteredSkills, setFilteredSkills] = useState<{ id: number | string; name: string }[]>([])
@@ -1703,6 +1704,7 @@ export const WorkExperienceDialog = ({
     reset,
   } = useForm<WorkExperienceFormValues>({
     resolver: zodResolver(workExperienceFormSchema),
+    mode: "onChange",
     defaultValues: {
       currentlyWorkHere: false,
       jobDescription: "",
@@ -1724,35 +1726,57 @@ export const WorkExperienceDialog = ({
           ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}`
           : undefined
       try {
-        await UserAPI.addExperience(userId, {
-          company: values.employer,
-          role: values.jobTitle,
-          startDate: startDate ?? "",
-          endDate,
-          description: values.jobDescription,
-        })
+        if (editingId) {
+          await UserAPI.updateExperience(userId, editingId, {
+            company: values.employer,
+            role: values.jobTitle,
+            startDate: startDate ?? "",
+            endDate,
+            description: values.jobDescription,
+          })
+        } else {
+          await UserAPI.addExperience(userId, {
+            company: values.employer,
+            role: values.jobTitle,
+            startDate: startDate ?? "",
+            endDate,
+            description: values.jobDescription,
+          })
+        }
       } catch {}
       onSaved?.()
     }
-    if (typeof editingIdx === "number") {
-      setValueFn(
-        value?.map((el, index) => (index === editingIdx ? values : el))
-      )
-      setEditingIdx(undefined)
-    } else {
-      setValueFn((prev) => (prev ? [...prev, values] : [values]))
-    }
+    setEditingId(undefined)
     reset()
+    setOpen(false)
   }
 
   const skillsField = useWatch({ control, name: "skills" })
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
 
-  const edit = (idx: number) => {
-    setEditingIdx(idx)
-    const workExperienceFormValues = value?.find((_, index) => index !== idx)
-    reset(workExperienceFormValues)
+  const edit = (id: string) => {
+    setEditingId(id)
+    const exp = profile?.experience?.find((e: any) => String(e.id) === id)
+    if (!exp) return
+    const sd = exp.startDate ? exp.startDate.split("-") : []
+    const ed = exp.endDate ? exp.endDate.split("-") : []
+    reset({
+      employer: exp.company ?? "",
+      jobTitle: exp.role ?? "",
+      startDate: { year: sd[0] ? Number(sd[0]) : undefined, month: sd[1] ? Number(sd[1]) : undefined },
+      endDate: { year: ed[0] ? Number(ed[0]) : undefined, month: ed[1] ? Number(ed[1]) : undefined },
+      currentlyWorkHere: !exp.endDate,
+      jobDescription: exp.description ?? "",
+      skills: [],
+    })
+    setTimeout(() => trigger())
   }
+
+  useEffect(() => {
+    if (open && editIndex) {
+      edit(editIndex)
+    }
+  }, [open, editIndex])
 
   useEffect(() => {
     if (open && profile?.experience?.length && !value?.length) {
@@ -1882,10 +1906,10 @@ export const WorkExperienceDialog = ({
                           control={control}
                           name="startDate.month"
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value} onChange={onChange}>
+                            <Listbox value={value ?? null} onChange={onChange}>
                               <ListboxButton
                                 placeholder="Month"
-                                displayValue={(value: number) => value}
+                                displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
                                 isInvalid={hookFormHasError({
                                   errors,
                                   name: "startDate.month",
@@ -1896,11 +1920,9 @@ export const WorkExperienceDialog = ({
                                   viewportClassName="max-h-[304px]"
                                   scrollBar={<ScrollBar className="w-4 p-1" />}
                                 >
-                                  {months
-                                    .map((month) => month.value)
-                                    .map((m) => (
-                                      <ListboxOption key={m} value={m}>
-                                        {m}
+                                  {months.map((m) => (
+                                      <ListboxOption key={m.value} value={m.value}>
+                                        {m.name}
                                       </ListboxOption>
                                     ))}
                                 </ScrollArea>
@@ -1922,7 +1944,7 @@ export const WorkExperienceDialog = ({
                           control={control}
                           name="startDate.year"
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value} onChange={onChange}>
+                            <Listbox value={value ?? null} onChange={onChange}>
                               <ListboxButton
                                 placeholder="Year"
                                 displayValue={(value: number) => value}
@@ -1974,10 +1996,10 @@ export const WorkExperienceDialog = ({
                           control={control}
                           name="endDate.month"
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value} onChange={onChange}>
+                            <Listbox value={value ?? null} onChange={onChange}>
                               <ListboxButton
                                 placeholder="Month"
-                                displayValue={(value: number) => value}
+                                displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
                                 isInvalid={hookFormHasError({
                                   errors,
                                   name: "endDate.year",
@@ -1988,11 +2010,9 @@ export const WorkExperienceDialog = ({
                                   viewportClassName="max-h-[304px]"
                                   scrollBar={<ScrollBar className="w-4 p-1" />}
                                 >
-                                  {months
-                                    .map((month) => month.value)
-                                    .map((m) => (
-                                      <ListboxOption key={m} value={m}>
-                                        {m}
+                                  {months.map((m) => (
+                                      <ListboxOption key={m.value} value={m.value}>
+                                        {m.name}
                                       </ListboxOption>
                                     ))}
                                 </ScrollArea>
@@ -2014,7 +2034,7 @@ export const WorkExperienceDialog = ({
                           control={control}
                           name="endDate.year"
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value} onChange={onChange}>
+                            <Listbox value={value ?? null} onChange={onChange}>
                               <ListboxButton
                                 placeholder="Year"
                                 displayValue={(value: number) => value}
@@ -2238,12 +2258,13 @@ export const WorkExperienceDialog = ({
 export const EducationDialog = ({
   opened,
   onOpenedChange,
-  trigger,
+  trigger: triggerProp,
   defaultValue,
   onValueChange,
   value: valueProp,
   profile,
   onSaved,
+  editIndex,
 }: {
   opened?: boolean
   onOpenedChange?: (open: boolean) => void
@@ -2257,6 +2278,7 @@ export const EducationDialog = ({
   onValueChange?: (value: EducationFormValues) => void
   profile?: any
   onSaved?: () => void
+  editIndex?: string
 }) => {
   const { user } = useAuth()
   const userId = profile?.id ?? user?.id ?? ""
@@ -2270,6 +2292,7 @@ export const EducationDialog = ({
     value: valueProp,
     onChange: onValueChange,
   })
+  const [editingId, setEditingId] = useState<string | undefined>()
 
   const {
     control,
@@ -2277,8 +2300,10 @@ export const EducationDialog = ({
     formState: { errors, isValid },
     register,
     reset,
+    trigger,
   } = useForm<EducationFormValues>({
     resolver: zodResolver(educationFormSchema),
+    mode: "onChange",
     defaultValues: {
       currentlyAttending: false,
       degree: "",
@@ -2286,6 +2311,29 @@ export const EducationDialog = ({
       schoolOrUniversity: "",
     },
   })
+
+  const edit = (id: string) => {
+    setEditingId(id)
+    const edu = profile?.education?.find((e: any) => String(e.id) === id)
+    if (!edu) return
+    const sd = edu.startDate ? edu.startDate.split("-") : []
+    const ed = edu.endDate ? edu.endDate.split("-") : []
+    reset({
+      schoolOrUniversity: edu.institution ?? "",
+      degree: edu.degree ?? "",
+      major: edu.field ?? "",
+      currentlyAttending: !edu.endDate,
+      startDate: { year: sd[0] ? Number(sd[0]) : undefined, month: sd[1] ? Number(sd[1]) : undefined },
+      endDate: { year: ed[0] ? Number(ed[0]) : undefined, month: ed[1] ? Number(ed[1]) : undefined },
+    })
+    setTimeout(() => trigger())
+  }
+
+  useEffect(() => {
+    if (open && editIndex) {
+      edit(editIndex)
+    }
+  }, [open, editIndex])
 
   const onSubmit: SubmitHandler<EducationFormValues> = async (values) => {
     if (userId) {
@@ -2298,16 +2346,27 @@ export const EducationDialog = ({
           ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}`
           : undefined
       try {
-        await UserAPI.addEducation(userId, {
-          institution: values.schoolOrUniversity,
-          degree: values.degree,
-          field: values.major,
-          startDate,
-          endDate,
-        })
+        if (editingId) {
+          await UserAPI.updateEducation(userId, editingId, {
+            institution: values.schoolOrUniversity,
+            degree: values.degree,
+            field: values.major,
+            startDate,
+            endDate,
+          })
+        } else {
+          await UserAPI.addEducation(userId, {
+            institution: values.schoolOrUniversity,
+            degree: values.degree,
+            field: values.major,
+            startDate,
+            endDate,
+          })
+        }
       } catch {}
       onSaved?.()
     }
+    setEditingId(undefined)
     setValue(values)
     setOpen(false)
   }
@@ -2316,7 +2375,7 @@ export const EducationDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {trigger?.({
+      {triggerProp?.({
         open,
         toggle: () => setOpen((prev) => !prev),
         formValues: value,
@@ -2456,7 +2515,7 @@ export const EducationDialog = ({
                           name="startDate.month"
                           control={control}
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value} onChange={onChange}>
+                            <Listbox value={value ?? null} onChange={onChange}>
                               <ListboxButton
                                 displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
                                 placeholder="Month"
@@ -2489,7 +2548,7 @@ export const EducationDialog = ({
                           name="startDate.year"
                           control={control}
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value} onChange={onChange}>
+                            <Listbox value={value ?? null} onChange={onChange}>
                               <ListboxButton
                                 displayValue={(value: number) => `${value}`}
                                 placeholder="Year"
@@ -2542,7 +2601,7 @@ export const EducationDialog = ({
                           name="endDate.month"
                           control={control}
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value} onChange={onChange}>
+                            <Listbox value={value ?? null} onChange={onChange}>
                               <ListboxButton
                                 displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
                                 placeholder="Month"
@@ -2575,7 +2634,7 @@ export const EducationDialog = ({
                           name="endDate.year"
                           control={control}
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value} onChange={onChange}>
+                            <Listbox value={value ?? null} onChange={onChange}>
                               <ListboxButton
                                 displayValue={(value: number) => `${value}`}
                                 placeholder="Year"
@@ -2959,20 +3018,15 @@ export const SkillsDialog = ({
   const onSubmit: SubmitHandler<SkillsFormValues> = async (values) => {
     if (userId) {
       try {
-        // Remove existing skills
-        if (profile?.skills?.length) {
-          await Promise.all(
-            profile.skills.map((skill: any) =>
-              UserAPI.removeSkill(userId, String(skill.id))
-            )
-          )
-        }
-        // Add new skills
-        await Promise.all(
-          values.skills.map((skill) =>
-            UserAPI.addSkill(userId, { name: skill.name })
-          )
-        )
+        const currentSkills: any[] = profile?.skills ?? []
+        const newNames = new Set(values.skills.map((s) => s.name.toLowerCase()))
+        const currentNames = new Set(currentSkills.map((s: any) => s.name?.toLowerCase()))
+
+        const toRemove = currentSkills.filter((s: any) => !newNames.has(s.name?.toLowerCase()))
+        const toAdd = values.skills.filter((s) => !currentNames.has(s.name.toLowerCase()))
+
+        await Promise.all(toRemove.map((skill: any) => UserAPI.removeSkill(userId, String(skill.id))))
+        await Promise.all(toAdd.map((skill) => UserAPI.addSkill(userId, { name: skill.name })))
       } catch {}
       onSaved?.()
     }
@@ -2987,6 +3041,7 @@ export const SkillsDialog = ({
         formValues: value,
       })}
       <DialogContent className="max-w-[700px] rounded-[12px] p-0">
+        <DialogTitle className="sr-only">Skills</DialogTitle>
         <form onSubmit={handleSubmit(onSubmit)}>
           <div className="border-b border-gray-200 p-6 pb-[50px]">
             <div className="flex items-start gap-x-2">
@@ -3014,7 +3069,13 @@ export const SkillsDialog = ({
                   multiple
                   className="mt-8 w-auto"
                   value={value}
-                  onChange={(val) => { onChange(val); setQuery("") }}
+                  onChange={(val: typeof value) => {
+                    const unique = val.filter((s, i, arr) =>
+                      arr.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) === i
+                    )
+                    onChange(unique)
+                    setQuery("")
+                  }}
                 >
                   <ComboboxTrigger>
                     <ComboboxInput
@@ -3031,16 +3092,24 @@ export const SkillsDialog = ({
                   <ScaleOutIn afterLeave={() => setQuery("")}>
                     <ComboboxOptions>
                       <ScrollArea viewportClassName="max-h-[304px]">
-                        {filteredSkills.map((skill) => (
-                          <ComboboxOption key={`${skill.id}-${skill.name}`} value={skill}>
-                            {skill.name}
-                          </ComboboxOption>
-                        ))}
-                        {query.trim() && filteredSkills.length === 0 && (
-                          <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
-                            Add &ldquo;{query.trim()}&rdquo;
-                          </ComboboxOption>
-                        )}
+                        {filteredSkills
+                          .filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
+                          .map((skill) => (
+                            <ComboboxOption key={`${skill.id}-${skill.name}`} value={skill}>
+                              {skill.name}
+                            </ComboboxOption>
+                          ))}
+                        {(() => {
+                          const q = query.trim().toLowerCase()
+                          const alreadySelected = (value ?? []).some((s) => s.name.toLowerCase() === q)
+                          const visibleOptions = filteredSkills.filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
+                          if (!q || alreadySelected || visibleOptions.length > 0) return null
+                          return (
+                            <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
+                              Add &ldquo;{query.trim()}&rdquo;
+                            </ComboboxOption>
+                          )
+                        })()}
                       </ScrollArea>
                     </ComboboxOptions>
                   </ScaleOutIn>
