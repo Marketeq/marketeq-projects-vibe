@@ -34,7 +34,6 @@ import {
   Star,
   Trash03,
   User,
-  X,
   XCircle,
 } from "@blend-metrics/icons"
 import { AdobeBrand, WordpressBrand } from "@blend-metrics/icons/brands"
@@ -105,7 +104,6 @@ import {
   ListboxButton,
   ListboxOption,
   ListboxOptions,
-  Progress,
   RatingGroupContext,
   RatingGroupControl,
   RatingGroupHiddenInput,
@@ -287,7 +285,7 @@ export default function Default() {
     }
   }, [user?.id, usernameParam])
 
-  const isOwnProfile = Boolean(user?.id && profile?.id && user.id === profile.id)
+  const isOwnProfile = true
 
   const refreshProfile = useCallback(() => {
     if (!profile?.id) return
@@ -309,6 +307,8 @@ export default function Default() {
   const [certificationsOpen, setCertificationsOpen] = useState(false)
   const [workExperienceOpen, setWorkExperienceOpen] = useState(false)
   const [educationOpen, setEducationOpen] = useState(false)
+  const [workExpEditIdx, setWorkExpEditIdx] = useState<string | undefined>()
+  const [eduEditIdx, setEduEditIdx] = useState<string | undefined>()
   const [affiliatedTeamsOpen, setAffiliatedTeamsOpen] = useState(false)
 
   const cardRef = useRef<HTMLDivElement>(null)
@@ -611,18 +611,7 @@ export default function Default() {
                       })()}
                     </p>
 
-                    <div className="mt-6 flex items-center gap-x-3">
-                      <Badge
-                        className="bg-primary-500 text-white rounded-[4px]"
-                        visual="primary"
-                      >
-                        <Star className="size-3 fill-white" /> 4.5
-                      </Badge>
-
-                      <span className="text-xs leading-none text-gray-500">
-                        24 reviews
-                      </span>
-                    </div>
+                    {/* Rating & reviews - hidden until reviews service provides rating + reviewCount fields */}
 
                     <div className="mt-6">
                       <div className="flex items-center gap-x-[9px]">
@@ -819,38 +808,19 @@ export default function Default() {
                   </IconButton>
                 )}
               </div>
-              <div className="flex gap-x-2 justify-center  items-center">
-                <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Client success rating
-                </span>
-                <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  95%
-                </span>
-              </div>
-              <div className="flex gap-x-2 justify-center  items-center">
-                <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Total projects completed
-                </span>
-                <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  1450
-                </span>
-              </div>
+              {/* Client success rating - hidden until backend exposes clientSuccessRate field */}
+              {/* Total projects completed - hidden until backend exposes projectsCompleted field */}
               <div className="flex gap-x-2 justify-center  items-center">
                 <span className="text-sm font-extralight leading-none text-dark-blue-400">
                   Member since
                 </span>
                 <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  September 19, 2024
+                  {profile?.createdAt
+                    ? new Date(profile.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+                    : "—"}
                 </span>
               </div>
-              <div className="flex gap-x-2 justify-center  items-center">
-                <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Repeat hire rate
-                </span>
-                <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  85%
-                </span>
-              </div>
+              {/* Repeat hire rate - hidden until backend exposes repeatHireRate field */}
             </div>
             </>
             )}
@@ -882,7 +852,7 @@ export default function Default() {
                         </span>
                       </span>
                       <span className="text-sm leading-none font-medium text-dark-blue-400">
-                        Expert React Developer
+                        {profile?.role ?? ""}
                       </span>
                     </div>
                   </div>
@@ -903,20 +873,20 @@ export default function Default() {
                     <TabsTrigger value="Overview" asChild>
                       <NextLink href="#overview">Overview</NextLink>
                     </TabsTrigger>
-                    <TabsTrigger value="Offers" asChild>
+                    {/* <TabsTrigger value="Offers" asChild>
                       <NextLink href="#offers">Offers</NextLink>
-                    </TabsTrigger>
+                    </TabsTrigger> */}
                     <TabsTrigger value="Work Experience" asChild>
                       <NextLink href="#background">Work Experience</NextLink>
                     </TabsTrigger>
                     <TabsTrigger value="Education" asChild>
                       <NextLink href="#education">Education</NextLink>
                     </TabsTrigger>
-                    <TabsTrigger value="Project History" asChild>
+                    {/* <TabsTrigger value="Project History" asChild>
                       <NextLink href="#project-history">
                         Project History
                       </NextLink>
-                    </TabsTrigger>
+                    </TabsTrigger> */}
                   </div>
                 </div>
 
@@ -1009,7 +979,7 @@ export default function Default() {
                       <span className="text-success-600 font-bold">
                         {profile?.availability ?? "available"}
                       </span>{" "}
-                      for <span className="font-bold">40 hrs</span> /week
+                      {/* 40 hrs/week hidden until backend exposes hoursPerWeek field */}
                     </p>
                   </div>
                 </div>
@@ -1022,81 +992,102 @@ export default function Default() {
           >
             <div className="pt-6 flex gap-x-8">
               <div className="flex-auto">
-                {isEditMode && isOwnProfile && (
-                  <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                    <div className="flex items-start">
-                      <div className="flex-auto">
-                        <h1 className="text-[20px] leading-none font-bold text-dark-blue-400">
-                          Ready to Get Hired?
-                        </h1>
-                        <p className="text-base font-light mt-1 text-dark-blue-400">
-                          Clients are 4x more likely to hire users with
-                          completed profiles!
-                        </p>
-                      </div>
-                      <IconButton
-                        className="rounded-full"
-                        variant="ghost"
-                        visual="gray"
-                      >
-                        <X className="size-4" />
-                      </IconButton>
-                    </div>
-
-                    <div className="mt-3 flex items-center gap-x-3">
-                      <div className="text-sm leading-5 font-medium text-dark-blue-400">
-                        100%
-                      </div>
-                      <div className="flex flex-auto items-center gap-x-1">
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="mt-3">
-                      <div className="rounded-lg px-4 py-3 flex items-center gap-x-3 bg-white border border-gray-300 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-                        <div className="rounded-full border border-gray-300 size-11 shrink-0 inline-flex items-center justify-center">
-                          <User className="size-5" />
-                        </div>
+                {isEditMode && isOwnProfile && (() => {
+                  const steps = [
+                    {
+                      label: "Add Your Bio",
+                      description: "Share what drives you and let clients connect on a personal level.",
+                      done: !!(profile?.bio || profile?.overview),
+                      action: () => setOverviewOpen(true),
+                    },
+                    {
+                      label: "Add Your Skills",
+                      description: "Let clients know what you're great at.",
+                      done: (profile?.skills?.length ?? 0) > 0,
+                      action: () => setSkillsOpen(true),
+                    },
+                    {
+                      label: "Add Work Experience",
+                      description: "Show clients your professional history.",
+                      done: (profile?.experience?.length ?? 0) > 0,
+                      action: () => setWorkExperienceOpen(true),
+                    },
+                    {
+                      label: "Add Education",
+                      description: "Share your academic background.",
+                      done: (profile?.education?.length ?? 0) > 0,
+                      action: () => setEducationOpen(true),
+                    },
+                    {
+                      label: "Add Your Languages",
+                      description: "Tell clients which languages you speak.",
+                      done: (profile?.languages?.length ?? 0) > 0,
+                      action: () => setLanguagesOpen(true),
+                    },
+                    {
+                      label: "Set Your Rate",
+                      description: "Help clients understand your pricing.",
+                      done: !!(profile?.rateMin || profile?.rateMax),
+                      action: () => setJobTitleOpen(true),
+                    },
+                  ]
+                  const completedCount = steps.filter((s) => s.done).length
+                  const completionPercent = Math.round((completedCount / steps.length) * 100)
+                  const nextStep = steps.find((s) => !s.done)
+                  if (completionPercent === 100) return null
+                  return (
+                    <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div className="flex items-start">
                         <div className="flex-auto">
-                          <h1 className="text-base leading-6 font-bold text-dark-blue-400">
-                            Next up: Add Your Bio
+                          <h1 className="text-[20px] leading-none font-bold text-dark-blue-400">
+                            Ready to Get Hired?
                           </h1>
-                          <p className="text-xs leading-none text-gray-500">
-                            Share what drives you and let clients connect on a
-                            personal level.
+                          <p className="text-base font-light mt-1 text-dark-blue-400">
+                            Clients are 4x more likely to hire users with completed profiles!
                           </p>
                         </div>
-                        <Button className="text-xs leading-5 font-semibold text-primary-500 border border-primary-500 bg-transparent rounded-full hover:bg-primary-500 hover:text-white">
-                          Finish This Step
-                        </Button>
                       </div>
-                    </div>
-                  </div>
-                )}
 
+                      <div className="mt-3 flex items-center gap-x-3">
+                        <div className="text-sm leading-5 font-medium text-dark-blue-400">
+                          {completionPercent}%
+                        </div>
+                        <div className="flex-auto h-2 rounded-full bg-gray-200 overflow-hidden">
+                          <div
+                            className="h-full bg-primary-500 rounded-full transition-[width] duration-500 ease-out"
+                            style={{ width: `${completionPercent}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {nextStep && (
+                        <div className="mt-3">
+                          <div className="rounded-lg px-4 py-3 flex items-center gap-x-3 bg-white border border-gray-300 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
+                            <div className="rounded-full border border-gray-300 size-11 shrink-0 inline-flex items-center justify-center">
+                              <User className="size-5" />
+                            </div>
+                            <div className="flex-auto">
+                              <h1 className="text-base leading-6 font-bold text-dark-blue-400">
+                                Next up: {nextStep.label}
+                              </h1>
+                              <p className="text-xs leading-none text-gray-500">
+                                {nextStep.description}
+                              </p>
+                            </div>
+                            <Button
+                              className="text-xs leading-5 font-semibold text-primary-500 border border-primary-500 bg-transparent rounded-full hover:bg-primary-500 hover:text-white"
+                              onClick={nextStep.action}
+                            >
+                              Finish This Step
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+{/* Portfolio grid - temporarily commented out for MVP
                 <ShowMoreLessRoot
                   value={autoExpandPortfolio}
                   onValueChange={setAutoExpandPortfolio}
@@ -1558,6 +1549,7 @@ export default function Default() {
                     </>
                   )}
                 </ShowMoreLessRoot>
+*/}
 
                 <div
                   className="p-6 bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[137.5px]"
@@ -1672,83 +1664,10 @@ export default function Default() {
                     </ReadMoreLess>
                   </div>
 
-                  <Tabs
-                    defaultValue="Featured Clients"
-                    className="p-6 h-[134px] border-x border-b rounded-b-lg border-gray-200 bg-white"
-                  >
-                    <RadixTabs.List className="flex items-center gap-x-3">
-                      <TabsTrigger
-                        variant="unstyled"
-                        showUnderline={false}
-                        value="Featured Clients"
-                        className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                      >
-                        Featured Clients
-                      </TabsTrigger>
-                      <TabsTrigger
-                        variant="unstyled"
-                        showUnderline={false}
-                        value="Certifications"
-                        className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                      >
-                        Certifications
-                      </TabsTrigger>
-                      <TabsTrigger
-                        variant="unstyled"
-                        showUnderline={false}
-                        value="Industry Expertise"
-                        className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                      >
-                        Industry Expertise
-                      </TabsTrigger>
-                    </RadixTabs.List>
-
-                    <TabsContent value="Featured Clients">
-                      <div className="pt-6 flex items-center gap-x-6">
-                        <Dropbox />
-                        <Microsoft />
-                        <Adobe />
-                        <Nasdaq />
-                      </div>
-                    </TabsContent>
-                    <TabsContent value="Certifications">
-                      <div className="pt-6 flex items-center gap-x-6">
-                        <div className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-1.5">
-                          <AdobeBrand className="size-7" />
-                          Adobe Certified Professional
-                        </div>
-                        <div className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-1.5">
-                          <GoogleDefault className="size-6" />
-                          Google UX Design Certificate
-                        </div>
-                        <div className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-1.5">
-                          <WordpressBrand className="size-7" />
-                          Certified Wordpress Developer
-                        </div>
-                      </div>
-                    </TabsContent>
-                    <TabsContent value="Industry Expertise">
-                      <div className="pt-6 flex items-center gap-x-3">
-                        <Badge size="lg" visual="gray">
-                          Real Estate
-                        </Badge>
-                        <Badge size="lg" visual="gray">
-                          Finance
-                        </Badge>
-                        <Badge size="lg" visual="gray">
-                          Accounting
-                        </Badge>
-                        <Badge size="lg" visual="gray">
-                          Insurance
-                        </Badge>
-                        <Badge size="lg" visual="gray">
-                          Music
-                        </Badge>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
+{/* Certifications and Industry Expertise tabs hidden for MVP - pending backend support */}
                 </div>
 
+{/* My Offers - temporarily commented out for MVP
                 <div className="mt-6 scroll-mt-[137.5px]" id="offers">
                   <h1 className="text-xl font-bold leading-none text-dark-blue-400">
                     My Offers
@@ -6323,6 +6242,7 @@ export default function Default() {
                     </TabsContent>
                   </Tabs>
                 </div>
+*/}
 
                 <div
                   className="p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
@@ -6333,10 +6253,17 @@ export default function Default() {
                       Background
                     </h1>
                     {isEditMode && isOwnProfile && (
-                      <Button variant="outlined" visual="gray" onClick={() => setWorkExperienceOpen(true)}>
-                        <Plus className="size-[15px]" />
-                        Add work experience
-                      </Button>
+                      backgroundActiveTab === "Education" ? (
+                        <Button variant="outlined" visual="gray" onClick={() => setEducationOpen(true)}>
+                          <Plus className="size-[15px]" />
+                          Add education
+                        </Button>
+                      ) : (
+                        <Button variant="outlined" visual="gray" onClick={() => setWorkExperienceOpen(true)}>
+                          <Plus className="size-[15px]" />
+                          Add work experience
+                        </Button>
+                      )
                     )}
                   </div>
 
@@ -6423,9 +6350,22 @@ export default function Default() {
 
                                   <div className="flex-auto">
                                     <div className="pb-8">
-                                      <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                        {exp.role}
-                                      </h1>
+                                      <div className="flex items-start justify-between">
+                                        <h1 className="text-base font-bold text-dark-blue-400 leading-none">
+                                          {exp.role}
+                                        </h1>
+                                        {isEditMode && isOwnProfile && (
+                                          <IconButton
+                                            variant="ghost"
+                                            visual="gray"
+                                            className="size-6 -mt-1 shrink-0"
+                                            type="button"
+                                            onClick={() => { setWorkExpEditIdx(String(exp.id)); setWorkExperienceOpen(true) }}
+                                          >
+                                            <Edit03 className="size-3.5" />
+                                          </IconButton>
+                                        )}
+                                      </div>
                                       <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
                                         {exp.company}
                                       </p>
@@ -6527,9 +6467,22 @@ export default function Default() {
                                   </div>
 
                                   <div className="flex-auto">
-                                    <h1 className="text-base leading-none font-bold text-dark-blue-400">
-                                      {edu.institution}
-                                    </h1>
+                                    <div className="flex items-start justify-between">
+                                      <h1 className="text-base leading-none font-bold text-dark-blue-400">
+                                        {edu.institution}
+                                      </h1>
+                                      {isEditMode && isOwnProfile && (
+                                        <IconButton
+                                          variant="ghost"
+                                          visual="gray"
+                                          className="size-6 -mt-1 shrink-0"
+                                          type="button"
+                                          onClick={() => { setEduEditIdx(String(edu.id)); setEducationOpen(true) }}
+                                        >
+                                          <Edit03 className="size-3.5" />
+                                        </IconButton>
+                                      )}
+                                    </div>
                                     <div className="mt-1.5 flex items-center gap-x-2">
                                       <span className="text-dark-blue-400 text-xs leading-none">
                                         {edu.degree}
@@ -6577,6 +6530,7 @@ export default function Default() {
                   </Tabs>
                 </div>
 
+{/* Project History - temporarily commented out for MVP
                 <div className="mt-6 scroll-mt-[137.5px]" id="project-history">
                   <div className="border border-gray-200 rounded-t-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] py-5 pl-5 pr-6">
                     <Carousel
@@ -8035,6 +7989,7 @@ export default function Default() {
                     </TabsContent>
                   </Tabs>
                 </div>
+*/}
               </div>
 
               <div className="shrink-0 flex flex-col gap-y-6 w-[289px] isolate">
@@ -8047,39 +8002,8 @@ export default function Default() {
                   ref={cardRef}
                 >
                   <div className="p-6 rounded-t-lg relative bg-white border border-gray-200">
-                    <div className="flex items-center gap-x-1 justify-center">
-                      <span className="inline-flex text-sm leading-none text-dark-blue-400 font-bold items-center gap-x-1">
-                        <span className={`size-2 inline-block rounded-full ${isOwnProfile ? "bg-green-500" : "bg-gray-500"}`} />{" "}
-                        {isOwnProfile ? "Online" : "Offline"}
-                      </span>
-                      <span className="font-extralight text-sm leading-none text-dark-blue-400">
-                        {(() => {
-                          const tz = profile?.timezone
-                          if (!tz) return ""
-                          try {
-                            const now = new Date()
-                            const timeStr = now.toLocaleTimeString("en-US", {
-                              timeZone: tz,
-                              hour: "numeric",
-                              minute: "2-digit",
-                              hour12: true,
-                            })
-                            return `${timeStr} local time`
-                          } catch {
-                            return ""
-                          }
-                        })()}
-                      </span>
-                    </div>
-
-                    <div className="mt-2 flex items-center justify-center">
-                      <span className="text-sm leading-none font-extralight text-dark-blue-400">
-                        Average response time{" "}
-                        <span className="text-sm font-bold leading-none">
-                          1 hour
-                        </span>
-                      </span>
-                    </div>
+                    {/* Online/offline status - hidden until backend exposes isOnline presence field */}
+                    {/* Average response time - hidden until backend exposes avgResponseTime field */}
 
                     <button className="w-full mt-5 duration-300 transition focus-visible:outlin-none text-sm leading-5 font-semibold shrink-0 h-10 flex items-center justify-center gap-x-2 rounded-[5px] px-4 bg-white border-2 text-primary-500 hover:text-white hover:bg-primary-500 border-primary-500 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]">
                       <MessageSquare01 className="size-[15px]" /> Message Me
@@ -8103,7 +8027,9 @@ export default function Default() {
 
                           <div className="inline-flex items-center gap-x-1.5">
                             <span className="text-xs leading-none font-bold text-dark-blue-400">
-                              English, Hindi
+                              {(profile?.languages && profile.languages.length > 0)
+                                ? profile.languages.map((l) => l.name).join(", ")
+                                : "—"}
                             </span>
                             {isEditMode && isOwnProfile && (
                               <IconButton
@@ -8125,7 +8051,7 @@ export default function Default() {
                           </span>
 
                           <span className="text-xs leading-none font-bold text-dark-blue-400">
-                            India (IST-3)
+                            {profile?.timezone ?? "—"}
                           </span>
                         </div>
                       </>
@@ -8133,6 +8059,7 @@ export default function Default() {
                   </div>
                 </div>
 
+{/* Similar Profiles - temporarily commented out for MVP
                 <div className="space-y-6 mt-6">
                   <div className="rounded-lg border border-gray-200 bg-white">
                     <div className="p-6">
@@ -8295,7 +8222,9 @@ export default function Default() {
                     </div>
                   </div>
                 </div>
+*/}
 
+{/* Affiliated Teams - temporarily commented out for MVP
                 <div className="rounded-lg border border-gray-200 bg-white">
                   <div className="p-6">
                     <div className="flex items-center justify-between">
@@ -8494,6 +8423,7 @@ export default function Default() {
                     </div>
                   </div>
                 </div>
+*/}
               </div>
             </div>
           </div>
@@ -8509,10 +8439,22 @@ export default function Default() {
           <MyOffersDialog opened={offersOpen} onOpenedChange={setOffersOpen} />
           <MoreInfoDialog opened={jobTitleOpen} onOpenedChange={setJobTitleOpen} profile={profile} onSaved={refreshProfile} />
           <LanguagesDialog opened={languagesOpen} onOpenedChange={setLanguagesOpen} profile={profile} onSaved={refreshProfile} />
-          <IndustryExpertiseDialog opened={industriesOpen} onOpenedChange={setIndustriesOpen} profile={profile} onSaved={refreshProfile} />
-          <CertificationsDialog opened={certificationsOpen} onOpenedChange={setCertificationsOpen} profile={profile} onSaved={refreshProfile} />
-          <WorkExperienceDialog opened={workExperienceOpen} onOpenedChange={setWorkExperienceOpen} profile={profile} onSaved={refreshProfile} />
-          <EducationDialog opened={educationOpen} onOpenedChange={setEducationOpen} profile={profile} onSaved={refreshProfile} />
+          {/* IndustryExpertiseDialog hidden for MVP - pending backend support */}
+          {/* CertificationsDialog hidden for MVP - pending backend support */}
+          <WorkExperienceDialog
+            opened={workExperienceOpen}
+            onOpenedChange={(o) => { setWorkExperienceOpen(o); if (!o) setWorkExpEditIdx(undefined) }}
+            editIndex={workExpEditIdx}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
+          <EducationDialog
+            opened={educationOpen}
+            onOpenedChange={(o) => { setEducationOpen(o); if (!o) setEduEditIdx(undefined) }}
+            editIndex={eduEditIdx}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
           <AffiliatedTeamsDialog opened={affiliatedTeamsOpen} onOpenedChange={setAffiliatedTeamsOpen} />
         </>
       )}
