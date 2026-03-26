@@ -14,6 +14,7 @@
 - messaging-service – Ably real-time, message threads, history
 - notification-service – Ably push, SendGrid email, event handlers, preferences
 - contracts-service – contract groups, lifecycle (pending→active→ended/canceled/disputed), audit logging, CRON auto-cancel, RabbitMQ events
+- time-tracking-service – complete service, code review fixes, QA tested all endpoints
 
 ## In Progress
 (none currently — agents: claim your service here before starting)
@@ -36,7 +37,7 @@ These can be built immediately in parallel:
 - earnings-service → needs contracts-service ✅ + transaction-service
 - payout-service → needs earnings-service + billing-service
 - billing-service → needs checkout-service ✅ (unblocked now)
-- time-tracking-service → needs contracts-service ✅ (unblocked now)
+- time-tracking-service → ✅ DONE
 - admin-service → needs most services complete
 - affiliate-referral-service → standalone, low priority
 
