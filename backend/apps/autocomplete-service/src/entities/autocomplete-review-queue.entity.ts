@@ -18,8 +18,8 @@ export class AutocompleteReviewQueue {
   @Column()
   entryId: string;
 
-  @Column({ type: 'varchar', nullable: true })
-  reviewedBy: string | null;
+  @Column({ nullable: true })
+  reviewedBy: string;
 
   @Column({ type: 'enum', enum: ReviewAction, nullable: true })
   action: ReviewAction;

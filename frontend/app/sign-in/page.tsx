@@ -214,19 +214,11 @@ export default function SignIn() {
               <div className="mt-10 md:mt-[50px] grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={async () => {
+                  onClick={() => {
+                    // Create a dev JWT so /user/me works on refresh
                     const payload = btoa(JSON.stringify({ sub: "dev", email: "taylor.kim@example.com" }))
                     const devToken = `eyJ0eXAiOiJKV1QiLCJhbGciOiJub25lIn0.${payload}.dev`
                     Cookies.set("access_token", devToken, { path: "/" })
-                    try {
-                      const res = await UserAPI.me()
-                      const u = res?.data
-                      if (u?.id) {
-                        setUser({ ...u, role: "CLIENT", provider: "EMAIL", hasPassword: true, emailVerified: true, deletedAt: null })
-                        router.push("/client-dashboard")
-                        return
-                      }
-                    } catch {}
                     setUser({
                       id: "dev-client",
                       email: "taylor.kim@example.com",
