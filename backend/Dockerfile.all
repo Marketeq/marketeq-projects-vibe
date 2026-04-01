@@ -1,0 +1,22 @@
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+COPY shared/ ./shared/
+COPY apps/api-gateway/package*.json ./apps/api-gateway/
+COPY apps/auth-service/package*.json ./apps/auth-service/
+COPY apps/user-service/package*.json ./apps/user-service/
+COPY apps/listings-service/package*.json ./apps/listings-service/
+RUN npm install
+COPY . .
+RUN npm run build -w apps/api-gateway \
+ && npm run build -w apps/auth-service \
+ && npm run build -w apps/user-service \
+ && npm run build -w apps/listings-service
+
+FROM node:20-alpine
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/boot-all.js ./boot-all.js
+EXPOSE 10000
+CMD ["node", "boot-all.js"]
