@@ -1,0 +1,73 @@
+# render.yaml — Render Blueprint for marketeq-projects-vibe
+#
+# ONE service runs everything: gateway + auth + users + listings
+# in a single container. You pay for ONE Render service, not four.
+#
+# Deploy: Render Dashboard → New → Blueprint → connect marketeq-projects-vibe repo
+#
+# After deploy:
+#   1. Go to Environment Group "marketeq-secrets" and fill in the secrets
+#   2. Set NEXT_PUBLIC_API_URL on Vercel to the gateway URL
+#      (e.g. https://marketeq-backend.onrender.com)
+
+services:
+  - type: web
+    name: marketeq-backend
+    runtime: docker
+    repo: https://github.com/Marketeq/marketeq-projects-vibe.git
+    branch: main
+    dockerfilePath: backend/Dockerfile.all
+    dockerContext: backend
+    region: oregon
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://marketeq-mvp-live.vercel.app
+      - fromGroup: marketeq-secrets
+
+envVarGroups:
+  - name: marketeq-secrets
+    envVars:
+      # ── Database (Supabase) ──
+      - key: DATABASE_URL
+        sync: false
+      # ── JWT ──
+      - key: JWT_SECRET
+        sync: false
+      - key: AUTH_JWT_PUBLIC_KEY
+        sync: false
+      - key: AUTH_JWT_PRIVATE_KEY
+        sync: false
+      - key: AUTH_REFRESH_SECRET
+        sync: false
+      - key: AUTH_JWT_TOKEN_EXPIRES_IN
+        value: "7d"
+      - key: AUTH_REFRESH_TOKEN_EXPIRES_IN
+        value: "30d"
+      - key: INTERNAL_SERVICE_TOKEN
+        sync: false
+      # ── OAuth ──
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: LINKEDIN_CLIENT_ID
+        sync: false
+      - key: LINKEDIN_CLIENT_SECRET
+        sync: false
+      # ── Cloudflare R2 ──
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_R2_ACCESS_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_SECRET_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_BUCKET
+        value: marketeq-profile-images
+      - key: CLOUDFLARE_R2_ENDPOINT
+        sync: false
+      - key: CLOUDFLARE_PUBLIC_URL
+        value: https://pub-4789db6a57d64de3ad7b5e8c316d125b.r2.dev
