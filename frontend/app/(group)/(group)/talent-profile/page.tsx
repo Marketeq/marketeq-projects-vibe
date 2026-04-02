@@ -85,7 +85,11 @@ import {
   CarouselNextTrigger,
   CarouselPreviousTrigger,
   Dialog,
+  DialogClose,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
   DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
@@ -351,21 +355,33 @@ function Default() {
       .catch(() => {})
   }, [profile?.id])
 
-  const handleDeleteWorkExperience = useCallback(async (expId: string) => {
-    if (!profile?.id) return
-    try {
-      await UserAPI.removeExperience(profile.id, expId)
-      refreshProfile()
-    } catch { /* noop */ }
-  }, [profile?.id, refreshProfile])
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: "experience" | "education"; id: string; label: string } | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
-  const handleDeleteEducation = useCallback(async (eduId: string) => {
-    if (!profile?.id) return
+  const handleDeleteWorkExperience = useCallback((expId: string) => {
+    const exp = profile?.experience?.find((e: any) => String(e.id) === String(expId))
+    setDeleteConfirm({ type: "experience", id: expId, label: exp?.role || "this work experience" })
+  }, [profile?.experience])
+
+  const handleDeleteEducation = useCallback((eduId: string) => {
+    const edu = profile?.education?.find((e: any) => String(e.id) === String(eduId))
+    setDeleteConfirm({ type: "education", id: eduId, label: edu?.institution || "this education" })
+  }, [profile?.education])
+
+  const confirmDelete = useCallback(async () => {
+    if (!profile?.id || !deleteConfirm) return
+    setIsDeleting(true)
     try {
-      await UserAPI.removeEducation(profile.id, eduId)
+      if (deleteConfirm.type === "experience") {
+        await UserAPI.removeExperience(profile.id, deleteConfirm.id)
+      } else {
+        await UserAPI.removeEducation(profile.id, deleteConfirm.id)
+      }
       refreshProfile()
     } catch { /* noop */ }
-  }, [profile?.id, refreshProfile])
+    setIsDeleting(false)
+    setDeleteConfirm(null)
+  }, [profile?.id, deleteConfirm, refreshProfile])
 
   const [isEditMode, setIsEditMode] = useState(true)
 
@@ -8706,6 +8722,31 @@ function Default() {
             onSaved={refreshProfile}
           />
           <AffiliatedTeamsDialog opened={affiliatedTeamsOpen} onOpenedChange={setAffiliatedTeamsOpen} />
+
+          <Dialog open={!!deleteConfirm} onOpenChange={(open) => { if (!open) setDeleteConfirm(null) }}>
+            <DialogContent className="max-w-[400px]">
+              <DialogHeader>
+                <DialogTitle>Delete {deleteConfirm?.type === "experience" ? "Work Experience" : "Education"}</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to delete <strong>{deleteConfirm?.label}</strong>? This action cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="flex gap-x-3 sm:justify-end">
+                <DialogClose asChild>
+                  <Button variant="outlined" visual="gray" disabled={isDeleting}>
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button
+                  className="bg-error-500 hover:bg-error-600 text-white"
+                  onClick={confirmDelete}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </>
