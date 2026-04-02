@@ -506,9 +506,6 @@ function Default() {
   // Auto-expand state for sections
   const [autoExpandPortfolio, setAutoExpandPortfolio] = useState<boolean>(false)
   const [autoExpandSkills, setAutoExpandSkills] = useState<boolean>(false)
-  const [skillsCollapsedHeight, setSkillsCollapsedHeight] = useState<number>(0)
-  const [skillsHasOverflow, setSkillsHasOverflow] = useState(false)
-  const skillsContainerRef = useRef<HTMLDivElement>(null)
   const [autoExpandOffers, setAutoExpandOffers] = useState<boolean>(false)
   const [autoExpandWorkExperience, setAutoExpandWorkExperience] =
     useState<boolean>(false)
@@ -520,25 +517,6 @@ function Default() {
   const [activeTab, setActiveTab] = useState<string>("Portfolio")
   const [showLanguageSection, setShowLanguageSection] = useState<boolean>(true)
   const lastScrollYRef = useRef<number>(0)
-
-  // Measure 1 row of skills badges
-  useEffect(() => {
-    const el = skillsContainerRef.current
-    if (!el) return
-    const children = Array.from(el.children) as HTMLElement[]
-    if (children.length === 0) return
-    let lastTop = children[0].offsetTop
-    for (let i = 1; i < children.length; i++) {
-      const top = children[i].offsetTop
-      if (top > lastTop) {
-        // Second row starts here — collapse to 1 row
-        setSkillsCollapsedHeight(top)
-        setSkillsHasOverflow(true)
-        return
-      }
-    }
-    setSkillsHasOverflow(false)
-  }, [profile?.skills])
 
   useEffect(() => {
     const element = cardRef.current
@@ -952,48 +930,50 @@ function Default() {
                     What I do
                   </h1>
 
-                  <>
-                    <div
-                      ref={skillsContainerRef}
-                      className="mt-3 flex gap-3 overflow-hidden flex-wrap [interpolate-size:allow-keywords] transition-[height] duration-300"
-                      style={{
-                        height: autoExpandSkills
-                          ? "auto"
-                          : skillsCollapsedHeight
-                            ? `${skillsCollapsedHeight}px`
-                            : "auto",
-                      }}
-                    >
-                      {(profile?.skills && profile.skills.length > 0)
-                        ? profile.skills.map((skill) => (
+                  <div className="flex items-start mt-3 gap-x-3">
+                    <div className="flex gap-3 flex-wrap">
+                      <ShowMoreLessRoot>
+                        <ShowMoreLess
+                          trigger={(extraChildrenCount) => (
                             <Badge
-                              key={skill.id}
-                              className="text-gray-700"
+                              className="text-gray-700 cursor-pointer"
                               visual="gray"
                               size="lg"
+                              onClick={() => {
+                                setActiveTab("Skills")
+                                setTimeout(() => {
+                                  const el = document.getElementById("skills")
+                                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+                                }, 100)
+                              }}
                             >
-                              {skill.name}
+                              <Plus2 className="h-3 w-3" />{" "}
+                              {extraChildrenCount} more...
                             </Badge>
-                          ))
-                        : (
-                          <span className="text-sm text-gray-400">
-                            No skills added yet
-                          </span>
-                        )
-                      }
-                    </div>
-                    {skillsHasOverflow && (
-                      <div className="flex mt-3 items-center justify-center">
-                        <Button
-                          variant="link"
-                          visual="gray"
-                          onClick={() => setAutoExpandSkills((prev) => !prev)}
+                          )}
+                          max={5}
                         >
-                          {autoExpandSkills ? "View Less" : "View More"}
-                        </Button>
-                      </div>
-                    )}
-                  </>
+                          {(profile?.skills && profile.skills.length > 0)
+                            ? profile.skills.map((skill) => (
+                                <Badge
+                                  key={skill.id}
+                                  className="text-gray-700"
+                                  visual="gray"
+                                  size="lg"
+                                >
+                                  {skill.name}
+                                </Badge>
+                              ))
+                            : (
+                              <span className="text-sm text-gray-400">
+                                No skills added yet
+                              </span>
+                            )
+                          }
+                        </ShowMoreLess>
+                      </ShowMoreLessRoot>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
