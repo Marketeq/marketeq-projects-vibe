@@ -521,24 +521,20 @@ function Default() {
   const [showLanguageSection, setShowLanguageSection] = useState<boolean>(true)
   const lastScrollYRef = useRef<number>(0)
 
-  // Measure 3 rows of skills badges
+  // Measure 1 row of skills badges
   useEffect(() => {
     const el = skillsContainerRef.current
     if (!el) return
     const children = Array.from(el.children) as HTMLElement[]
     if (children.length === 0) return
-    let rowCount = 1
     let lastTop = children[0].offsetTop
     for (let i = 1; i < children.length; i++) {
       const top = children[i].offsetTop
       if (top > lastTop) {
-        rowCount++
-        lastTop = top
-        if (rowCount > 3) {
-          setSkillsCollapsedHeight(top)
-          setSkillsHasOverflow(true)
-          return
-        }
+        // Second row starts here — collapse to 1 row
+        setSkillsCollapsedHeight(top)
+        setSkillsHasOverflow(true)
+        return
       }
     }
     setSkillsHasOverflow(false)
