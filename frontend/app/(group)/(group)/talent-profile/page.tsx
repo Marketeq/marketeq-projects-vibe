@@ -1216,7 +1216,7 @@ function Default() {
                         }}
                       >
                         <ShowMoreLess max={3}>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] cursor-pointer">
                             <NextImage
                               className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
@@ -1269,7 +1269,7 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] cursor-pointer">
                             <NextImage
                               className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
@@ -1322,7 +1322,7 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] cursor-pointer">
                             <NextImage
                               className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
@@ -1375,7 +1375,7 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] cursor-pointer">
                             <NextImage
                               className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
@@ -1428,7 +1428,7 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] cursor-pointer">
                             <NextImage
                               className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
@@ -1481,7 +1481,7 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] cursor-pointer">
                             <NextImage
                               className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
@@ -1534,7 +1534,7 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] cursor-pointer">
                             <NextImage
                               className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
@@ -1587,7 +1587,7 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] cursor-pointer">
                             <NextImage
                               className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"

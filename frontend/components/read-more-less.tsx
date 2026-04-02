@@ -1,7 +1,6 @@
 import React from "react"
 import { cn } from "@/utils/functions"
 import { mergeRefs } from "@/utils/react-utils"
-import { motion } from "framer-motion"
 import { useToggle } from "react-use"
 import { ShowMoreLessRoot, useShowMoreLessRootContext } from "./show-more-less"
 
@@ -34,13 +33,13 @@ export const ReadMoreLess = ({
   ).join(" ")
   const [readMore, toggle] = useToggle(false)
   return (
-    <motion.div layout="position" transition={{ ease: "easeInOut", duration: 0.3 }}>
+    <div>
       {children?.({
         readMore,
         toggle,
         text: readMore ? text : truncatedTextWithEllipses,
       })}
-    </motion.div>
+    </div>
   )
 }
 
