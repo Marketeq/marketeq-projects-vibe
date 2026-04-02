@@ -34,7 +34,7 @@ export const ReadMoreLess = ({
   ).join(" ")
   const [readMore, toggle] = useToggle(false)
   return (
-    <motion.div layout transition={{ ease: "easeInOut", duration: 0.3 }}>
+    <motion.div layout="position" transition={{ ease: "easeInOut", duration: 0.3 }}>
       {children?.({
         readMore,
         toggle,
