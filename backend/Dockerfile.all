@@ -10,7 +10,8 @@ COPY apps/user-service/package*.json ./apps/user-service/
 COPY apps/listings-service/package*.json ./apps/listings-service/
 
 # Install ALL deps including devDependencies (need @nestjs/cli for build)
-RUN npm install --include=dev
+# --legacy-peer-deps needed: @nestjs/swagger@11 wants @nestjs/common@^11 but we use @10
+RUN npm install --include=dev --legacy-peer-deps
 
 # Copy full source
 COPY . .
