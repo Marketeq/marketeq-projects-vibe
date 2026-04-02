@@ -1,20 +1,11 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy all package files for workspaces
-COPY package*.json ./
-COPY shared/package*.json ./shared/
-COPY apps/api-gateway/package*.json ./apps/api-gateway/
-COPY apps/auth-service/package*.json ./apps/auth-service/
-COPY apps/user-service/package*.json ./apps/user-service/
-COPY apps/listings-service/package*.json ./apps/listings-service/
+# Copy everything (workspace structure needed for npm install + nest build)
+COPY . .
 
 # Install ALL deps including devDependencies (need @nestjs/cli for build)
-# --legacy-peer-deps needed: @nestjs/swagger@11 wants @nestjs/common@^11 but we use @10
 RUN npm install --include=dev --legacy-peer-deps
-
-# Copy full source
-COPY . .
 
 # Build all four services
 RUN npx nest build api-gateway \
@@ -22,11 +13,13 @@ RUN npx nest build api-gateway \
  && npx nest build user-service \
  && npx nest build listings-service
 
+# Prune devDependencies for smaller production image
+RUN npm prune --production --legacy-peer-deps
+
 # ── Production image ────────────────────────────────────────────────────────
 FROM node:20-alpine
 WORKDIR /app
 
-# Only copy compiled output and production deps
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/boot-all.js ./boot-all.js
