@@ -9,6 +9,7 @@ import { getComputedStyle } from "@/utils/dom-utils"
 import { cn, toPxIfNumber } from "@/utils/functions"
 import { useClickOutside } from "@/utils/hooks"
 import {
+  AlertCircle,
   ArrowRight,
   Check,
   CheckCircle,
@@ -314,44 +315,62 @@ function LineClampText({
 }) {
   const [expanded, setExpanded] = useState(false)
   const [clamped, setClamped] = useState(false)
+  const [collapsedHeight, setCollapsedHeight] = useState<number>(0)
   const textRef = useRef<HTMLParagraphElement>(null)
 
   useEffect(() => {
     const el = textRef.current
-    if (el) setClamped(el.scrollHeight > el.clientHeight)
-  }, [text])
+    if (el) {
+      setClamped(el.scrollHeight > el.clientHeight)
+      if (!expanded) setCollapsedHeight(el.clientHeight)
+    }
+  }, [text, expanded])
 
   const clampCls = lineClampClass[lines] || "line-clamp-3"
 
   if (inline) {
     return (
-      <p ref={!expanded ? textRef : undefined} className={cn(className, !expanded && clampCls)}>
-        {text}
-        {clamped && !expanded && (
-          <button
-            className="inline text-sm font-semibold text-gray-700 hover:text-gray-900 ml-1"
-            onClick={() => setExpanded(true)}
-          >
-            {expandLabel}
-          </button>
-        )}
-        {expanded && collapseLabel && (
-          <button
-            className="inline text-sm font-semibold text-gray-700 hover:text-gray-900 ml-1"
-            onClick={() => setExpanded(false)}
-          >
-            {collapseLabel}
-          </button>
-        )}
-      </p>
+      <div
+        className="overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-300"
+        style={{
+          height: expanded ? "auto" : collapsedHeight ? `${collapsedHeight}px` : "auto",
+        }}
+      >
+        <p ref={textRef} className={cn(className, !expanded && clampCls)}>
+          {text}
+          {clamped && !expanded && (
+            <button
+              className="inline text-sm font-semibold text-gray-700 hover:text-gray-900 ml-1"
+              onClick={() => setExpanded(true)}
+            >
+              {expandLabel}
+            </button>
+          )}
+          {expanded && collapseLabel && (
+            <button
+              className="inline text-sm font-semibold text-gray-700 hover:text-gray-900 ml-1"
+              onClick={() => setExpanded(false)}
+            >
+              {collapseLabel}
+            </button>
+          )}
+        </p>
+      </div>
     )
   }
 
   return (
     <>
-      <p ref={!expanded ? textRef : undefined} className={cn(className, !expanded && clampCls)}>
-        {text}
-      </p>
+      <div
+        className="overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-300"
+        style={{
+          height: expanded ? "auto" : collapsedHeight ? `${collapsedHeight}px` : "auto",
+        }}
+      >
+        <p ref={textRef} className={cn(className, !expanded && clampCls)}>
+          {text}
+        </p>
+      </div>
       {clamped && !expanded && (
         <Button className={toggleClassName} variant="link" visual="gray" onClick={() => setExpanded(true)}>
           {expandLabel}
@@ -924,7 +943,7 @@ function Default() {
                                 : "auto",
                           }}
                         >
-                          <ShowMoreLess max={5}>
+                          <ShowMoreLess max={12}>
                             {(profile?.skills && profile.skills.length > 0)
                               ? profile.skills.map((skill) => (
                                   <Badge
@@ -1319,12 +1338,12 @@ function Default() {
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
+                            <div className="p-[15px] inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
+                              <h1 className="text-sm leading-none font-medium text-white translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-100">
                                 Mobile Finance Application
                               </h1>
 
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
+                              <div className="mt-2 flex flex-wrap gap-[6.79px] translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-200">
                                 <Badge
                                   className="text-white bg-white/20"
                                   visual="gray"
@@ -1372,12 +1391,12 @@ function Default() {
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
+                            <div className="p-[15px] inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
+                              <h1 className="text-sm leading-none font-medium text-white translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-100">
                                 Mobile Finance Application
                               </h1>
 
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
+                              <div className="mt-2 flex flex-wrap gap-[6.79px] translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-200">
                                 <Badge
                                   className="text-white bg-white/20"
                                   visual="gray"
@@ -1425,12 +1444,12 @@ function Default() {
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
+                            <div className="p-[15px] inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
+                              <h1 className="text-sm leading-none font-medium text-white translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-100">
                                 Mobile Finance Application
                               </h1>
 
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
+                              <div className="mt-2 flex flex-wrap gap-[6.79px] translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-200">
                                 <Badge
                                   className="text-white bg-white/20"
                                   visual="gray"
@@ -1478,12 +1497,12 @@ function Default() {
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
+                            <div className="p-[15px] inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
+                              <h1 className="text-sm leading-none font-medium text-white translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-100">
                                 Mobile Finance Application
                               </h1>
 
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
+                              <div className="mt-2 flex flex-wrap gap-[6.79px] translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-200">
                                 <Badge
                                   className="text-white bg-white/20"
                                   visual="gray"
@@ -1531,12 +1550,12 @@ function Default() {
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
+                            <div className="p-[15px] inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
+                              <h1 className="text-sm leading-none font-medium text-white translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-100">
                                 Mobile Finance Application
                               </h1>
 
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
+                              <div className="mt-2 flex flex-wrap gap-[6.79px] translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-200">
                                 <Badge
                                   className="text-white bg-white/20"
                                   visual="gray"
@@ -1584,12 +1603,12 @@ function Default() {
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
+                            <div className="p-[15px] inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
+                              <h1 className="text-sm leading-none font-medium text-white translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-100">
                                 Mobile Finance Application
                               </h1>
 
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
+                              <div className="mt-2 flex flex-wrap gap-[6.79px] translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-200">
                                 <Badge
                                   className="text-white bg-white/20"
                                   visual="gray"
@@ -1637,12 +1656,12 @@ function Default() {
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
+                            <div className="p-[15px] inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
+                              <h1 className="text-sm leading-none font-medium text-white translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-100">
                                 Mobile Finance Application
                               </h1>
 
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
+                              <div className="mt-2 flex flex-wrap gap-[6.79px] translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-200">
                                 <Badge
                                   className="text-white bg-white/20"
                                   visual="gray"
@@ -1690,12 +1709,12 @@ function Default() {
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
+                            <div className="p-[15px] inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
+                              <h1 className="text-sm leading-none font-medium text-white translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-100">
                                 Mobile Finance Application
                               </h1>
 
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
+                              <div className="mt-2 flex flex-wrap gap-[6.79px] translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-200">
                                 <Badge
                                   className="text-white bg-white/20"
                                   visual="gray"
@@ -1856,7 +1875,7 @@ function Default() {
                       return (
                         <LineClampText
                           text={bioText}
-                          lines={4}
+                          lines={5}
                           className="mt-6 text-sm font-extralight text-gray-700 leading-relaxed"
                           toggleClassName="mt-6"
                           expandLabel="View More"
@@ -6587,7 +6606,7 @@ function Default() {
                                     : "auto",
                               }}
                             >
-                              <ShowMoreLessComp max={3}>
+                              <ShowMoreLessComp max={4}>
                                 {(profile?.experience && profile.experience.length > 0) ? profile.experience
                                   .sort((a: any, b: any) => (b.startDate || "").localeCompare(a.startDate || ""))
                                   .map((exp: any, idx: number) => {
@@ -6671,7 +6690,7 @@ function Default() {
                                       {exp.description && (
                                       <LineClampText
                                         text={exp.description}
-                                        lines={3}
+                                        lines={4}
                                         className="mt-3 text-sm leading-relaxed font-extralight text-gray-700"
                                         expandLabel="...Read More"
                                         collapseLabel=""
@@ -6688,15 +6707,17 @@ function Default() {
                               </ShowMoreLessComp>
                             </div>
 
+                            {(profile?.experience?.length ?? 0) > 4 && (
                             <div className="flex mt-6 items-center justify-center">
                               <Button
                                 variant="link"
                                 visual="gray"
                                 onClick={() => setIsShowing((prev) => !prev)}
                               >
-                                {isShowing ? "View Less" : "View More"}
+                                {isShowing ? "View Less" : `${(profile?.experience?.length ?? 0) - 4} More...`}
                               </Button>
                             </div>
+                            )}
                           </>
                         )}
                       </ShowMoreLessRoot>
@@ -7232,27 +7253,14 @@ function Default() {
                                       Best Experience with a Backend
                                       Engineer!!!!
                                     </h1>
-                                    <ReadMoreLess
-                                      max={32}
+                                    <LineClampText
                                       text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
-                                    >
-                                      {({ readMore, text, toggle }) => (
-                                        <>
-                                          <p className="text-sm leading-none mt-1 text-gray-700 font-extralight">
-                                            {text}{" "}
-                                            <Button
-                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                              size="sm"
-                                              variant="link"
-                                              visual="gray"
-                                              onClick={toggle}
-                                            >
-                                              {readMore ? null : "...Read More"}
-                                            </Button>
-                                          </p>
-                                        </>
-                                      )}
-                                    </ReadMoreLess>
+                                      lines={2}
+                                      className="text-sm leading-relaxed mt-1 text-gray-700 font-extralight"
+                                      expandLabel="...Read More"
+                                      collapseLabel=""
+                                      inline
+                                    />
 
                                     <div className="mt-3 flex items-center justify-between">
                                       <div className="items-center inline-flex gap-x-2.5">
@@ -7436,27 +7444,14 @@ function Default() {
                                       Best Experience with a Backend
                                       Engineer!!!!
                                     </h1>
-                                    <ReadMoreLess
-                                      max={32}
+                                    <LineClampText
                                       text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
-                                    >
-                                      {({ readMore, text, toggle }) => (
-                                        <>
-                                          <p className="text-sm leading-none mt-1 text-gray-700 font-extralight">
-                                            {text}{" "}
-                                            <Button
-                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                              size="sm"
-                                              variant="link"
-                                              visual="gray"
-                                              onClick={toggle}
-                                            >
-                                              {readMore ? null : "...Read More"}
-                                            </Button>
-                                          </p>
-                                        </>
-                                      )}
-                                    </ReadMoreLess>
+                                      lines={2}
+                                      className="text-sm leading-relaxed mt-1 text-gray-700 font-extralight"
+                                      expandLabel="...Read More"
+                                      collapseLabel=""
+                                      inline
+                                    />
 
                                     <div className="mt-3 flex items-center justify-between">
                                       <div className="items-center inline-flex gap-x-2.5">
@@ -7564,27 +7559,14 @@ function Default() {
                                       </div>
                                     </div>
 
-                                    <ReadMoreLess
-                                      max={32}
+                                    <LineClampText
                                       text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
-                                    >
-                                      {({ readMore, text, toggle }) => (
-                                        <>
-                                          <p className="text-sm leading-none mt-3 text-gray-700 font-extralight">
-                                            {text}{" "}
-                                            <Button
-                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                              size="sm"
-                                              variant="link"
-                                              visual="gray"
-                                              onClick={toggle}
-                                            >
-                                              {readMore ? null : "...Read More"}
-                                            </Button>
-                                          </p>
-                                        </>
-                                      )}
-                                    </ReadMoreLess>
+                                      lines={2}
+                                      className="text-sm leading-relaxed mt-3 text-gray-700 font-extralight"
+                                      expandLabel="...Read More"
+                                      collapseLabel=""
+                                      inline
+                                    />
 
                                     <div className="mt-3 flex items-center justify-between">
                                       <div className="items-center inline-flex gap-x-2.5">
@@ -7708,27 +7690,14 @@ function Default() {
                                       Best Experience with a Backend
                                       Engineer!!!!
                                     </h1>
-                                    <ReadMoreLess
-                                      max={32}
+                                    <LineClampText
                                       text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
-                                    >
-                                      {({ readMore, text, toggle }) => (
-                                        <>
-                                          <p className="text-sm leading-none mt-1 text-gray-700 font-extralight">
-                                            {text}{" "}
-                                            <Button
-                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                              size="sm"
-                                              variant="link"
-                                              visual="gray"
-                                              onClick={toggle}
-                                            >
-                                              {readMore ? null : "...Read More"}
-                                            </Button>
-                                          </p>
-                                        </>
-                                      )}
-                                    </ReadMoreLess>
+                                      lines={2}
+                                      className="text-sm leading-relaxed mt-1 text-gray-700 font-extralight"
+                                      expandLabel="...Read More"
+                                      collapseLabel=""
+                                      inline
+                                    />
 
                                     <div className="mt-3 flex items-center justify-between">
                                       <div className="items-center inline-flex gap-x-2.5">
@@ -7912,27 +7881,14 @@ function Default() {
                                       Best Experience with a Backend
                                       Engineer!!!!
                                     </h1>
-                                    <ReadMoreLess
-                                      max={32}
+                                    <LineClampText
                                       text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
-                                    >
-                                      {({ readMore, text, toggle }) => (
-                                        <>
-                                          <p className="text-sm leading-none mt-1 text-gray-700 font-extralight">
-                                            {text}{" "}
-                                            <Button
-                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                              size="sm"
-                                              variant="link"
-                                              visual="gray"
-                                              onClick={toggle}
-                                            >
-                                              {readMore ? null : "...Read More"}
-                                            </Button>
-                                          </p>
-                                        </>
-                                      )}
-                                    </ReadMoreLess>
+                                      lines={2}
+                                      className="text-sm leading-relaxed mt-1 text-gray-700 font-extralight"
+                                      expandLabel="...Read More"
+                                      collapseLabel=""
+                                      inline
+                                    />
 
                                     <div className="mt-3 flex items-center justify-between">
                                       <div className="items-center inline-flex gap-x-2.5">
@@ -8771,25 +8727,28 @@ function Default() {
           <AffiliatedTeamsDialog opened={affiliatedTeamsOpen} onOpenedChange={setAffiliatedTeamsOpen} />
 
           <Dialog open={!!deleteConfirm} onOpenChange={(open) => { if (!open) setDeleteConfirm(null) }}>
-            <DialogContent className="max-w-[400px]">
+            <DialogContent>
               <DialogHeader>
-                <DialogTitle>Delete {deleteConfirm?.type === "experience" ? "Work Experience" : "Education"}</DialogTitle>
-                <DialogDescription>
-                  Are you sure you want to delete <strong>{deleteConfirm?.label}</strong>? This action cannot be undone.
-                </DialogDescription>
+                <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full border-8 border-error-50 bg-error-100">
+                  <AlertCircle className="h-4 w-4 text-error-600" />
+                </div>
+
+                <div className="flex flex-col gap-y-2">
+                  <DialogTitle>Delete {deleteConfirm?.type === "experience" ? "Work Experience" : "Education"}?</DialogTitle>
+                  <DialogDescription>
+                    Are you sure you want to delete <strong>{deleteConfirm?.label}</strong>? This action cannot be undone.
+                  </DialogDescription>
+                </div>
               </DialogHeader>
-              <DialogFooter className="flex gap-x-3 sm:justify-end">
+
+              <DialogFooter className="mt-8">
                 <DialogClose asChild>
                   <Button variant="outlined" visual="gray" disabled={isDeleting}>
                     Cancel
                   </Button>
                 </DialogClose>
-                <Button
-                  className="bg-error-500 hover:bg-error-600 text-white"
-                  onClick={confirmDelete}
-                  disabled={isDeleting}
-                >
-                  {isDeleting ? "Deleting..." : "Delete"}
+                <Button visual="error" onClick={confirmDelete} disabled={isDeleting}>
+                  {isDeleting ? "Deleting..." : "Yes, delete"}
                 </Button>
               </DialogFooter>
             </DialogContent>
