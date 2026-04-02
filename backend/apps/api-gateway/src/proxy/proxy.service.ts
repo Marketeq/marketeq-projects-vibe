@@ -3,7 +3,7 @@ import { HttpService } from '@nestjs/axios'
 import { ConfigService } from '@nestjs/config'
 import { Request, Response } from 'express'
 import { firstValueFrom } from 'rxjs'
-import { AxiosRequestConfig, AxiosError } from 'axios'
+import { AxiosRequestConfig, AxiosError, AxiosResponse } from 'axios'
 
 @Injectable()
 export class ProxyService {
@@ -74,7 +74,7 @@ export class ProxyService {
     }
 
     try {
-      const response = await firstValueFrom(this.http.request(config))
+      const response: AxiosResponse = await firstValueFrom(this.http.request(config))
       res.status(response.status)
       Object.entries(response.headers).forEach(([k, v]) => {
         if (k !== 'transfer-encoding') res.setHeader(k, v as string)
