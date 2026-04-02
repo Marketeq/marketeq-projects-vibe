@@ -2210,12 +2210,6 @@ function Default() {
                                       </Tooltip>
                                     </TooltipProvider>
 
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        4.8k interested
-                                      </span>
-                                    </div>
                                   </div>
                                 </article>
 
@@ -2347,13 +2341,6 @@ function Default() {
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        3.2k interested
-                                      </span>
-                                    </div>
                                   </div>
                                 </article>
 
@@ -2485,13 +2472,6 @@ function Default() {
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        2.1k interested
-                                      </span>
-                                    </div>
                                   </div>
                                 </article>
                               </ShowMoreLessComp>
@@ -2660,13 +2640,6 @@ function Default() {
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        3.8k interested
-                                      </span>
-                                    </div>
                                   </div>
                                 </article>
 
@@ -2798,13 +2771,6 @@ function Default() {
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        2.9k interested
-                                      </span>
-                                    </div>
                                   </div>
                                 </article>
 
@@ -2936,13 +2902,6 @@ function Default() {
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        4.5k interested
-                                      </span>
-                                    </div>
                                   </div>
                                 </article>
                               </ShowMoreLessComp>
@@ -3111,13 +3070,6 @@ function Default() {
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        3.2k interested
-                                      </span>
-                                    </div>
                                   </div>
                                 </article>
 
@@ -3249,13 +3201,6 @@ function Default() {
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        2.7k interested
-                                      </span>
-                                    </div>
                                   </div>
                                 </article>
 
@@ -3387,13 +3332,6 @@ function Default() {
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        1.8k interested
-                                      </span>
-                                    </div>
                                   </div>
                                 </article>
                               </ShowMoreLessComp>
