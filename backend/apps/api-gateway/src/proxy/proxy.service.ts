@@ -76,8 +76,9 @@ export class ProxyService {
     try {
       const response: AxiosResponse = await firstValueFrom(this.http.request(config))
       res.status(response.status)
+      const skipHeaders = new Set(['transfer-encoding', 'access-control-allow-origin', 'access-control-allow-credentials', 'access-control-allow-methods', 'access-control-allow-headers', 'access-control-expose-headers', 'access-control-max-age'])
       Object.entries(response.headers).forEach(([k, v]) => {
-        if (k !== 'transfer-encoding') res.setHeader(k, v as string)
+        if (!skipHeaders.has(k)) res.setHeader(k, v as string)
       })
       response.data.pipe(res)
     } catch (err) {
