@@ -18,6 +18,8 @@ import { ModerationController } from './moderation.controller';
         url: config.get<string>('DATABASE_URL'),
         entities: [ModerationLog, BannedKeyword],
         synchronize: config.get('NODE_ENV') !== 'production',
+        migrationsRun: true,
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
         ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
       }),
     }),

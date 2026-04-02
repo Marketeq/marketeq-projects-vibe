@@ -3,7 +3,14 @@
 import * as React from "react"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { extractIdFromSlug } from "@/src/lib/urlHelpers"
+import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
+import {
+  addFavorite,
+  findFavoriteByItemId,
+  getAllFavorites,
+  removeFavorite,
+} from "@/src/lib/api/favorites"
+import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -85,6 +92,9 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
   DisclosureContent,
   DisclosureTrigger,
@@ -453,36 +463,76 @@ export default function ProjectDetails() {
   const [loading, setLoading] = React.useState(true)
   const [selected, setSelected] = React.useState<string>("Details")
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
+  const [isFavorited, setIsFavorited] = React.useState(false)
+
+  // Check if this item is already favorited (ensure dev auth first)
+  React.useEffect(() => {
+    if (!project?.id) return
+    ensureDevAuth().then(() =>
+      findFavoriteByItemId(String(project.id)).then((fav) => {
+        setIsFavorited(!!fav)
+      })
+    )
+  }, [project?.id])
+
+  const handleFavoriteToggle = async (pressed: boolean) => {
+    setIsFavorited(pressed)
+    const itemId = String(project.id)
+    const type = project.listingType === "service" ? "service" : "project"
+    if (pressed) {
+      await addFavorite({ type, itemId })
+    } else {
+      const fav = await findFavoriteByItemId(itemId)
+      if (fav) await removeFavorite(fav.id)
+    }
+  }
 
   React.useEffect(() => {
     async function fetchProject() {
       try {
-        const slug = params.slug as string
-        const projectId = slug.split("-").pop() // Extract ID from slug
+        const rawSlug = params.slug as string
+        // Extract the slug portion (everything before the last `-shortId` segment)
+        const parts = rawSlug.split("-")
+        const slug = parts.slice(0, -1).join("-")
 
-        // Fetch from category page
+        // Try fetching from listings-service via gateway
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
         const res = await fetch(
-          `http://localhost:3002/api/category-pages/creative`
+          `${apiBase}/v1/projects/slug/${slug}`
         )
-        const data = await res.json()
-
-        // Find project in blocks
-        const projectsBlock = data.blocks?.find(
-          (b: any) => b.entity === "projects"
-        )
-        const foundProject = projectsBlock?.items?.find(
-          (p: any) => p.id === parseInt(projectId || "0")
-        )
-
-        if (!foundProject) {
-          router.push("/404")
+        if (!res.ok) {
+          // Try as a service
+          const svcRes = await fetch(
+            `${apiBase}/v1/services/slug/${slug}`
+          )
+          if (!svcRes.ok) {
+            router.push("/")
+            return
+          }
+          const svcData = await svcRes.json()
+          setProject({
+            ...svcData,
+            role: svcData.category || "Service",
+            summary: svcData.description,
+            rating: 4.9,
+            reviewCount: 14,
+            listingType: "service",
+          })
+          setLoading(false)
           return
         }
-
-        setProject(foundProject)
+        const data = await res.json()
+        setProject({
+          ...data,
+          role: data.category || "Software Development",
+          summary: data.description,
+          rating: 4.9,
+          reviewCount: 14,
+          listingType: "project",
+        })
       } catch (err) {
         console.error(err)
-        router.push("/404")
+        router.push("/")
       } finally {
         setLoading(false)
       }
@@ -490,6 +540,11 @@ export default function ProjectDetails() {
 
     fetchProject()
   }, [params.slug, router])
+
+  // Scroll to top when page loads
+  React.useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [])
 
   if (loading) {
     return (
@@ -510,41 +565,54 @@ export default function ProjectDetails() {
               <div className="absolute w-screen -translate-x-[100px] top-0 bottom-px bg-gray-50" />
 
               <div className="flex items-center gap-x-2 relative">
-                <Home03 className="size-[18px] text-gray-500/50 cursor-pointer hover:text-gray-500" />
+                <NextLink href="/">
+                  <Home03 className="size-[18px] text-gray-500/50 cursor-pointer hover:text-gray-500" />
+                </NextLink>
 
-                <div className="inline-flex items-center gap-x-2">
-                  <span className="text-xs leading-6 text-gray-500/50 font-semibold">
-                    /
-                  </span>
-                  <span className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300">
-                    Software Development
-                  </span>
-                </div>
-
-                <div className="inline-flex items-center gap-x-2">
-                  <span className="text-xs leading-6 text-gray-500/50 font-semibold">
-                    /
-                  </span>
-                  <span className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300">
-                    {project.role}
-                  </span>
-                </div>
-
-                <div className="inline-flex items-center gap-x-2">
-                  <span className="text-xs leading-6 text-gray-500/50 font-semibold">
-                    /
-                  </span>
-                  <span className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300">
-                    iOS Development
-                  </span>
-                </div>
+                {(() => {
+                  const cats = project.categories || [];
+                  const l1 = cats[0] || project.category || "Software Development";
+                  const l1Slug = l1.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/&/g, "and");
+                  const l2 = cats[1];
+                  const l2Slug = l2 ? l2.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/&/g, "and") : null;
+                  return (
+                    <>
+                      <div className="inline-flex items-center gap-x-2">
+                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">/</span>
+                        <NextLink href={`/c/${l1Slug}`} className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300">
+                          {l1}
+                        </NextLink>
+                      </div>
+                      {l2 && (
+                        <div className="inline-flex items-center gap-x-2">
+                          <span className="text-xs leading-6 text-gray-500/50 font-semibold">/</span>
+                          <NextLink href={`/c/${l1Slug}/${l2Slug}`} className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300">
+                            {l2}
+                          </NextLink>
+                        </div>
+                      )}
+                      <div className="inline-flex items-center gap-x-2">
+                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">/</span>
+                        <NextLink href={`/c/${l1Slug}/${l2Slug || (project.listingType === "service" ? "services" : "projects")}`} className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300">
+                          {project.listingType === "service" ? "Services" : "Projects"}
+                        </NextLink>
+                      </div>
+                      <div className="inline-flex items-center gap-x-2">
+                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">/</span>
+                        <span className="text-xs leading-6 text-gray-500 font-semibold">
+                          {project.title}
+                        </span>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="flex gap-x-[13px] items-start mt-8 relative">
                 <div className="w-[189px] h-[126px] relative overflow-hidden rounded-lg">
                   <NextImage
-                    src="/dashboard.png"
-                    alt="Dashboard"
+                    src={project.mediaUrls?.[0] || "/dashboard.png"}
+                    alt={project.title}
                     sizes="25vw"
                     fill
                   />
@@ -552,7 +620,7 @@ export default function ProjectDetails() {
 
                 <div className="flex flex-col items-start gap-y-3">
                   <Badge className="rounded-[5px]" visual="gray">
-                    Mobile Application
+                    {project.listingType === "service" ? "Service" : "Project"}
                   </Badge>
                   <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
                     {project.title}
@@ -595,15 +663,23 @@ export default function ProjectDetails() {
                   </div>
 
                   <div className="flex items-center gap-x-3">
-                    <Button variant="link" visual="gray">
-                      Software Development
-                    </Button>
-                    <Button variant="link" visual="gray">
-                      Mobile Applications
-                    </Button>
-                    <Button variant="link" visual="gray">
-                      IOS Development
-                    </Button>
+                    {(project.categories || []).map((cat: string, idx: number) => {
+                      const catSlug = cat.toLowerCase().replace(/&/g, "and").replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+                      const cats = project.categories || []
+                      const l1Slug = (cats[0] || "").toLowerCase().replace(/&/g, "and").replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+                      // L1 → /c/l1, L2 → /c/l1/l2, L3 → /c/l1/l2/l3
+                      let href = `/c/${l1Slug}`
+                      if (idx === 1) href = `/c/${l1Slug}/${catSlug}`
+                      if (idx === 2) {
+                        const l2Slug = (cats[1] || "").toLowerCase().replace(/&/g, "and").replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+                        href = `/c/${l1Slug}/${l2Slug}/${catSlug}`
+                      }
+                      return (
+                        <NextLink key={cat} href={href} className="text-sm font-semibold text-gray-500 hover:text-dark-blue-400 hover:underline transition duration-300">
+                          {cat}
+                        </NextLink>
+                      )
+                    })}
                   </div>
                 </div>
               </div>
@@ -653,7 +729,7 @@ export default function ProjectDetails() {
                 <Button className="group" variant="link" visual="gray">
                   {selected === "View Project Scope"
                     ? "Close Scope"
-                    : "View Project Scope"}
+                    : project?.listingType === "service" ? "View Service Scope" : "View Project Scope"}
                   <ChevronDown className="group-data-[state=active]:-rotate-180 transition duration-300 size-[15px]" />
                 </Button>
               </DisclosureTrigger>
@@ -4356,7 +4432,7 @@ export default function ProjectDetails() {
                   </div>
                 </div>
 
-                <FavoriteRoot>
+                <FavoriteRoot value={isFavorited} onValueChange={handleFavoriteToggle}>
                   {({ pressed }) => (
                     <TooltipProvider delayDuration={75}>
                       <Tooltip>
@@ -4589,13 +4665,34 @@ export default function ProjectDetails() {
                 </div>
               </div>
 
-              <Button
-                size="lg"
-                className="mt-6 w-full border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white"
-                variant="outlined"
-              >
-                Start Project
-              </Button>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    size="lg"
+                    className="mt-6 w-full border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white"
+                    variant="outlined"
+                  >
+                    Start Project
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>
+                      Would you like to customize the project scope before checkout?
+                    </DialogTitle>
+                  </DialogHeader>
+                  <DialogFooter className="mt-8">
+                    <DialogClose asChild>
+                      <Button variant="outlined" visual="gray">
+                        Edit Scope
+                      </Button>
+                    </DialogClose>
+                    <Button onClick={() => router.push(`/checkout/${params.slug}`)}>
+                      Continue to Checkout
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
               <div className="flex items-center gap-x-1 mt-6">
                 <span className="text-sm font-medium leading-none text-dark-blue-400">

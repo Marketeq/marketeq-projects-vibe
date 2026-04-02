@@ -60,20 +60,54 @@ export class UserService {
   }
 
   async findAll(limit = 50, offset = 0): Promise<User[]> {
-    return this.userRepo.find({
-      relations: ['skills', 'languages', 'certifications', 'industries'],
+    const users = await this.userRepo.find({
       take: limit,
       skip: offset,
       order: { createdAt: 'DESC' },
     });
+    if (!users.length) return users;
+
+    // Load relations in parallel per user to avoid Cartesian product
+    const userIds = users.map(u => u.id);
+    const [skills, languages, certifications, industries] = await Promise.all([
+      this.skillRepo.createQueryBuilder('s').where('s.userId IN (:...ids)', { ids: userIds }).getMany(),
+      this.languageRepo.createQueryBuilder('l').where('l.userId IN (:...ids)', { ids: userIds }).getMany(),
+      this.certRepo.createQueryBuilder('c').where('c.userId IN (:...ids)', { ids: userIds }).getMany(),
+      this.industryRepo.createQueryBuilder('i').where('i.userId IN (:...ids)', { ids: userIds }).getMany(),
+    ]);
+
+    for (const user of users) {
+      user.skills = skills.filter(s => s.userId === user.id);
+      user.languages = languages.filter(l => l.userId === user.id);
+      user.certifications = certifications.filter(c => c.userId === user.id);
+      user.industries = industries.filter(i => i.userId === user.id);
+    }
+
+    return users;
   }
 
   async findById(id: string): Promise<User> {
-    const user = await this.userRepo.findOne({
-      where: { id },
-      relations: ['education', 'experience', 'skills', 'languages', 'certifications', 'industries'],
-    });
+    const user = await this.userRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
+
+    // Load relations in parallel — separate small queries avoid the massive
+    // Cartesian product that JOINs create (40 skills × 8 exp × 3 edu = 26K+ rows)
+    const [education, experience, skills, languages, certifications, industries] = await Promise.all([
+      this.educationRepo.find({ where: { userId: id } }),
+      this.experienceRepo.find({ where: { userId: id } }),
+      this.skillRepo.find({ where: { userId: id } }),
+      this.languageRepo.find({ where: { userId: id } }),
+      this.certRepo.find({ where: { userId: id } }),
+      this.industryRepo.find({ where: { userId: id } }),
+    ]);
+
+    user.education = education;
+    user.experience = experience;
+    user.skills = skills;
+    user.languages = languages;
+    user.certifications = certifications;
+    user.industries = industries;
+
     return this.enrichWithLogos(user);
   }
 
@@ -82,11 +116,25 @@ export class UserService {
   }
 
   async findByUsername(username: string): Promise<User> {
-    const user = await this.userRepo.findOne({
-      where: { username },
-      relations: ['education', 'experience', 'skills', 'languages', 'certifications', 'industries'],
-    });
+    const user = await this.userRepo.findOne({ where: { username } });
     if (!user) throw new NotFoundException('User not found');
+
+    const [education, experience, skills, languages, certifications, industries] = await Promise.all([
+      this.educationRepo.find({ where: { userId: user.id } }),
+      this.experienceRepo.find({ where: { userId: user.id } }),
+      this.skillRepo.find({ where: { userId: user.id } }),
+      this.languageRepo.find({ where: { userId: user.id } }),
+      this.certRepo.find({ where: { userId: user.id } }),
+      this.industryRepo.find({ where: { userId: user.id } }),
+    ]);
+
+    user.education = education;
+    user.experience = experience;
+    user.skills = skills;
+    user.languages = languages;
+    user.certifications = certifications;
+    user.industries = industries;
+
     return this.enrichWithLogos(user);
   }
 

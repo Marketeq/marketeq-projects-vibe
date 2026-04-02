@@ -1,0 +1,28 @@
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Copy everything (workspace structure needed for npm install + nest build)
+COPY . .
+
+# Install ALL deps including devDependencies (need @nestjs/cli for build)
+RUN npm install --include=dev --legacy-peer-deps
+
+# Build all four services
+RUN npx nest build api-gateway \
+ && npx nest build auth-service \
+ && npx nest build user-service \
+ && npx nest build listings-service
+
+# Prune devDependencies for smaller production image
+RUN npm prune --production --legacy-peer-deps
+
+# ── Production image ────────────────────────────────────────────────────────
+FROM node:20-alpine
+WORKDIR /app
+
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/boot-all.js ./boot-all.js
+
+EXPOSE 10000
+CMD ["node", "boot-all.js"]

@@ -9,7 +9,10 @@ import {
   Bell,
   ChevronDown,
   CoinStack,
+  FileCheck02,
+  LayoutGrid02,
   LifeBuoy,
+  List,
   LogOut,
   Monitor,
   Plus,
@@ -17,6 +20,7 @@ import {
   SearchMd,
   Settings,
   Star,
+  User,
   Users,
   X,
 } from "@blend-metrics/icons"
@@ -58,6 +62,7 @@ import {
 import { ScrollBar } from "@/components/ui"
 
 const Notifications = () => {
+  const router = useRouter()
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -252,7 +257,7 @@ const Notifications = () => {
             </div>
 
             <div className="py-3.5 grid">
-              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium">
+              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/notifications")}>
                 View All
               </button>
             </div>
@@ -388,7 +393,7 @@ const Notifications = () => {
               </ScrollArea>
             </div>
             <div className="py-3.5 grid">
-              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium">
+              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/inbox")}>
                 View All
               </button>
             </div>
@@ -447,22 +452,7 @@ const suggestions = [
   { id: 6, value: "Magento development" },
 ]
 
-interface Person {
-  name: string
-}
-
-type People = Person[]
-
-const people: People = [
-  { name: "Wade Cooper" },
-  { name: "Arlene Mccoy" },
-  { name: "Devon Webb" },
-  { name: "Tom Cook" },
-  { name: "Tanya Fox" },
-  { name: "Hellen Schmidt" },
-  { name: "Hellen Walker" },
-  { name: "Hellen Waller" },
-]
+const listingTypes = ["Projects", "Services", "Teams", "Talent"]
 
 const SearchBar = () => {
   const [state, setState] = useState<string>()
@@ -472,6 +462,16 @@ const SearchBar = () => {
     icon?: React.JSXElementConstructor<any>
   }>()
   const [query, setQuery] = React.useState("")
+
+  const searchPlaceholder = (() => {
+    switch (state) {
+      case "Projects": return "Search by skills or project type"
+      case "Services": return "Search by skills or service type"
+      case "Teams": return "Search by skills or team type"
+      case "Talent": return "Search by skills or expertise"
+      default: return "Search by skills or keyword"
+    }
+  })()
 
   const filteredSuggestions =
     query === ""
@@ -494,7 +494,7 @@ const SearchBar = () => {
         <div className="flex items-center gap-x-2 flex-auto">
           <SearchMd className="size-4 shrink-0 text-gray-400" />
           <ComboboxInput
-            placeholder="Search by skills or project type"
+            placeholder={searchPlaceholder}
             className="p-0 border-0 text-xs leading-5 h-auto rounded-none hover:ring-0 hover:border-gray-300 focus:ring-0 focus:border-gray-300 ui-open:rounded-b-none"
             size="lg"
             displayValue={(value: {
@@ -509,13 +509,13 @@ const SearchBar = () => {
         <Listbox className="w-auto" value={state} onChange={setState}>
           <ListboxButton
             className="p-0 border-0 text-[11px] leading-[16.67px] lg:text-sm lg:leading-5 font-semibold gap-x-[6.67px] lg:gap-x-1.5 w-auto h-auto rounded-none hover:ring-0 focus:ring-0"
-            placeholder="Category"
+            placeholder="View All"
             iconClassName="size-[12.5px]"
           />
           <ListboxOptions className="w-max -right-3 left-auto mt-3.5">
-            {people.map((person) => (
-              <ListboxOption key={person.name} value={person.name}>
-                {person.name}
+            {listingTypes.map((type) => (
+              <ListboxOption key={type} value={type}>
+                {type}
               </ListboxOption>
             ))}
           </ListboxOptions>
@@ -566,24 +566,47 @@ const SearchBar = () => {
 
 const PATHNAMES = ["/talent-dashboard", "/client-dashboard", "/talent-profile"]
 
+// Pages that have a secondary nav bar below the primary nav — shadow should only appear on the secondary nav, not the primary
+const HAS_SECONDARY_NAV = ["/", "/talent-profile", "/my-team", "/favorite-projects", "/favorite-talent", "/browser-history", "/search", "/talent-search"]
+
 const ONBOARDING = "/onboarding"
 
-export const TopMostHeader = () => {
+export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) => {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = React.useState(false)
+  const [secondaryNavHidden, setSecondaryNavHidden] = React.useState(false)
 
   const router = useRouter()
   const { logoutHandler, user } = useAuth()
+
+  const hasSecondaryNav = HAS_SECONDARY_NAV.includes(pathname) || pathname.startsWith("/c/") || pathname.startsWith("/project-details/")
+
+  // Listen for secondary nav visibility changes
+  React.useEffect(() => {
+    if (!hasSecondaryNav) return
+    const observer = new MutationObserver(() => {
+      const val = document.documentElement.dataset.secondaryNav
+      setSecondaryNavHidden(val === "hidden")
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-secondary-nav"] })
+    return () => observer.disconnect()
+  }, [hasSecondaryNav])
 
   if (pathname.startsWith(ONBOARDING)) {
     return null
   }
 
+  // Show shadow: always on pages without secondary nav, or when secondary nav is hidden (scrolled away)
+  const showNavShadow = !hasSecondaryNav || secondaryNavHidden
+
   return (
     <div
       className={cn(
-        "px-3.5 md:px-6 lg:px-[50px] relative bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5",
-        PATHNAMES.includes(pathname) && "md:max-lg:pb-2.5 sticky top-0 z-50"
+        "px-3.5 md:px-6 lg:px-[50px] relative bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 sticky top-0 z-50",
+        showNavShadow
+          ? "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]"
+          : "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] md:shadow-none",
+        PATHNAMES.includes(pathname) && "md:max-lg:pb-2.5"
       )}
     >
       <div className="flex items-center justify-between md:gap-x-3 lg:gap-x-[50px] md:pt-2 md:pb-1 lg:py-3">
@@ -647,21 +670,14 @@ export const TopMostHeader = () => {
               <div className="inline-flex items-center gap-x-2">
                 <Avatar>
                   <AvatarImage
-                    src={
-                      user?.avatarUrl
-                        ? user?.avatarUrl?.startsWith("https://") ||
-                          user?.avatarUrl?.startsWith("http://")
-                          ? user?.avatarUrl
-                          : `${process?.env?.NEXT_PUBLIC_API_URL}/${user?.avatarUrl}`
-                        : ""
-                    }
-                    alt="Man"
+                    src={user?.avatarUrl ?? ""}
+                    alt={user?.firstName ?? "User"}
                   />
                   <AvatarFallback>
                     {user?.firstName?.[0]?.toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex flex-col">
+                <div className="flex flex-col text-left">
                   <span className="text-xs font-semibold leading-[15px] text-gray-700">
                     {user?.firstName || ""} {user?.lastName || ""}
                   </span>
@@ -685,18 +701,26 @@ export const TopMostHeader = () => {
                     </span>
                   </div>
 
-                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push(user?.role === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>My Account</Button>
+                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>My Account</Button>
                 </div>
               </DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => router.push("/publish-project")}>
-                <Monitor className="size-4" />
-                My Projects
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <BarChart2 className="size-4" />
-                My Campaigns
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/talent-profile")}>
+                <User className="size-4" />
+                My Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard")}>
+                <LayoutGrid02 className="size-4" />
+                My Dashboard
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/my-listings")}>
+                <List className="size-4" />
+                My Listings
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/my-contracts")}>
+                <FileCheck02 className="size-4" />
+                My Contracts
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push("/my-team")}>
                 <Users className="size-4" />
                 My Team
@@ -705,13 +729,21 @@ export const TopMostHeader = () => {
                 <Star className="size-4" />
                 My Favorites
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setMenuOpen(false); router.push("/billing") }}>
                 <CoinStack className="size-4" />
                 Billing
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setMenuOpen(false); router.push("/settings") }}>
                 <Settings className="size-4" />
                 Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => {
+                setMenuOpen(false)
+                router.push(user?.accountType === "TALENT" ? "/onboarding/client" : "/onboarding/talent")
+              }}>
+                <Repeat className="size-4" />
+                {user?.accountType === "TALENT" ? "Switch to Client" : "Switch to Talent"}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <div className="grid grid-cols-2 gap-x-[9px]">

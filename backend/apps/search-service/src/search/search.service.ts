@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { ConfigService } from '@nestjs/config'
 import { firstValueFrom } from 'rxjs'
@@ -7,6 +7,8 @@ import { SearchDto, SearchCategory } from '../dto/search.dto'
 
 @Injectable()
 export class SearchService {
+  private readonly logger = new Logger(SearchService.name)
+
   constructor(
     private readonly algolia: AlgoliaClient,
     private readonly http: HttpService,
@@ -64,7 +66,8 @@ export class SearchService {
         this.http.post(`${mlUrl}/rerank`, { query, results: hits }),
       )
       return { ...results, hits: data.reranked }
-    } catch {
+    } catch (error) {
+      this.logger.warn(`ML rerank failed for query "${query}": ${error instanceof Error ? error.message : String(error)}`)
       return results
     }
   }

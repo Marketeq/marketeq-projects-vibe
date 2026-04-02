@@ -75,6 +75,7 @@ import {
   EditableRoot,
 } from "@/components/ui"
 import { useAuth } from "@/contexts/auth"
+import { UserAPI } from "@/service/http/user"
 
 
 export const MoneyDollarCircleFill = ({
@@ -162,7 +163,7 @@ export const LeftSidebar = () => {
         <div className="flex flex-col gap-y-1">
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/talent-dashboard"
+            href="/"
           >
             <Home03 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Home
@@ -176,10 +177,10 @@ export const LeftSidebar = () => {
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/publish-project"
+            href="/my-listings"
           >
             <Briefcase className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            My Projects
+            My Listings
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
@@ -223,7 +224,7 @@ export const LeftSidebar = () => {
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="#"
+            href="/notifications"
           >
             <AlertCircle className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Notifications
@@ -233,7 +234,7 @@ export const LeftSidebar = () => {
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="#"
+            href="/settings"
           >
             <Settings02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Settings
@@ -1284,45 +1285,139 @@ export const RecentProjects = () => {
   )
 }
 
+const GETTING_STARTED_STEPS = [
+  {
+    title: "Complete Your Profile",
+    description:
+      "Add your bio, skills, work experience, education, and set your hourly rate. Clients are 4x more likely to hire talent with completed profiles.",
+    cta: "Complete Profile",
+    href: "/complete-profile",
+    time: "10 min",
+  },
+  {
+    title: "Build Your Portfolio",
+    description:
+      "Showcase your best work with case studies using the built-in editor. Add images, descriptions, and results to prove your expertise.",
+    cta: "Add Case Study",
+    href: "/talent-profile",
+    time: "15 min",
+  },
+  {
+    title: "Set Up Payments",
+    description:
+      "Connect a payout method so you're ready to get paid when contracts come in. Choose from bank transfer, PayPal, Wise, Payoneer, or crypto.",
+    cta: "Set Up Payments",
+    href: "#",
+    time: "3 min",
+  },
+  {
+    title: "Create Your Own Projects",
+    description:
+      "Turn your skills into profitable projects. Stand out by offering unique services that clients can purchase directly from you.",
+    cta: "Create a Project",
+    href: "/publish-project",
+    time: "5 min",
+  },
+  {
+    title: "Find & Apply to Jobs",
+    description:
+      "Browse the marketplace for projects that match your skills. Use search filters to find the right opportunities and start landing clients.",
+    cta: "Browse Jobs",
+    href: "/search",
+    time: "5 min",
+  },
+]
+
 export const CreateYourOwnProject = () => {
+  const { user } = useAuth()
+  const totalSteps = GETTING_STARTED_STEPS.length
+
+  // Read persisted step from user; null means dismissed
+  const savedStep = user?.gettingStartedStep
+  const [currentStep, setCurrentStep] = React.useState(
+    savedStep != null ? savedStep : 0
+  )
+  const [dismissed, setDismissed] = React.useState(
+    savedStep != null && savedStep >= totalSteps
+  )
+
+  // Sync when user data loads
+  React.useEffect(() => {
+    if (savedStep != null) {
+      if (savedStep >= totalSteps) {
+        setDismissed(true)
+      } else {
+        setCurrentStep(savedStep)
+      }
+    }
+  }, [savedStep, totalSteps])
+
+  const persistStep = React.useCallback(
+    (nextStep: number) => {
+      if (!user?.id) return
+      UserAPI.updateProfile(user.id, { gettingStartedStep: nextStep }).catch(
+        () => {}
+      )
+    },
+    [user?.id]
+  )
+
+  const handleSkip = () => {
+    if (currentStep < totalSteps - 1) {
+      const next = currentStep + 1
+      setCurrentStep(next)
+      persistStep(next)
+    } else {
+      setDismissed(true)
+      persistStep(totalSteps)
+    }
+  }
+
+  if (dismissed) return null
+
+  const step = GETTING_STARTED_STEPS[currentStep]
+  const progressValue = ((currentStep + 1) / totalSteps) * 100
+
   return (
     <div className="bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] border rounded-lg border-gray-200 p-5 flex flex-col-reverse md:grid md:grid-cols-2 gap-5 min-[1024px]:gap-x-[100px]">
       <div>
         <div className="space-y-6">
           <h1 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
-            Step 1/5
+            Step {currentStep + 1}/{totalSteps}
           </h1>
 
-          <Progress value={20} />
+          <Progress value={progressValue} />
 
           <div>
             <h3 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
-              Create Your Own Projects
+              {step.title}
             </h3>
             <p className="text-sm leading-[16.94px] mt-3 text-dark-blue-400">
-              Turn your skills into profitable projects. Stand out by offering
-              unique services that clients can purchase directly from you.
+              {step.description}
             </p>
           </div>
         </div>
 
         <div className="mt-5 min-[1024px]:mt-[49px] flex flex-col items-start gap-y-3">
           <div className="flex items-center gap-x-3">
-            <Button
-              className="text-dark-blue-400"
-              size="sm"
-              variant="outlined"
-              visual="gray"
-            >
-              <Plus className="size-[15px]" /> Create a Project
-            </Button>
+            <NextLink href={step.href}>
+              <Button
+                className="text-dark-blue-400"
+                size="sm"
+                variant="outlined"
+                visual="gray"
+              >
+                <Plus className="size-[15px]" /> {step.cta}
+              </Button>
+            </NextLink>
             <Button
               className="text-dark-blue-400"
               size="sm"
               variant="ghost"
               visual="gray"
+              onClick={handleSkip}
             >
-              Skip
+              {currentStep < totalSteps - 1 ? "Skip" : "Dismiss"}
             </Button>
           </div>
           <Button
@@ -1331,7 +1426,7 @@ export const CreateYourOwnProject = () => {
             size="sm"
             variant="ghost"
           >
-            <Clock className="size-[15px]" /> Takes 5 min
+            <Clock className="size-[15px]" /> Takes {step.time}
           </Button>
         </div>
       </div>

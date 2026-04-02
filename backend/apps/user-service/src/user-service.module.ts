@@ -26,9 +26,11 @@ import { Industry } from './industries/entities/industry.entity';
           schema: 'user_service',
           entities: [User, Education, Experience, Skill, Language, Certification, Industry],
           synchronize: !isProd,
+          migrationsRun: true,
+          migrations: [__dirname + '/../migrations/*{.ts,.js}'],
           logging: !isProd,
-          ssl: isProd ? { rejectUnauthorized: false } : undefined,
-          extra: isProd ? { sslmode: 'require' } : undefined,
+          ssl: process.env.DATABASE_SSL === 'false' ? false : isProd ? { rejectUnauthorized: false } : undefined,
+          extra: process.env.DATABASE_SSL === 'false' ? undefined : isProd ? { sslmode: 'require' } : undefined,
         };
       },
     }),

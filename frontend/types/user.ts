@@ -17,12 +17,18 @@ export type User = {
   firstName?: string | null
   lastName?: string | null
   avatarUrl?: string | null
-  role: ROLE
+  /** Job title from backend (e.g. "Creative Art Director") */
+  role: ROLE | string
+  /** Backend account type field: "talent" or "client" */
+  userType?: string | null
+  /** Derived from userType by auth context: ROLE.TALENT or ROLE.CLIENT */
+  accountType?: ROLE
   provider: AUTH_PROVIDERS
   hasPassword?: boolean
   socialId?: string | null
   emailVerified: boolean
   onboardingDismissed: boolean
+  gettingStartedStep?: number | null
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null
@@ -47,6 +53,7 @@ export type UserEducation = {
   field: string
   startDate: string
   endDate?: string | null
+  institutionLogoUrl?: string | null
 }
 
 export type UserExperience = {
@@ -56,6 +63,7 @@ export type UserExperience = {
   startDate: string
   endDate?: string | null
   description?: string | null
+  companyLogoUrl?: string | null
 }
 
 export type UserCertification = {
@@ -83,6 +91,9 @@ export type UserProfile = User & {
   userType?: string | null
   industry?: string | null
   businessGoals?: string[] | null
+  totalProjectsCompleted?: number | null
+  clientSuccessRating?: number | null
+  repeatHireRate?: number | null
   skills?: UserSkill[]
   languages?: UserLanguage[]
   education?: UserEducation[]

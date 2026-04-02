@@ -18,6 +18,9 @@ export class Project {
   @Column({ nullable: true })
   category: string;
 
+  @Column('text', { array: true, default: '{}' })
+  categories: string[];
+
   @Column('text', { array: true, default: [] })
   skills: string[];
 
@@ -27,8 +30,50 @@ export class Project {
   @Column('text', { array: true, default: [] })
   industry: string[];
 
+  @Column('text', { array: true, default: '{}' })
+  subcategories: string[];
+
+  @Column('text', { array: true, default: '{}' })
+  programmingLanguages: string[];
+
+  @Column('text', { array: true, default: '{}' })
+  developmentTech: string[];
+
+  @Column('text', { array: true, default: '{}' })
+  languages: string[];
+
+  @Column('text', { array: true, default: '{}' })
+  locations: string[];
+
   @Column('text', { array: true, default: [] })
   mediaUrls: string[];
+
+  @Column({ nullable: true, type: 'text' })
+  shortDescription: string;
+
+  @Column({ nullable: true, type: 'text' })
+  videoUrl: string;
+
+  @Column('text', { array: true, default: '{}' })
+  deliverables: string[];
+
+  @Column('jsonb', { nullable: true, default: '[]' })
+  faqs: { question: string; answer: string }[];
+
+  @Column('jsonb', { nullable: true, default: '[]' })
+  scope: {
+    phaseName: string;
+    order: number;
+    tasks: {
+      title: string;
+      roleName: string;
+      experienceLevel: string;
+      estimatedHours: number;
+    }[];
+  }[];
+
+  @Column({ nullable: true, type: 'int' })
+  estimatedHours: number;
 
   @Column({ type: 'enum', enum: ListingStatus, default: ListingStatus.Draft })
   status: ListingStatus;

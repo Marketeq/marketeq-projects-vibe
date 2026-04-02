@@ -3,9 +3,13 @@ import { cn } from "@/utils/functions"
 import {
   Check,
   ChevronDown,
+  Copy,
+  Edit03,
   MarkerPin02,
+  MoreHorizontal,
   Plus,
   Star,
+  Trash2,
 } from "@blend-metrics/icons"
 import { useToggle } from "react-use"
 import {
@@ -27,7 +31,12 @@ import {
   Input,
 } from "./ui"
 
-export const TalentSearchCardLandscape = () => {
+interface TalentSearchCardLandscapeProps {
+  showOptionsMenu?: boolean
+  onRemove?: () => void
+}
+
+export const TalentSearchCardLandscape = ({ showOptionsMenu = false, onRemove }: TalentSearchCardLandscapeProps = {}) => {
   const [isOpen, toggleIsOpen] = useToggle(false)
   const [value, setValue] = React.useState("")
   const [isExpanded, toggleIsExpanded] = useToggle(false)
@@ -76,110 +85,134 @@ export const TalentSearchCardLandscape = () => {
             </div>
           </div>
 
-          <Favorite
-            starClassName="size-5"
-            className="size-5 md:hidden self-start"
-          />
+          {showOptionsMenu ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <IconButton className="text-gray-400 self-start" variant="ghost" visual="gray">
+                  <MoreHorizontal className="size-5" />
+                </IconButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[165px]">
+                <DropdownMenuItem>
+                  <Edit03 className="h-4 w-4" /> Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <Copy className="h-4 w-4" /> Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem visual="destructive" onClick={onRemove}>
+                  <Trash2 className="h-4 w-4" /> Remove
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <>
+              <Favorite
+                starClassName="size-5"
+                className="size-5 md:hidden self-start"
+              />
 
-          <div className="hidden flex-col items-end gap-y-[55px] self-start md:flex">
-            <div className="flex items-center gap-x-[15.3px] lg:gap-x-6">
-              <div className="flex items-center">
-                <Button
-                  className="border-r-0 xs:max-lg:gap-x-[5.1px] xs:max-lg:leading-[12.75px] xs:max-lg:text-[8.93px] xs:max-lg:h-[25.75px] rounded-r-none"
-                  variant="outlined"
-                  visual="gray"
-                >
-                  <Favorite
-                    starClassName="size-[12.75px] lg:size-5"
-                    className="size-[12.75px] lg:size-5"
-                  />
-                  Save
-                </Button>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <IconButton
-                      className="group rounded-l-none xs:max-lg:size-[25.5px] text-gray-500"
+              <div className="hidden flex-col items-end gap-y-[55px] self-start md:flex">
+                <div className="flex items-center gap-x-[15.3px] lg:gap-x-6">
+                  <div className="flex items-center">
+                    <Button
+                      className="border-r-0 xs:max-lg:gap-x-[5.1px] xs:max-lg:leading-[12.75px] xs:max-lg:text-[8.93px] xs:max-lg:h-[25.75px] rounded-r-none"
                       variant="outlined"
                       visual="gray"
                     >
-                      <ChevronDown className="duration transition group-data-[state=open]:-rotate-180 size-[12.75px] lg:size-5" />
-                    </IconButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" side="bottom">
-                    <DropdownMenuRadioGroup
-                      value={value}
-                      onValueChange={setValue}
-                    >
-                      <DropdownMenuRadioTrigger value="Digital Marketing">
-                        Digital Marketing
-                      </DropdownMenuRadioTrigger>
-                      <DropdownMenuRadioTrigger value="Customer Service">
-                        Customer Service
-                      </DropdownMenuRadioTrigger>
-                      <DropdownMenuRadioTrigger value="Email Marketing">
-                        Email Marketing
-                      </DropdownMenuRadioTrigger>
-                    </DropdownMenuRadioGroup>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => toggleIsOpen()}
-                      className="text-primary-500"
-                    >
-                      <Plus className="size-4" /> Create New List
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
-                  <DialogContent>
-                    <form className="flex items-center gap-x-3">
-                      <Input
-                        placeholder="Enter List Name"
-                        className="flex-auto"
+                      <Favorite
+                        starClassName="size-[12.75px] lg:size-5"
+                        className="size-[12.75px] lg:size-5"
                       />
-                      <Button size="lg">Save</Button>
-                    </form>
-                  </DialogContent>
-                </Dialog>
-              </div>
-              <Button
-                className="border-primary-500 text-primary-500 xs:max-lg:gap-x-[5.1px] xs:max-lg:text-[8.93px] xs:max-lg:leading-[15.3px] xs:max-lg:px-[8.93px] xs:max-lg:h-[26.2px] hover:text-white hover:bg-primary-500"
-                variant="outlined"
-                visual="gray"
-              >
-                <Plus className="size-[9.56px] lg:size-[15px]" /> Add to My Team
-              </Button>
-            </div>
+                      Save
+                    </Button>
 
-            <div className="hidden items-center gap-x-[24.5px] lg:flex">
-              <div className="inline-flex gap-x-2 items-center">
-                <span className="text-sm text-[#122A4B] leading-[16.94px] font-light">
-                  Availability
-                </span>
-                <div className="inline-flex gap-x-1 items-center">
-                  <span className="text-sm text-[#122A4B] leading-[16.94px] font-bold">
-                    40 hrs
-                  </span>
-                  <span className="text-sm text-[#122A4B] leading-[16.94px] font-light">
-                    / wk
-                  </span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <IconButton
+                          className="group rounded-l-none xs:max-lg:size-[25.5px] text-gray-500"
+                          variant="outlined"
+                          visual="gray"
+                        >
+                          <ChevronDown className="duration transition group-data-[state=open]:-rotate-180 size-[12.75px] lg:size-5" />
+                        </IconButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" side="bottom">
+                        <DropdownMenuRadioGroup
+                          value={value}
+                          onValueChange={setValue}
+                        >
+                          <DropdownMenuRadioTrigger value="Digital Marketing">
+                            Digital Marketing
+                          </DropdownMenuRadioTrigger>
+                          <DropdownMenuRadioTrigger value="Customer Service">
+                            Customer Service
+                          </DropdownMenuRadioTrigger>
+                          <DropdownMenuRadioTrigger value="Email Marketing">
+                            Email Marketing
+                          </DropdownMenuRadioTrigger>
+                        </DropdownMenuRadioGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => toggleIsOpen()}
+                          className="text-primary-500"
+                        >
+                          <Plus className="size-4" /> Create New List
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
+                      <DialogContent>
+                        <form className="flex items-center gap-x-3">
+                          <Input
+                            placeholder="Enter List Name"
+                            className="flex-auto"
+                          />
+                          <Button size="lg">Save</Button>
+                        </form>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                  <Button
+                    className="border-primary-500 text-primary-500 xs:max-lg:gap-x-[5.1px] xs:max-lg:text-[8.93px] xs:max-lg:leading-[15.3px] xs:max-lg:px-[8.93px] xs:max-lg:h-[26.2px] hover:text-white hover:bg-primary-500"
+                    variant="outlined"
+                    visual="gray"
+                  >
+                    <Plus className="size-[9.56px] lg:size-[15px]" /> Add to My Team
+                  </Button>
+                </div>
+
+                <div className="hidden items-center gap-x-[24.5px] lg:flex">
+                  <div className="inline-flex gap-x-2 items-center">
+                    <span className="text-sm text-[#122A4B] leading-[16.94px] font-light">
+                      Availability
+                    </span>
+                    <div className="inline-flex gap-x-1 items-center">
+                      <span className="text-sm text-[#122A4B] leading-[16.94px] font-bold">
+                        40 hrs
+                      </span>
+                      <span className="text-sm text-[#122A4B] leading-[16.94px] font-light">
+                        / wk
+                      </span>
+                    </div>
+                  </div>
+
+                  <span className="block shrink-0 w-px h-[17px]" />
+
+                  <div className="inline-flex gap-x-2 items-center">
+                    <span className="text-sm text-[#122A4B] leading-[16.94px] font-light">
+                      Total Work Experience
+                    </span>
+
+                    <span className="text-sm text-[#122A4B] leading-[16.94px] font-bold">
+                      14 years
+                    </span>
+                  </div>
                 </div>
               </div>
-
-              <span className="block shrink-0 w-px h-[17px]" />
-
-              <div className="inline-flex gap-x-2 items-center">
-                <span className="text-sm text-[#122A4B] leading-[16.94px] font-light">
-                  Total Work Experience
-                </span>
-
-                <span className="text-sm text-[#122A4B] leading-[16.94px] font-bold">
-                  14 years
-                </span>
-              </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </div>
 

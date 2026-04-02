@@ -68,6 +68,17 @@ export function useCreateGroup() {
   })
 }
 
+export function useRenameGroup() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ groupId, name }: { groupId: string; name: string }) =>
+      FavoritesAPI.renameGroup(groupId, name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["favorites"] })
+    },
+  })
+}
+
 export function useDeleteGroup() {
   const qc = useQueryClient()
   return useMutation({

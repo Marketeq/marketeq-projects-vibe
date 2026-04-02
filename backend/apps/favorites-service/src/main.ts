@@ -1,12 +1,40 @@
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { config as loadEnv } from 'dotenv';
+import { resolve } from 'path';
+import { existsSync } from 'fs';
+
+// Load .env from service dir first, then root
+const envPaths = [
+  resolve(process.cwd(), 'apps/favorites-service/.env'),
+  resolve(__dirname, '..', '.env'),
+  resolve(process.cwd(), '.env'),
+];
+for (const p of envPaths) {
+  if (existsSync(p)) loadEnv({ path: p });
+}
+
+import { NestFactory, HttpAdapterHost } from '@nestjs/core';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { FavoritesServiceModuleModule } from './favorites-service.module';
+import { FavoritesServiceModule } from './favorites-service.module';
+import { AllExceptionsFilter } from './utils/all-exceptions.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(FavoritesServiceModuleModule);
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
+  const app = await NestFactory.create(FavoritesServiceModule);
+  const logger = new Logger('Main');
+
+  // Global DTO validation (Doc 03.1: forbidNonWhitelisted)
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+  );
+
+  // Global exception filter (Doc 03.1)
+  const httpAdapterHost = app.get(HttpAdapterHost);
+  app.useGlobalFilters(new AllExceptionsFilter(httpAdapterHost));
+
+  app.enableCors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    credentials: true,
+  });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -18,7 +46,8 @@ async function bootstrap() {
   });
 
   await app.startAllMicroservices();
-  await app.listen(process.env.PORT || 3012);
-  console.log("favorites-service running on port ${process.env.PORT || 3012}");
+  const port = process.env.PORT || 3012;
+  await app.listen(port);
+  logger.log(`favorites-service running on port ${port}`);
 }
 bootstrap();

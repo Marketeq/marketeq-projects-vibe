@@ -26,7 +26,10 @@ export class ManualTimeController {
 
   @Post()
   async create(@Req() req: any, @Body() dto: CreateManualTimeDto) {
-    return this.manualTimeService.create(req.user.sub, dto);
+    const entry = await this.manualTimeService.create(req.user.sub, dto);
+    const hours = (entry.endTime.getTime() - entry.startTime.getTime()) / (1000 * 60 * 60);
+    this.eventsService.manualTimeSubmitted(entry.id, entry.userId, Math.round(hours * 100) / 100);
+    return entry;
   }
 
   @Get()
@@ -60,9 +63,12 @@ export class ManualTimeController {
   ) {
     const entry = await this.manualTimeService.review(id, req.user.sub, dto);
 
+    const hours = (entry.endTime.getTime() - entry.startTime.getTime()) / (1000 * 60 * 60);
+
     if (dto.status === 'approved') {
-      const hours = (entry.endTime.getTime() - entry.startTime.getTime()) / (1000 * 60 * 60);
       this.eventsService.hoursApproved(entry.userId, entry.id, Math.round(hours * 100) / 100);
+    } else if (dto.status === 'rejected') {
+      this.eventsService.manualTimeRejected(entry.id, entry.userId, req.user.sub, dto.comment ?? null);
     }
 
     return entry;

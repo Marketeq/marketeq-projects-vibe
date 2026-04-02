@@ -486,7 +486,7 @@ export const AboutMeDialog = ({
   const [isOpen, setIsOpen] = useState(false)
   const {
     register,
-    formState: { errors, isValid, isDirty },
+    formState: { errors, isValid, isDirty, isSubmitting },
     handleSubmit,
     reset,
   } = useForm<AboutMeFormValues>({
@@ -501,14 +501,13 @@ export const AboutMeDialog = ({
   }, [open, profile?.bio, reset])
 
   const onSubmit: SubmitHandler<AboutMeFormValues> = async (values) => {
-    if (userId) {
-      try {
-        await UserAPI.updateProfile(userId, { bio: values.aboutMe, overview: values.aboutMe })
-      } catch {}
-    }
     setValue(values)
     setOpen(false)
-    onSaved?.()
+    if (userId) {
+      UserAPI.updateProfile(userId, { bio: values.aboutMe, overview: values.aboutMe })
+        .then(() => onSaved?.())
+        .catch(() => {})
+    }
   }
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
 
@@ -578,7 +577,7 @@ export const AboutMeDialog = ({
               Cancel
             </Button>
 
-            <Button disabled={!isValid} ref={submitTriggerRef}>
+            <Button disabled={!isValid} loading={isSubmitting} ref={submitTriggerRef}>
               Save
             </Button>
 
@@ -634,9 +633,13 @@ export const AboutMeDialog = ({
 const MoreInfoForm = ({
   onShow,
   onSubmit,
+  onCheckDuplicate,
+  duplicateError,
 }: {
   onShow: () => void
   onSubmit: () => void
+  onCheckDuplicate?: (title?: string) => boolean
+  duplicateError?: boolean
 }) => {
   const {
     control,
@@ -660,7 +663,9 @@ const MoreInfoForm = ({
               type="button"
               onClick={async () => {
                 const valid = await trigger()
-                if (valid) onSubmit()
+                if (!valid) return
+                if (onCheckDuplicate?.()) return
+                onSubmit()
               }}
             >
               <Check className="size-4" />
@@ -683,13 +688,18 @@ const MoreInfoForm = ({
           {...register("jobTitle", {
             onChange: (e) => {
               e.target.value = e.target.value.replace(/[0-9]/g, "")
+              onCheckDuplicate?.(e.target.value)
             },
           })}
-          isInvalid={hookFormHasError({
+          isInvalid={duplicateError || hookFormHasError({
             errors,
             name: "jobTitle",
           })}
         />
+
+        {duplicateError && (
+          <ErrorMessage size="sm">This job title already exists. Please use a different title.</ErrorMessage>
+        )}
 
         <HookFormErrorMessage
           errors={errors}
@@ -975,13 +985,14 @@ export const MoreInfoDialog = ({
   })
   const {
     handleSubmit,
-    formState: { isValid, isDirty },
+    formState: { isValid, isDirty, isSubmitting },
     reset,
     watch,
     setValue,
   } = methods
   const [canPerformAction, setCanPerformAction] = useState(false)
   const [maxTitlesError, setMaxTitlesError] = useState(false)
+  const [duplicateTitleError, setDuplicateTitleError] = useState(false)
   const [editingIndex, setEditingIndex] = useState<number>()
   const [indexToRemove, setIndexToRemove] = useState<number>()
   const [infoChunks, setInfoChunks] = useControllableState<
@@ -997,6 +1008,7 @@ export const MoreInfoDialog = ({
       // Reset editing state — all titles closed by default
       setEditingIndex(undefined)
       setMaxTitlesError(false)
+      setDuplicateTitleError(false)
 
       // Load saved job titles from profile
       if (profile?.jobTitles && profile.jobTitles.length > 0) {
@@ -1026,6 +1038,21 @@ export const MoreInfoDialog = ({
       }
     }
   }, [opened])
+
+  const checkDuplicate = (titleOverride?: string): boolean => {
+    const raw = titleOverride ?? methods.getValues("jobTitle")
+    if (!raw || !raw.trim()) {
+      setDuplicateTitleError(false)
+      return false
+    }
+    const title = formatJobTitle(raw)
+    const existingTitles = (infoChunks ?? []).filter((_, i) => i !== editingIndex)
+    const isDuplicate = existingTitles.some(
+      (chunk) => chunk.jobTitle.toLowerCase() === title.toLowerCase()
+    )
+    setDuplicateTitleError(isDuplicate)
+    return isDuplicate
+  }
 
   const onSubmit: SubmitHandler<MoreInfoFormValues> = async (values) => {
     let resolveDone: () => void
@@ -1085,10 +1112,9 @@ export const MoreInfoDialog = ({
       if (defaultChunk?.jobTitle) payload.role = defaultChunk.jobTitle
       // Persist all job title entries
       payload.jobTitles = updatedChunks
-      try {
-        await UserAPI.updateProfile(userId, payload)
-      } catch {}
-      onSaved?.()
+      UserAPI.updateProfile(userId, payload)
+        .then(() => onSaved?.())
+        .catch(() => {})
     }
 
     reset(defaultValues)
@@ -1213,6 +1239,8 @@ export const MoreInfoDialog = ({
                     <MoreInfoForm
                       onShow={() => setShow(true)}
                       onSubmit={() => handleSubmit(onSubmit)()}
+                      onCheckDuplicate={checkDuplicate}
+                      duplicateError={duplicateTitleError}
                     />
                   )}
 
@@ -1220,8 +1248,13 @@ export const MoreInfoDialog = ({
                     editingIndex === index ? (
                       <MoreInfoForm
                         key={index}
-                        onShow={() => setShow(true)}
+                        onShow={() => {
+                          setIndexToRemove(index)
+                          setShow(true)
+                        }}
                         onSubmit={() => handleSubmit(onSubmit)()}
+                        onCheckDuplicate={checkDuplicate}
+                        duplicateError={duplicateTitleError}
                       />
                     ) : (
                       <article
@@ -1380,10 +1413,12 @@ export const MoreInfoDialog = ({
               <Button
                 type="button"
                 disabled={(canPerformAction || typeof editingIndex === "number") && (!clientRate || clientRate > 1000 || !methods.getValues("jobTitle"))}
+                loading={isSubmitting}
                 onClick={async () => {
                   if (canPerformAction || typeof editingIndex === "number") {
                     const valid = await methods.trigger()
                     if (!valid) return
+                    if (checkDuplicate()) return
                     await handleSubmit(onSubmit)()
                   }
                   setOpen(false)
@@ -1466,7 +1501,7 @@ export const AvailabilityDialog = ({
   })
   const {
     control,
-    formState: { errors },
+    formState: { errors, isSubmitting },
     handleSubmit,
     reset,
   } = useForm<AvailabilityFormValues>({
@@ -1483,13 +1518,12 @@ export const AvailabilityDialog = ({
   }, [open, profile?.availability, reset])
 
   const onSubmit: SubmitHandler<AvailabilityFormValues> = async (values) => {
-    if (userId) {
-      try {
-        await UserAPI.updateProfile(userId, { availability: values.availability })
-      } catch {}
-    }
     setOpen(false)
-    onSaved?.()
+    if (userId) {
+      UserAPI.updateProfile(userId, { availability: values.availability })
+        .then(() => onSaved?.())
+        .catch(() => {})
+    }
   }
   const availability = useWatch({ control, name: "availability" })
   return (
@@ -1561,7 +1595,10 @@ export const AvailabilityDialog = ({
                         key={day}
                       >
                         <div className="pt-2.5 inline-flex gap-x-2">
-                          <Switch id={day} />
+                          <Switch
+                            id={day}
+                            defaultChecked={["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].includes(day)}
+                          />
                           <Label
                             htmlFor={day}
                             className="text-gray-700"
@@ -1618,7 +1655,7 @@ export const AvailabilityDialog = ({
               <X className="size-[15px]" />
               Cancel
             </Button>
-            <Button>Save</Button>
+            <Button loading={isSubmitting}>Save</Button>
           </div>
         </form>
       </DialogContent>
@@ -1698,7 +1735,7 @@ export const WorkExperienceDialog = ({
   const {
     control,
     handleSubmit,
-    formState: { errors, isValid, isDirty },
+    formState: { errors, isValid, isDirty, isSubmitting },
     trigger,
     setValue,
     register,
@@ -1725,16 +1762,15 @@ export const WorkExperienceDialog = ({
         : values.endDate?.year && values.endDate?.month
           ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}`
           : undefined
-      try {
-        await UserAPI.addExperience(userId, {
-          company: values.employer,
-          role: values.jobTitle,
-          startDate: startDate ?? "",
-          endDate,
-          description: values.jobDescription,
-        })
-      } catch {}
-      onSaved?.()
+      UserAPI.addExperience(userId, {
+        company: values.employer,
+        role: values.jobTitle,
+        startDate: startDate ?? "",
+        endDate,
+        description: values.jobDescription,
+      })
+        .then(() => onSaved?.())
+        .catch(() => {})
     }
     if (typeof editingIdx === "number") {
       setValueFn(
@@ -2186,7 +2222,7 @@ export const WorkExperienceDialog = ({
                 Cancel
               </Button>
             </DialogClose>
-            <Button disabled={!isValid} ref={submitTriggerRef}>
+            <Button disabled={!isValid} loading={isSubmitting} ref={submitTriggerRef}>
               Save
             </Button>
 
@@ -2273,7 +2309,7 @@ export const EducationDialog = ({
   const {
     control,
     handleSubmit,
-    formState: { errors, isValid },
+    formState: { errors, isValid, isSubmitting },
     register,
     reset,
   } = useForm<EducationFormValues>({
@@ -2296,19 +2332,18 @@ export const EducationDialog = ({
         : values.endDate?.year && values.endDate?.month
           ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}`
           : undefined
-      try {
-        await UserAPI.addEducation(userId, {
-          institution: values.schoolOrUniversity,
-          degree: values.degree,
-          field: values.major,
-          startDate,
-          endDate,
-        })
-      } catch {}
-      onSaved?.()
+      UserAPI.addEducation(userId, {
+        institution: values.schoolOrUniversity,
+        degree: values.degree,
+        field: values.major,
+        startDate,
+        endDate,
+      })
+        .then(() => onSaved?.())
+        .catch(() => {})
     }
-    setValue(values)
     setOpen(false)
+    setValue(values)
   }
 
   const currentlyAttending = useWatch({ control, name: "currentlyAttending" })
@@ -2640,7 +2675,7 @@ export const EducationDialog = ({
                 Cancel
               </Button>
             </DialogClose>
-            <Button disabled={!isValid}>Save</Button>
+            <Button disabled={!isValid} loading={isSubmitting}>Save</Button>
           </div>
         </form>
       </DialogContent>
@@ -2689,7 +2724,7 @@ export const LanguagesDialog = ({
   })
   const {
     control,
-    formState: { isValid, errors },
+    formState: { isValid, errors, isSubmitting },
     handleSubmit,
     setValue,
     trigger,
@@ -2739,27 +2774,27 @@ export const LanguagesDialog = ({
   }, [open, profile?.languages])
 
   const onSubmit: SubmitHandler<LanguagesFormValues> = async (values) => {
+    setOpen(false)
+    setValueFn(values)
     if (userId) {
-      try {
-        // Remove existing languages
-        if (profile?.languages?.length) {
+      (async () => {
+        try {
+          if (profile?.languages?.length) {
+            await Promise.all(
+              profile.languages.map((lang: any) =>
+                UserAPI.removeLanguage(userId, String(lang.id))
+              )
+            )
+          }
           await Promise.all(
-            profile.languages.map((lang: any) =>
-              UserAPI.removeLanguage(userId, String(lang.id))
+            values.languages.map((lang) =>
+              UserAPI.addLanguage(userId, { name: lang.name })
             )
           )
-        }
-        // Add new languages
-        await Promise.all(
-          values.languages.map((lang) =>
-            UserAPI.addLanguage(userId, { name: lang.name })
-          )
-        )
-      } catch {}
-      onSaved?.()
+        } catch {}
+        onSaved?.()
+      })()
     }
-    setValueFn(values)
-    setOpen(false)
   }
 
   return (
@@ -2861,7 +2896,7 @@ export const LanguagesDialog = ({
               </Button>
             </DialogClose>
 
-            <Button disabled={!isValid}>Save</Button>
+            <Button disabled={!isValid} loading={isSubmitting}>Save</Button>
           </div>
         </form>
       </DialogContent>
@@ -2910,7 +2945,7 @@ export const SkillsDialog = ({
   })
   const {
     control,
-    formState: { isValid, errors },
+    formState: { isValid, errors, isSubmitting },
     handleSubmit,
     setValue,
     trigger,
@@ -2959,27 +2994,27 @@ export const SkillsDialog = ({
   }, [open, profile?.skills])
 
   const onSubmit: SubmitHandler<SkillsFormValues> = async (values) => {
+    setOpen(false)
+    setValueFn(values)
     if (userId) {
-      try {
-        // Remove existing skills
-        if (profile?.skills?.length) {
+      (async () => {
+        try {
+          if (profile?.skills?.length) {
+            await Promise.all(
+              profile.skills.map((skill: any) =>
+                UserAPI.removeSkill(userId, String(skill.id))
+              )
+            )
+          }
           await Promise.all(
-            profile.skills.map((skill: any) =>
-              UserAPI.removeSkill(userId, String(skill.id))
+            values.skills.map((skill) =>
+              UserAPI.addSkill(userId, { name: skill.name })
             )
           )
-        }
-        // Add new skills
-        await Promise.all(
-          values.skills.map((skill) =>
-            UserAPI.addSkill(userId, { name: skill.name })
-          )
-        )
-      } catch {}
-      onSaved?.()
+        } catch {}
+        onSaved?.()
+      })()
     }
-    setValueFn(values)
-    setOpen(false)
   }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -3080,7 +3115,7 @@ export const SkillsDialog = ({
               </Button>
             </DialogClose>
 
-            <Button disabled={!isValid}>Save</Button>
+            <Button disabled={!isValid} loading={isSubmitting}>Save</Button>
           </div>
         </form>
       </DialogContent>
@@ -3129,7 +3164,7 @@ export const IndustryExpertiseDialog = ({
   })
   const {
     control,
-    formState: { isValid, errors },
+    formState: { isValid, errors, isSubmitting },
     handleSubmit,
     setValue,
     trigger,
@@ -3176,27 +3211,27 @@ export const IndustryExpertiseDialog = ({
   }, [open, profile?.industries])
 
   const onSubmit: SubmitHandler<IndustriesFormValues> = async (values) => {
+    setOpen(false)
+    setValueFn(values)
     if (userId) {
-      try {
-        // Remove existing industries
-        if (profile?.industries?.length) {
+      (async () => {
+        try {
+          if (profile?.industries?.length) {
+            await Promise.all(
+              profile.industries.map((ind: any) =>
+                UserAPI.removeIndustry(userId, String(ind.id))
+              )
+            )
+          }
           await Promise.all(
-            profile.industries.map((ind: any) =>
-              UserAPI.removeIndustry(userId, String(ind.id))
+            values.industries.map((ind) =>
+              UserAPI.addIndustry(userId, { name: ind.name })
             )
           )
-        }
-        // Add new industries
-        await Promise.all(
-          values.industries.map((ind) =>
-            UserAPI.addIndustry(userId, { name: ind.name })
-          )
-        )
-      } catch {}
-      onSaved?.()
+        } catch {}
+        onSaved?.()
+      })()
     }
-    setValueFn(values)
-    setOpen(false)
   }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -3297,7 +3332,7 @@ export const IndustryExpertiseDialog = ({
               </Button>
             </DialogClose>
 
-            <Button disabled={!isValid}>Save</Button>
+            <Button disabled={!isValid} loading={isSubmitting}>Save</Button>
           </div>
         </form>
       </DialogContent>
@@ -3347,7 +3382,7 @@ export const CertificationsDialog = ({
   })
   const {
     control,
-    formState: { errors, isValid, isDirty },
+    formState: { errors, isValid, isDirty, isSubmitting },
     handleSubmit,
     setValue,
     reset,
@@ -3391,21 +3426,20 @@ export const CertificationsDialog = ({
             .includes(query.toLowerCase().replace(/\s+/g, ""))
         )
   const onSubmit: SubmitHandler<CertificationsFormValues> = async (values) => {
-    if (userId) {
-      try {
-        await UserAPI.addCertification(userId, {
-          name: values.name,
-          issuingOrganization: "",
-          issueDate: values.issuedDate?.toISOString(),
-          expiryDate: values.expirationDate?.toISOString(),
-          credentialUrl: values.credentialsUrl || undefined,
-        })
-      } catch {}
-      onSaved?.()
-    }
-    setValueFn((prev) => (prev ? [...prev, values] : [values]))
     setOpen(false)
+    setValueFn((prev) => (prev ? [...prev, values] : [values]))
     reset()
+    if (userId) {
+      UserAPI.addCertification(userId, {
+        name: values.name,
+        issuingOrganization: "",
+        issueDate: values.issuedDate?.toISOString(),
+        expiryDate: values.expirationDate?.toISOString(),
+        credentialUrl: values.credentialsUrl || undefined,
+      })
+        .then(() => onSaved?.())
+        .catch(() => {})
+    }
   }
 
   const onRemove = (index: number) => {
@@ -3704,7 +3738,7 @@ export const CertificationsDialog = ({
               <X className="size-[15px]" />
               Cancel
             </Button>
-            <Button disabled={!isValid} ref={submitTriggerRef}>
+            <Button disabled={!isValid} loading={isSubmitting} ref={submitTriggerRef}>
               Save
             </Button>
 

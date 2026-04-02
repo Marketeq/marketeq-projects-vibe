@@ -1,8 +1,9 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { UserAPI } from "@/service/http/user"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   ArrowRight,
@@ -21,7 +22,6 @@ import {
   Settings,
   Star,
   Users,
-  X,
 } from "@blend-metrics/icons"
 import {
   FacebookSolid,
@@ -40,10 +40,6 @@ import NextLink from "@/components/next-link"
 import { ThreeHorizontalLines } from "@/components/three-horizontal-lines"
 import {
   Button,
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogTrigger,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
@@ -367,115 +363,32 @@ const Footer = () => {
   )
 }
 
-const Sidebar = () => {
-  const [isOpen, toggleIsOpen] = useState(false)
+const TeamMemberLink = () => {
+  const router = useRouter()
+  const { user } = useAuth()
+  // Team count = talent network members + external team (when API exists)
+  const [teamCount, setTeamCount] = useState(0)
+
+  useEffect(() => {
+    if (!user?.id) return
+    UserAPI.listUsers(50)
+      .then((res) => {
+        const users = Array.isArray(res?.data) ? res.data : []
+        setTeamCount(users.length)
+      })
+      .catch(() => {})
+  }, [user?.id])
+
   return (
-    <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
-      <DialogTrigger asChild>
-        <Button
-          className="gap-x-0.5 text-[11px] leading-6 lg:text-[13px] lg:leading-6 text-dark-blue-400"
-          variant="link"
-          visual="gray"
-        >
-          10 team members
-          <ChevronRight className="size-3 lg:size-3.5" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent
-        variant="unanimated"
-        className="py-[68px] px-0 bg-[#F9FAFB] rounded-none data-[state=open]:duration-300 data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-left-1/2 data-[state=closed]:slide-out-to-left-1/2 left-0 inset-y-0 w-[241px]"
-      >
-        <div className="h-12 absolute top-0 border-b border-gray-200 inset-x-0 flex items-center bg-white justify-between pl-3.5 p-1">
-          <span className="text-base leading-[19.36px] font-semibold text-dark-blue-400">
-            Choose a Category
-          </span>
-          <DialogClose asChild>
-            <IconButton variant="ghost" visual="gray">
-              <X className="size-[18px]" />
-            </IconButton>
-          </DialogClose>
-        </div>
-        <ScrollArea
-          className="h-full"
-          scrollBar={<ScrollBar className="w-4 p-1" />}
-        >
-          <div className="p-3 flex flex-col gap-y-1">
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-            <NextLink
-              href="#"
-              className="h-9 p-3 flex items-center focus-visible:outline-none justify-between text-[13px] leading-[13.3px] font-medium text-gray-500 hover:bg-gray-100 hover:text-[#101828]"
-            >
-              Web Design <ChevronRight className="size-4" />
-            </NextLink>
-          </div>
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
+    <Button
+      className="gap-x-0.5 text-[11px] leading-6 lg:text-[13px] lg:leading-6 text-dark-blue-400"
+      variant="link"
+      visual="gray"
+      onClick={() => router.push("/my-team")}
+    >
+      {teamCount} team member{teamCount !== 1 ? "s" : ""}
+      <ChevronRight className="size-3 lg:size-3.5" />
+    </Button>
   )
 }
 
@@ -486,17 +399,47 @@ export default function MarketPlaceLayout({
 }) {
   const router = useRouter()
   const { user } = useAuth()
+  const [showSecondaryNav, setShowSecondaryNav] = useState(true)
+  const lastScrollY = useRef(0)
+  const secondaryNavRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentY = window.scrollY
+      if (currentY < 10) {
+        setShowSecondaryNav(true)
+      } else if (currentY < lastScrollY.current) {
+        setShowSecondaryNav(true)
+      } else if (currentY > lastScrollY.current) {
+        setShowSecondaryNav(false)
+      }
+      lastScrollY.current = currentY
+    }
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
+
+  // When secondary nav hides/shows, toggle primary nav shadow via data attribute
+  useEffect(() => {
+    document.documentElement.dataset.secondaryNav = showSecondaryNav ? "visible" : "hidden"
+    return () => { delete document.documentElement.dataset.secondaryNav }
+  }, [showSecondaryNav])
+
   return (
     <>
       {/* <AuthenticatedRoute> */}
-        <div className="px-3.5 md:px-6 lg:px-[50px] bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] xs:max-md:hidden">
+        <div
+          ref={secondaryNavRef}
+          className="px-3.5 md:px-6 lg:px-[50px] bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] xs:max-md:hidden sticky top-[57px] lg:top-[56px] z-40 transition-transform duration-300"
+          style={{ transform: showSecondaryNav ? "translateY(0)" : "translateY(-100%)" }}
+        >
           <div className="pt-0.5 pb-3.5 lg:py-3 flex items-end gap-x-6 lg:justify-between lg:gap-x-[30px] ">
             <div className="flex flex-col">
               <span className="inline-block text-[10px] leading-[12.1px] lg:text-xs lg:leading-[16.34px] text-dark-blue-400">
                 You currently have
               </span>
 
-              <Sidebar />
+              <TeamMemberLink />
             </div>
 
             <div className="flex items-center gap-x-6 lg:gap-x-[54.17px] lg:ml-[26.5px]">
@@ -600,7 +543,7 @@ export default function MarketPlaceLayout({
                 className="text-[13px] leading-6 opacity-60 hover:opacity-100"
                 variant="link"
                 visual="gray"
-                onClick={() => router.push(user?.role === "TALENT" ? "/talent-dashboard" : "/client-dashboard")}
+                onClick={() => router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard")}
               >
                 My Dashboard
               </Button>

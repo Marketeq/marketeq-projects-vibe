@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { listBuckets, getEvents } from '../aw.client';
@@ -15,6 +15,8 @@ type EventSeg = {
 
 @Injectable()
 export class TimelineService {
+  private readonly logger = new Logger(TimelineService.name);
+
   constructor(
     @InjectRepository(Screenshot)
     private readonly shots: Repository<Screenshot>,
@@ -25,6 +27,11 @@ export class TimelineService {
   }
 
   async buildTimeline(params: { userId: string; projectId?: string; from: string; to: string }) {
+    const startDate = new Date(params.from);
+    const endDate = new Date(params.to);
+    if (isNaN(startDate.getTime())) throw new BadRequestException(`Invalid "from" date: ${params.from}`);
+    if (isNaN(endDate.getTime())) throw new BadRequestException(`Invalid "to" date: ${params.to}`);
+
     const startISO = this.toUTC(params.from);
     const endISO   = this.toUTC(params.to);
 
@@ -37,7 +44,10 @@ export class TimelineService {
       order: { createdAt: 'ASC' },
     });
 
-    const raw = await listBuckets().catch(() => []);
+    const raw = await listBuckets().catch((err: any) => {
+      this.logger.warn(`Failed to fetch AW buckets: ${err?.message ?? err}`);
+      return [];
+    });
     const bucketList = Array.isArray(raw) ? raw : Object.values(raw ?? {});
     const buckets = bucketList.filter(
       (b: any) =>
@@ -45,7 +55,7 @@ export class TimelineService {
     );
 
     const events: EventSeg[] = [];
-    for (const b of buckets) {
+    for (const b of buckets as Array<{ id: string }>) {
       const evs = await getEvents(b.id, startISO, endISO);
       for (const e of evs) {
         const start = new Date(e.timestamp!).toISOString();

@@ -17,6 +17,8 @@ import { SendgridService } from './sendgrid/sendgrid.service';
       schema: process.env.DATABASE_SCHEMA || 'notifications',
       entities: [Notification, UserPreference],
       synchronize: process.env.NODE_ENV !== 'production',
+      migrationsRun: true,
+      migrations: [__dirname + '/migrations/*{.ts,.js}'],
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
     }),
     TypeOrmModule.forFeature([Notification, UserPreference]),

@@ -41,9 +41,13 @@ export class ProxyController {
     const segments = req.path.replace(/^\//, '').split('/')
     let prefix = segments[0]
 
-    // /v1/users/* → user-service, /v1/transactions/* or /v1/invoices/* → transaction-service
+    // /v1/users/* → user-service
+    // /v1/projects/* or /v1/services/* → listings-service
+    // /v1/transactions/* or /v1/invoices/* → transaction-service (default for v1)
     if (prefix === 'v1' && segments[1] === 'users') {
       prefix = 'users'
+    } else if (prefix === 'v1' && (segments[1] === 'projects' || segments[1] === 'services')) {
+      prefix = 'listings'
     }
 
     const serviceName = SERVICE_PREFIX_MAP[prefix]

@@ -35,6 +35,8 @@ import { JwtStrategy } from './guards/jwt-auth.guard'
         schema: 'transaction_service',
         entities: [Transaction, Invoice, Contract, PaymentMethod, AuditLog],
         synchronize: config.get('NODE_ENV') !== 'production',
+        migrationsRun: true,
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
         ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
       }),
     }),

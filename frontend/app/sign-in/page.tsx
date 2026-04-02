@@ -72,7 +72,10 @@ export default function SignIn() {
     AuthAPI.LoginWithEmail({ email, password })
       .then(async (response) => {
         if (response?.status === 200 && response?.data?.access_token) {
-          Cookies.set("access_token", response?.data?.access_token)
+          Cookies.set("access_token", response?.data?.access_token, { path: "/" })
+          if (response?.data?.refresh_token) {
+            Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
+          }
 
           let nextUser = response?.data?.user
           if (!nextUser) {
@@ -93,8 +96,12 @@ export default function SignIn() {
             setUser(nextUser)
           }
 
-          // Route based on user type
-          const destination = nextUser?.userType === "talent" ? "/talent-dashboard" : "/"
+          // Route based on user type — new users go to onboarding
+          const destination = nextUser?.userType === "talent"
+            ? "/talent-dashboard"
+            : nextUser?.userType
+              ? "/"
+              : "/onboarding"
           router.push(destination)
           reset()
         }
@@ -193,7 +200,7 @@ export default function SignIn() {
                 <path
                   d="M11.5955 2.21973C9.29477 -0.162931 5.28434 0.73532 4.42508 3.82574L0.744613 17.0629C-0.0339209 19.8629 2.59557 22.5434 5.50714 21.8913C6.71521 21.6207 7.65054 20.7109 8.62686 19.7017C10.1067 18.172 12.274 17.6503 14.3559 18.3132C14.4019 18.3279 14.4477 18.3425 14.4934 18.3571C15.9509 18.8218 17.2961 19.2508 18.5757 18.9642L19.049 18.8582C22.2152 18.149 23.3072 14.3487 21.0395 12.0001L11.5955 2.21973Z"
                   fill="currentColor"
-                  fill-opacity="0.5"
+                  fillOpacity="0.5"
                   stroke="currentColor"
                 />
               </svg>
@@ -214,26 +221,25 @@ export default function SignIn() {
               <div className="mt-10 md:mt-[50px] grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    // Create a dev JWT so /user/me works on refresh
-                    const payload = btoa(JSON.stringify({ sub: "dev", email: "taylor.kim@example.com" }))
-                    const devToken = `eyJ0eXAiOiJKV1QiLCJhbGciOiJub25lIn0.${payload}.dev`
-                    Cookies.set("access_token", devToken, { path: "/" })
-                    setUser({
-                      id: "dev-client",
-                      email: "taylor.kim@example.com",
-                      firstName: "Taylor",
-                      lastName: "Kim",
-                      role: "CLIENT" as any,
-                      provider: "EMAIL" as any,
-                      hasPassword: true,
-                      emailVerified: true,
-                      onboardingDismissed: true,
-                      createdAt: new Date(),
-                      updatedAt: new Date(),
-                      deletedAt: null,
-                    })
-                    router.push("/client-dashboard")
+                  onClick={async () => {
+                    try {
+                      const res = await AuthAPI.DevLogin("olivia.brooks@example.com")
+                      if (res?.data?.access_token) {
+                        Cookies.set("access_token", res.data.access_token, { path: "/" })
+                        if (res.data.refresh_token) {
+                          Cookies.set("refresh_token", res.data.refresh_token, { path: "/" })
+                        }
+                        const meRes = await UserAPI.me()
+                        const u = meRes?.data?.user ?? meRes?.data
+                        if (u?.id) {
+                          setUser(u)
+                          router.push(u.userType === "talent" ? "/talent-dashboard" : "/client-dashboard")
+                          return
+                        }
+                      }
+                    } catch (err: any) {
+                      toast({ title: err?.response?.data?.message || "Dev login failed", variant: "destructive" })
+                    }
                   }}
                   className="h-10 rounded-md border border-dashed border-gray-400 text-sm text-gray-600 hover:bg-gray-50"
                 >
@@ -242,36 +248,24 @@ export default function SignIn() {
                 <button
                   type="button"
                   onClick={async () => {
-                    // Create a dev JWT so /user/me works on refresh
-                    const payload = btoa(JSON.stringify({ sub: "dev", email: "jordan.patel@example.com" }))
-                    const devToken = `eyJ0eXAiOiJKV1QiLCJhbGciOiJub25lIn0.${payload}.dev`
-                    Cookies.set("access_token", devToken, { path: "/" })
-                    // Fetch real user from DB via /user/me
                     try {
-                      const res = await UserAPI.me()
-                      const u = res?.data
-                      if (u?.id) {
-                        setUser({ ...u, role: "TALENT", provider: "EMAIL", hasPassword: true, emailVerified: true, deletedAt: null })
-                        router.push("/talent-dashboard")
-                        return
+                      const res = await AuthAPI.DevLogin("maya.johnson@example.com")
+                      if (res?.data?.access_token) {
+                        Cookies.set("access_token", res.data.access_token, { path: "/" })
+                        if (res.data.refresh_token) {
+                          Cookies.set("refresh_token", res.data.refresh_token, { path: "/" })
+                        }
+                        const meRes = await UserAPI.me()
+                        const u = meRes?.data?.user ?? meRes?.data
+                        if (u?.id) {
+                          setUser(u)
+                          router.push(u.userType === "talent" ? "/talent-dashboard" : "/client-dashboard")
+                          return
+                        }
                       }
-                    } catch {}
-                    // Fallback if API fails
-                    setUser({
-                      id: "dev-talent",
-                      email: "jordan.patel@example.com",
-                      firstName: "Jordan",
-                      lastName: "Patel",
-                      role: "TALENT" as any,
-                      provider: "EMAIL" as any,
-                      hasPassword: true,
-                      emailVerified: true,
-                      onboardingDismissed: true,
-                      createdAt: new Date(),
-                      updatedAt: new Date(),
-                      deletedAt: null,
-                    })
-                    router.push("/talent-dashboard")
+                    } catch (err: any) {
+                      toast({ title: err?.response?.data?.message || "Dev login failed", variant: "destructive" })
+                    }
                   }}
                   className="h-10 rounded-md border border-dashed border-gray-400 text-sm text-gray-600 hover:bg-gray-50"
                 >

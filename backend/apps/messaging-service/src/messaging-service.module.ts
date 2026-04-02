@@ -19,6 +19,8 @@ import { ThreadsController } from './threads/threads.controller';
       schema: process.env.DATABASE_SCHEMA || 'messaging',
       entities: [Thread, Message, Attachment],
       synchronize: process.env.NODE_ENV !== 'production',
+      migrationsRun: true,
+      migrations: [__dirname + '/migrations/*{.ts,.js}'],
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
     }),
     TypeOrmModule.forFeature([Thread, Message, Attachment]),

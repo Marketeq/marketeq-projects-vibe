@@ -20,11 +20,15 @@ import { AuthModule } from './auth/auth.module';
             url,
             autoLoadEntities: true,
             synchronize: process.env.NODE_ENV !== 'production',
+            migrationsRun: true,
+            migrations: [__dirname + '/migrations/*{.ts,.js}'],
             logging: process.env.NODE_ENV !== 'production',
             ssl:
-              process.env.NODE_ENV === 'production'
-                ? { rejectUnauthorized: false }
-                : false,
+              process.env.DATABASE_SSL === 'false'
+                ? false
+                : process.env.NODE_ENV === 'production'
+                  ? { rejectUnauthorized: false }
+                  : false,
           };
         }
 
@@ -37,11 +41,15 @@ import { AuthModule } from './auth/auth.module';
           database: cfg.get<string>('DATABASE_NAME'),
           autoLoadEntities: true,
           synchronize: process.env.NODE_ENV !== 'production',
+          migrationsRun: true,
+          migrations: [__dirname + '/migrations/*{.ts,.js}'],
           logging: process.env.NODE_ENV !== 'production',
           ssl:
-            process.env.NODE_ENV === 'production'
-              ? { rejectUnauthorized: false }
-              : false,
+            process.env.DATABASE_SSL === 'false'
+              ? false
+              : process.env.NODE_ENV === 'production'
+                ? { rejectUnauthorized: false }
+                : false,
         };
       },
     }),

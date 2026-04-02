@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useCallback, useEffect, useRef, useState } from "react"
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
@@ -259,31 +259,86 @@ const Shimmer = ({ className }: { className?: string }) => (
   </div>
 )
 
-export default function Default() {
+const LazySection = ({ children, minHeight = 200 }: { children: React.ReactNode; minHeight?: number }) => {
+  const [isVisible, setIsVisible] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: "200px" }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  if (isVisible) return <>{children}</>
+  return <div ref={ref} style={{ minHeight }} />
+}
+
+export default function TalentProfilePage() {
+  return (
+    <Suspense>
+      <Default />
+    </Suspense>
+  )
+}
+
+function Default() {
   const { user } = useAuth()
   const searchParams = useSearchParams()
   const usernameParam = searchParams.get("username")
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
 
+  // Use auth user data immediately for hero while full profile loads
   useEffect(() => {
-    setIsProfileLoading(true)
+    if (!usernameParam && user && !profile) {
+      setProfile(user as any)
+      setIsProfileLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => {
     if (usernameParam) {
+      setIsProfileLoading(true)
       UserAPI.getByUsername(usernameParam)
         .then((res) => {
           if (res?.data) setProfile(res.data)
         })
-        .catch(() => {})
+        .catch((err) => { console.error("[profile] getByUsername error:", err?.response?.status, err?.message) })
         .finally(() => setIsProfileLoading(false))
     } else if (user?.id) {
+      // Load full profile in background (hero already showing from auth user)
       UserAPI.getProfile(user.id)
         .then((res) => {
           if (res?.data) setProfile(res.data)
         })
-        .catch(() => {})
+        .catch((err) => { console.error("[profile] getProfile error:", err?.response?.status, err?.message) })
         .finally(() => setIsProfileLoading(false))
     } else {
-      setIsProfileLoading(false)
+      // No user yet from auth — try /user/me directly as fallback
+      UserAPI.me()
+        .then((res) => {
+          const data = res?.data?.user ?? res?.data?.data?.user ?? res?.data
+          if (data && typeof data === "object" && data.id) {
+            setProfile(data)
+          } else {
+            setIsProfileLoading(false)
+          }
+        })
+        .catch((err) => {
+          console.error("[profile] me() fallback error:", err?.response?.status, err?.message)
+          setIsProfileLoading(false)
+        })
+        .finally(() => setIsProfileLoading(false))
     }
   }, [user?.id, usernameParam])
 
@@ -1559,6 +1614,7 @@ export default function Default() {
                   )}
                 </ShowMoreLessRoot>
 
+                <LazySection minHeight={300}>
                 <div
                   className="p-6 bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[137.5px]"
                   id="skills"
@@ -1633,7 +1689,9 @@ export default function Default() {
                     )}
                   </ShowMoreLessRoot>
                 </div>
+                </LazySection>
 
+                <LazySection minHeight={300}>
                 <div className="mt-6 scroll-mt-[137.5px]" id="overview">
                   <div className="p-6 rounded-t-lg bg-white border border-gray-200 space-y-6">
                     <div className="flex items-center justify-between">
@@ -1748,7 +1806,9 @@ export default function Default() {
                     </TabsContent>
                   </Tabs>
                 </div>
+                </LazySection>
 
+                <LazySection minHeight={400}>
                 <div className="mt-6 scroll-mt-[137.5px]" id="offers">
                   <h1 className="text-xl font-bold leading-none text-dark-blue-400">
                     My Offers
@@ -6323,7 +6383,9 @@ export default function Default() {
                     </TabsContent>
                   </Tabs>
                 </div>
+                </LazySection>
 
+                <LazySection minHeight={400}>
                 <div
                   className="p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
                   id="background"
@@ -6576,7 +6638,9 @@ export default function Default() {
                     </TabsContent>
                   </Tabs>
                 </div>
+                </LazySection>
 
+                <LazySection minHeight={400}>
                 <div className="mt-6 scroll-mt-[137.5px]" id="project-history">
                   <div className="border border-gray-200 rounded-t-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] py-5 pl-5 pr-6">
                     <Carousel
@@ -8035,6 +8099,7 @@ export default function Default() {
                     </TabsContent>
                   </Tabs>
                 </div>
+                </LazySection>
               </div>
 
               <div className="shrink-0 flex flex-col gap-y-6 w-[289px] isolate">

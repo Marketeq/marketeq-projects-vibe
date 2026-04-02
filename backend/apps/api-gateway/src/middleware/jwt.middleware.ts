@@ -4,14 +4,26 @@ import { JwtService } from '@nestjs/jwt'
 
 const PUBLIC_ROUTES = [
   '/health', '/ready',
-  '/auth/login', '/auth/signup', '/auth/refresh',
-  '/auth/google', '/auth/linkedin', '/auth/magic-link', '/auth/verify',
+  '/auth/login', '/auth/signup', '/auth/register', '/auth/register-email',
+  '/auth/refresh', '/auth/check-username',
+  '/auth/google', '/auth/linkedin', '/auth/magic-link', '/auth/verify', '/auth/dev-login',
+  '/auth/forgot-password', '/auth/reset-password',
   '/search', '/autocomplete', '/suggestions',
   '/v1/users/username',
+  '/v1/users/health',
+  '/v1/projects',
+  '/v1/services',
+  '/v1/users',
+]
+
+// Routes that need special pattern matching (e.g. /v1/users/:uuid for public profiles)
+const PUBLIC_PATTERNS = [
+  /^\/v1\/users\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
 ]
 
 function isPublic(path: string): boolean {
-  return PUBLIC_ROUTES.some((r) => path === r || path.startsWith(r + '/') || path.startsWith(r + '?'))
+  if (PUBLIC_ROUTES.some((r) => path === r || path.startsWith(r + '/') || path.startsWith(r + '?'))) return true
+  return PUBLIC_PATTERNS.some((re) => re.test(path))
 }
 
 @Injectable()
@@ -20,13 +32,15 @@ export class JwtMiddleware implements NestMiddleware {
 
   use(req: Request, _res: Response, next: NextFunction) {
     const reqPath = req.originalUrl.split('?')[0]
-    if (isPublic(reqPath)) return next()
+    const pub = isPublic(reqPath)
 
     const authHeader = req.headers.authorization
     const cookieToken = (req as any).cookies?.access_token
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : cookieToken
 
     if (!token) {
+      // Public routes can proceed without auth
+      if (pub) return next()
       throw new UnauthorizedException({
         code: 'UNAUTHORIZED',
         message: 'Your session has expired. Please log in again to continue.',
@@ -38,6 +52,8 @@ export class JwtMiddleware implements NestMiddleware {
       ;(req as any).user = { userId: payload.sub, email: payload.email, role: payload.role }
       next()
     } catch {
+      // Public routes can proceed even with an invalid token
+      if (pub) return next()
       throw new UnauthorizedException({
         code: 'UNAUTHORIZED',
         message: 'Your session has expired. Please log in again to continue.',

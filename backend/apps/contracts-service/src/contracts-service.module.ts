@@ -25,7 +25,7 @@ import { HealthController } from './controllers/health.controller';
         type: 'postgres',
         url: config.get<string>('DATABASE_URL'),
         entities: [Contract, ContractGroup, ContractAudit],
-        synchronize: false,
+        synchronize: config.get('NODE_ENV') !== 'production',
         ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         migrationsRun: true,

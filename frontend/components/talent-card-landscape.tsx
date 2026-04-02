@@ -167,42 +167,42 @@ export const TalentCardLandscape = () => {
           <span className="font-bold">$50</span>/hr
         </span>
         <Button
-          className="xs:max-lg:text-[10px] xs:max-lg:leading-5 opacity-50 hover:opacity-100 hover:no-underline"
+          className="text-xs leading-5 xs:max-lg:text-[10px] xs:max-lg:leading-5 opacity-50 hover:opacity-100 hover:no-underline"
           variant="link"
           visual="gray"
         >
           Wireframing
         </Button>
         <Button
-          className="xs:max-lg:text-[10px] xs:max-lg:leading-5 opacity-50 hover:opacity-100 hover:no-underline"
+          className="text-xs leading-5 xs:max-lg:text-[10px] xs:max-lg:leading-5 opacity-50 hover:opacity-100 hover:no-underline"
           variant="link"
           visual="gray"
         >
           Wireframing
         </Button>
         <Button
-          className="xs:max-lg:text-[10px] xs:max-lg:leading-5 opacity-50 hover:opacity-100 hover:no-underline"
+          className="text-xs leading-5 xs:max-lg:text-[10px] xs:max-lg:leading-5 opacity-50 hover:opacity-100 hover:no-underline"
           variant="link"
           visual="gray"
         >
           Wireframing
         </Button>
         <Button
-          className="xs:max-lg:text-[10px] xs:max-lg:leading-5 opacity-50 hover:opacity-100 hover:no-underline"
+          className="text-xs leading-5 xs:max-lg:text-[10px] xs:max-lg:leading-5 opacity-50 hover:opacity-100 hover:no-underline"
           variant="link"
           visual="gray"
         >
           Wireframing
         </Button>
         <Button
-          className="xs:max-lg:text-[10px] xs:max-lg:leading-5 opacity-50 hover:opacity-100 hover:no-underline"
+          className="text-xs leading-5 xs:max-lg:text-[10px] xs:max-lg:leading-5 opacity-50 hover:opacity-100 hover:no-underline"
           variant="link"
           visual="gray"
         >
           Wireframing
         </Button>
         <Button
-          className="xs:max-lg:text-[10px] xs:max-lg:leading-5 opacity-50 hover:opacity-100 hover:no-underline"
+          className="text-xs leading-5 xs:max-lg:text-[10px] xs:max-lg:leading-5 opacity-50 hover:opacity-100 hover:no-underline"
           variant="link"
           visual="gray"
         >

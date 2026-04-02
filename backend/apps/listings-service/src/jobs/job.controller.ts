@@ -1,11 +1,11 @@
 import { Controller, Get, Post, Put, Delete, Param, Body, Req, HttpCode, HttpStatus } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
-import { ujobsService } from './job.service';
-import { ujob } from './entities/job.entity';
+import { JobsService } from './job.service';
+import { Job } from './entities/job.entity';
 
 @Controller('v1/jobs')
-export class ujobsController {
-  constructor(private readonly service: ujobsService) {}
+export class JobsController {
+  constructor(private readonly service: JobsService) {}
 
   @Get()
   findAll() { return this.service.findAll(); }
@@ -14,12 +14,12 @@ export class ujobsController {
   findOne(@Param('id') id: string) { return this.service.findOne(id); }
 
   @Post()
-  create(@Body() dto: Partial<ujob>, @Req() req: any) {
+  create(@Body() dto: Partial<Job>, @Req() req: any) {
     return this.service.create(dto, req.user?.id || dto.createdBy);
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: Partial<ujob>) {
+  update(@Param('id') id: string, @Body() dto: Partial<Job>) {
     return this.service.update(id, dto);
   }
 

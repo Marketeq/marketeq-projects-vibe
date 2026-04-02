@@ -22,8 +22,14 @@ export class ProjectsService {
     return item;
   }
 
+  async findBySlug(slug: string) {
+    const item = await this.repo.findOne({ where: { slug } });
+    if (!item) throw new NotFoundException('Project not found');
+    return item;
+  }
+
   async create(dto: Partial<Project>, userId: string) {
-    const item = this.repo.create({ ...dto, createdBy: userId, slug: slugify(dto.title) });
+    const item = this.repo.create({ ...dto, createdBy: userId, slug: slugify(dto.title!) });
     return this.repo.save(item);
   }
 

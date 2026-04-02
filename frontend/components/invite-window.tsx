@@ -75,11 +75,12 @@ const contacts = [
 const isEmail = (value: string) => z.string().email().safeParse(value).success
 
 export const useInviteWindowStore = create(
-  combine({ open: false }, (set) => ({
-    toggle: (open?: boolean) =>
+  combine({ open: false, title: "" }, (set) => ({
+    toggle: (open?: boolean, title?: string) =>
       set((state) => ({
         ...state,
         open: typeof open === "boolean" ? open : !state.open,
+        title: title ?? (typeof open === "boolean" && !open ? "" : state.title),
       })),
   }))
 )
@@ -274,7 +275,7 @@ const InviteSettingsPanel = ({
 export const InviteWindow = () => {
   const [invitees, setInvitees] = useState<Invitees>([])
   const [inputValue, setInputValue] = useState("")
-  const { open, toggle: toggleInviteWindow } = useInviteWindowStore()
+  const { open, title: storeTitle, toggle: toggleInviteWindow } = useInviteWindowStore()
   const [view, setView] = useState<InviteView>("invite")
   const [inviteSent, setInviteSent] = useState(false)
   const [isOpen, toggle] = useToggle(false)
@@ -364,7 +365,7 @@ export const InviteWindow = () => {
             <>
               <div className="flex justify-between items-center">
                 <h2 className="text-lg leading-7 font-semibold text-gray-800">
-                  Invite Your Team
+                  {storeTitle || "Invite Your Team"}
                 </h2>
 
                 <div className="inline-flex items-center gap-x-4">

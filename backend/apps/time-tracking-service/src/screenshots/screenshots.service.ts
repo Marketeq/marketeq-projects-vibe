@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -131,6 +132,10 @@ export class ScreenshotsService {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
 
+    if (query.from && query.to && new Date(query.from) > new Date(query.to)) {
+      throw new BadRequestException('"from" must be before "to"');
+    }
+
     const qb = this.repo.createQueryBuilder('s').where('s.isDeleted = false');
     if (userId) qb.andWhere('s.userId = :userId', { userId });
     if (query.projectId) qb.andWhere('s.projectId = :projectId', { projectId: query.projectId });
@@ -191,6 +196,10 @@ export class ScreenshotsService {
     userId: string,
     role: string,
   ): Promise<Array<Screenshot & { signedUrl: string }>> {
+    if (query.from && query.to && new Date(query.from) > new Date(query.to)) {
+      throw new BadRequestException('"from" must be before "to"');
+    }
+
     const qb = this.repo.createQueryBuilder('s').where('s.isDeleted = false');
 
     if (role !== 'admin') {

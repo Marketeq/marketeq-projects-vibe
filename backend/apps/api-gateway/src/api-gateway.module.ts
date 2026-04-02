@@ -7,6 +7,7 @@ import { ProxyService } from './proxy/proxy.service'
 import { ProxyController } from './proxy/proxy.controller'
 import { JwtStrategy } from './guards/jwt-auth.guard'
 import { JwtMiddleware } from './middleware/jwt.middleware'
+import { LoggingMiddleware } from './middleware/logging.middleware'
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { JwtMiddleware } from './middleware/jwt.middleware'
 })
 export class ApiGatewayModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    consumer.apply(LoggingMiddleware).forRoutes('*')
     consumer.apply(JwtMiddleware).forRoutes('*')
   }
 }

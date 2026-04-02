@@ -222,6 +222,51 @@ export class AuthService {
     return this.issueTokens({ sub: user.id, email: user.email });
   }
 
+  /**
+   * Dev-only login: issue real RS256 tokens for an existing user by email.
+   * Disabled in production. Behaves identically to real login (same token format,
+   * same gateway verification) so local dev matches cloud behavior exactly.
+   */
+  async devLogin(email: string): Promise<JwtPair & { user: { id: string; username: string; email: string } }> {
+    if (process.env.NODE_ENV === 'production') {
+      throw new UnauthorizedException('Dev login is not available in production');
+    }
+
+    let user = await this.userRepository.findOne({
+      where: { email },
+      select: ['id', 'email', 'username'],
+    });
+
+    // Auto-create auth entry for seed users that only exist in user-service
+    if (!user) {
+      const username = await this.generatePlaceholderUsername();
+      const hashedPassword = await bcrypt.hash(this.generateRandomPassword(), 10);
+
+      user = this.userRepository.create({
+        username,
+        email,
+        password: hashedPassword,
+        provider: 'EMAIL',
+        hasPassword: false,
+      });
+      await this.userRepository.save(user);
+
+      // Sync to user-service (will find existing user by email)
+      try {
+        await this.syncUserProfile(user);
+      } catch {
+        // User-service may already have this user — that's fine
+      }
+    }
+
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email });
+
+    return {
+      ...tokens,
+      user: { id: user.id, username: user.username, email: user.email },
+    };
+  }
+
   async forgotPassword(dto: ForgotPasswordDto) {
     const user = await this.userRepository.findOne({
       where: { email: dto.email },
@@ -348,6 +393,8 @@ export class AuthService {
     let email: string | undefined;
     let emailVerified: string | boolean | undefined;
     let aud: string | undefined;
+    let firstName: string | undefined;
+    let lastName: string | undefined;
 
     if (idToken) {
       let tokenInfo: {
@@ -355,6 +402,8 @@ export class AuthService {
         email?: string;
         email_verified?: string | boolean;
         sub?: string;
+        given_name?: string;
+        family_name?: string;
       };
 
       try {
@@ -385,6 +434,8 @@ export class AuthService {
       }
 
       email = tokenInfo.email;
+      firstName = tokenInfo.given_name;
+      lastName = tokenInfo.family_name;
     } else if (accessToken) {
       let tokenInfo: Record<string, any>;
       try {
@@ -407,17 +458,21 @@ export class AuthService {
         throw new UnauthorizedException('Invalid Google access token');
       }
 
-      if (!email) {
-        try {
-          const response = await axios.get(
-            'https://www.googleapis.com/oauth2/v3/userinfo',
-            {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            },
-          );
-          email = response.data?.email;
-          emailVerified = response.data?.email_verified;
-        } catch {
+      // Always call userinfo to get profile data (name, avatar);
+      // tokeninfo only returns email/aud, not profile fields.
+      try {
+        const response = await axios.get(
+          'https://www.googleapis.com/oauth2/v3/userinfo',
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
+        );
+        email = email ?? response.data?.email;
+        emailVerified = emailVerified ?? response.data?.email_verified;
+        firstName = response.data?.given_name;
+        lastName = response.data?.family_name;
+      } catch {
+        if (!email) {
           throw new UnauthorizedException('Invalid Google access token');
         }
       }
@@ -463,7 +518,7 @@ export class AuthService {
     }
 
     try {
-      await this.syncUserProfile(user);
+      await this.syncUserProfile(user, { firstName, lastName });
     } catch (error) {
       if (createdUser) {
         await this.userRepository.delete({ id: user.id });
@@ -478,7 +533,7 @@ export class AuthService {
 
     return {
       ...tokens,
-      user: { id: user.id, username: user.username, email: user.email },
+      user: { id: user.id, username: user.username, email: user.email, firstName, lastName },
     };
   }
 
@@ -536,8 +591,8 @@ export class AuthService {
       throw new BadRequestException('access_token or code is required');
     }
 
-    const { email, emailVerified } =
-      await this.fetchLinkedInEmail(accessToken);
+    const { email, emailVerified, firstName, lastName } =
+      await this.fetchLinkedInProfile(accessToken);
 
     if (!email) {
       throw new UnauthorizedException('Invalid LinkedIn token');
@@ -575,7 +630,7 @@ export class AuthService {
     }
 
     try {
-      await this.syncUserProfile(user);
+      await this.syncUserProfile(user, { firstName, lastName });
     } catch (error) {
       if (createdUser) {
         await this.userRepository.delete({ id: user.id });
@@ -590,7 +645,7 @@ export class AuthService {
 
     return {
       ...tokens,
-      user: { id: user.id, username: user.username, email: user.email },
+      user: { id: user.id, username: user.username, email: user.email, firstName, lastName },
     };
   }
 
@@ -669,7 +724,7 @@ export class AuthService {
     return secret;
   }
 
-  private async syncUserProfile(user: User) {
+  private async syncUserProfile(user: User, extra?: { firstName?: string; lastName?: string }) {
     const baseUrl =
       this.configService.get<string>('USER_SERVICE_URL') ??
       'http://localhost:3000';
@@ -692,6 +747,8 @@ export class AuthService {
           username: user.username,
           provider: user.provider ?? 'EMAIL',
           hasPassword: user.hasPassword ?? false,
+          ...(extra?.firstName && { firstName: extra.firstName }),
+          ...(extra?.lastName && { lastName: extra.lastName }),
         },
         {
           headers: {
@@ -710,15 +767,17 @@ export class AuthService {
     }
   }
 
-  private async fetchLinkedInEmail(
+  private async fetchLinkedInProfile(
     accessToken: string,
-  ): Promise<{ email?: string; emailVerified?: boolean }> {
+  ): Promise<{ email?: string; emailVerified?: boolean; firstName?: string; lastName?: string }> {
     try {
       const response = await axios.get('https://api.linkedin.com/v2/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
       const email = response.data?.email;
+      const firstName = response.data?.given_name;
+      const lastName = response.data?.family_name;
       const emailVerifiedRaw = response.data?.email_verified;
       const emailVerified =
         emailVerifiedRaw === true || emailVerifiedRaw === 'true'
@@ -728,7 +787,7 @@ export class AuthService {
             : undefined;
 
       if (email) {
-        return { email, emailVerified };
+        return { email, emailVerified, firstName, lastName };
       }
     } catch {
       // fallback below

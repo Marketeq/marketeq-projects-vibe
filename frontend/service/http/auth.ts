@@ -37,6 +37,16 @@ export const AuthAPI = {
     return AxiosRequest.patch(`${AUTH_BASE}/auth/set-password`, data)
   },
 
+  Refresh: (refreshToken: string) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/refresh`, {
+      refresh_token: refreshToken,
+    })
+  },
+
+  DevLogin: (email: string) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/dev-login`, { email })
+  },
+
   Logout: () => {
     return AxiosRequest.post(`${AUTH_BASE}/auth/logout`, null, {
       withCredentials: true,

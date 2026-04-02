@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Patch, Req, Body, UnauthorizedException, Logger,
+  Controller, Get, Patch, Req, Body, UnauthorizedException, Logger, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { UserService } from './user.service';
@@ -34,12 +34,30 @@ export class MeController {
     }
 
     const email: string = payload.email;
-    if (!email) {
-      throw new UnauthorizedException('Token missing email claim');
+    const sub: string | undefined = payload.sub;
+
+    this.logger.log(`[me] JWT email=${email ?? 'none'}, sub=${sub ?? 'none'}`);
+
+    // Find user by email first (fast, no relations), then load full profile once
+    let user: any = null;
+
+    if (email) {
+      user = await this.userService.findByEmail(email);
     }
 
-    let user = await this.userService.findByEmail(email);
+    // Fallback: try sub as user-service ID (only if email lookup failed)
+    if (!user && sub) {
+      try {
+        user = await this.userService.findByEmail(sub); // not findById — avoid expensive relation load
+      } catch {
+        // sub might not be a valid user ID in this DB
+      }
+    }
+
     if (!user) {
+      if (!email) {
+        throw new UnauthorizedException('Token missing email claim');
+      }
       user = await this.userService.create({
         email,
         firstName: payload.firstName ?? payload.given_name ?? null,
@@ -47,6 +65,44 @@ export class MeController {
         userType: 'talent',
       });
     }
+
+    // Single expensive query — load full profile with all relations only once
+    return this.userService.findById(user.id);
+  }
+
+  @Patch('onboarding-dismissed')
+  @HttpCode(HttpStatus.OK)
+  async dismissOnboarding(
+    @Req() req: Request,
+    @Body() body: { role?: string },
+  ) {
+    const auth = req.headers.authorization;
+    if (!auth?.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Missing bearer token');
+    }
+
+    const payload = this.decodeJwtPayload(auth.slice(7));
+    if (!payload?.sub && !payload?.email) {
+      throw new UnauthorizedException('Invalid token payload');
+    }
+
+    let user: any = null;
+    if (payload.sub) {
+      try { user = await this.userService.findById(payload.sub); } catch {}
+    }
+    if (!user && payload.email) {
+      user = await this.userService.findByEmail(payload.email);
+    }
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    // Set the user's role/userType if provided and not already set
+    if (body.role && !user.userType) {
+      await this.userService.update(user.id, { userType: body.role } as any);
+    }
+
+    await this.userService.dismissOnboarding(user.id);
 
     return this.userService.findById(user.id);
   }

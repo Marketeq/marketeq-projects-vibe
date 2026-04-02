@@ -1,15 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { uteam } from './entities/team.entity';
+import { Team } from './entities/team.entity';
 import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
 
 @Injectable()
-export class uteamsService {
+export class TeamsService {
   constructor(
-    @InjectRepository(uteam)
-    private readonly repo: Repository<uteam>,
+    @InjectRepository(Team)
+    private readonly repo: Repository<Team>,
   ) {}
 
   findAll(status = ListingStatus.Published) {
@@ -18,16 +18,16 @@ export class uteamsService {
 
   async findOne(id: string) {
     const item = await this.repo.findOne({ where: { id } });
-    if (!item) throw new NotFoundException('uteam not found');
+    if (!item) throw new NotFoundException('Team not found');
     return item;
   }
 
-  async create(dto: Partial<uteam>, userId: string) {
-    const item = this.repo.create({ ...dto, createdBy: userId, slug: slugify(dto.title) });
+  async create(dto: Partial<Team>, userId: string) {
+    const item = this.repo.create({ ...dto, createdBy: userId, slug: slugify(dto.title!) });
     return this.repo.save(item);
   }
 
-  async update(id: string, dto: Partial<uteam>) {
+  async update(id: string, dto: Partial<Team>) {
     await this.repo.update(id, dto);
     return this.findOne(id);
   }

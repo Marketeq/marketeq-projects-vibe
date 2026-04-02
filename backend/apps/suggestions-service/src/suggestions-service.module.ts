@@ -17,6 +17,8 @@ import { SuggestionsController } from './suggestions.controller';
         url: config.get<string>('DATABASE_URL'),
         entities: [JobTitle],
         synchronize: config.get('NODE_ENV') !== 'production',
+        migrationsRun: true,
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
         ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
       }),
     }),

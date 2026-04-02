@@ -26,6 +26,12 @@ export class ServicesService {
     return item;
   }
 
+  async findBySlug(slug: string) {
+    const item = await this.repo.findOne({ where: { slug } });
+    if (!item) throw new NotFoundException('Service not found');
+    return item;
+  }
+
   async create(dto: CreateServiceDto, userId: string) {
     const item = this.repo.create({
       ...dto,
