@@ -506,6 +506,9 @@ function Default() {
   // Auto-expand state for sections
   const [autoExpandPortfolio, setAutoExpandPortfolio] = useState<boolean>(false)
   const [autoExpandSkills, setAutoExpandSkills] = useState<boolean>(false)
+  const [skillsCollapsedHeight, setSkillsCollapsedHeight] = useState<number>(0)
+  const [skillsHasOverflow, setSkillsHasOverflow] = useState(false)
+  const skillsContainerRef = useRef<HTMLDivElement>(null)
   const [autoExpandOffers, setAutoExpandOffers] = useState<boolean>(false)
   const [autoExpandWorkExperience, setAutoExpandWorkExperience] =
     useState<boolean>(false)
@@ -517,6 +520,30 @@ function Default() {
   const [activeTab, setActiveTab] = useState<string>("Portfolio")
   const [showLanguageSection, setShowLanguageSection] = useState<boolean>(true)
   const lastScrollYRef = useRef<number>(0)
+
+  // Measure 3 rows of skills badges
+  useEffect(() => {
+    const el = skillsContainerRef.current
+    if (!el) return
+    const children = Array.from(el.children) as HTMLElement[]
+    if (children.length === 0) return
+    let rowCount = 1
+    let lastTop = children[0].offsetTop
+    for (let i = 1; i < children.length; i++) {
+      const top = children[i].offsetTop
+      if (top > lastTop) {
+        rowCount++
+        lastTop = top
+        if (rowCount > 3) {
+          setSkillsCollapsedHeight(top)
+          setSkillsHasOverflow(true)
+          return
+        }
+      }
+    }
+    setSkillsHasOverflow(false)
+  }, [profile?.skills])
+
   useEffect(() => {
     const element = cardRef.current
 
@@ -930,41 +957,46 @@ function Default() {
                   </h1>
 
                   <>
-                    <ShowMoreLessRoot>
-                      {({ isShowing, setIsShowing, ref, scrollHeight }) => (
-                        <div
-                          className="mt-3 flex gap-3 overflow-hidden flex-wrap [interpolate-size:allow-keywords] transition-[height] duration-300"
-                          ref={ref}
-                          style={{
-                            height: isShowing
-                              ? "auto"
-                              : scrollHeight
-                                ? toPxIfNumber(scrollHeight)
-                                : "auto",
-                          }}
+                    <div
+                      ref={skillsContainerRef}
+                      className="mt-3 flex gap-3 overflow-hidden flex-wrap [interpolate-size:allow-keywords] transition-[height] duration-300"
+                      style={{
+                        height: autoExpandSkills
+                          ? "auto"
+                          : skillsCollapsedHeight
+                            ? `${skillsCollapsedHeight}px`
+                            : "auto",
+                      }}
+                    >
+                      {(profile?.skills && profile.skills.length > 0)
+                        ? profile.skills.map((skill) => (
+                            <Badge
+                              key={skill.id}
+                              className="text-gray-700"
+                              visual="gray"
+                              size="lg"
+                            >
+                              {skill.name}
+                            </Badge>
+                          ))
+                        : (
+                          <span className="text-sm text-gray-400">
+                            No skills added yet
+                          </span>
+                        )
+                      }
+                    </div>
+                    {skillsHasOverflow && (
+                      <div className="flex mt-3 items-center justify-center">
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          onClick={() => setAutoExpandSkills((prev) => !prev)}
                         >
-                          <ShowMoreLess max={12}>
-                            {(profile?.skills && profile.skills.length > 0)
-                              ? profile.skills.map((skill) => (
-                                  <Badge
-                                    key={skill.id}
-                                    className="text-gray-700"
-                                    visual="gray"
-                                    size="lg"
-                                  >
-                                    {skill.name}
-                                  </Badge>
-                                ))
-                              : (
-                                <span className="text-sm text-gray-400">
-                                  No skills added yet
-                                </span>
-                              )
-                            }
-                          </ShowMoreLess>
-                        </div>
-                      )}
-                    </ShowMoreLessRoot>
+                          {autoExpandSkills ? "View Less" : "View More"}
+                        </Button>
+                      </div>
+                    )}
                   </>
                 </div>
               </div>
@@ -6688,14 +6720,29 @@ function Default() {
                                       </div>
 
                                       {exp.description && (
-                                      <LineClampText
-                                        text={exp.description}
-                                        lines={4}
-                                        className="mt-3 text-sm leading-relaxed font-extralight text-gray-700"
-                                        expandLabel="...Read More"
-                                        collapseLabel=""
-                                        inline
-                                      />
+                                      <ReadMoreLessRoot>
+                                        <ReadMoreLessComp
+                                          max={52}
+                                          text={exp.description}
+                                        >
+                                          {({ readMore, text, toggle }) => (
+                                            <>
+                                              <p className="mt-3 text-sm leading-none font-extralight text-gray-700">
+                                                {text}{" "}
+                                                <Button
+                                                  className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
+                                                  size="sm"
+                                                  variant="link"
+                                                  visual="gray"
+                                                  onClick={toggle}
+                                                >
+                                                  {readMore ? null : "...Read More"}
+                                                </Button>
+                                              </p>
+                                            </>
+                                          )}
+                                        </ReadMoreLessComp>
+                                      </ReadMoreLessRoot>
                                       )}
                                     </div>
                                   </div>
