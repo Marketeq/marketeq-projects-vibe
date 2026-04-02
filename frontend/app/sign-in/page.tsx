@@ -99,9 +99,11 @@ export default function SignIn() {
           // Route based on user type — new users go to onboarding
           const destination = nextUser?.userType === "talent"
             ? "/talent-dashboard"
-            : nextUser?.userType
-              ? "/"
-              : "/onboarding"
+            : nextUser?.userType === "client"
+              ? "/client-dashboard"
+              : nextUser?.userType
+                ? "/"
+                : "/onboarding"
           router.push(destination)
           reset()
         }
