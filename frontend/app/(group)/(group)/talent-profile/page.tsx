@@ -1868,7 +1868,7 @@ function Default() {
 
                   <Tabs defaultValue="Projects" className="mt-6">
                     <div className="flex items-center justify-between">
-                      <TabsList className="inline-flex items-center gap-x-3 border-b-0 px-0 pt-0">
+                      <RadixTabs.List className="inline-flex items-center gap-x-3">
                         <TabsTrigger
                           variant="unstyled"
                           showUnderline={false}
@@ -1885,7 +1885,7 @@ function Default() {
                         >
                           Services
                         </TabsTrigger>
-                      </TabsList>
+                      </RadixTabs.List>
 
                       <div className="inline-flex items-center gap-x-6">
                         {isEditMode && isOwnProfile && (
@@ -1893,7 +1893,7 @@ function Default() {
                             <Edit03 className="size-[15px]" /> Edit Offers
                           </Button>
                         )}
-                        <TabsList className="inline-flex items-center gap-x-3 border-b-0 px-0 pt-0">
+                        <RadixTabs.List className="inline-flex items-center gap-x-3">
                           <TabsTrigger
                             variant="unstyled"
                             showUnderline={false}
@@ -1918,7 +1918,7 @@ function Default() {
                           >
                             Database
                           </TabsTrigger>
-                        </TabsList>
+                        </RadixTabs.List>
 
                         <Button className="group" variant="link" visual="gray">
                           View All{" "}
