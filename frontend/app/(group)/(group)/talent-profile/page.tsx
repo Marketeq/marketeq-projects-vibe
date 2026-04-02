@@ -65,7 +65,7 @@ import { LikeDislike } from "@/components/like-dislike"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
-import { ReadMoreLess } from "@/components/read-more-less"
+import { ReadMoreLess, ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
 import {
   ShowMoreLess,
   ShowMoreLessComp,
@@ -1772,30 +1772,28 @@ function Default() {
                       )}
                     </div>
 
-                    <ReadMoreLess text={profile?.bio || profile?.overview || "No bio added yet."} max={65}>
-                      {({ text, readMore, toggle }) => {
-                        const fullText = profile?.bio || profile?.overview || "No bio added yet."
-                        const needsTruncation = fullText.split(" ").length > 65
-                        return (
-                        <>
-                          <p className="mt-6 text-sm font-extralight text-gray-700 leading-relaxed">
-                            {readMore ? text : needsTruncation ? `${text}...` : text}
-                          </p>
+                    <ReadMoreLessRoot>
+                      <ReadMoreLessComp text={profile?.bio || profile?.overview || "No bio added yet."} max={65}>
+                        {({ text, readMore, toggle, shouldShow }) => (
+                          <>
+                            <p className="mt-6 text-sm font-extralight text-gray-700 leading-relaxed">
+                              {readMore ? text : shouldShow ? `${text}...` : text}
+                            </p>
 
-                          {needsTruncation && (
-                          <Button
-                            className="mt-4"
-                            variant="link"
-                            visual="gray"
-                            onClick={toggle}
-                          >
-                            {readMore ? "View Less" : "View More"}
-                          </Button>
-                          )}
-                        </>
-                        )
-                      }}
-                    </ReadMoreLess>
+                            {shouldShow && (
+                            <Button
+                              className="mt-6"
+                              variant="link"
+                              visual="gray"
+                              onClick={toggle}
+                            >
+                              {readMore ? "View Less" : "View More"}
+                            </Button>
+                            )}
+                          </>
+                        )}
+                      </ReadMoreLessComp>
+                    </ReadMoreLessRoot>
                   </div>
 
                   <Tabs
@@ -6601,35 +6599,31 @@ function Default() {
                                       </div>
 
                                       {exp.description && (
-                                      <ReadMoreLess
-                                        max={55}
-                                        text={exp.description}
-                                      >
-                                        {({ readMore, text, toggle }) => {
-                                          const needsTruncation = exp.description.split(" ").length > 55
-                                          return (
-                                            <p className="mt-3 text-sm leading-relaxed font-extralight text-gray-700">
-                                              {readMore ? text : needsTruncation ? `${text}...` : text}
-                                              {needsTruncation && !readMore && (
-                                                <button
-                                                  className="inline text-sm font-semibold text-gray-700 hover:text-gray-900 ml-1"
+                                      <ReadMoreLessRoot>
+                                        <ReadMoreLessComp
+                                          max={52}
+                                          text={exp.description}
+                                        >
+                                          {({ readMore, text, toggle }) => (
+                                            <>
+                                              <p className="mt-3 text-sm leading-relaxed font-extralight text-gray-700">
+                                                {text}{" "}
+                                                <Button
+                                                  className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
+                                                  size="sm"
+                                                  variant="link"
+                                                  visual="gray"
                                                   onClick={toggle}
                                                 >
-                                                  Read More
-                                                </button>
-                                              )}
-                                              {readMore && (
-                                                <button
-                                                  className="inline text-sm font-semibold text-gray-700 hover:text-gray-900 ml-1"
-                                                  onClick={toggle}
-                                                >
-                                                  Read Less
-                                                </button>
-                                              )}
-                                            </p>
-                                          )
-                                        }}
-                                      </ReadMoreLess>
+                                                  {readMore
+                                                    ? null
+                                                    : "...Read More"}
+                                                </Button>
+                                              </p>
+                                            </>
+                                          )}
+                                        </ReadMoreLessComp>
+                                      </ReadMoreLessRoot>
                                       )}
                                     </div>
                                   </div>
