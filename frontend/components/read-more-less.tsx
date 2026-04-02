@@ -1,7 +1,6 @@
-import React from "react"
+import React, { useRef, useState, useEffect, useCallback } from "react"
 import { cn } from "@/utils/functions"
 import { mergeRefs } from "@/utils/react-utils"
-import { useToggle } from "react-use"
 import { ShowMoreLessRoot, useShowMoreLessRootContext } from "./show-more-less"
 
 const rmWordsFromEndWithFullStop = (words: string[]) => {
@@ -31,14 +30,29 @@ export const ReadMoreLess = ({
   const truncatedTextWithEllipses = rmWordsFromEndWithFullStop(
     words.splice(0, max)
   ).join(" ")
-  const [readMore, toggle] = useToggle(false)
+  const [readMore, setReadMore] = useState(false)
+  const toggle = useCallback(() => setReadMore((prev) => !prev), [])
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [height, setHeight] = useState<number | undefined>(undefined)
+
+  useEffect(() => {
+    if (contentRef.current) {
+      setHeight(contentRef.current.scrollHeight)
+    }
+  }, [readMore, text])
+
   return (
-    <div>
-      {children?.({
-        readMore,
-        toggle,
-        text: readMore ? text : truncatedTextWithEllipses,
-      })}
+    <div
+      className="overflow-hidden transition-[height] duration-300 ease-in-out"
+      style={{ height: height !== undefined ? height : "auto" }}
+    >
+      <div ref={contentRef}>
+        {children?.({
+          readMore,
+          toggle,
+          text: readMore ? text : truncatedTextWithEllipses,
+        })}
+      </div>
     </div>
   )
 }
