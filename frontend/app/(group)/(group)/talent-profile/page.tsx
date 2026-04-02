@@ -351,6 +351,22 @@ function Default() {
       .catch(() => {})
   }, [profile?.id])
 
+  const handleDeleteWorkExperience = useCallback(async (expId: string) => {
+    if (!profile?.id) return
+    try {
+      await UserAPI.removeExperience(profile.id, expId)
+      refreshProfile()
+    } catch { /* noop */ }
+  }, [profile?.id, refreshProfile])
+
+  const handleDeleteEducation = useCallback(async (eduId: string) => {
+    if (!profile?.id) return
+    try {
+      await UserAPI.removeEducation(profile.id, eduId)
+      refreshProfile()
+    } catch { /* noop */ }
+  }, [profile?.id, refreshProfile])
+
   const [isEditMode, setIsEditMode] = useState(true)
 
   // Edit modal open states
@@ -6528,20 +6544,31 @@ function Default() {
 
                                   <div className="flex-auto">
                                     <div className="pb-8">
-                                      <div className="flex items-start justify-between">
+                                      <div className="flex items-center justify-between">
                                         <h1 className="text-base font-bold text-dark-blue-400 leading-none">
                                           {exp.role}
                                         </h1>
                                         {isEditMode && isOwnProfile && (
-                                          <IconButton
-                                            variant="ghost"
-                                            visual="gray"
-                                            className="size-6 -mt-1 shrink-0"
-                                            type="button"
-                                            onClick={() => { setWorkExpEditIdx(String(exp.id)); setWorkExperienceOpen(true) }}
-                                          >
-                                            <Edit03 className="size-3.5" />
-                                          </IconButton>
+                                          <div className="flex items-center">
+                                            <IconButton
+                                              variant="ghost"
+                                              visual="gray"
+                                              className="rounded-full text-gray-400 hover:text-gray-800"
+                                              type="button"
+                                              onClick={() => { setWorkExpEditIdx(String(exp.id)); setWorkExperienceOpen(true) }}
+                                            >
+                                              <Edit03 className="size-4" />
+                                            </IconButton>
+                                            <IconButton
+                                              variant="ghost"
+                                              visual="gray"
+                                              className="rounded-full text-error-500 hover:bg-error-100"
+                                              type="button"
+                                              onClick={() => handleDeleteWorkExperience(exp.id)}
+                                            >
+                                              <Trash03 className="size-4" />
+                                            </IconButton>
+                                          </div>
                                         )}
                                       </div>
                                       <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
@@ -6656,15 +6683,26 @@ function Default() {
                                         {edu.institution}
                                       </h1>
                                       {isEditMode && isOwnProfile && (
-                                        <IconButton
-                                          variant="ghost"
-                                          visual="gray"
-                                          className="size-6 -mt-1 shrink-0"
-                                          type="button"
-                                          onClick={() => { setEduEditIdx(String(edu.id)); setEducationOpen(true) }}
-                                        >
-                                          <Edit03 className="size-3.5" />
-                                        </IconButton>
+                                        <div className="flex items-center">
+                                          <IconButton
+                                            variant="ghost"
+                                            visual="gray"
+                                            className="rounded-full text-gray-400 hover:text-gray-800"
+                                            type="button"
+                                            onClick={() => { setEduEditIdx(String(edu.id)); setEducationOpen(true) }}
+                                          >
+                                            <Edit03 className="size-4" />
+                                          </IconButton>
+                                          <IconButton
+                                            variant="ghost"
+                                            visual="gray"
+                                            className="rounded-full text-error-500 hover:bg-error-100"
+                                            type="button"
+                                            onClick={() => handleDeleteEducation(edu.id)}
+                                          >
+                                            <Trash03 className="size-4" />
+                                          </IconButton>
+                                        </div>
                                       )}
                                     </div>
                                     <div className="mt-1.5 flex items-center gap-x-2">
