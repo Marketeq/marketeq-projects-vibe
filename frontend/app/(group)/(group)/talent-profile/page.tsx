@@ -364,6 +364,8 @@ function Default() {
   const [certificationsOpen, setCertificationsOpen] = useState(false)
   const [workExperienceOpen, setWorkExperienceOpen] = useState(false)
   const [educationOpen, setEducationOpen] = useState(false)
+  const [workExpEditIdx, setWorkExpEditIdx] = useState<string | undefined>()
+  const [eduEditIdx, setEduEditIdx] = useState<string | undefined>()
   const [affiliatedTeamsOpen, setAffiliatedTeamsOpen] = useState(false)
 
   const cardRef = useRef<HTMLDivElement>(null)
@@ -384,7 +386,7 @@ function Default() {
     useState<string>("Work Experience")
   const [activeTab, setActiveTab] = useState<string>("Portfolio")
   const [showLanguageSection, setShowLanguageSection] = useState<boolean>(true)
-  const [lastScrollY, setLastScrollY] = useState<number>(0)
+  const lastScrollYRef = useRef<number>(0)
   useEffect(() => {
     const element = cardRef.current
 
@@ -431,15 +433,15 @@ function Default() {
     const handleScroll = () => {
       const currentScrollY = window.scrollY
 
-      if (currentScrollY > lastScrollY && currentScrollY > 100) {
+      if (currentScrollY > lastScrollYRef.current && currentScrollY > 100) {
         // Scrolling down and past 100px
         setShowLanguageSection(false)
-      } else if (currentScrollY < lastScrollY) {
+      } else if (currentScrollY < lastScrollYRef.current) {
         // Scrolling up
         setShowLanguageSection(true)
       }
 
-      setLastScrollY(currentScrollY)
+      lastScrollYRef.current = currentScrollY
     }
 
     window.addEventListener("scroll", handleScroll, { passive: true })
@@ -447,7 +449,7 @@ function Default() {
     return () => {
       window.removeEventListener("scroll", handleScroll)
     }
-  }, [lastScrollY])
+  }, [])
   // Auto-expand sections when navigated to via hash
   useEffect(() => {
     const handleHashChange = () => {
@@ -622,7 +624,7 @@ function Default() {
                 <div className="flex items-start">
                   <div className="flex-auto">
                     <h1 className="text-[28px] leading-[34px] font-bold text-dark-blue-400">
-                      {profile?.firstName ?? "Talent"}
+                      {profile?.firstName ?? "Talent"}{profile?.lastName ? ` ${profile.lastName}` : ""}
                       {profile?.username && (
                         <span className="text-[26px] font-extralight">
                           {" "}@{profile.username}
@@ -755,8 +757,9 @@ function Default() {
                                 <Clock className="size-4" />
                                 <p className="text-sm leading-none font-extralight text-dark-blue-400">
                                   {profile?.firstName ?? "This talent"}{" "}
-                                  <span className="font-medium">
-                                    is not currently available
+                                  is currently{" "}
+                                  <span className={`font-medium ${profile?.availability === "unavailable" ? "text-error-600" : "text-success-600"}`}>
+                                    {profile?.availability === "unavailable" ? "not available" : "available"}
                                   </span>{" "}
                                   for hire
                                 </p>
@@ -823,17 +826,9 @@ function Default() {
                                   </Badge>
                                 ))
                               : (
-                                <>
-                                  <Badge className="text-gray-700" visual="gray" size="lg">Typescript</Badge>
-                                  <Badge className="text-gray-700" visual="gray" size="lg">React.js</Badge>
-                                  <Badge className="text-gray-700" visual="gray" size="lg">Tailwind CSS</Badge>
-                                  <Badge className="text-gray-700" visual="gray" size="lg">Next.js</Badge>
-                                  <NextLink href="#skills" onClick={() => setActiveTab("Skills")}>
-                                    <Badge className="text-gray-700 cursor-pointer" visual="gray" size="lg">
-                                      <Plus2 className="h-3 w-3" /> 6 more...
-                                    </Badge>
-                                  </NextLink>
-                                </>
+                                <span className="text-sm text-gray-400">
+                                  No skills added yet
+                                </span>
                               )
                             }
                           </ShowMoreLess>
@@ -874,36 +869,42 @@ function Default() {
                   </IconButton>
                 )}
               </div>
-              <div className="flex gap-x-2 justify-center  items-center">
+              <div className="flex gap-x-2 justify-center items-center">
                 <span className="text-sm font-extralight leading-none text-dark-blue-400">
                   Client success rating
                 </span>
                 <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  95%
+                  {profile?.clientSuccessRating != null
+                    ? `${Math.round(profile.clientSuccessRating * 100)}%`
+                    : "\u2014"}
                 </span>
               </div>
-              <div className="flex gap-x-2 justify-center  items-center">
+              <div className="flex gap-x-2 justify-center items-center">
                 <span className="text-sm font-extralight leading-none text-dark-blue-400">
                   Total projects completed
                 </span>
                 <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  1450
+                  {(profile?.totalProjectsCompleted ?? 0).toLocaleString()}
                 </span>
               </div>
-              <div className="flex gap-x-2 justify-center  items-center">
+              <div className="flex gap-x-2 justify-center items-center">
                 <span className="text-sm font-extralight leading-none text-dark-blue-400">
                   Member since
                 </span>
                 <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  September 19, 2024
+                  {profile?.createdAt
+                    ? new Date(profile.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+                    : "\u2014"}
                 </span>
               </div>
-              <div className="flex gap-x-2 justify-center  items-center">
+              <div className="flex gap-x-2 justify-center items-center">
                 <span className="text-sm font-extralight leading-none text-dark-blue-400">
                   Repeat hire rate
                 </span>
                 <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  85%
+                  {profile?.repeatHireRate != null
+                    ? `${profile.repeatHireRate}%`
+                    : "\u2014"}
                 </span>
               </div>
             </div>
@@ -912,7 +913,11 @@ function Default() {
           </div>
         </div>
 
-        <Tabs className="mt-6" value={activeTab} onValueChange={setActiveTab}>
+        <Tabs className="mt-6" value={activeTab} onValueChange={(val) => {
+          setActiveTab(val)
+          if (val === "Education") setBackgroundActiveTab("Education")
+          if (val === "Work Experience") setBackgroundActiveTab("Work Experience")
+        }}>
           <TabsList
             className="group/list p-0 bg-transparent data-[status=stuck]:border-b data-[status=stuck]:border-gray-200 z-50 transition duration-300 top-0 sticky block data-[status=stuck]:bg-white border-0"
             data-status={isTabsListStuck ? "stuck" : "unstuck"}
@@ -937,7 +942,7 @@ function Default() {
                         </span>
                       </span>
                       <span className="text-sm leading-none font-medium text-dark-blue-400">
-                        Expert React Developer
+                        {profile?.role ?? ""}
                       </span>
                     </div>
                   </div>
@@ -1023,8 +1028,9 @@ function Default() {
                                 <Clock className="size-4" />
                                 <p className="text-sm leading-none font-extralight text-dark-blue-400">
                                   {profile?.firstName ?? "This talent"}{" "}
-                                  <span className="font-medium">
-                                    is not currently available
+                                  is currently{" "}
+                                  <span className={`font-medium ${profile?.availability === "unavailable" ? "text-error-600" : "text-success-600"}`}>
+                                    {profile?.availability === "unavailable" ? "not available" : "available"}
                                   </span>{" "}
                                   for hire
                                 </p>
@@ -1064,7 +1070,7 @@ function Default() {
                       <span className="text-success-600 font-bold">
                         {profile?.availability ?? "available"}
                       </span>{" "}
-                      for <span className="font-bold">40 hrs</span> /week
+                      for hire
                     </p>
                   </div>
                 </div>
@@ -1077,80 +1083,104 @@ function Default() {
           >
             <div className="pt-6 flex gap-x-8">
               <div className="flex-auto">
-                {isEditMode && isOwnProfile && (
-                  <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                    <div className="flex items-start">
-                      <div className="flex-auto">
-                        <h1 className="text-[20px] leading-none font-bold text-dark-blue-400">
-                          Ready to Get Hired?
-                        </h1>
-                        <p className="text-base font-light mt-1 text-dark-blue-400">
-                          Clients are 4x more likely to hire users with
-                          completed profiles!
-                        </p>
-                      </div>
-                      <IconButton
-                        className="rounded-full"
-                        variant="ghost"
-                        visual="gray"
-                      >
-                        <X className="size-4" />
-                      </IconButton>
-                    </div>
-
-                    <div className="mt-3 flex items-center gap-x-3">
-                      <div className="text-sm leading-5 font-medium text-dark-blue-400">
-                        100%
-                      </div>
-                      <div className="flex flex-auto items-center gap-x-1">
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="mt-3">
-                      <div className="rounded-lg px-4 py-3 flex items-center gap-x-3 bg-white border border-gray-300 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-                        <div className="rounded-full border border-gray-300 size-11 shrink-0 inline-flex items-center justify-center">
-                          <User className="size-5" />
-                        </div>
+                {isEditMode && isOwnProfile && (() => {
+                  const steps = [
+                    {
+                      label: "Add Your Bio",
+                      description: "Share what drives you and let clients connect on a personal level.",
+                      done: !!(profile?.bio || profile?.overview),
+                      action: () => setOverviewOpen(true),
+                    },
+                    {
+                      label: "Add Your Skills",
+                      description: "Let clients know what you're great at.",
+                      done: (profile?.skills?.length ?? 0) > 0,
+                      action: () => setSkillsOpen(true),
+                    },
+                    {
+                      label: "Add Work Experience",
+                      description: "Show clients your professional history.",
+                      done: (profile?.experience?.length ?? 0) > 0,
+                      action: () => { setActiveTab("Work Experience"); setBackgroundActiveTab("Work Experience"); setWorkExperienceOpen(true) },
+                    },
+                    {
+                      label: "Add Education",
+                      description: "Share your academic background.",
+                      done: (profile?.education?.length ?? 0) > 0,
+                      action: () => { setActiveTab("Education"); setBackgroundActiveTab("Education"); setEducationOpen(true) },
+                    },
+                    {
+                      label: "Add Your Languages",
+                      description: "Tell clients which languages you speak.",
+                      done: (profile?.languages?.length ?? 0) > 0,
+                      action: () => setLanguagesOpen(true),
+                    },
+                    {
+                      label: "Set Your Rate",
+                      description: "Help clients understand your pricing.",
+                      done: !!(profile?.rateMin || profile?.rateMax),
+                      action: () => setJobTitleOpen(true),
+                    },
+                  ]
+                  const completedCount = steps.filter((s) => s.done).length
+                  const completionPercent = Math.round((completedCount / steps.length) * 100)
+                  const nextStep = steps.find((s) => !s.done)
+                  if (completionPercent === 100) return null
+                  return (
+                    <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div className="flex items-start">
                         <div className="flex-auto">
-                          <h1 className="text-base leading-6 font-bold text-dark-blue-400">
-                            Next up: Add Your Bio
+                          <h1 className="text-[20px] leading-none font-bold text-dark-blue-400">
+                            Ready to Get Hired?
                           </h1>
-                          <p className="text-xs leading-none text-gray-500">
-                            Share what drives you and let clients connect on a
-                            personal level.
+                          <p className="text-base font-light mt-1 text-dark-blue-400">
+                            Clients are 4x more likely to hire users with completed profiles!
                           </p>
                         </div>
-                        <Button className="text-xs leading-5 font-semibold text-primary-500 border border-primary-500 bg-transparent rounded-full hover:bg-primary-500 hover:text-white">
-                          Finish This Step
-                        </Button>
                       </div>
+
+                      <div className="mt-3 flex items-center gap-x-3">
+                        <div className="text-sm leading-5 font-medium text-dark-blue-400">
+                          {completionPercent}%
+                        </div>
+                        <div className="flex flex-auto items-center gap-x-1">
+                          {steps.map((step, i) => (
+                            <Progress
+                              key={i}
+                              className="flex-auto first:rounded-l-full last:rounded-r-full [&:not(:first-child)]:rounded-l-none [&:not(:last-child)]:rounded-r-none"
+                              value={step.done ? 100 : 0}
+                              bubble={false}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      {nextStep && (
+                        <div className="mt-3">
+                          <div className="rounded-lg px-4 py-3 flex items-center gap-x-3 bg-white border border-gray-300 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
+                            <div className="rounded-full border border-gray-300 size-11 shrink-0 inline-flex items-center justify-center">
+                              <User className="size-5" />
+                            </div>
+                            <div className="flex-auto">
+                              <h1 className="text-base leading-6 font-bold text-dark-blue-400">
+                                Next up: {nextStep.label}
+                              </h1>
+                              <p className="text-xs leading-none text-gray-500">
+                                {nextStep.description}
+                              </p>
+                            </div>
+                            <Button
+                              className="text-xs leading-5 font-semibold text-primary-500 border border-primary-500 bg-transparent rounded-full hover:bg-primary-500 hover:text-white"
+                              onClick={nextStep.action}
+                            >
+                              Finish This Step
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
 
                 <ShowMoreLessRoot
                   value={autoExpandPortfolio}
@@ -1710,23 +1740,29 @@ function Default() {
                       )}
                     </div>
 
-                    <ReadMoreLess text={profile?.bio || profile?.overview || "Front-end Technologies & Web Accessibility | Exploring Human Interface Design I’m passionate about crafting intuitive, user-friendly digital experiences with a strong focus on accessibility and human-centered design. With expertise in HTML, CSS, JavaScript, and modern frameworks, I create seamless interfaces that enhance usability for all users, including those with disabilities. I believe technology should be inclusive, aesthetically engaging, and functionally efficient."}>
-                      {({ text, readMore, toggle }) => (
+                    <ReadMoreLess text={profile?.bio || profile?.overview || "No bio added yet."} max={65}>
+                      {({ text, readMore, toggle }) => {
+                        const fullText = profile?.bio || profile?.overview || "No bio added yet."
+                        const needsTruncation = fullText.split(" ").length > 65
+                        return (
                         <>
-                          <p className="mt-6 text-sm font-extralight text-gray-700">
-                            {readMore ? text : `${text}...`}
+                          <p className="mt-6 text-sm font-extralight text-gray-700 leading-relaxed">
+                            {readMore ? text : needsTruncation ? `${text}...` : text}
                           </p>
 
+                          {needsTruncation && (
                           <Button
-                            className="mt-6"
+                            className="mt-4"
                             variant="link"
                             visual="gray"
                             onClick={toggle}
                           >
                             {readMore ? "View Less" : "View More"}
                           </Button>
+                          )}
                         </>
-                      )}
+                        )
+                      }}
                     </ReadMoreLess>
                   </div>
 
@@ -6395,10 +6431,17 @@ function Default() {
                       Background
                     </h1>
                     {isEditMode && isOwnProfile && (
-                      <Button variant="outlined" visual="gray" onClick={() => setWorkExperienceOpen(true)}>
-                        <Plus className="size-[15px]" />
-                        Add work experience
-                      </Button>
+                      backgroundActiveTab === "Education" ? (
+                        <Button variant="outlined" visual="gray" onClick={() => setEducationOpen(true)}>
+                          <Plus className="size-[15px]" />
+                          Add education
+                        </Button>
+                      ) : (
+                        <Button variant="outlined" visual="gray" onClick={() => setWorkExperienceOpen(true)}>
+                          <Plus className="size-[15px]" />
+                          Add work experience
+                        </Button>
+                      )
                     )}
                   </div>
 
@@ -6485,9 +6528,22 @@ function Default() {
 
                                   <div className="flex-auto">
                                     <div className="pb-8">
-                                      <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                        {exp.role}
-                                      </h1>
+                                      <div className="flex items-start justify-between">
+                                        <h1 className="text-base font-bold text-dark-blue-400 leading-none">
+                                          {exp.role}
+                                        </h1>
+                                        {isEditMode && isOwnProfile && (
+                                          <IconButton
+                                            variant="ghost"
+                                            visual="gray"
+                                            className="size-6 -mt-1 shrink-0"
+                                            type="button"
+                                            onClick={() => { setWorkExpEditIdx(String(exp.id)); setWorkExperienceOpen(true) }}
+                                          >
+                                            <Edit03 className="size-3.5" />
+                                          </IconButton>
+                                        )}
+                                      </div>
                                       <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
                                         {exp.company}
                                       </p>
@@ -6503,27 +6559,33 @@ function Default() {
 
                                       {exp.description && (
                                       <ReadMoreLess
-                                        max={52}
+                                        max={55}
                                         text={exp.description}
                                       >
-                                        {({ readMore, text, toggle }) => (
-                                          <>
-                                            <p className="mt-3 text-sm leading-none font-extralight   text-gray-700">
-                                              {text}{" "}
-                                              <Button
-                                                className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                                size="sm"
-                                                variant="link"
-                                                visual="gray"
-                                                onClick={toggle}
-                                              >
-                                                {readMore
-                                                  ? null
-                                                  : "...Read More"}
-                                              </Button>
+                                        {({ readMore, text, toggle }) => {
+                                          const needsTruncation = exp.description.split(" ").length > 55
+                                          return (
+                                            <p className="mt-3 text-sm leading-relaxed font-extralight text-gray-700">
+                                              {readMore ? text : needsTruncation ? `${text}...` : text}
+                                              {needsTruncation && !readMore && (
+                                                <button
+                                                  className="inline text-sm font-semibold text-gray-700 hover:text-gray-900 ml-1"
+                                                  onClick={toggle}
+                                                >
+                                                  Read More
+                                                </button>
+                                              )}
+                                              {readMore && (
+                                                <button
+                                                  className="inline text-sm font-semibold text-gray-700 hover:text-gray-900 ml-1"
+                                                  onClick={toggle}
+                                                >
+                                                  Read Less
+                                                </button>
+                                              )}
                                             </p>
-                                          </>
-                                        )}
+                                          )
+                                        }}
                                       </ReadMoreLess>
                                       )}
                                     </div>
@@ -6589,9 +6651,22 @@ function Default() {
                                   </div>
 
                                   <div className="flex-auto">
-                                    <h1 className="text-base leading-none font-bold text-dark-blue-400">
-                                      {edu.institution}
-                                    </h1>
+                                    <div className="flex items-start justify-between">
+                                      <h1 className="text-base leading-none font-bold text-dark-blue-400">
+                                        {edu.institution}
+                                      </h1>
+                                      {isEditMode && isOwnProfile && (
+                                        <IconButton
+                                          variant="ghost"
+                                          visual="gray"
+                                          className="size-6 -mt-1 shrink-0"
+                                          type="button"
+                                          onClick={() => { setEduEditIdx(String(edu.id)); setEducationOpen(true) }}
+                                        >
+                                          <Edit03 className="size-3.5" />
+                                        </IconButton>
+                                      )}
+                                    </div>
                                     <div className="mt-1.5 flex items-center gap-x-2">
                                       <span className="text-dark-blue-400 text-xs leading-none">
                                         {edu.degree}
@@ -8168,7 +8243,9 @@ function Default() {
 
                           <div className="inline-flex items-center gap-x-1.5">
                             <span className="text-xs leading-none font-bold text-dark-blue-400">
-                              English, Hindi
+                              {(profile?.languages && profile.languages.length > 0)
+                                ? profile.languages.map((l: any) => l.name).join(", ")
+                                : "\u2014"}
                             </span>
                             {isEditMode && isOwnProfile && (
                               <IconButton
@@ -8190,7 +8267,7 @@ function Default() {
                           </span>
 
                           <span className="text-xs leading-none font-bold text-dark-blue-400">
-                            India (IST-3)
+                            {profile?.timezone ?? "\u2014"}
                           </span>
                         </div>
                       </>
@@ -8576,8 +8653,20 @@ function Default() {
           <LanguagesDialog opened={languagesOpen} onOpenedChange={setLanguagesOpen} profile={profile} onSaved={refreshProfile} />
           <IndustryExpertiseDialog opened={industriesOpen} onOpenedChange={setIndustriesOpen} profile={profile} onSaved={refreshProfile} />
           <CertificationsDialog opened={certificationsOpen} onOpenedChange={setCertificationsOpen} profile={profile} onSaved={refreshProfile} />
-          <WorkExperienceDialog opened={workExperienceOpen} onOpenedChange={setWorkExperienceOpen} profile={profile} onSaved={refreshProfile} />
-          <EducationDialog opened={educationOpen} onOpenedChange={setEducationOpen} profile={profile} onSaved={refreshProfile} />
+          <WorkExperienceDialog
+            opened={workExperienceOpen}
+            onOpenedChange={(o: boolean) => { setWorkExperienceOpen(o); if (!o) setWorkExpEditIdx(undefined) }}
+            editIndex={workExpEditIdx}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
+          <EducationDialog
+            opened={educationOpen}
+            onOpenedChange={(o: boolean) => { setEducationOpen(o); if (!o) setEduEditIdx(undefined) }}
+            editIndex={eduEditIdx}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
           <AffiliatedTeamsDialog opened={affiliatedTeamsOpen} onOpenedChange={setAffiliatedTeamsOpen} />
         </>
       )}
