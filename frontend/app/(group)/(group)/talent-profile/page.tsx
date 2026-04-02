@@ -287,6 +287,85 @@ const LazySection = ({ children, minHeight = 200 }: { children: React.ReactNode;
   return <div ref={ref} style={{ minHeight }} />
 }
 
+const lineClampClass: Record<number, string> = {
+  2: "line-clamp-2",
+  3: "line-clamp-3",
+  4: "line-clamp-4",
+  5: "line-clamp-5",
+  6: "line-clamp-6",
+}
+
+function LineClampText({
+  text,
+  lines,
+  className,
+  toggleClassName,
+  expandLabel = "...Read More",
+  collapseLabel = "Read Less",
+  inline = false,
+}: {
+  text: string
+  lines: number
+  className?: string
+  toggleClassName?: string
+  expandLabel?: string
+  collapseLabel?: string
+  inline?: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [clamped, setClamped] = useState(false)
+  const textRef = useRef<HTMLParagraphElement>(null)
+
+  useEffect(() => {
+    const el = textRef.current
+    if (el) setClamped(el.scrollHeight > el.clientHeight)
+  }, [text])
+
+  const clampCls = lineClampClass[lines] || "line-clamp-3"
+
+  if (inline) {
+    return (
+      <p ref={!expanded ? textRef : undefined} className={cn(className, !expanded && clampCls)}>
+        {text}
+        {clamped && !expanded && (
+          <button
+            className="inline text-sm font-semibold text-gray-700 hover:text-gray-900 ml-1"
+            onClick={() => setExpanded(true)}
+          >
+            {expandLabel}
+          </button>
+        )}
+        {expanded && collapseLabel && (
+          <button
+            className="inline text-sm font-semibold text-gray-700 hover:text-gray-900 ml-1"
+            onClick={() => setExpanded(false)}
+          >
+            {collapseLabel}
+          </button>
+        )}
+      </p>
+    )
+  }
+
+  return (
+    <>
+      <p ref={!expanded ? textRef : undefined} className={cn(className, !expanded && clampCls)}>
+        {text}
+      </p>
+      {clamped && !expanded && (
+        <Button className={toggleClassName} variant="link" visual="gray" onClick={() => setExpanded(true)}>
+          {expandLabel}
+        </Button>
+      )}
+      {expanded && collapseLabel && (
+        <Button className={toggleClassName} variant="link" visual="gray" onClick={() => setExpanded(false)}>
+          {collapseLabel}
+        </Button>
+      )}
+    </>
+  )
+}
+
 export default function TalentProfilePage() {
   return (
     <Suspense>
@@ -1772,28 +1851,19 @@ function Default() {
                       )}
                     </div>
 
-                    <ReadMoreLessRoot>
-                      <ReadMoreLessComp text={profile?.bio || profile?.overview || "No bio added yet."} max={65}>
-                        {({ text, readMore, toggle, shouldShow }) => (
-                          <>
-                            <p className="mt-6 text-sm font-extralight text-gray-700 leading-relaxed">
-                              {readMore ? text : shouldShow ? `${text}...` : text}
-                            </p>
-
-                            {shouldShow && (
-                            <Button
-                              className="mt-6"
-                              variant="link"
-                              visual="gray"
-                              onClick={toggle}
-                            >
-                              {readMore ? "View Less" : "View More"}
-                            </Button>
-                            )}
-                          </>
-                        )}
-                      </ReadMoreLessComp>
-                    </ReadMoreLessRoot>
+                    {(() => {
+                      const bioText = profile?.bio || profile?.overview || "No bio added yet."
+                      return (
+                        <LineClampText
+                          text={bioText}
+                          lines={4}
+                          className="mt-6 text-sm font-extralight text-gray-700 leading-relaxed"
+                          toggleClassName="mt-6"
+                          expandLabel="View More"
+                          collapseLabel="View Less"
+                        />
+                      )
+                    })()}
                   </div>
 
                   <Tabs
@@ -6599,31 +6669,14 @@ function Default() {
                                       </div>
 
                                       {exp.description && (
-                                      <ReadMoreLessRoot>
-                                        <ReadMoreLessComp
-                                          max={52}
-                                          text={exp.description}
-                                        >
-                                          {({ readMore, text, toggle }) => (
-                                            <>
-                                              <p className="mt-3 text-sm leading-relaxed font-extralight text-gray-700">
-                                                {text}{" "}
-                                                <Button
-                                                  className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                                  size="sm"
-                                                  variant="link"
-                                                  visual="gray"
-                                                  onClick={toggle}
-                                                >
-                                                  {readMore
-                                                    ? null
-                                                    : "...Read More"}
-                                                </Button>
-                                              </p>
-                                            </>
-                                          )}
-                                        </ReadMoreLessComp>
-                                      </ReadMoreLessRoot>
+                                      <LineClampText
+                                        text={exp.description}
+                                        lines={3}
+                                        className="mt-3 text-sm leading-relaxed font-extralight text-gray-700"
+                                        expandLabel="...Read More"
+                                        collapseLabel=""
+                                        inline
+                                      />
                                       )}
                                     </div>
                                   </div>
