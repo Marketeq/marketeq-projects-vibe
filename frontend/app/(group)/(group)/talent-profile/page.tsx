@@ -1216,15 +1216,15 @@ function Default() {
                         }}
                       >
                         <ShowMoreLess max={3}>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
                             <NextImage
-                              className="object-cover"
+                              className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
                               alt="Dashboard"
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
+                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
                               <h1 className="text-sm leading-none font-medium text-white">
                                 Mobile Finance Application
                               </h1>
@@ -1269,15 +1269,15 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
                             <NextImage
-                              className="object-cover"
+                              className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
                               alt="Dashboard"
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
+                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
                               <h1 className="text-sm leading-none font-medium text-white">
                                 Mobile Finance Application
                               </h1>
@@ -1322,15 +1322,15 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
                             <NextImage
-                              className="object-cover"
+                              className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
                               alt="Dashboard"
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
+                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
                               <h1 className="text-sm leading-none font-medium text-white">
                                 Mobile Finance Application
                               </h1>
@@ -1375,15 +1375,15 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
                             <NextImage
-                              className="object-cover"
+                              className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
                               alt="Dashboard"
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
+                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
                               <h1 className="text-sm leading-none font-medium text-white">
                                 Mobile Finance Application
                               </h1>
@@ -1428,15 +1428,15 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
                             <NextImage
-                              className="object-cover"
+                              className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
                               alt="Dashboard"
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
+                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
                               <h1 className="text-sm leading-none font-medium text-white">
                                 Mobile Finance Application
                               </h1>
@@ -1481,15 +1481,15 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
                             <NextImage
-                              className="object-cover"
+                              className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
                               alt="Dashboard"
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
+                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
                               <h1 className="text-sm leading-none font-medium text-white">
                                 Mobile Finance Application
                               </h1>
@@ -1534,15 +1534,15 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
                             <NextImage
-                              className="object-cover"
+                              className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
                               alt="Dashboard"
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
+                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
                               <h1 className="text-sm leading-none font-medium text-white">
                                 Mobile Finance Application
                               </h1>
@@ -1587,15 +1587,15 @@ function Default() {
                               </div>
                             </div>
                           </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
+                          <article className="group relative rounded-lg overflow-hidden h-[200px] transition-shadow duration-300 hover:shadow-lg cursor-pointer">
                             <NextImage
-                              className="object-cover"
+                              className="object-cover transition-transform duration-300 group-hover:scale-105"
                               src="/dashboard.png"
                               alt="Dashboard"
                               fill
                               sizes="33vw"
                             />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
+                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
                               <h1 className="text-sm leading-none font-medium text-white">
                                 Mobile Finance Application
                               </h1>
