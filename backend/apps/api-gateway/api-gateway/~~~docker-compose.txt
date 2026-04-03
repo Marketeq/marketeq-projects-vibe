@@ -1,0 +1,13 @@
+version: '3'
+services:
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - USER_SERVICE_URL=http://user-service:3001
+  user-service:
+    build: ./user-service
+    ports:
+      - "3001:3001"
+  # ... additional services (product-service, order-service, etc.)
