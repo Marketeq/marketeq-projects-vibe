@@ -32,6 +32,7 @@ export class ProxyService {
       suggestions: config.get('SUGGESTIONS_SERVICE_URL') || 'http://localhost:3017',
       transactions: config.get('TRANSACTION_SERVICE_URL') || 'http://localhost:3018',
       contracts: config.get('CONTRACTS_SERVICE_URL') || 'http://localhost:3010',
+      categories: config.get('CATEGORY_SERVICE_URL') || 'http://localhost:3023',
     }
   }
 
