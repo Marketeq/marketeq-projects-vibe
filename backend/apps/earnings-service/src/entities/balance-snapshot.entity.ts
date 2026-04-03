@@ -1,29 +1,45 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
+import {
+  Entity,
+  PrimaryColumn,
+  Column,
+  UpdateDateColumn,
+} from 'typeorm';
 
 @Entity('balance_snapshots')
-@Index(['contractorId'])
 export class BalanceSnapshot {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Column()
+  @PrimaryColumn({ type: 'uuid' })
   contractorId: string;
 
-  @Column({ type: 'decimal', precision: 14, scale: 4 })
-  availableBalanceUsd: number;
+  @Column({ type: 'numeric', precision: 18, scale: 8, default: '0' })
+  availableBalance: string;
 
-  @Column({ type: 'decimal', precision: 14, scale: 4, default: 0 })
-  pendingBalanceUsd: number;
+  @Column({ type: 'numeric', precision: 18, scale: 8, default: '0' })
+  availableBalanceLocal: string;
 
-  @Column({ type: 'decimal', precision: 14, scale: 4, default: 0 })
-  withdrawnBalanceUsd: number;
+  @Column({ type: 'numeric', precision: 18, scale: 8, default: '0' })
+  availableBalanceDisplay: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 3, default: 'USD' })
   displayCurrency: string;
 
-  @Column({ type: 'decimal', precision: 14, scale: 4, nullable: true })
-  displayBalance: number;
+  @Column({ type: 'varchar', length: 3, default: 'USD' })
+  localCurrency: string;
 
-  @CreateDateColumn()
-  snapshotAt: Date;
+  @Column({ type: 'numeric', precision: 18, scale: 8, default: '0' })
+  totalEarnedUsd: string;
+
+  @Column({ type: 'numeric', precision: 18, scale: 8, default: '0' })
+  totalPaidOutUsd: string;
+
+  @Column({ type: 'numeric', precision: 18, scale: 8, default: '0' })
+  pendingHoldUsd: string;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  lastCreditAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  lastDebitAt: Date | null;
+
+  @UpdateDateColumn({ type: 'timestamptz' })
+  updatedAt: Date;
 }

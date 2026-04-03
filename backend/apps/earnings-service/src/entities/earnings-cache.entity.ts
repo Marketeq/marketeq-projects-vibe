@@ -1,44 +1,81 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  Index,
+  CreateDateColumn,
+} from 'typeorm';
 
 @Entity('earnings_cache')
-@Index(['contractorId'])
+@Index('idx_earnings_cache_contractor_created', ['contractorId', 'createdAt'])
+@Index('idx_earnings_cache_contractor_status', ['contractorId', 'status'])
+@Index('idx_earnings_cache_contract_id', ['contractId'])
+@Index('idx_earnings_cache_work_start', ['contractorId', 'workStartAt'])
 export class EarningsCache {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ type: 'uuid', unique: true })
+  transactionId: string;
+
+  @Column({ type: 'uuid' })
+  @Index('idx_earnings_cache_contractor_id')
   contractorId: string;
 
-  @Column()
-  contractId: string;
+  @Column({ type: 'uuid', nullable: true })
+  contractId: string | null;
 
-  @Column({ nullable: true })
-  contractLabel: string;
+  @Column({ type: 'uuid', nullable: true })
+  projectId: string | null;
 
-  @Column({ type: 'decimal', precision: 14, scale: 4 })
-  grossAmountUsd: number;
+  @Column({ type: 'uuid', nullable: true })
+  taskId: string | null;
 
-  @Column({ type: 'decimal', precision: 6, scale: 4, default: 0.05 })
-  platformFeeRate: number;
+  @Column({ type: 'varchar', length: 20 })
+  entryType: string;
 
-  @Column({ type: 'decimal', precision: 14, scale: 4 })
-  netAmountUsd: number;
+  @Column({ type: 'numeric', precision: 18, scale: 8 })
+  grossAmount: string;
 
-  @Column({ nullable: true })
-  displayCurrency: string;
+  @Column({ type: 'numeric', precision: 18, scale: 8 })
+  feeAmount: string;
 
-  @Column({ type: 'decimal', precision: 14, scale: 4, nullable: true })
-  displayAmount: number;
+  @Column({ type: 'numeric', precision: 18, scale: 8 })
+  netAmount: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 3 })
+  currency: string;
+
+  @Column({ type: 'numeric', precision: 18, scale: 8 })
+  fxRateToUsd: string;
+
+  @Column({ type: 'numeric', precision: 18, scale: 8 })
+  netAmountUsd: string;
+
+  @Column({ type: 'varchar', length: 20, default: 'confirmed' })
   status: string;
 
-  @Column({ nullable: true })
-  earnedAt: Date;
+  @Column({ type: 'timestamptz' })
+  workStartAt: Date;
 
-  @CreateDateColumn()
+  @Column({ type: 'timestamptz' })
+  workEndAt: Date;
+
+  @Column({ type: 'integer' })
+  durationMinutes: number;
+
+  @Column({ type: 'integer', nullable: true })
+  avgKeyboardPct: number | null;
+
+  @Column({ type: 'integer', nullable: true })
+  avgMousePct: number | null;
+
+  @Column({ type: 'varchar', length: 128, unique: true })
+  idempotencyKey: string;
+
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn()
-  updatedAt: Date;
+  @Column({ type: 'timestamptz', nullable: true })
+  reversedAt: Date | null;
 }
