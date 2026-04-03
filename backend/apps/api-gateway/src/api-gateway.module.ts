@@ -5,6 +5,8 @@ import { JwtModule } from '@nestjs/jwt'
 import { PassportModule } from '@nestjs/passport'
 import { ProxyService } from './proxy/proxy.service'
 import { ProxyController } from './proxy/proxy.controller'
+import { TalentUploadController } from './controllers/talent-upload.controller'
+import { PublishMediaController } from './controllers/publish-media.controller'
 import { JwtStrategy } from './guards/jwt-auth.guard'
 import { JwtMiddleware } from './middleware/jwt.middleware'
 import { LoggingMiddleware } from './middleware/logging.middleware'
@@ -33,7 +35,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
     }),
   ],
   providers: [ProxyService, JwtStrategy],
-  controllers: [ProxyController],
+  controllers: [TalentUploadController, PublishMediaController, ProxyController],
 })
 export class ApiGatewayModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

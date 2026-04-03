@@ -9,6 +9,7 @@ const PUBLIC_ROUTES = [
   '/auth/google', '/auth/linkedin', '/auth/magic-link', '/auth/verify', '/auth/dev-login',
   '/auth/forgot-password', '/auth/reset-password',
   '/search', '/autocomplete', '/suggestions',
+  '/talent/users',     // public talent profiles
   '/v1/users/username',
   '/v1/users/health',
   '/v1/projects',
