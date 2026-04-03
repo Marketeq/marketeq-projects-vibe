@@ -32,6 +32,7 @@
     "suggestions-service": { "type": "application", "root": "apps/suggestions-service", "entryFile": "main", "sourceRoot": "apps/suggestions-service/src", "compilerOptions": { "tsConfigPath": "apps/suggestions-service/tsconfig.app.json" } },
     "affiliate-referral-service": { "type": "application", "root": "apps/affiliate-referral-service", "entryFile": "main", "sourceRoot": "apps/affiliate-referral-service/src", "compilerOptions": { "tsConfigPath": "apps/affiliate-referral-service/tsconfig.app.json" } },
     "admin-service": { "type": "application", "root": "apps/admin-service", "entryFile": "main", "sourceRoot": "apps/admin-service/src", "compilerOptions": { "tsConfigPath": "apps/admin-service/tsconfig.app.json" } },
-    "category-service": { "type": "application", "root": "apps/category-service", "entryFile": "main", "sourceRoot": "apps/category-service/src", "compilerOptions": { "tsConfigPath": "apps/category-service/tsconfig.app.json" } }
+    "category-service": { "type": "application", "root": "apps/category-service", "entryFile": "main", "sourceRoot": "apps/category-service/src", "compilerOptions": { "tsConfigPath": "apps/category-service/tsconfig.app.json" } },
+    "wallet-service": { "type": "application", "root": "apps/wallet-service", "entryFile": "main", "sourceRoot": "apps/wallet-service/src", "compilerOptions": { "tsConfigPath": "apps/wallet-service/tsconfig.app.json" } }
   }
 }
