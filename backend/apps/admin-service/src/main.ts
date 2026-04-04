@@ -1,12 +1,17 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { AdminServiceModuleModule } from './admin-service.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AdminServiceModuleModule);
+  const logger = new Logger('AdminService');
+
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
+  app.enableCors({
+    origin: process.env.FE_ORIGIN || 'http://localhost:3000',
+    credentials: true,
+  });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -18,7 +23,8 @@ async function bootstrap() {
   });
 
   await app.startAllMicroservices();
-  await app.listen(process.env.PORT || 3022);
-  console.log("admin-service running on port ${process.env.PORT || 3022}");
+  const port = process.env.PORT || 3018;
+  await app.listen(port);
+  logger.log(`admin-service running on port ${port}`);
 }
 bootstrap();
