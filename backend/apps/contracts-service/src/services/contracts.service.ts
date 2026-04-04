@@ -1,218 +1,110 @@
 import {
-  Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger,
+  Injectable,
+  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In, Not } from 'typeorm';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Repository } from 'typeorm';
 import { Contract } from '../entities/contract.entity';
-import { ContractGroup } from '../entities/contract-group.entity';
-import { ContractStatus } from '../entities/enums';
-import { CreateGroupDto } from '../dtos/create-group.dto';
 import { EndContractDto } from '../dtos/end-contract.dto';
 import { AcceptRejectDto } from '../dtos/accept-reject.dto';
-import { DisputeContractDto } from '../dtos/dispute-contract.dto';
-import { AuditLoggerService } from './audit-logger.service';
-import { EventsService } from './events.service';
+import { ContractStatus } from '../entities/enums';
+import { BillingClient } from './billing.client';
+import { ReviewsClient } from './reviews.client';
+import { NotificationsClient } from './notifications.client';
 
 @Injectable()
 export class ContractsService {
-  private readonly logger = new Logger(ContractsService.name);
-
   constructor(
-    @InjectRepository(Contract) private readonly contractRepo: Repository<Contract>,
-    @InjectRepository(ContractGroup) private readonly groupRepo: Repository<ContractGroup>,
-    private readonly dataSource: DataSource,
-    private readonly audit: AuditLoggerService,
-    private readonly events: EventsService,
+    @InjectRepository(Contract)
+    private readonly contractRepository: Repository<Contract>,
+    private readonly billingClient: BillingClient,
+    private readonly reviewsClient: ReviewsClient,
+    private readonly notificationsClient: NotificationsClient,
   ) {}
+  async endContract(id: string, dto: EndContractDto) {
+    // 1. Fetch contract
+    const contract = await this.findContractById(id);
+    if (!contract) {
+      throw new NotFoundException('Contract not found');
+    }
+    if (contract.status !== ContractStatus.ACTIVE) {
+      throw new BadRequestException('Contract is not active');
+    }
 
-  async createGroup(dto: CreateGroupDto, user: { sub: string; role: string }) {
-    const group = await this.dataSource.transaction(async (em) => {
-      const savedGroup = await em.save(ContractGroup, em.create(ContractGroup, {
-        type: dto.type,
-        ownerClientId: dto.ownerClientId,
-        projectId: dto.projectId,
-        serviceId: dto.serviceId,
-        teamId: dto.teamId,
-        jobId: dto.jobId,
-      }));
+    // 2. Call Billing Service to finalize the invoice/credits
+    const billingResult = await this.billingClient.finalizeContract(
+      contract.id,
+    );
 
-      const contracts = dto.contracts.map(c =>
-        em.create(Contract, {
-          ...c,
-          clientId: dto.ownerClientId,
-          groupId: savedGroup.id,
-          projectId: dto.projectId,
-          serviceId: dto.serviceId,
-          teamId: dto.teamId,
-          jobId: dto.jobId,
-          status: ContractStatus.PENDING,
-        }),
-      );
-      await em.save(Contract, contracts);
+    // 3. Update the contract status to ENDED
+    contract.status = ContractStatus.ENDED;
+    contract.endAtISO = new Date().toISOString();
+    await this.contractRepository.save(contract);
 
-      return em.findOneOrFail(ContractGroup, { where: { id: savedGroup.id }, relations: ['contracts'] });
-    });
+    // 4. Trigger reviews service
+    const reviewsResult = await this.reviewsClient.triggerReview(
+      contract.id,
+      contract.talentId,
+      contract.clientId,
+    );
+    // 5. Send notifications
+    await this.notificationsClient.notifyContractEnded(
+      contract,
+      dto.reasonCode,
+    );
 
-    this.events.groupCreated(group.id, group.ownerClientId, group.type, group.contracts);
-    await this.audit.log(user, 'GROUP_CREATED', { groupId: group.id });
-
-    return group;
+    return {
+      contractId: contract.id,
+      status: contract.status,
+      billing: billingResult,
+      reviewWindow: '90 days open',
+    };
   }
 
-  async getGroup(id: string) {
-    const group = await this.groupRepo.findOne({ where: { id }, relations: ['contracts'] });
-    if (!group) throw new NotFoundException('Contract group not found');
-    return group;
+  private async findContractById(id: string) {
+    return await this.contractRepository.findOne({ where: { id } });
+  }
+
+  async respondToOffer(id: string, dto: AcceptRejectDto) {
+    const contract = await this.contractRepository.findOne({
+      where: { id },
+    });
+
+    if (!contract) {
+      throw new NotFoundException('Contract not found');
+    }
+    
+    if(contract.status !== ContractStatus.PENDING){
+      throw new BadRequestException(`Only pending contracts can be accepted or rejected. Current status: ${contract.status}`)
+    }
+
+    if (dto.accepted) {
+      return {
+        id,
+        message: 'Offer accepted. Waiting for deposit.',
+      };
+    }
+
+    contract.status = ContractStatus.CANCELED;
+    await this.contractRepository.save(contract);
+
+    return {
+      id,
+      status: contract.status,
+      message: 'Offer rejected.',
+    };
   }
 
   async getContract(id: string) {
-    const contract = await this.contractRepo.findOne({ where: { id } });
-    if (!contract) throw new NotFoundException('Contract not found');
-    return contract;
+    return await this.contractRepository.findOne({ where: { id } });
   }
 
   async getContractsByClient(clientId: string) {
-    return this.contractRepo.find({ where: { clientId }, order: { createdAt: 'DESC' } });
+    return await this.contractRepository.find({ where: { clientId } });
   }
 
   async getContractsByTalent(talentId: string) {
-    return this.contractRepo.find({ where: { talentId }, order: { createdAt: 'DESC' } });
-  }
-
-  async respondToOffer(id: string, dto: AcceptRejectDto, user: { sub: string; role: string }) {
-    const contract = await this.getContract(id);
-    if (contract.talentId !== dto.talentId) throw new BadRequestException('Not your contract');
-    if (contract.status !== ContractStatus.PENDING) throw new BadRequestException('Contract is not pending');
-
-    if (!dto.accepted) {
-      await this.contractRepo.update(id, { status: ContractStatus.CANCELED });
-      await this.audit.log(user, 'CONTRACT_REJECTED', { contractId: id });
-      return { id, status: ContractStatus.CANCELED };
-    }
-
-    await this.audit.log(user, 'CONTRACT_ACCEPTED', { contractId: id });
-    return { id, message: 'Offer accepted. Waiting for deposit.' };
-  }
-
-  async endContract(id: string, dto: EndContractDto, user: { sub: string; role: string }) {
-    const contract = await this.getContract(id);
-
-    if (contract.clientId !== user.sub) {
-      throw new ForbiddenException('Only the owning client can end this contract');
-    }
-    if (contract.status !== ContractStatus.ACTIVE) {
-      throw new BadRequestException('Only active contracts can be ended');
-    }
-
-    const endAtISO = new Date().toISOString();
-    await this.contractRepo.update(id, {
-      status: ContractStatus.ENDED,
-      endAtISO,
-      reasonCode: dto.reasonCode,
-      notes: dto.notes,
-    });
-
-    this.events.contractEnded(id, contract.groupId, contract.clientId, contract.talentId, dto.reasonCode, endAtISO);
-    await this.audit.log(user, 'CONTRACT_ENDED', { contractId: id, groupId: contract.groupId, reason: dto.reasonCode });
-
-    await this.checkGroupEnded(contract.groupId);
-
-    return { contractId: id, status: ContractStatus.ENDED, endAtISO };
-  }
-
-  async disputeContract(id: string, dto: DisputeContractDto, user: { sub: string; role: string }) {
-    const contract = await this.getContract(id);
-
-    if (contract.clientId !== user.sub && contract.talentId !== user.sub) {
-      throw new ForbiddenException('Only parties to this contract can dispute it');
-    }
-    if (contract.status !== ContractStatus.ACTIVE) {
-      throw new BadRequestException('Only active contracts can be disputed');
-    }
-
-    await this.contractRepo.update(id, { status: ContractStatus.DISPUTED });
-
-    this.events.contractDisputed(id, contract.groupId, contract.clientId, contract.talentId, dto.reason);
-    await this.audit.log(user, 'CONTRACT_DISPUTED', { contractId: id, groupId: contract.groupId, reason: dto.reason });
-
-    return { contractId: id, status: ContractStatus.DISPUTED };
-  }
-
-  async activateGroup(groupId: string, paymentRef?: string) {
-    const group = await this.groupRepo.findOne({ where: { id: groupId }, relations: ['contracts'] });
-    if (!group) throw new NotFoundException('Contract group not found');
-
-    const now = new Date().toISOString();
-    const pendingContracts = group.contracts.filter(c => c.status === ContractStatus.PENDING);
-
-    await this.dataSource.transaction(async (em) => {
-      await em.update(ContractGroup, groupId, { depositPaid: true });
-      for (const contract of pendingContracts) {
-        await em.update(Contract, contract.id, { status: ContractStatus.ACTIVE, startAtISO: now });
-      }
-    });
-
-    for (const contract of pendingContracts) {
-      this.events.contractActivated(contract.id, groupId, contract.clientId, contract.talentId, now);
-    }
-    this.events.groupActivated(groupId, group.ownerClientId, pendingContracts.length);
-
-    return { groupId, activated: pendingContracts.length, paymentRef };
-  }
-
-  async cancelGroup(groupId: string, reason: string) {
-    const group = await this.groupRepo.findOne({ where: { id: groupId }, relations: ['contracts'] });
-    if (!group) throw new NotFoundException('Contract group not found');
-
-    const pendingIds = group.contracts
-      .filter(c => c.status === ContractStatus.PENDING)
-      .map(c => c.id);
-
-    if (pendingIds.length > 0) {
-      await this.contractRepo.update(pendingIds, { status: ContractStatus.CANCELED });
-    }
-
-    this.events.contractsCanceled(groupId, pendingIds, reason);
-    return { groupId, canceled: pendingIds.length };
-  }
-
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  async cancelExpiredPendingGroups() {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-    const expiredGroups = await this.groupRepo
-      .createQueryBuilder('g')
-      .leftJoinAndSelect('g.contracts', 'c')
-      .where('g.depositPaid = false')
-      .andWhere('g.createdAt < :cutoff', { cutoff: sevenDaysAgo })
-      .getMany();
-
-    for (const group of expiredGroups) {
-      const hasPending = group.contracts.some(c => c.status === ContractStatus.PENDING);
-      if (!hasPending) continue;
-
-      this.logger.log(`Auto-canceling expired group ${group.id}`);
-      await this.cancelGroup(group.id, 'deposit_expired');
-      await this.audit.log(
-        { sub: 'system', role: 'system' },
-        'GROUP_AUTO_CANCELED',
-        { groupId: group.id, reason: 'deposit_expired' },
-      );
-    }
-  }
-
-  private async checkGroupEnded(groupId: string): Promise<void> {
-    const activeCount = await this.contractRepo.count({
-      where: {
-        groupId,
-        status: In([ContractStatus.ACTIVE, ContractStatus.PENDING, ContractStatus.DISPUTED]),
-      },
-    });
-
-    if (activeCount === 0) {
-      this.events.groupEnded(groupId);
-    }
+    return await this.contractRepository.find({ where: { talentId } });
   }
 }

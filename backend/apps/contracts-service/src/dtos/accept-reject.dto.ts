@@ -1,10 +1,6 @@
-import { IsBoolean, IsNotEmpty, IsString } from 'class-validator';
+import { IsBoolean, IsNotEmpty } from 'class-validator';
 
 export class AcceptRejectDto {
-  @IsBoolean()
-  accepted: boolean;
-
-  @IsString()
-  @IsNotEmpty()
-  talentId: string;
+  @IsBoolean() accepted: boolean;
+  @IsNotEmpty() talentId: string;
 }

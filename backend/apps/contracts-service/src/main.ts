@@ -1,26 +1,26 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import { MicroserviceOptions } from '@nestjs/microservices';
-import { ContractsServiceModule } from './contracts-service.module';
-import { getRabbitMQConfig } from '../../../shared/config/rabbitmq.config';
-import { QUEUE_NAMES } from '../../../shared/types/events.types';
+import { AppModule } from './app.module';
+import { Logger, ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
-  const app = await NestFactory.create(ContractsServiceModule);
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  const logger = new Logger('ContractsService');
+  const app = await NestFactory.create(AppModule);
+  const port = process.env.PORT || 3028;
 
-  const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',')
-    : ['http://localhost:3000'];
-  app.enableCors({ origin: allowedOrigins, credentials: true });
+  app.enableCors({
+    origin: process.env.FE_ORIGIN || 'http://localhost:3000',
+  });
 
-  app.connectMicroservice<MicroserviceOptions>(
-    getRabbitMQConfig(QUEUE_NAMES.CONTRACTS),
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
   );
 
-  await app.startAllMicroservices();
-  const port = process.env.PORT || 3010;
   await app.listen(port);
-  console.log(`contracts-service running on port ${port}`);
+  logger.log(`Contracts Service is running on port ${port}`);
 }
+
 bootstrap();

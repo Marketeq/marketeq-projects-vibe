@@ -12,22 +12,21 @@ export class AuditLoggerService {
     private readonly auditRepo: Repository<ContractAudit>,
   ) {}
 
-  async log(
-    user: { sub: string; role: string },
-    action: string,
-    details: { contractId?: string; groupId?: string; [key: string]: any } = {},
-  ): Promise<void> {
+  async log(user: any, action: string, details: any = {}) {
     try {
-      const audit = new ContractAudit();
-      audit.userId = user.sub;
-      audit.role = user.role;
-      audit.action = action;
-      audit.contractId = details.contractId;
-      audit.groupId = details.groupId;
-      audit.details = details;
+      const audit = this.auditRepo.create({
+        userId: user.sub,
+        role: user.role,
+        action,
+        contractId: details.contractId || null,
+        groupId: details.groupId || null,
+        details,
+      });
       await this.auditRepo.save(audit);
+      this.logger.debug(`Audit: ${action} by ${user.sub}`);
+      return audit;
     } catch (err) {
-      this.logger.error(`Failed to write audit log for action ${action}`, err);
+      this.logger.error(`Failed to save audit log: ${err}`);
     }
   }
 }

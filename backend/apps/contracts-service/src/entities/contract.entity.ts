@@ -1,58 +1,65 @@
 import {
-  Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn,
-  ManyToOne, JoinColumn, Index,
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { ContractStatus } from './enums';
 import { ContractGroup } from './contract-group.entity';
 
+/**
+ * Contract
+ * Always represents one individual talent profile hired by one client.
+ * Can be linked to a project/service/team/job through its group.
+ */
 @Entity('contracts')
-@Index(['clientId'])
-@Index(['talentId'])
-@Index(['status'])
 export class Contract {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column('uuid')
+  // Reference to the parent group (for deposit & billing orchestration)
+  @Column()
   groupId: string;
 
-  @ManyToOne(() => ContractGroup, (g) => g.contracts, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'groupId' })
-  group: ContractGroup;
-
+  // Core identifiers
   @Column()
   clientId: string;
 
   @Column()
   talentId: string;
 
+  // UI-driven fields (set during "Hire Me" flow)
   @Column()
-  title: string;
+  title: string; // e.g., "UX Designer for Mobile App"
 
   @Column('decimal', { precision: 10, scale: 2 })
-  rate: number;
+  rate: number; // hourly rate depending on contract
 
   @Column()
-  schedule: string;
+  schedule: string; // e.g., "full-time", "part-time", "custom"
 
   @Column()
-  duration: string;
+  duration: string; // e.g., "3 months", "6 months", "ongoing"
 
-  @Column({ type: 'enum', enum: ContractStatus, default: ContractStatus.PENDING })
+  // Lifecycle status
+  @Column({
+    type: 'enum',
+    enum: ContractStatus,
+    default: ContractStatus.PENDING,
+  })
   status: ContractStatus;
 
+  // Timestamps for lifecycle transitions
   @Column({ nullable: true })
   startAtISO: string;
 
   @Column({ nullable: true })
   endAtISO: string;
 
-  @Column({ nullable: true })
-  reasonCode: string;
-
-  @Column({ type: 'text', nullable: true })
-  notes: string;
-
+  // Optional direct associations (duplicate for fast lookup)
   @Column({ nullable: true })
   projectId: string;
 
@@ -65,9 +72,17 @@ export class Contract {
   @Column({ nullable: true })
   jobId: string;
 
+  @Column({ type: 'text', nullable: true }) 
+  note?: string;
+
+  // Automatic timestamps
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @ManyToOne(() => ContractGroup, (group) => group.contracts)
+  @JoinColumn({ name: 'groupId' })
+  group: ContractGroup;
 }
