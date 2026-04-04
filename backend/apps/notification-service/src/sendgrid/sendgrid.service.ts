@@ -6,7 +6,7 @@ export class SendgridService {
   private readonly logger = new Logger(SendgridService.name);
 
   constructor() {
-    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY || '');
   }
 
   async sendNotificationEmail(to: string, title: string, body: string, link?: string) {

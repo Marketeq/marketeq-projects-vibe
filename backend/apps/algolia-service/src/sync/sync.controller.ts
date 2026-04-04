@@ -1,7 +1,7 @@
 import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards } from '@nestjs/common'
 import { MessagePattern, Payload, EventPattern } from '@nestjs/microservices'
 import { SyncService } from './sync.service'
-import { SyncRecordDto, SyncOperation } from '../dto/sync.dto'
+import { SyncRecordDto, SyncOperation, AlgoliaIndex } from '../dto/sync.dto'
 import { JwtAuthGuard } from '../guards/jwt-auth.guard'
 import {
   ListingEventPayload,
@@ -54,7 +54,7 @@ export class SyncController {
   @EventPattern('listing.deleted')
   onListingDeleted(@Payload() data: ListingDeletedPayload) {
     return this.svc.sync({
-      index: data.type === 'service' ? 'services' : 'projects',
+      index: data.type === 'service' ? AlgoliaIndex.SERVICES : AlgoliaIndex.PROJECTS,
       operation: SyncOperation.DELETE,
       objectID: data.id,
     })
@@ -69,7 +69,7 @@ export class SyncController {
   @EventPattern('talent.deleted')
   onTalentDeleted(@Payload() data: TalentDeletedPayload) {
     return this.svc.sync({
-      index: 'talent',
+      index: AlgoliaIndex.TALENT,
       operation: SyncOperation.DELETE,
       objectID: data.id,
     })

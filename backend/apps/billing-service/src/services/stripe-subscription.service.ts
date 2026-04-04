@@ -13,7 +13,7 @@ export class StripeSubscriptionService {
   private readonly logger = new Logger(StripeSubscriptionService.name);
 
   constructor() {
-    this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-06-20' });
+    this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-06-20' as any });
   }
 
   async createSubscription(dto: CreateSubscriptionDto): Promise<{
@@ -48,7 +48,7 @@ export class StripeSubscriptionService {
           },
           unit_amount: installmentAmountCents,
           recurring: { interval, interval_count },
-        },
+        } as any,
       }],
       billing_cycle_anchor: Math.floor(startDate.getTime() / 1000),
       proration_behavior: 'none',

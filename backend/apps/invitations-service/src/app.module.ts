@@ -2,7 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { APP_GUARD } from "@nestjs/core";
-import { JwtAuthGuard } from "@libs/auth";
+import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { InvitationsModule } from "./invitations/invitations.module";
 
 import { AuthModule } from "./auth/auth.module";

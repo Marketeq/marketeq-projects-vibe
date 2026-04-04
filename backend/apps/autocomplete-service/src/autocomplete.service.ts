@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import Fuse from 'fuse.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -168,7 +168,7 @@ export class AutocompleteService {
     if (queueItem) {
       queueItem.action = dto.action;
       queueItem.reason = dto.reason;
-      queueItem.reviewedBy = dto.reviewedBy;
+      queueItem.reviewedBy = dto.reviewedBy || '';
       queueItem.reviewedAt = new Date();
       await this.reviewRepo.save(queueItem);
     }
@@ -189,7 +189,7 @@ export class AutocompleteService {
 
   async getPendingReview(): Promise<AutocompleteReviewQueue[]> {
     return this.reviewRepo.find({
-      where: { action: null },
+      where: { action: IsNull() },
       relations: ['entry'],
       order: { createdAt: 'ASC' },
       take: 50,

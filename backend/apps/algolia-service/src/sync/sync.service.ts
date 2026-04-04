@@ -1,6 +1,6 @@
 import { Injectable, Logger, InternalServerErrorException, BadRequestException } from '@nestjs/common'
 import { AlgoliaClient } from './algolia.client'
-import { SyncRecordDto, SyncOperation } from '../dto/sync.dto'
+import { SyncRecordDto, SyncOperation, AlgoliaIndex } from '../dto/sync.dto'
 import { ListingEventPayload, TalentEventPayload } from '../types/event-payloads'
 
 @Injectable()
@@ -56,7 +56,7 @@ export class SyncService {
 
   async syncListing(listing: ListingEventPayload, operation: SyncOperation = SyncOperation.UPSERT): Promise<void> {
     await this.sync({
-      index: listing.type === 'service' ? 'services' : 'projects',
+      index: listing.type === 'service' ? AlgoliaIndex.SERVICES : AlgoliaIndex.PROJECTS,
       operation,
       objectID: listing.id,
       record: {
@@ -74,7 +74,7 @@ export class SyncService {
 
   async syncTalent(user: TalentEventPayload, operation: SyncOperation = SyncOperation.UPSERT): Promise<void> {
     await this.sync({
-      index: 'talent',
+      index: AlgoliaIndex.TALENT,
       operation,
       objectID: user.id,
       record: {

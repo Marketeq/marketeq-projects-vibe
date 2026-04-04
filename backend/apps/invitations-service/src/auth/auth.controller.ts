@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { CurrentUser } from '@libs/auth';
+import { CurrentUser } from '../decorators/current-user.decorator';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Auth')

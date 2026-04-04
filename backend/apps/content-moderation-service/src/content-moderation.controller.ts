@@ -28,7 +28,7 @@ export class ContentModerationController {
   ) {}
 
   @Post('content')
-  async moderateContent(@Body() contentDto: { contentId: string; content: string; title: string; category: string; subcategory: string }): Promise<any> {
+  async moderateContent(@Body() contentDto: { contentId: string; content: string; title: string; category: string; subcategory: string; tags?: string[]; [key: string]: any }): Promise<any> {
     const { contentId, content, title, category, subcategory } = contentDto;
     const combinedTextForKeywordChecks = [title, content]
       .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
@@ -54,7 +54,7 @@ export class ContentModerationController {
         title,
         description: content,
         tags: contentDto['tags'] || [],
-        categories: contentDto['categories'] || []
+        categories: contentDto['category'] ? [contentDto['category']] : []
       });
     } catch (error) {
       await this.contentModerationService.rejectContent(contentId, error.message);
@@ -218,7 +218,7 @@ export class ContentModerationController {
       const result = await this.fileValidationService.validateFile(file);
 
       if (!result.valid) {
-        await this.contentModerationService.rejectContent(contentId, result.reason);
+        await this.contentModerationService.rejectContent(contentId, result.reason || 'File validation failed');
         throw new UnprocessableEntityException({
           status: 'rejected',
           reason: result.reason,

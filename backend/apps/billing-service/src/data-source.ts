@@ -1,7 +1,8 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { config as loadEnv } from 'dotenv';
-import { resolve, existsSync } from 'path';
+import { resolve } from 'path';
+import { existsSync } from 'fs';
 
 const envPaths = [
   resolve(process.cwd(), 'apps/billing-service/.env'),
