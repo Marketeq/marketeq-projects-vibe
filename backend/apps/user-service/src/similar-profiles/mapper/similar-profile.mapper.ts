@@ -26,11 +26,11 @@ export class SimilarProfileMapper {
       name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
       skills: user.skills?.map((s) => s.name) ?? [],
       role: user.role ?? '',
-      hourlyRate: user.rate_max ?? 0,
+      hourlyRate: user.rateMax ?? 0,
       location: user.location ?? '',
       experience: SimilarProfileMapper.calculateExperience(user.experiences),
       timezone: user.timezone ?? '',
-      rating: user.client_success_rating ?? 0,
+      rating: user.clientSuccessRating ?? 0,
     };
   }
 }

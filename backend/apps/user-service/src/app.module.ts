@@ -39,6 +39,7 @@ import { OwnerTargetModule } from './owner-target/owner-target.module';
       useFactory: (cfg: ConfigService) => ({
         type: 'postgres',
         url: cfg.get<string>('DATABASE_URL'),
+        schema: 'user_service',
         autoLoadEntities: true,
         // Permanent guardrail: schema changes must go through migrations.
         synchronize: false,

@@ -3,7 +3,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { randomBytes } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Request } from 'express';
@@ -167,11 +166,6 @@ export class UserService {
       Object.assign(existingById, {
         email: dto.email ?? existingById.email,
         role: dto.role ?? existingById.role,
-        provider: dto.provider ?? existingById.provider,
-        hasPassword:
-          typeof dto.hasPassword === 'boolean'
-            ? dto.hasPassword
-            : existingById.hasPassword,
       });
       if (normalizedIncomingUsername) {
         existingById.username = normalizedIncomingUsername;
@@ -189,11 +183,6 @@ export class UserService {
       }
       Object.assign(existingByEmail, {
         role: dto.role ?? existingByEmail.role,
-        provider: dto.provider ?? existingByEmail.provider,
-        hasPassword:
-          typeof dto.hasPassword === 'boolean'
-            ? dto.hasPassword
-            : existingByEmail.hasPassword,
       });
       if (normalizedIncomingUsername) {
         existingByEmail.username = normalizedIncomingUsername;
@@ -204,12 +193,8 @@ export class UserService {
     const user = this.userRepository.create({
       id: dto.id,
       email: dto.email,
-      // Username is allowed to be unset; only persist it when provided and non-empty.
       username: normalizedIncomingUsername ?? undefined,
-      password: randomBytes(24).toString('hex'),
-      role: dto.role,
-      provider: dto.provider ?? 'EMAIL',
-      hasPassword: dto.hasPassword ?? false,
+      role: dto.role as string,
     });
 
     return this.userRepository.save(user);
