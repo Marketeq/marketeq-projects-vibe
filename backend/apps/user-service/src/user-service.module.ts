@@ -30,7 +30,6 @@ import { Industry } from './industries/entities/industry.entity';
           migrations: [__dirname + '/../migrations/*{.ts,.js}'],
           logging: !isProd,
           ssl: process.env.DATABASE_SSL === 'false' ? false : isProd ? { rejectUnauthorized: false } : undefined,
-          extra: process.env.DATABASE_SSL === 'false' ? undefined : isProd ? { sslmode: 'require' } : undefined,
         };
       },
     }),
