@@ -1,0 +1,1558 @@
+{
+  "info": {
+    "name": "Job Listing Collection",
+    "description": "QA collection for the job-listing feature (JL-12). Import into Postman. Run the seed script first, then Auth/Login before any other folder. AI test cases (TC-AI-*) require environment variable GROQ_API_KEY to be set to an invalid value before running.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",          "value": "http://localhost:3004",      "description": "listings-service base URL" },
+    { "key": "authBaseUrl",      "value": "http://localhost:3001",      "description": "auth-service base URL" },
+    { "key": "clientAJwt",       "value": "",                           "description": "Auto-set by Login clientA" },
+    { "key": "clientBJwt",       "value": "",                           "description": "Auto-set by Login clientB" },
+    { "key": "clientAUserId",    "value": "",                           "description": "Auto-set by Login clientA — used to fix seed ownership" },
+    { "key": "listingId",        "value": "",                           "description": "Auto-set after Create Draft" },
+    { "key": "phaseId",          "value": "",                           "description": "Auto-set after Add Setup Phase" },
+    { "key": "recurringPhaseId", "value": "",                           "description": "Auto-set after Add Recurring Phase" },
+    { "key": "ongoingPhaseId",   "value": "",                           "description": "Auto-set after Add Ongoing Phase" },
+    { "key": "taskId",           "value": "",                           "description": "Auto-set after Add Task" },
+    { "key": "activeContractId", "value": "seed-active-contract-uuid",  "description": "Seed active contract UUID" }
+  ],
+  "item": [
+
+    {
+      "name": "Auth",
+      "description": "Run Register (once), then Login before any other folder. Login auto-sets clientAJwt / clientBJwt used by all other requests.",
+      "item": [
+        {
+          "name": "Register clientA (run once)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Registered or already exists', () => {",
+              "  pm.expect(pm.response.code).to.be.oneOf([201, 409, 422]);",
+              "});"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{authBaseUrl}}/auth/register",
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"clientA\",\n  \"email\": \"client.a@marketeq-test.dev\",\n  \"password\": \"TestPass123!\"\n}" }
+          }
+        },
+        {
+          "name": "Register clientB (run once)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Registered or already exists', () => {",
+              "  pm.expect(pm.response.code).to.be.oneOf([201, 409, 422]);",
+              "});"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{authBaseUrl}}/auth/register",
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"clientB\",\n  \"email\": \"client.b@marketeq-test.dev\",\n  \"password\": \"TestPass123!\"\n}" }
+          }
+        },
+        {
+          "name": "Login clientA",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "var token = json.access_token || json.accessToken || json.token;",
+              "pm.collectionVariables.set('clientAJwt', token);",
+              "if (json.user && json.user.id) {",
+              "  pm.collectionVariables.set('clientAUserId', json.user.id);",
+              "}"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{authBaseUrl}}/auth/login",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"client.a@marketeq-test.dev\",\n  \"password\": \"TestPass123!\"\n}" }
+          }
+        },
+        {
+          "name": "Login clientB",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "var token = json.access_token || json.accessToken || json.token;",
+              "pm.collectionVariables.set('clientBJwt', token);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{authBaseUrl}}/auth/login",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"client.b@marketeq-test.dev\",\n  \"password\": \"TestPass123!\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Step 1 — Foundation",
+      "item": [
+        {
+          "name": "Create Draft — New Project, has scope, team (TC-S1-01)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "var json = pm.response.json();",
+              "pm.collectionVariables.set('listingId', json.id);",
+              "pm.test('status is draft', () => pm.expect(json.status).to.eql('draft'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings",
+            "body": { "mode": "raw", "raw": "{\n  \"contractType\": \"new\",\n  \"scopeKnowledge\": \"has_scope\",\n  \"workType\": \"project\",\n  \"hiringType\": \"team\"\n}" }
+          }
+        },
+        {
+          "name": "Create Draft — New Service, has scope, individual (TC-S1-02)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "var json = pm.response.json();",
+              "pm.test('workType is service', () => pm.expect(json.workType).to.eql('service'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings",
+            "body": { "mode": "raw", "raw": "{\n  \"contractType\": \"new\",\n  \"scopeKnowledge\": \"has_scope\",\n  \"workType\": \"service\",\n  \"hiringType\": \"individual\"\n}" }
+          }
+        },
+        {
+          "name": "Create Draft — No scope yet path (TC-S1-03)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "var json = pm.response.json();",
+              "pm.test('scopeKnowledge is no_scope', () => pm.expect(json.scopeKnowledge).to.eql('no_scope'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings",
+            "body": { "mode": "raw", "raw": "{\n  \"contractType\": \"new\",\n  \"scopeKnowledge\": \"no_scope\",\n  \"workType\": \"project\",\n  \"hiringType\": \"team\"\n}" }
+          }
+        },
+        {
+          "name": "Create Draft — Continue without scope (TC-S1-04)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "var json = pm.response.json();",
+              "pm.test('workType is null', () => pm.expect(json.workType).to.eql(null));",
+              "pm.test('hiringType is null', () => pm.expect(json.hiringType).to.eql(null));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings",
+            "body": { "mode": "raw", "raw": "{\n  \"contractType\": \"new\",\n  \"scopeKnowledge\": \"no_scope_selected\"\n}" }
+          }
+        },
+        {
+          "name": "Missing contractType [expect 422] (TC-S1-05)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings",
+            "body": { "mode": "raw", "raw": "{\n  \"scopeKnowledge\": \"has_scope\"\n}" }
+          }
+        },
+        {
+          "name": "Unauthenticated request [expect 401] (TC-S1-06)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 401', () => pm.response.to.have.status(401));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/job-listings",
+            "body": { "mode": "raw", "raw": "{\n  \"contractType\": \"new\",\n  \"scopeKnowledge\": \"has_scope\"\n}" }
+          }
+        },
+        {
+          "name": "Existing Contract — Active (TC-EX-01)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "var json = pm.response.json();",
+              "pm.test('contractType is existing', () => pm.expect(json.contractType).to.eql('existing'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings",
+            "body": { "mode": "raw", "raw": "{\n  \"contractType\": \"existing\",\n  \"contractId\": \"seed-active-contract-uuid\"\n}" }
+          }
+        },
+        {
+          "name": "Existing Contract — Paused (TC-EX-02)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "pm.test('Paused contracts are selectable', () => pm.response.to.have.status(201));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings",
+            "body": { "mode": "raw", "raw": "{\n  \"contractType\": \"existing\",\n  \"contractId\": \"seed-paused-contract-uuid\"\n}" }
+          }
+        },
+        {
+          "name": "Existing Contract — Disputed [expect 409] (TC-EX-03)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 409', () => pm.response.to.have.status(409));",
+              "var json = pm.response.json();",
+              "pm.test('JL_CONTRACT_NOT_SELECTABLE', () => pm.expect(json.code).to.eql('JL_CONTRACT_NOT_SELECTABLE'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings",
+            "body": { "mode": "raw", "raw": "{\n  \"contractType\": \"existing\",\n  \"contractId\": \"seed-disputed-contract-uuid\"\n}" }
+          }
+        },
+        {
+          "name": "Existing Contract — Expired [expect 409] (TC-EX-04)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 409', () => pm.response.to.have.status(409));",
+              "var json = pm.response.json();",
+              "pm.test('JL_CONTRACT_NOT_SELECTABLE', () => pm.expect(json.code).to.eql('JL_CONTRACT_NOT_SELECTABLE'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings",
+            "body": { "mode": "raw", "raw": "{\n  \"contractType\": \"existing\",\n  \"contractId\": \"seed-expired-contract-uuid\"\n}" }
+          }
+        },
+        {
+          "name": "Existing Contract — Closed [expect 409] (TC-EX-05)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 409', () => pm.response.to.have.status(409));",
+              "var json = pm.response.json();",
+              "pm.test('JL_CONTRACT_NOT_SELECTABLE', () => pm.expect(json.code).to.eql('JL_CONTRACT_NOT_SELECTABLE'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings",
+            "body": { "mode": "raw", "raw": "{\n  \"contractType\": \"existing\",\n  \"contractId\": \"seed-closed-contract-uuid\"\n}" }
+          }
+        },
+        {
+          "name": "Existing Contract — Other client [expect 403] (TC-EX-06)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 403', () => pm.response.to.have.status(403));",
+              "var json = pm.response.json();",
+              "pm.test('JL_CONTRACT_FORBIDDEN', () => pm.expect(json.code).to.eql('JL_CONTRACT_FORBIDDEN'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings",
+            "body": { "mode": "raw", "raw": "{\n  \"contractType\": \"existing\",\n  \"contractId\": \"seed-other-client-contract\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Step 2 — Describe",
+      "item": [
+        {
+          "name": "Save valid description (TC-S2-01)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('description persisted', () => pm.expect(json.description).to.eql('We are building an e-commerce platform.'));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"description\": \"We are building an e-commerce platform.\"\n}" }
+          }
+        },
+        {
+          "name": "Description exceeds 100 words [expect 422] (TC-S2-02)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));",
+              "pm.test('Word count validation error', () => { var json = pm.response.json(); pm.expect(json.message).to.be.a('string'); });"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"description\": \"one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four twenty-five twenty-six twenty-seven twenty-eight twenty-nine thirty thirty-one thirty-two thirty-three thirty-four thirty-five thirty-six thirty-seven thirty-eight thirty-nine forty forty-one forty-two forty-three forty-four forty-five forty-six forty-seven forty-eight forty-nine fifty fifty-one fifty-two fifty-three fifty-four fifty-five fifty-six fifty-seven fifty-eight fifty-nine sixty sixty-one sixty-two sixty-three sixty-four sixty-five sixty-six sixty-seven sixty-eight sixty-nine seventy seventy-one seventy-two seventy-three seventy-four seventy-five seventy-six seventy-seven seventy-eight seventy-nine eighty eighty-one eighty-two eighty-three eighty-four eighty-five eighty-six eighty-seven eighty-eight eighty-nine ninety ninety-one ninety-two ninety-three ninety-four ninety-five ninety-six ninety-seven ninety-eight ninety-nine one-hundred one-hundred-and-one\"\n}" }
+          }
+        },
+        {
+          "name": "Save budget (TC-S2-03)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('budgetAmountUsdCents = 500000', () => pm.expect(Number(json.budgetAmountUsdCents)).to.eql(500000));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"budgetAmount\": 5000,\n  \"budgetDisplayCurrency\": \"USD\",\n  \"budgetFrequency\": \"per_week\"\n}" }
+          }
+        },
+        {
+          "name": "Save zero budget — allowed as placeholder (TC-S2-04)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Zero budget accepted', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"budgetAmount\": 0\n}" }
+          }
+        },
+        {
+          "name": "Negative budget [expect 422] (TC-S2-05)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"budgetAmount\": -100\n}" }
+          }
+        },
+        {
+          "name": "Save duration (TC-S2-06)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('durationMonths is 6', () => pm.expect(json.durationMonths).to.eql(6));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"durationMonths\": 6\n}" }
+          }
+        },
+        {
+          "name": "Duration less than 1 [expect 422] (TC-S2-07)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"durationMonths\": 0\n}" }
+          }
+        },
+        {
+          "name": "Existing contract — budget field ignored (TC-S2-08)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Inherited budget unchanged — verify manually that budget did not change', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/seed-existing-active-listing-uuid",
+            "body": { "mode": "raw", "raw": "{\n  \"budgetAmount\": 9999\n}" }
+          }
+        },
+        {
+          "name": "Save headcount (TC-S2-09)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('headcount is 5', () => pm.expect(json.headcount).to.eql(5));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"headcount\": 5\n}" }
+          }
+        },
+        {
+          "name": "Headcount less than 1 [expect 422] (TC-S2-10)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"headcount\": 0\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Step 4 — Scope Table",
+      "item": [
+        {
+          "name": "Add SETUP phase (TC-PH-01)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "var json = pm.response.json();",
+              "pm.collectionVariables.set('phaseId', json.id);",
+              "pm.test('positionOrder is 0', () => pm.expect(json.positionOrder).to.eql(0));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases",
+            "body": { "mode": "raw", "raw": "{\n  \"phaseName\": \"Discovery\",\n  \"phaseType\": \"setup\"\n}" }
+          }
+        },
+        {
+          "name": "Add second SETUP phase [expect 409] (TC-PH-02)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 409', () => pm.response.to.have.status(409));",
+              "var json = pm.response.json();",
+              "pm.test('JL_PHASE_SETUP_EXISTS', () => pm.expect(json.code).to.eql('JL_PHASE_SETUP_EXISTS'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases",
+            "body": { "mode": "raw", "raw": "{\n  \"phaseName\": \"Setup 2\",\n  \"phaseType\": \"setup\"\n}" }
+          }
+        },
+        {
+          "name": "Add ONGOING phase (TC-PH-03)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "var json = pm.response.json();",
+              "pm.collectionVariables.set('ongoingPhaseId', json.id);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases",
+            "body": { "mode": "raw", "raw": "{\n  \"phaseName\": \"Support\",\n  \"phaseType\": \"ongoing\"\n}" }
+          }
+        },
+        {
+          "name": "Add second ONGOING phase [expect 409] (TC-PH-04)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 409', () => pm.response.to.have.status(409));",
+              "var json = pm.response.json();",
+              "pm.test('JL_PHASE_ONGOING_EXISTS', () => pm.expect(json.code).to.eql('JL_PHASE_ONGOING_EXISTS'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases",
+            "body": { "mode": "raw", "raw": "{\n  \"phaseName\": \"Ongoing 2\",\n  \"phaseType\": \"ongoing\"\n}" }
+          }
+        },
+        {
+          "name": "Add RECURRING with valid schedule (TC-PH-05)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "var json = pm.response.json();",
+              "pm.collectionVariables.set('recurringPhaseId', json.id);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases",
+            "body": { "mode": "raw", "raw": "{\n  \"phaseName\": \"Sprint 1\",\n  \"phaseType\": \"recurring\",\n  \"recurrenceSchedule\": \"monthly\",\n  \"recurrenceCount\": 3\n}" }
+          }
+        },
+        {
+          "name": "RECURRING without schedule [expect 422] (TC-PH-06)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases",
+            "body": { "mode": "raw", "raw": "{\n  \"phaseName\": \"Sprint X\",\n  \"phaseType\": \"recurring\"\n}" }
+          }
+        },
+        {
+          "name": "RECURRING with recurrenceCount 0 [expect 422] (TC-PH-07)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases",
+            "body": { "mode": "raw", "raw": "{\n  \"phaseName\": \"Sprint X\",\n  \"phaseType\": \"recurring\",\n  \"recurrenceSchedule\": \"weekly\",\n  \"recurrenceCount\": 0\n}" }
+          }
+        },
+        {
+          "name": "RECURRING with recurrenceCount 99 — max allowed (TC-PH-08)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases",
+            "body": { "mode": "raw", "raw": "{\n  \"phaseName\": \"Long Sprint\",\n  \"phaseType\": \"recurring\",\n  \"recurrenceSchedule\": \"monthly\",\n  \"recurrenceCount\": 99\n}" }
+          }
+        },
+        {
+          "name": "RECURRING with recurrenceCount 100 — over max [expect 422] (TC-PH-09)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases",
+            "body": { "mode": "raw", "raw": "{\n  \"phaseName\": \"Too Long Sprint\",\n  \"phaseType\": \"recurring\",\n  \"recurrenceSchedule\": \"monthly\",\n  \"recurrenceCount\": 100\n}" }
+          }
+        },
+        {
+          "name": "Reorder — valid order (TC-PH-10)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/reorder",
+            "body": { "mode": "raw", "raw": "{\n  \"orderedPhaseIds\": [\"{{phaseId}}\", \"{{recurringPhaseId}}\", \"{{ongoingPhaseId}}\"]\n}" }
+          }
+        },
+        {
+          "name": "Reorder — SETUP not first [expect 409] (TC-PH-11)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 409', () => pm.response.to.have.status(409));",
+              "var json = pm.response.json();",
+              "pm.test('JL_PHASE_SETUP_MUST_BE_FIRST', () => pm.expect(json.code).to.eql('JL_PHASE_SETUP_MUST_BE_FIRST'));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/reorder",
+            "body": { "mode": "raw", "raw": "{\n  \"orderedPhaseIds\": [\"{{recurringPhaseId}}\", \"{{phaseId}}\", \"{{ongoingPhaseId}}\"]\n}" }
+          }
+        },
+        {
+          "name": "Reorder — ONGOING not last [expect 409] (TC-PH-12)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 409', () => pm.response.to.have.status(409));",
+              "var json = pm.response.json();",
+              "pm.test('JL_PHASE_ONGOING_MUST_BE_LAST', () => pm.expect(json.code).to.eql('JL_PHASE_ONGOING_MUST_BE_LAST'));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/reorder",
+            "body": { "mode": "raw", "raw": "{\n  \"orderedPhaseIds\": [\"{{phaseId}}\", \"{{ongoingPhaseId}}\", \"{{recurringPhaseId}}\"]\n}" }
+          }
+        },
+        {
+          "name": "Reorder — missing phase ID [expect 409] (TC-PH-13)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 409', () => pm.response.to.have.status(409));",
+              "var json = pm.response.json();",
+              "pm.test('JL_PHASE_REORDER_MISMATCH', () => pm.expect(json.code).to.eql('JL_PHASE_REORDER_MISMATCH'));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/reorder",
+            "body": { "mode": "raw", "raw": "{\n  \"orderedPhaseIds\": [\"{{phaseId}}\"]\n}" }
+          }
+        },
+        {
+          "name": "Delete RECURRING phase (TC-PH-14)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 204', () => pm.response.to.have.status(204));"
+            ]}
+          }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{recurringPhaseId}}"
+          }
+        },
+        {
+          "name": "Add task to phase (TC-TK-01)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "var json = pm.response.json();",
+              "pm.collectionVariables.set('taskId', json.id);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{phaseId}}/tasks",
+            "body": { "mode": "raw", "raw": "{\n  \"taskName\": \"Define user flows\",\n  \"roleTitle\": \"UX Designer\",\n  \"workSchedule\": \"full_time\",\n  \"estimatedHours\": 40\n}" }
+          }
+        },
+        {
+          "name": "estimatedHours below min [expect 422] (TC-TK-02)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{phaseId}}/tasks",
+            "body": { "mode": "raw", "raw": "{\n  \"taskName\": \"Too short task\",\n  \"roleTitle\": \"Dev\",\n  \"workSchedule\": \"full_time\",\n  \"estimatedHours\": 0\n}" }
+          }
+        },
+        {
+          "name": "Edit estimated hours — timeline shifts (TC-TK-03)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{phaseId}}/tasks/{{taskId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"estimatedHours\": 80\n}" }
+          }
+        },
+        {
+          "name": "Edit role title — rate re-fetched (TC-TK-04)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{phaseId}}/tasks/{{taskId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"roleTitle\": \"Backend Engineer\"\n}" }
+          }
+        },
+        {
+          "name": "Edit location — rate re-fetched (TC-TK-05)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{phaseId}}/tasks/{{taskId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"location\": \"Eastern Europe\"\n}" }
+          }
+        },
+        {
+          "name": "Edit schedule — full to part time (TC-TK-06)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{phaseId}}/tasks/{{taskId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"workSchedule\": \"part_time\"\n}" }
+          }
+        },
+        {
+          "name": "Custom work schedule (TC-TK-07)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{phaseId}}/tasks/{{taskId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"workSchedule\": \"custom\",\n  \"customHours\": 10,\n  \"customFrequency\": \"per_week\"\n}" }
+          }
+        },
+        {
+          "name": "Delete task — budget and timeline update (TC-TK-08)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 204', () => pm.response.to.have.status(204));"
+            ]}
+          }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{phaseId}}/tasks/{{taskId}}"
+          }
+        },
+        {
+          "name": "taskName over 200 chars [expect 422] (TC-TK-09)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{phaseId}}/tasks",
+            "body": { "mode": "raw", "raw": "{\n  \"taskName\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n  \"roleTitle\": \"Dev\",\n  \"workSchedule\": \"full_time\",\n  \"estimatedHours\": 10\n}" }
+          }
+        },
+        {
+          "name": "roleTitle over 100 chars [expect 422] (TC-TK-10)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{phaseId}}/tasks",
+            "body": { "mode": "raw", "raw": "{\n  \"taskName\": \"Valid task\",\n  \"roleTitle\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n  \"workSchedule\": \"full_time\",\n  \"estimatedHours\": 10\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Budget Calculator",
+      "description": "TC-BUD-* tests verify budget calculation correctness. Add tasks first, then GET the listing to verify budgetAmountUsdCents. pricing-service must be running on port 3016.",
+      "item": [
+        {
+          "name": "Budget reflects single task (TC-BUD-01)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('budgetAmountUsdCents = 400000', () => pm.expect(Number(json.budgetAmountUsdCents)).to.eql(400000));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "description": "Pre-condition: Add 1 task (40h full_time, UX Designer, United States). pricing-service must return $100/hr for this role. Expected: 40 * 100 * 100 = 400000 cents."
+          }
+        },
+        {
+          "name": "Budget sums multiple tasks (TC-BUD-02)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('budgetAmountUsdCents = 1040000', () => pm.expect(Number(json.budgetAmountUsdCents)).to.eql(1040000));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "description": "Pre-condition: 2 tasks exist — 40h @ $100/hr + 80h @ $80/hr. Expected: (40*100 + 80*80) * 100 = 1040000 cents."
+          }
+        },
+        {
+          "name": "Budget updates on role title change (TC-BUD-03)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Budget decreased — verify budgetAmountUsdCents dropped', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{phaseId}}/tasks/{{taskId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"roleTitle\": \"Junior Dev\"\n}" },
+            "description": "Change roleTitle from UX Designer ($100/hr) to Junior Dev ($50/hr). Verify budget decreases proportionally."
+          }
+        },
+        {
+          "name": "Budget updates on location change (TC-BUD-04)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Budget decreased — verify budgetAmountUsdCents dropped', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{phaseId}}/tasks/{{taskId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"location\": \"Eastern Europe\"\n}" },
+            "description": "Change location from United States to Eastern Europe. Verify rate drops and budget decreases."
+          }
+        },
+        {
+          "name": "Budget updates on task delete (TC-BUD-05)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 204', () => pm.response.to.have.status(204));"
+            ]}
+          }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/phases/{{phaseId}}/tasks/{{taskId}}",
+            "description": "Delete task with 40h @ $100/hr. Then GET listing and verify budgetAmountUsdCents decreased by 400000."
+          }
+        },
+        {
+          "name": "Budget stored as cents — no float error (TC-BUD-07)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('budgetAmountUsdCents = 100050', () => pm.expect(Number(json.budgetAmountUsdCents)).to.eql(100050));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"budgetAmount\": 1000.50,\n  \"budgetDisplayCurrency\": \"USD\"\n}" }
+          }
+        },
+        {
+          "name": "Default budget frequency (TC-BUD-08)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "var json = pm.response.json();",
+              "pm.test('budgetFrequency defaults to per_week', () => pm.expect(json.budgetFrequency).to.eql('per_week'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings",
+            "body": { "mode": "raw", "raw": "{\n  \"contractType\": \"new\",\n  \"scopeKnowledge\": \"has_scope\",\n  \"workType\": \"project\",\n  \"hiringType\": \"team\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Brief Upload",
+      "item": [
+        {
+          "name": "Presign valid PDF (TC-UPL-01)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('presignedUrl returned', () => pm.expect(json.presignedUrl).to.be.a('string'));",
+              "pm.test('key returned', () => pm.expect(json.key).to.be.a('string'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/brief-upload/presign",
+            "body": { "mode": "raw", "raw": "{\n  \"filename\": \"brief.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 1048576\n}" }
+          }
+        },
+        {
+          "name": "Presign valid DOCX (TC-UPL-02)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('presignedUrl returned', () => pm.expect(json.presignedUrl).to.be.a('string'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/brief-upload/presign",
+            "body": { "mode": "raw", "raw": "{\n  \"filename\": \"brief.docx\",\n  \"contentType\": \"application/vnd.openxmlformats-officedocument.wordprocessingml.document\",\n  \"sizeBytes\": 1048576\n}" }
+          }
+        },
+        {
+          "name": "Presign unsupported XLSX [expect 422] (TC-UPL-03)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/brief-upload/presign",
+            "body": { "mode": "raw", "raw": "{\n  \"filename\": \"data.xlsx\",\n  \"contentType\": \"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\",\n  \"sizeBytes\": 1048576\n}" }
+          }
+        },
+        {
+          "name": "Presign unsupported PNG [expect 422] (TC-UPL-04)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/brief-upload/presign",
+            "body": { "mode": "raw", "raw": "{\n  \"filename\": \"image.png\",\n  \"contentType\": \"image/png\",\n  \"sizeBytes\": 1048576\n}" }
+          }
+        },
+        {
+          "name": "Presign file over 25MB [expect 422] (TC-UPL-05)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/brief-upload/presign",
+            "body": { "mode": "raw", "raw": "{\n  \"filename\": \"large.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 26214401\n}" }
+          }
+        },
+        {
+          "name": "Presign exactly 25MB — accepted at limit (TC-UPL-06)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/brief-upload/presign",
+            "body": { "mode": "raw", "raw": "{\n  \"filename\": \"exact.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 26214400\n}" }
+          }
+        },
+        {
+          "name": "Save brief key after upload (TC-UPL-07)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('briefFilename visible', () => pm.expect(json.briefFilename).to.eql('brief.pdf'));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"briefR2Key\": \"briefs/uuid/brief.pdf\",\n  \"briefFilename\": \"brief.pdf\",\n  \"briefSizeBytes\": 1048576\n}" }
+          }
+        },
+        {
+          "name": "GET does not expose R2 key (TC-UPL-08)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('briefR2Key is absent from response', () => pm.expect(json.briefR2Key).to.be.undefined);",
+              "pm.test('briefFilename present', () => pm.expect(json.briefFilename).to.be.a('string'));",
+              "pm.test('briefSizeBytes present', () => pm.expect(json.briefSizeBytes).to.be.a('number'));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}"
+          }
+        },
+        {
+          "name": "Filename sanitisation (TC-UPL-10)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('key uses sanitised filename', () => pm.expect(json.key).to.not.include('../'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/brief-upload/presign",
+            "body": { "mode": "raw", "raw": "{\n  \"filename\": \"../../../etc/passwd.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 1048576\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Step 5 — One Last Check",
+      "item": [
+        {
+          "name": "Enable NDA on new contract listing (TC-NDA-01)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('ndaEnabled is true', () => pm.expect(json.ndaEnabled).to.eql(true));",
+              "pm.test('ndaDocumentId populated', () => pm.expect(json.ndaDocumentId).to.be.a('string'));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"ndaEnabled\": true\n}" }
+          }
+        },
+        {
+          "name": "Disable NDA (TC-NDA-02)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('ndaDocumentId is null', () => pm.expect(json.ndaDocumentId).to.eql(null));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"ndaEnabled\": false\n}" }
+          }
+        },
+        {
+          "name": "Existing contract — NDA active inherited (TC-NDA-05)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('ndaEnabled is true', () => pm.expect(json.ndaEnabled).to.eql(true));",
+              "pm.test('ndaDocumentId populated', () => pm.expect(json.ndaDocumentId).to.be.a('string'));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/seed-existing-nda-active-listing-uuid"
+          }
+        },
+        {
+          "name": "Existing contract — NDA inactive inherited (TC-NDA-06)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('ndaEnabled is false', () => pm.expect(json.ndaEnabled).to.eql(false));",
+              "pm.test('ndaDocumentId is null', () => pm.expect(json.ndaDocumentId).to.eql(null));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/seed-existing-nda-inactive-listing-uuid"
+          }
+        },
+        {
+          "name": "Existing contract — NDA toggle change ignored (TC-NDA-07)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('ndaEnabled stays false — inherited value protected', () => pm.expect(json.ndaEnabled).to.eql(false));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/seed-existing-nda-inactive-listing-uuid",
+            "body": { "mode": "raw", "raw": "{\n  \"ndaEnabled\": true\n}" }
+          }
+        },
+        {
+          "name": "NDA scope visibility default (TC-NDA-08)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('ndaScopeVisibility is relevant_phases', () => pm.expect(json.ndaScopeVisibility).to.eql('relevant_phases'));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}"
+          }
+        },
+        {
+          "name": "Change NDA scope visibility (TC-NDA-09)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('ndaScopeVisibility is full_scope', () => pm.expect(json.ndaScopeVisibility).to.eql('full_scope'));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"ndaScopeVisibility\": \"full_scope\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Publish",
+      "item": [
+        {
+          "name": "Publish complete new project listing (TC-PUB-01)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('status is pending_review', () => pm.expect(json.status).to.eql('pending_review'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/publish"
+          }
+        },
+        {
+          "name": "Publish — missing title [expect 400] (TC-PUB-02)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 400', () => pm.response.to.have.status(400));",
+              "var json = pm.response.json();",
+              "pm.test('JL_PUBLISH_VALIDATION_FAILED', () => pm.expect(json.code).to.eql('JL_PUBLISH_VALIDATION_FAILED'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/seed-draft-project-uuid/publish",
+            "description": "seed-draft-project-uuid has no basicInformation.title set."
+          }
+        },
+        {
+          "name": "Publish — responsibilities over 100 words [expect 400] (TC-PUB-03)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 400', () => pm.response.to.have.status(400));",
+              "var json = pm.response.json();",
+              "pm.test('details.responsibilities populated', () => pm.expect(json.details).to.have.property('responsibilities'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/publish",
+            "description": "Pre-condition: PATCH the listing with a responsibilities field of 101+ words, then attempt publish."
+          }
+        },
+        {
+          "name": "Publish — scope empty on project [expect 400] (TC-PUB-04)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 400', () => pm.response.to.have.status(400));",
+              "var json = pm.response.json();",
+              "pm.test('details.scope populated', () => pm.expect(json.details).to.have.property('scope'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/seed-draft-project-uuid/publish",
+            "description": "seed-draft-project-uuid is a project listing with no phases added."
+          }
+        },
+        {
+          "name": "Edit listing in pending_review [expect 423] (TC-PUB-05)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 423', () => pm.response.to.have.status(423));",
+              "var json = pm.response.json();",
+              "pm.test('JL_LOCKED', () => pm.expect(json.code).to.eql('JL_LOCKED'));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/seed-pending-review-uuid",
+            "body": { "mode": "raw", "raw": "{\n  \"description\": \"Trying to edit a locked listing\"\n}" }
+          }
+        },
+        {
+          "name": "Revert published listing to draft (TC-PUB-08)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('status is draft', () => pm.expect(json.status).to.eql('draft'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/seed-published-service-uuid/revert-to-draft"
+          }
+        },
+        {
+          "name": "Cannot revert pending_review [expect 409] (TC-PUB-09)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 409', () => pm.response.to.have.status(409));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/seed-pending-review-uuid/revert-to-draft"
+          }
+        },
+        {
+          "name": "Field-level re-moderation on text edit (TC-PUB-11)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/seed-published-service-uuid",
+            "body": { "mode": "raw", "raw": "{\n  \"description\": \"Updated description\"\n}" },
+            "description": "Verify job_listing.updated event emitted with changedFields:[\"description\"]."
+          }
+        },
+        {
+          "name": "Non-text field edit — no re-moderation (TC-PUB-12)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/seed-published-service-uuid",
+            "body": { "mode": "raw", "raw": "{\n  \"budgetAmount\": 8000\n}" },
+            "description": "Verify job_listing.updated event is NOT emitted for non-text fields."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "AI Generation Fallback",
+      "description": "TC-AI-* tests require GROQ_API_KEY to be set to an invalid value in the listings-service .env before running. These tests verify graceful degradation when Groq is unavailable.",
+      "item": [
+        {
+          "name": "Tools generation — Groq unavailable (TC-AI-01)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('AI_UNAVAILABLE signal present', () => pm.expect(json.aiStatus).to.eql('AI_UNAVAILABLE'));",
+              "pm.test('tools is empty array', () => pm.expect(json.tools).to.eql([]));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/generate-tools",
+            "body": { "mode": "raw", "raw": "{\n  \"description\": \"Build a SaaS platform\",\n  \"deliverables\": \"Web app\",\n  \"roles\": [\"Frontend Engineer\", \"Backend Engineer\"]\n}" },
+            "description": "Pre-condition: GROQ_API_KEY must be invalid. Wizard continues and manual entry is active."
+          }
+        },
+        {
+          "name": "Project scope generation — Groq unavailable (TC-AI-02)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('AI_UNAVAILABLE signal present', () => pm.expect(json.aiStatus).to.eql('AI_UNAVAILABLE'));",
+              "pm.test('phases is empty array', () => pm.expect(json.phases).to.eql([]));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/generate-scope",
+            "body": { "mode": "raw", "raw": "{\n  \"workType\": \"project\"\n}" },
+            "description": "Pre-condition: GROQ_API_KEY must be invalid. Client adds phases manually."
+          }
+        },
+        {
+          "name": "Service scope generation — Groq unavailable (TC-AI-03)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('minimal scope returned', () => { var types = json.phases.map(p => p.phaseType); pm.expect(types).to.include('setup'); pm.expect(types).to.include('recurring'); pm.expect(types).to.include('ongoing'); });"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/generate-scope",
+            "body": { "mode": "raw", "raw": "{\n  \"workType\": \"service\"\n}" },
+            "description": "Pre-condition: GROQ_API_KEY must be invalid. Expect minimal scope: one empty setup, recurring, ongoing."
+          }
+        },
+        {
+          "name": "Smart Assistant — Groq unavailable (TC-AI-05)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('AI_UNAVAILABLE signal present', () => pm.expect(json.aiStatus).to.eql('AI_UNAVAILABLE'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/smart-assistant",
+            "body": { "mode": "raw", "raw": "{\n  \"command\": \"Add a testing phase\",\n  \"field\": \"scope\"\n}" },
+            "description": "Pre-condition: GROQ_API_KEY must be invalid. Current scope must remain unchanged."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Listing Management",
+      "item": [
+        {
+          "name": "List My Listings",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings"
+          }
+        },
+        {
+          "name": "Get Single Listing",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}"
+          }
+        },
+        {
+          "name": "Duplicate Role Row",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}/duplicate-role",
+            "body": { "mode": "raw", "raw": "{\n  \"roleRowId\": \"{{taskId}}\"\n}" }
+          }
+        },
+        {
+          "name": "Delete Listing (TC-PUB-10)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 204', () => pm.response.to.have.status(204));"
+            ]}
+          }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAJwt}}" }],
+            "url": "{{baseUrl}}/v1/job-listings/{{listingId}}"
+          }
+        }
+      ]
+    }
+
+  ]
+}
