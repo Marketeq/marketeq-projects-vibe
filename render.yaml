@@ -25,7 +25,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: FRONTEND_URL
-        value: https://marketeq-mvp-live.vercel.app
+        value: https://marketeq-mvp-live.vercel.app,https://marketeq-mvp-dev.vercel.app,https://marketeq-mvp-staging.vercel.app,http://localhost:3000
       - fromGroup: marketeq-secrets
 
 envVarGroups:
