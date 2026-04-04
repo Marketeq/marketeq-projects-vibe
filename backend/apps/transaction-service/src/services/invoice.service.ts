@@ -1,109 +1,136 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
-import { Invoice, InvoiceStatus } from '../entities/invoice.entity'
-import { AuditLog, AuditAction } from '../entities/audit-log.entity'
-import { InvoiceFilterDto, PaginatedResponseDto } from '../dto/filter.dto'
-import Stripe from 'stripe'
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { plainToInstance } from 'class-transformer';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+
+import { Invoice } from '../entities/invoice.entity';
+import { InvoiceFilterDto } from '../dto/filter.dto';
+import {
+  InvoiceResponseDto,
+  InvoiceDetailResponseDto,
+} from '../dto/invoice.dto';
+import { PaginatedResponseDto } from '../dto/pagination.dto';
+import { AuditService } from './audit.service';
 
 @Injectable()
 export class InvoiceService {
-  private readonly logger = new Logger(InvoiceService.name)
-  private readonly stripe: Stripe
-
   constructor(
     @InjectRepository(Invoice)
-    private readonly invoiceRepo: Repository<Invoice>,
-    @InjectRepository(AuditLog)
-    private readonly auditRepo: Repository<AuditLog>,
-  ) {
-    this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '2025-02-24.acacia' })
+    private readonly repo: Repository<Invoice>,
+    private readonly stripeClient: HttpService,
+    private readonly config: ConfigService,
+    private readonly auditService: AuditService,
+  ) {}
+
+  async findAll(
+    userId: string,
+    filters: InvoiceFilterDto,
+  ): Promise<PaginatedResponseDto<InvoiceResponseDto>> {
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 10;
+
+    const [items, total] = await this.repo.findAndCount({
+      where: { userId },
+      order: { dateIssued: 'DESC', updatedAt: 'DESC' },
+      take: limit,
+      skip: (page - 1) * limit,
+      relations: ['contract'],
+    });
+
+    const dtos = items.map((item) =>
+      plainToInstance(InvoiceResponseDto, item, {
+        excludeExtraneousValues: true,
+      }),
+    );
+
+    return PaginatedResponseDto.of(dtos, total, page, limit);
   }
 
-  async findAll(userId: string, filter: InvoiceFilterDto): Promise<PaginatedResponseDto<Invoice>> {
-    const { status, dateFrom, dateTo, page = 1, limit = 10 } = filter
+  async countFiltered(
+    userId: string,
+    filters: InvoiceFilterDto,
+  ): Promise<number> {
+    const qb = this.repo
+      .createQueryBuilder('i')
+      .where('i.user_id = :userId', { userId });
 
-    const qb = this.invoiceRepo.createQueryBuilder('inv')
-      .where('inv.userId = :userId', { userId })
-      .orderBy('inv.createdAt', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit)
+    if (filters.dateFrom) {
+      qb.andWhere('i.date_issued >= :dateFrom', { dateFrom: filters.dateFrom });
+    }
+    if (filters.dateTo) {
+      qb.andWhere('i.date_issued <= :dateTo', { dateTo: filters.dateTo });
+    }
+    if (filters.status) {
+      qb.andWhere('i.status = :status', { status: filters.status });
+    }
+    if (filters.contractId) {
+      qb.andWhere('i.contract_id = :contractId', {
+        contractId: filters.contractId,
+      });
+    }
+    if (filters.search) {
+      const term = `%${filters.search.toLowerCase()}%`;
+      qb.andWhere(
+        `(LOWER(i.invoice_id) LIKE :term
+          OR LOWER(i.description_type) LIKE :term
+          OR CAST(i.amount AS TEXT) LIKE :term)`,
+        { term },
+      );
+    }
 
-    if (status) qb.andWhere('inv.status = :status', { status })
-    if (dateFrom) qb.andWhere('inv.createdAt >= :dateFrom', { dateFrom: new Date(dateFrom) })
-    if (dateTo) qb.andWhere('inv.createdAt <= :dateTo', { dateTo: new Date(dateTo) })
-
-    const [data, total] = await qb.getManyAndCount()
-
-    await this.auditRepo.save({
-      userId,
-      resourceType: 'invoice',
-      resourceId: null,
-      action: AuditAction.VIEW,
-      metadata: { filter },
-    })
-
-    return PaginatedResponseDto.of(data, total, page, limit)
+    return qb.getCount();
   }
 
-  async findOne(userId: string, id: string): Promise<Invoice> {
-    const invoice = await this.invoiceRepo.findOne({ where: { id } })
+  async findOne(
+    id: string,
+    userId: string,
+  ): Promise<InvoiceDetailResponseDto> {
+    const invoice = await this.repo.findOne({
+      where: { id, userId },
+      relations: ['contract'],
+    });
 
     if (!invoice) {
-      throw new NotFoundException({ code: 'NOT_FOUND', message: 'Invoice not found.' })
-    }
-    if (invoice.userId !== userId) {
-      throw new ForbiddenException({ code: 'FORBIDDEN', message: 'You do not have access to this invoice.' })
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message:
+          'This invoice ID appears to be invalid. Please contact support if you believe this is an error.',
+      });
     }
 
-    // Refresh Stripe hosted URL if available
-    if (invoice.stripeInvoiceId && !invoice.hostedInvoiceUrl) {
+    let stripeHostedUrl: string | null = null;
+    let stripePdfUrl: string | null = null;
+
+    if (invoice.stripeInvoiceId) {
       try {
-        const stripeInvoice = await this.stripe.invoices.retrieve(invoice.stripeInvoiceId)
-        invoice.hostedInvoiceUrl = stripeInvoice.hosted_invoice_url ?? null
-        invoice.invoicePdfUrl = stripeInvoice.invoice_pdf ?? null
-        await this.invoiceRepo.save(invoice)
-      } catch (err) {
-        this.logger.warn(`Failed to fetch Stripe invoice ${invoice.stripeInvoiceId}`, err)
+        const stripeInvoice = await this.stripeClient.axiosRef.get(
+          `https://api.stripe.com/v1/invoices/${invoice.stripeInvoiceId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${this.config.get<string>('STRIPE_SECRET_KEY')}`,
+            },
+          },
+        );
+
+        stripeHostedUrl = stripeInvoice.data.hosted_invoice_url;
+        stripePdfUrl = stripeInvoice.data.invoice_pdf;
+      } catch {
+        // Non-fatal — invoice detail returns without Stripe URLs
       }
     }
 
-    await this.auditRepo.save({
+    await this.auditService.log({
+      action: 'VIEW_INVOICE_DETAIL',
+      invoiceId: id,
       userId,
-      resourceType: 'invoice',
-      resourceId: id,
-      action: AuditAction.VIEW,
-      metadata: null,
-    })
+    });
 
-    return invoice
-  }
-
-  async recordFromEvent(data: {
-    userId: string
-    transactionId?: string
-    stripeInvoiceId?: string
-    invoiceNumber: string
-    status: InvoiceStatus
-    amount: number
-    currency?: string
-    dueDate?: string
-    description?: string
-    hostedInvoiceUrl?: string
-    invoicePdfUrl?: string
-  }): Promise<Invoice> {
-    const invoice = this.invoiceRepo.create({
-      ...data,
-      currency: data.currency ?? 'USD',
-      dueDate: data.dueDate ? new Date(data.dueDate) : null,
-    })
-    const saved = await this.invoiceRepo.save(invoice)
-    this.logger.log(`Recorded invoice ${saved.id} number=${saved.invoiceNumber}`)
-    return saved
-  }
-
-  async updateStatus(stripeInvoiceId: string, status: InvoiceStatus): Promise<void> {
-    await this.invoiceRepo.update({ stripeInvoiceId }, { status })
-    this.logger.log(`Updated invoice (stripe=${stripeInvoiceId}) status to ${status}`)
+    return plainToInstance(
+      InvoiceDetailResponseDto,
+      { ...invoice, stripeHostedUrl, stripePdfUrl },
+      { excludeExtraneousValues: true },
+    );
   }
 }

@@ -1,36 +1,119 @@
-import { Controller } from '@nestjs/common'
-import { EventPattern, Payload } from '@nestjs/microservices'
-import { TransactionService } from '../services/transaction.service'
-import { TransactionType, TransactionStatus, AmountDirection } from '../entities/transaction.entity'
+import { Injectable } from '@nestjs/common';
+import { RabbitSubscribe } from '@golevelup/nestjs-rabbitmq';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Transaction } from '../entities/transaction.entity';
+import {
+  TransactionType, TransactionStatus,
+  AmountDirection, PaymentMethodType, ContractType,
+} from '../entities/enums';
+import { CacheService } from '../services/cache.service';
+import { AblyService } from '../services/ably.service';
 
-@Controller()
+// ── Event payload interfaces ───────────────────────────────────────────
+interface PayoutInitiatedEvent {
+  eventId:                string;
+  contractorId:           string;
+  contractId:             string | null;
+  amount:                 number;
+  payoutMethodType:       string;
+  payoutMethodLabel:      string;
+  payoutMethodIdentifier: string;
+  initiatedAt:            string;
+}
+
+interface PayoutCompletedEvent {
+  originalEventId: string;
+  contractorId:    string;
+  amount:          number;
+  completedAt:     string;
+}
+
+interface PayoutFailedEvent {
+  originalEventId: string;
+  contractorId:    string;
+  failureReason:   string;
+}
+
+// ── Consumer ───────────────────────────────────────────────────────────
+@Injectable()
 export class PayoutConsumer {
-  constructor(private readonly txSvc: TransactionService) {}
+  constructor(
+    @InjectRepository(Transaction) private readonly repo: Repository<Transaction>,
+    private readonly cacheService: CacheService,
+    private readonly ablyService:  AblyService,
+  ) {}
 
-  @EventPattern('payout_initiated')
-  async onPayoutInitiated(@Payload() data: any) {
-    await this.txSvc.recordFromEvent({
-      userId: data.userId,
-      type: TransactionType.DEPOSIT,
-      status: TransactionStatus.PENDING,
-      direction: AmountDirection.DEBIT,
-      amount: data.amount,
-      currency: data.currency,
-      description: 'Payout initiated to bank account',
-    })
+  // 5.1 payout.initiated
+  @RabbitSubscribe({
+    exchange:   'marketeq.payout',
+    routingKey: 'payout.initiated',
+    queue:      'txn-svc.payout.events',
+  })
+  async onPayoutInitiated(payload: PayoutInitiatedEvent): Promise<void> {
+    const exists = await this.repo.findOne({ where: { transactionId: payload.eventId } });
+    if (exists) return;
+
+    const payout = this.repo.create({
+      transactionId:           payload.eventId,
+      date:                    new Date(payload.initiatedAt),
+      descriptionType:         TransactionType.PROJECT_PAYMENT,
+      amount:                  payload.amount,
+      amountDirection:         AmountDirection.DEBIT,
+      status:                  TransactionStatus.PROCESSING,
+      paymentMethodType:       payload.payoutMethodType       as PaymentMethodType,
+      paymentMethodLabel:      payload.payoutMethodLabel,
+      paymentMethodIdentifier: payload.payoutMethodIdentifier,
+      contractType:            ContractType.INDIVIDUAL,
+      contractId:              payload.contractId ?? 'system',
+      userId:                  payload.contractorId,
+      usdEquivalent:           payload.amount,
+    });
+
+    await this.repo.save(payout);
+    await this.cacheService.invalidate('user:' + payload.contractorId + ':transactions');
+    await this.ablyService.publishStatusUpdate(
+      payload.contractorId, payout.id, TransactionStatus.PROCESSING,
+    );
   }
 
-  @EventPattern('payout_completed')
-  async onPayoutCompleted(@Payload() data: any) {
-    if (data.transactionId) {
-      await this.txSvc.updateStatus(data.transactionId, TransactionStatus.SUCCEEDED)
+  // 5.2 payout.completed
+  @RabbitSubscribe({
+    exchange:   'marketeq.payout',
+    routingKey: 'payout.completed',
+    queue:      'txn-svc.payout.events',
+  })
+  async onPayoutCompleted(payload: PayoutCompletedEvent): Promise<void> {
+    await this.repo.update(
+      { transactionId: payload.originalEventId },
+      { status: TransactionStatus.SUCCEEDED, paidAt: new Date(payload.completedAt) },
+    );
+    const txn = await this.repo.findOne({ where: { transactionId: payload.originalEventId } });
+    await this.cacheService.invalidate('user:' + payload.contractorId + ':transactions');
+    if (txn) {
+      await this.ablyService.publishStatusUpdate(
+        payload.contractorId, txn.id, TransactionStatus.SUCCEEDED,
+      );
     }
   }
 
-  @EventPattern('payout_failed')
-  async onPayoutFailed(@Payload() data: any) {
-    if (data.transactionId) {
-      await this.txSvc.updateStatus(data.transactionId, TransactionStatus.FAILED)
+  // 5.3 payout.failed
+  @RabbitSubscribe({
+    exchange:   'marketeq.payout',
+    routingKey: 'payout.failed',
+    queue:      'txn-svc.payout.events',
+  })
+  async onPayoutFailed(payload: PayoutFailedEvent): Promise<void> {
+    await this.repo.update(
+      { transactionId: payload.originalEventId },
+      { status: TransactionStatus.FAILED },
+    );
+    const txn = await this.repo.findOne({ where: { transactionId: payload.originalEventId } });
+    await this.cacheService.invalidate('user:' + payload.contractorId + ':transactions');
+    if (txn) {
+      await this.ablyService.publishStatusUpdate(
+        payload.contractorId, txn.id, TransactionStatus.FAILED,
+      );
     }
   }
 }

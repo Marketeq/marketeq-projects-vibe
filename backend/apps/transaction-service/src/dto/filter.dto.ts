@@ -1,95 +1,94 @@
-import { IsOptional, IsEnum, IsDateString, IsInt, Min, Max, IsString } from 'class-validator'
-import { Type } from 'class-transformer'
-import { TransactionType, TransactionStatus } from '../entities/transaction.entity'
-import { InvoiceStatus } from '../entities/invoice.entity'
+import { IsOptional, IsEnum, IsDateString, IsString,
+    IsInt, Min, Max, IsUUID, MinLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import {
+TransactionType, TransactionStatus, PaymentMethodType,
+ContractType, InvoiceStatus,
+} from '../entities/enums';
 
 export class TransactionFilterDto {
-  @IsOptional()
-  @IsEnum(TransactionType)
-  type?: TransactionType
 
-  @IsOptional()
-  @IsEnum(TransactionStatus)
-  status?: TransactionStatus
+// ── Date range ─────────────────────────────────────────────────────
+@IsOptional()
+@IsDateString()
+dateFrom?: string;
 
-  @IsOptional()
-  @IsDateString()
-  dateFrom?: string
+@IsOptional()
+@IsDateString()
+dateTo?: string;
 
-  @IsOptional()
-  @IsDateString()
-  dateTo?: string
+// ── Transaction type filter ────────────────────────────────────────
+@IsOptional()
+@IsEnum(TransactionType)
+type?: TransactionType;
 
-  @IsOptional()
-  @IsString()
-  search?: string
+// ── Contract filter ────────────────────────────────────────────────
+@IsOptional()
+@IsUUID()
+contractId?: string;
 
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1
+// ── Payment method filter ──────────────────────────────────────────
+@IsOptional()
+@IsEnum(PaymentMethodType)
+paymentMethodType?: PaymentMethodType;
 
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number = 10
+// ── Search ────────────────────────────────────────────────────────
+// Minimum 2 characters; trimmed of whitespace before query
+@IsOptional()
+@IsString()
+@MinLength(2, { message: 'Please enter a valid search term.' })
+@Transform(({ value }) => value?.trim())
+search?: string;
+
+// ── Pagination ────────────────────────────────────────────────────
+@IsOptional()
+@Type(() => Number)
+@IsInt()
+@Min(1)
+page?: number = 1;
+
+@IsOptional()
+@Type(() => Number)
+@IsInt()
+@Min(1)
+@Max(100)
+limit?: number = 10;
 }
 
 export class InvoiceFilterDto {
-  @IsOptional()
-  @IsEnum(InvoiceStatus)
-  status?: InvoiceStatus
 
-  @IsOptional()
-  @IsDateString()
-  dateFrom?: string
+@IsOptional()
+@IsDateString()
+dateFrom?: string;
 
-  @IsOptional()
-  @IsDateString()
-  dateTo?: string
+@IsOptional()
+@IsDateString()
+dateTo?: string;
 
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1
+@IsOptional()
+@IsEnum(InvoiceStatus)
+status?: InvoiceStatus;
 
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number = 10
-}
+@IsOptional()
+@IsUUID()
+contractId?: string;
 
-export class PaginationMeta {
-  total: number
-  page: number
-  limit: number
-  totalPages: number
-  hasNextPage: boolean
-  hasPreviousPage: boolean
-}
+@IsOptional()
+@IsString()
+@MinLength(2, { message: 'Please enter a valid search term.' })
+@Transform(({ value }) => value?.trim())
+search?: string;
 
-export class PaginatedResponseDto<T> {
-  data: T[]
-  meta: PaginationMeta
+@IsOptional()
+@Type(() => Number)
+@IsInt()
+@Min(1)
+page?: number = 1;
 
-  static of<T>(data: T[], total: number, page: number, limit: number): PaginatedResponseDto<T> {
-    const totalPages = Math.ceil(total / limit)
-    return {
-      data,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages,
-        hasNextPage: page < totalPages,
-        hasPreviousPage: page > 1,
-      },
-    }
-  }
+@IsOptional()
+@Type(() => Number)
+@IsInt()
+@Min(1)
+@Max(100)
+limit?: number = 10;
 }
