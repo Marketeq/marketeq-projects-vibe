@@ -1,23 +1,23 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { UserController } from './user.controller';
-import { MeController } from './me.controller';
-import { InternalUserController } from './internal.controller';
 import { UserService } from './user.service';
+import { UserController } from './user.controller';
+import { UserSettingsController } from './user-settings.controller';
+import { UserSyncController } from './user-sync.controller';
+import { UserSelfController } from './user-self.controller';
+import { TypeOrmModule } from '@nestjs/typeorm';
+// import { User } from 'src/user/entities/user.entity';
 import { User } from './entities/user.entity';
-import { Education } from '../education/entities/education.entity';
-import { Experience } from '../experience/entities/experience.entity';
-import { Skill } from '../skills/entities/skill.entity';
-import { Language } from '../languages/entities/language.entity';
-import { Certification } from '../certifications/entities/certification.entity';
-import { Industry } from '../industries/entities/industry.entity';
+import { TimezoneResolutionService } from './timezone-resolution.service';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([User, Education, Experience, Skill, Language, Certification, Industry]),
+  imports: [TypeOrmModule.forFeature([User])],
+  providers: [UserService, TimezoneResolutionService],
+  controllers: [
+    UserController,
+    UserSettingsController,
+    UserSyncController,
+    UserSelfController,
   ],
-  controllers: [UserController, MeController, InternalUserController],
-  providers: [UserService],
   exports: [UserService],
 })
 export class UserModule {}

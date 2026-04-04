@@ -4,118 +4,153 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
   OneToMany,
 } from 'typeorm';
-import { Education } from '../../education/entities/education.entity';
-import { Experience } from '../../experience/entities/experience.entity';
-import { Skill } from '../../skills/entities/skill.entity';
-import { Language } from '../../languages/entities/language.entity';
-import { Certification } from '../../certifications/entities/certification.entity';
-import { Industry } from '../../industries/entities/industry.entity';
+import { BeforeInsert, BeforeUpdate } from 'typeorm';
+import * as bcrypt from 'bcryptjs';
 
-export type UserType = 'client' | 'talent';
-export type OnboardingStatus = 'pending' | 'completed' | 'skipped';
+import { Education } from '../../education/education.entity';
+import { Experience } from '../../experience/experience.entity';
+import { Industry } from '../../industries/industries.entity';
+import { Language } from '../../languages/languages.entity';
+import { Certification } from '../../certifications/certifications.entity';
+import { Portfolio } from '../../portfolio/portfolio.entity';
+import { Skill } from '../../skills/skills.entity';
+import { UserRole } from '../enums/user-role.enum';
+import { AffiliatedTeam } from '../../affiliated-teams/affiliated-teams.entity';
 
-@Entity({ name: 'users', schema: 'user_service' })
+@Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'text', unique: true })
+  // `username` can be unset. Uniqueness is enforced via a partial unique index in migrations
+  // (only when `username IS NOT NULL`), not via a global unique index here.
+  @Column({ nullable: true })
+  username?: string;
+
+  @Index({ unique: true })
+  @Column()
   email: string;
 
-  @Column({ type: 'text', unique: true, nullable: true })
-  username: string;
+  @Column({ select: false, nullable: true })
+  password?: string;
+
+  @Column({ default: 'EMAIL' })
+  provider: string;
+
+  @Column({ default: false })
+  hasPassword: boolean;
+
+  @BeforeInsert()
+  @BeforeUpdate()
+  async hashPassword() {
+    if (!this.password) return;
+
+    if (this.password.startsWith('$2a$') || this.password.startsWith('$2b$'))
+      return;
+
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+  }
 
   @Column({ type: 'text', nullable: true })
-  firstName: string;
+  bio?: string;
 
   @Column({ type: 'text', nullable: true })
-  lastName: string;
+  overview?: string;
 
-  @Column({ type: 'text', nullable: true })
-  avatarUrl: string;
+  @Column({ nullable: true })
+  firstName?: string;
 
-  @Column({ type: 'text', nullable: true })
-  bio: string;
+  @Column({ nullable: true })
+  lastName?: string;
 
-  @Column({ type: 'text', nullable: true })
-  overview: string;
+  @Column({ nullable: true })
+  avatarUrl?: string;
 
-  @Column({ type: 'text', nullable: true })
-  userType: UserType;
+  @Column({ nullable: true })
+  location?: string;
 
-  @Column({ type: 'text', nullable: true })
-  location: string;
+  @Column({ nullable: true })
+  language?: string;
 
-  @Column({ type: 'text', nullable: true })
-  timezone: string;
+  @Column({ nullable: true })
+  recentJobTitle?: string;
 
-  @Column({ type: 'text', nullable: true })
-  availability: string;
+  @Column({ nullable: true })
+  industriesWorkedIn?: string;
 
-  @Column({ type: 'text', nullable: true })
-  role: string;
+  @Column({ nullable: true })
+  timezone?: string;
 
-  @Column({ type: 'text', nullable: true })
-  industry: string;
+  @Column({ nullable: true })
+  availability?: string;
 
-  @Column({ type: 'text', nullable: true })
-  businessGoals: string;
+  @Column({ type: 'simple-array', nullable: true })
+  lookingToWorkWith?: string[];
 
-  @Column({ type: 'text', nullable: true })
-  teamName: string;
-
-  @Column({ type: 'text', nullable: true })
-  inviteCode: string;
-
-  @Column({ type: 'integer', nullable: true })
-  rateMin: number;
-
-  @Column({ type: 'integer', nullable: true })
-  rateMax: number;
-
-  @Column({ type: 'jsonb', nullable: true })
-  jobTitles: Array<{ jobTitle: string; clientRate: number; earning: number; fee: number; saveAsDefault: boolean }>;
+  @Column({ type: 'simple-array', nullable: true })
+  projectTypes?: string[];
 
   @Column({ type: 'boolean', default: false })
+  isStudent?: boolean;
+
+  @Column({ type: 'jsonb', nullable: true })
+  customAvailability?: unknown;
+
+  @Column({ type: 'numeric', nullable: true })
+  rate_min?: number;
+
+  @Column({ type: 'numeric', nullable: true })
+  rate_max?: number;
+
+  @Column({ type: 'numeric', nullable: true })
+  client_success_rating?: number;
+
+  @Column({ type: 'numeric', nullable: true })
+  repeat_hire_rate?: number;
+
+  @Column({ nullable: true })
+  response_time?: string;
+
+  @Column({ type: 'enum', enum: UserRole, default: UserRole.CLIENT })
+  role: UserRole;
+
+  @Column({ default: false })
   onboardingDismissed: boolean;
 
-  @Column({ type: 'text', default: 'pending' })
-  onboardingStatus: OnboardingStatus;
-
-  @Column({ type: 'boolean', default: true })
+  @Column({ default: true })
   isActive: boolean;
 
-  /** Current getting-started step (0-4), null = dismissed/completed */
-  @Column({ type: 'integer', default: 0 })
-  gettingStartedStep: number;
+  @OneToMany(() => Education, (education) => education.user)
+  educations: Education[];
 
-  /** Timestamp when user completed registration/onboarding */
-  @Column({ type: 'timestamptz', nullable: true })
-  onboardedAt: Date | null;
+  @OneToMany(() => Experience, (experience) => experience.user)
+  experiences: Experience[];
 
-  @OneToMany(() => Education, (e) => e.user, { cascade: true })
-  education: Education[];
-
-  @OneToMany(() => Experience, (e) => e.user, { cascade: true })
-  experience: Experience[];
-
-  @OneToMany(() => Skill, (s) => s.user, { cascade: true })
-  skills: Skill[];
-
-  @OneToMany(() => Language, (l) => l.user, { cascade: true })
-  languages: Language[];
-
-  @OneToMany(() => Certification, (c) => c.user, { cascade: true })
+  @OneToMany(() => Certification, (certification) => certification.user)
   certifications: Certification[];
 
-  @OneToMany(() => Industry, (i) => i.user, { cascade: true })
+  @OneToMany(() => Industry, (industry) => industry.user)
   industries: Industry[];
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @OneToMany(() => Language, (language) => language.user)
+  languages: Language[];
+
+  @OneToMany(() => Portfolio, (portfolio) => portfolio.user)
+  portfolioItems: Portfolio[];
+
+  @OneToMany(() => Skill, (skill) => skill.user)
+  skills: Skill[];
+
+  @OneToMany(() => AffiliatedTeam, (affiliatedTeam) => affiliatedTeam.user)
+  affiliatedTeams: AffiliatedTeam[];
+
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
+  @UpdateDateColumn()
   updatedAt: Date;
 }
