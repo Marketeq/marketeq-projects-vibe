@@ -228,7 +228,7 @@ export class AuthService {
    * same gateway verification) so local dev matches cloud behavior exactly.
    */
   async devLogin(email: string): Promise<JwtPair & { user: { id: string; username: string; email: string } }> {
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DEV_LOGIN !== 'true') {
       throw new UnauthorizedException('Dev login is not available in production');
     }
 
