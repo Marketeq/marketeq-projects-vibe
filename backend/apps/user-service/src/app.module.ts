@@ -44,9 +44,11 @@ import { OwnerTargetModule } from './owner-target/owner-target.module';
         synchronize: false,
         logging: process.env.NODE_ENV !== 'production',
         ssl:
-          process.env.NODE_ENV === 'production'
-            ? { rejectUnauthorized: false }
-            : false,
+          process.env.DATABASE_SSL === 'false'
+            ? false
+            : process.env.NODE_ENV === 'production'
+              ? { rejectUnauthorized: false }
+              : false,
       }),
     }),
     UserModule,
