@@ -83,7 +83,7 @@ const LinkedInLogin = () => {
                   }
                   setUser(user)
                   if (user?.userType) {
-                    router.push(user.userType === "talent" ? "/talent-dashboard" : "/")
+                    router.push(user.userType === "talent" ? "/talent-dashboard" : "/client-dashboard")
                   } else {
                     // New user — send to onboarding to pick role
                     router.push("/onboarding")
