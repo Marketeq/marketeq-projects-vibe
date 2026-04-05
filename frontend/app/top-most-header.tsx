@@ -3,6 +3,8 @@
 import React, { useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { UserAPI } from "@/service/http/user"
+import { ROLE } from "@/types/user"
 import { cn } from "@/utils/functions"
 import {
   BarChart2,
@@ -577,7 +579,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
   const [secondaryNavHidden, setSecondaryNavHidden] = React.useState(false)
 
   const router = useRouter()
-  const { logoutHandler, user } = useAuth()
+  const { logoutHandler, user, setUser } = useAuth()
 
   const hasSecondaryNav = HAS_SECONDARY_NAV.includes(pathname) || pathname.startsWith("/c/") || pathname.startsWith("/project-details/")
 
@@ -738,9 +740,19 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => {
+              <DropdownMenuItem onClick={async () => {
                 setMenuOpen(false)
-                router.push(user?.accountType === "TALENT" ? "/onboarding/client" : "/onboarding/talent")
+                const newType = user?.accountType === "TALENT" ? "client" : "talent"
+                const newDashboard = newType === "client" ? "/client-dashboard" : "/talent-dashboard"
+                try {
+                  if (user?.id) {
+                    await UserAPI.updateProfile(user.id, { userType: newType })
+                  }
+                  setUser((prev) => prev ? { ...prev, userType: newType, accountType: newType === "talent" ? ROLE.TALENT : ROLE.CLIENT } : prev)
+                  router.push(newDashboard)
+                } catch {
+                  router.push(newDashboard)
+                }
               }}>
                 <Repeat className="size-4" />
                 {user?.accountType === "TALENT" ? "Switch to Client" : "Switch to Talent"}
