@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import AxiosRequest from "../service/index"
+import Cookies from "js-cookie"
 
 export function TimezoneSync() {
   useEffect(() => {
@@ -9,6 +10,11 @@ export function TimezoneSync() {
 
     const sync = async () => {
       try {
+        const hasSession =
+          Boolean(Cookies.get("access_token")) ||
+          Boolean(Cookies.get("refresh_token"))
+        if (!hasSession) return
+
         const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
         if (!timeZone) return
 

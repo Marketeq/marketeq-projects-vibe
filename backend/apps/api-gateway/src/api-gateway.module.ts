@@ -13,7 +13,10 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['apps/api-gateway/.env', '.env'],
+    }),
     HttpModule.register({ timeout: 30000 }),
     PassportModule,
     JwtModule.registerAsync({

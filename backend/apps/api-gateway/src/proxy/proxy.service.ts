@@ -57,9 +57,15 @@ export class ProxyService {
       headers['x-user-id'] = user.userId
       headers['x-user-email'] = user.email
       if (user.role) headers['x-user-role'] = user.role
-      // Also forward Authorization header for services that validate JWT directly
-      if (req.headers.authorization) {
-        headers['authorization'] = req.headers.authorization as string
+      // Forward JWT for downstream services that validate JWT directly.
+      // If the client authenticated via cookie at the gateway, synthesize
+      // a Bearer header so downstream auth guards still work.
+      const authHeader = req.headers.authorization as string | undefined
+      const cookieToken = (req as any).cookies?.access_token as string | undefined
+      if (authHeader) {
+        headers['authorization'] = authHeader
+      } else if (cookieToken) {
+        headers['authorization'] = `Bearer ${cookieToken}`
       }
     }
 

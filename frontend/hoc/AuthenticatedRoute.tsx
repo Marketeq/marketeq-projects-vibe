@@ -22,7 +22,17 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
       return
     }
 
-    const accountType = user?.accountType
+    const normalizedUserType =
+      typeof user?.userType === "string" ? user.userType.toLowerCase() : null
+    const accountType =
+      user?.accountType ??
+      (normalizedUserType === "talent"
+        ? ROLE.TALENT
+        : normalizedUserType === "client"
+          ? ROLE.CLIENT
+          : user?.role === ROLE.TALENT || user?.role === ROLE.CLIENT
+            ? user.role
+            : undefined)
     const hasAccountType = !!accountType
     const onboardingDismissed = user?.onboardingDismissed
 

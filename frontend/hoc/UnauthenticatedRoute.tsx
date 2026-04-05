@@ -15,10 +15,22 @@ const UnauthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
     setIsPageLoading(true)
 
     if (user && !isLoading) {
-      if (user?.accountType) {
-        if (user.accountType === ROLE.TALENT) {
+      const normalizedUserType =
+        typeof user?.userType === "string" ? user.userType.toLowerCase() : null
+      const accountType =
+        user?.accountType ??
+        (normalizedUserType === "talent"
+          ? ROLE.TALENT
+          : normalizedUserType === "client"
+            ? ROLE.CLIENT
+            : user?.role === ROLE.TALENT || user?.role === ROLE.CLIENT
+              ? user.role
+              : undefined)
+
+      if (accountType) {
+        if (accountType === ROLE.TALENT) {
           router.push(`/talent-dashboard`)
-        } else if (user.accountType === ROLE.CLIENT) {
+        } else if (accountType === ROLE.CLIENT) {
           router.push(`/client-dashboard`)
         } else {
           router.push(`/`)
