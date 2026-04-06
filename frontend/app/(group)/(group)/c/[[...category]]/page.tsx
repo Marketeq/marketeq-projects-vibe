@@ -75,7 +75,24 @@ interface SubcategoryData {
   slug: string
   description: string
   heroImage?: string
+  /** Optional L3 children shown when the user lands on an L2 page. */
+  children?: SubcategoryData[]
 }
+
+/**
+ * Compact helper to build an array of SubcategoryData from plain names.
+ * Auto-generates slug + a short description so L2 taxonomies stay terse.
+ */
+const c = (...names: string[]): SubcategoryData[] =>
+  names.map((name) => ({
+    name,
+    slug: name
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, ""),
+    description: `${name} projects, specialists, and services.`,
+  }))
 
 /**
  * Build a deterministic hero-banner URL from a category/subcategory slug.
@@ -107,17 +124,17 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
     description: "Discover research projects, meet expert analysts, and find the insights you need to succeed.",
     heroImage: unsplash("1532094349884-543bc11b234d"),
     subcategories: [
-      { name: "Market Research", slug: "market-research", description: "Consumer insights, competitive analysis, and market sizing.", heroImage: unsplash("1460925895917-afdab827c52f") },
-      { name: "User Research", slug: "user-research", description: "Usability testing, interviews, and persona development.", heroImage: unsplash("1522071820081-009f0129c71c") },
-      { name: "Academic Research", slug: "academic-research", description: "Literature reviews, white papers, and scholarly analysis.", heroImage: unsplash("1481627834876-b7833e8f5570") },
-      { name: "Clinical Research", slug: "clinical-research", description: "Clinical trials, pharma research, and regulatory compliance.", heroImage: unsplash("1579154204601-01588f351e67") },
-      { name: "Consumer Research", slug: "consumer-research", description: "Behavioral analysis, focus groups, and consumer sentiment.", heroImage: unsplash("1556761175-5973dc0f32e7") },
-      { name: "Data Analysis", slug: "data-analysis", description: "Statistical analysis, data visualization, and reporting.", heroImage: unsplash("1551288049-bebda4e38f71") },
-      { name: "Competitive Intelligence", slug: "competitive-intelligence", description: "Competitor tracking, benchmarking, and strategic insights.", heroImage: unsplash("1542744173-8e7e53415bb0") },
-      { name: "Survey Research", slug: "survey-research", description: "Survey design, distribution, response analysis, and insights.", heroImage: unsplash("1586281380349-632531db7ed4") },
-      { name: "Qualitative Research", slug: "qualitative-research", description: "In-depth interviews, focus groups, and ethnographic studies.", heroImage: unsplash("1543269865-cbf427effbad") },
-      { name: "Sentiment Analysis", slug: "sentiment-analysis", description: "Brand monitoring, social listening, and NLP-powered analysis.", heroImage: unsplash("1611162617213-7d7a39e9b1d7") },
-      { name: "Industry Analysis", slug: "industry-analysis", description: "Industry benchmarking, KPI analysis, and market positioning.", heroImage: unsplash("1486406146926-c627a92ad1ab") },
+      { name: "Market Research", slug: "market-research", description: "Consumer insights, competitive analysis, and market sizing.", children: c("Market Sizing", "TAM Analysis", "Competitor Mapping", "Pricing Research", "Go-to-Market Research", "Brand Awareness Studies", "Channel Research") },
+      { name: "User Research", slug: "user-research", description: "Usability testing, interviews, and persona development.", children: c("Usability Testing", "User Interviews", "Persona Development", "Journey Mapping", "Card Sorting", "Tree Testing", "Diary Studies") },
+      { name: "Academic Research", slug: "academic-research", description: "Literature reviews, white papers, and scholarly analysis.", children: c("Literature Review", "Systematic Review", "Meta-Analysis", "White Papers", "Thesis Support", "Citation Management", "Peer Review") },
+      { name: "Clinical Research", slug: "clinical-research", description: "Clinical trials, pharma research, and regulatory compliance.", children: c("Clinical Trials", "Protocol Design", "Regulatory Affairs", "Biostatistics", "Patient Recruitment", "Pharmacovigilance", "Medical Writing") },
+      { name: "Consumer Research", slug: "consumer-research", description: "Behavioral analysis, focus groups, and consumer sentiment.", children: c("Focus Groups", "Behavioral Analysis", "Shopper Insights", "Ethnography", "Panel Research", "Customer Segmentation", "Conjoint Analysis") },
+      { name: "Data Analysis", slug: "data-analysis", description: "Statistical analysis, data visualization, and reporting.", children: c("Statistical Modeling", "Regression Analysis", "Time Series", "A/B Test Analysis", "Data Cleaning", "Exploratory Analysis", "Reporting") },
+      { name: "Competitive Intelligence", slug: "competitive-intelligence", description: "Competitor tracking, benchmarking, and strategic insights.", children: c("Benchmarking", "SWOT Analysis", "Patent Research", "Win-Loss Analysis", "Pricing Intelligence", "Product Teardowns", "Feature Comparison") },
+      { name: "Survey Research", slug: "survey-research", description: "Survey design, distribution, response analysis, and insights.", children: c("Survey Design", "Questionnaire Writing", "Sampling Strategy", "Distribution", "Response Analysis", "NPS Surveys", "CSAT Surveys") },
+      { name: "Qualitative Research", slug: "qualitative-research", description: "In-depth interviews, focus groups, and ethnographic studies.", children: c("In-Depth Interviews", "Ethnography", "Grounded Theory", "Content Analysis", "Narrative Analysis", "Phenomenology", "Thematic Coding") },
+      { name: "Sentiment Analysis", slug: "sentiment-analysis", description: "Brand monitoring, social listening, and NLP-powered analysis.", children: c("Social Listening", "Brand Monitoring", "Review Mining", "NLP Models", "Emotion Detection", "Aspect-Based Sentiment", "Trend Detection") },
+      { name: "Industry Analysis", slug: "industry-analysis", description: "Industry benchmarking, KPI analysis, and market positioning.", children: c("Porter's Five Forces", "PESTLE Analysis", "Value Chain Analysis", "Industry Benchmarking", "Market Positioning", "Trend Forecasting", "Vertical Deep Dives") },
     ],
   },
   "software-development": {
@@ -126,11 +143,18 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
     description: "Discover exciting projects, meet talented teams, and find the skills you need to succeed.",
     heroImage: unsplash("1461749280684-dccba630e2f6"),
     subcategories: [
-      { name: "Front-end Development", slug: "front-end-development", description: "Create the interface that users interact with directly.", heroImage: unsplash("1498050108023-c5249f4df085") },
-      { name: "Back-end Development", slug: "back-end-development", description: "Build the server logic, APIs, and databases.", heroImage: unsplash("1558494949-ef010cbdcc31") },
-      { name: "Mobile Development", slug: "mobile-development", description: "Native and cross-platform mobile applications.", heroImage: unsplash("1512941937669-90a1b58e7e9c") },
-      { name: "DevOps & Cloud", slug: "devops-cloud", description: "Infrastructure, CI/CD, and cloud deployment.", heroImage: unsplash("1518770660439-4636190af475") },
-      { name: "Blockchain", slug: "blockchain", description: "Smart contracts, DeFi, and Web3 development.", heroImage: unsplash("1639762681485-074b7f938ba0") },
+      { name: "Front-end Development", slug: "front-end-development", description: "Create the interface that users interact with directly.", children: c("React", "Vue.js", "Angular", "Next.js", "Svelte", "TypeScript", "CSS & Tailwind", "Accessibility") },
+      { name: "Back-end Development", slug: "back-end-development", description: "Build the server logic, APIs, and databases.", children: c("Node.js", "Python & Django", "Ruby on Rails", "Go", "Java & Spring", "GraphQL APIs", "REST APIs", "Database Design") },
+      { name: "Mobile Development", slug: "mobile-development", description: "Native and cross-platform mobile applications.", children: c("iOS Swift", "Android Kotlin", "React Native", "Flutter", "Ionic", "Mobile UI Kits", "App Store Optimization", "Push Notifications") },
+      { name: "DevOps & Cloud", slug: "devops-cloud", description: "Infrastructure, CI/CD, and cloud deployment.", children: c("AWS", "Google Cloud", "Azure", "Kubernetes", "Docker", "Terraform", "CI/CD Pipelines", "Observability") },
+      { name: "Blockchain", slug: "blockchain", description: "Smart contracts, DeFi, and Web3 development.", children: c("Solidity", "Smart Contract Audits", "DeFi Protocols", "NFT Platforms", "Ethereum", "Solana", "Layer 2", "Wallet Integration") },
+      { name: "QA & Testing", slug: "qa-testing", description: "Automated testing, QA strategy, and release quality.", children: c("Manual QA", "Test Automation", "Cypress", "Playwright", "Load Testing", "Security Testing", "Mobile QA") },
+      { name: "Game Development", slug: "game-development", description: "Unity, Unreal, and indie game development.", children: c("Unity", "Unreal Engine", "Godot", "Game Design", "Mobile Games", "Multiplayer Backends", "Game Art") },
+      { name: "AI & Machine Learning", slug: "ai-ml", description: "LLM apps, fine-tuning, and ML pipelines.", children: c("LLM Apps", "Prompt Engineering", "Fine-Tuning", "RAG Systems", "MLOps", "Computer Vision", "Recommendation Systems") },
+      { name: "Embedded & IoT", slug: "embedded-iot", description: "Firmware, edge devices, and connected hardware.", children: c("Firmware", "Arduino", "Raspberry Pi", "ESP32", "Edge AI", "IoT Gateways", "Protocol Integration") },
+      { name: "Desktop Development", slug: "desktop-development", description: "Native and cross-platform desktop apps.", children: c("Electron Apps", "Tauri", ".NET Desktop", "macOS Native", "Windows Native", "Qt", "Linux GTK") },
+      { name: "Security Engineering", slug: "security-engineering", description: "Pentesting, audits, and secure coding practices.", children: c("Penetration Testing", "Secure Code Review", "Threat Modeling", "SOC 2 Prep", "Vulnerability Management", "Cloud Security", "AppSec") },
+      { name: "API & Integrations", slug: "api-integrations", description: "Third-party integrations, webhooks, and middleware.", children: c("Stripe Integration", "Salesforce Integration", "Zapier & Make", "Webhooks", "OAuth Flows", "iPaaS", "Middleware") },
     ],
   },
   "design-creative": {
@@ -139,11 +163,18 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
     description: "Find creative talent for branding, UI/UX, illustration, and visual storytelling.",
     heroImage: unsplash("1558655146-9f40138edfeb"),
     subcategories: [
-      { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile.", heroImage: unsplash("1586717791821-3f44a563fa4c") },
-      { name: "Graphic Design", slug: "graphic-design", description: "Visual branding, print design, and marketing materials.", heroImage: unsplash("1626785774573-4b799315345d") },
-      { name: "Illustration", slug: "illustration", description: "Custom illustrations, icons, and digital art.", heroImage: unsplash("1513364776144-60967b0f800f") },
-      { name: "Motion Design", slug: "motion-design", description: "Animations, motion graphics, and video effects.", heroImage: unsplash("1535016120720-40c646be5580") },
-      { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems.", heroImage: unsplash("1600775508114-5c30cf911a40") },
+      { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile.", children: c("Wireframing", "Prototyping", "Interaction Design", "Usability Testing", "Design Systems", "Mobile UX", "Web UX") },
+      { name: "Graphic Design", slug: "graphic-design", description: "Visual branding, print design, and marketing materials.", children: c("Flyers & Posters", "Business Cards", "Ad Creatives", "Infographics", "Merch Design", "Social Graphics", "Brochures") },
+      { name: "Illustration", slug: "illustration", description: "Custom illustrations, icons, and digital art.", children: c("Editorial Illustration", "Character Design", "Icon Sets", "Digital Painting", "Comic Art", "Children's Illustration", "Technical Illustration") },
+      { name: "Motion Design", slug: "motion-design", description: "Animations, motion graphics, and video effects.", children: c("Explainer Videos", "Logo Animation", "Lottie Animations", "Kinetic Typography", "VFX", "Title Sequences", "Motion Branding") },
+      { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems.", children: c("Logo Design", "Brand Guidelines", "Style Guides", "Rebranding", "Naming", "Visual Identity", "Brand Strategy") },
+      { name: "Web Design", slug: "web-design", description: "Landing pages, marketing sites, and full website design.", children: c("Landing Pages", "Marketing Sites", "E-commerce Design", "Portfolio Sites", "Webflow Sites", "WordPress Themes") },
+      { name: "Product Design", slug: "product-design", description: "End-to-end digital product design and design systems.", children: c("SaaS Dashboards", "Mobile Apps", "Admin Panels", "Design Systems", "Onboarding Flows", "Data Visualization") },
+      { name: "3D & Animation", slug: "3d-animation", description: "3D modeling, rendering, and animation.", children: c("3D Modeling", "Product Rendering", "Character Animation", "Environment Design", "AR/VR Assets", "Motion Capture") },
+      { name: "Photography", slug: "photography", description: "Product, lifestyle, and commercial photography.", children: c("Product Photography", "Lifestyle Shoots", "Headshots", "Event Photography", "Real Estate", "Food Photography", "Photo Retouching") },
+      { name: "Video Production", slug: "video-production", description: "Shooting, editing, and post-production.", children: c("Video Editing", "Color Grading", "Cinematography", "Documentary", "Music Videos", "Corporate Video", "Sound Design") },
+      { name: "Presentation Design", slug: "presentation-design", description: "Pitch decks, keynote slides, and investor presentations.", children: c("Pitch Decks", "Investor Decks", "Sales Decks", "Keynote Templates", "Google Slides", "Webinar Slides") },
+      { name: "Print & Packaging", slug: "print-packaging", description: "Brochures, labels, and packaging design.", children: c("Magazine Layout", "Book Design", "Box Design", "Label Design", "Poster Design", "Annual Reports") },
     ],
   },
   design: {
@@ -152,18 +183,18 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
     description: "Find world-class designers for branding, product, web, UX, illustration, and everything in between.",
     heroImage: unsplash("1561070791-2526d30994b8"),
     subcategories: [
-      { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile.", heroImage: unsplash("1586717791821-3f44a563fa4c") },
-      { name: "Web Design", slug: "web-design", description: "Landing pages, marketing sites, and full website design.", heroImage: unsplash("1467232004584-a241de8bcf5d") },
-      { name: "Product Design", slug: "product-design", description: "End-to-end digital product design and design systems.", heroImage: unsplash("1581291518857-4e27b48ff24e") },
-      { name: "Graphic Design", slug: "graphic-design", description: "Visual branding, print design, and marketing materials.", heroImage: unsplash("1626785774573-4b799315345d") },
-      { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems.", heroImage: unsplash("1600775508114-5c30cf911a40") },
-      { name: "Illustration", slug: "illustration", description: "Custom illustrations, icons, and digital art.", heroImage: unsplash("1513364776144-60967b0f800f") },
-      { name: "Motion Design", slug: "motion-design", description: "Animations, motion graphics, and video effects.", heroImage: unsplash("1535016120720-40c646be5580") },
-      { name: "3D Design", slug: "3d-design", description: "3D modeling, rendering, and immersive visuals.", heroImage: unsplash("1617791160536-598cf32026fb") },
-      { name: "Packaging Design", slug: "packaging-design", description: "Product packaging, labels, and unboxing experiences.", heroImage: unsplash("1542736667-069246bdbc6d") },
-      { name: "Presentation Design", slug: "presentation-design", description: "Pitch decks, keynote slides, and investor presentations.", heroImage: unsplash("1542744173-8e7e53415bb0") },
-      { name: "Print Design", slug: "print-design", description: "Brochures, posters, magazines, and print collateral.", heroImage: unsplash("1504450758481-7338eba7524a") },
-      { name: "Design Systems", slug: "design-systems", description: "Component libraries, tokens, and scalable UI foundations.", heroImage: unsplash("1558655146-605d86ed31b3") },
+      { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile.", children: c("Wireframing", "Prototyping", "Interaction Design", "Usability Testing", "Information Architecture", "Mobile UX", "Web UX", "Accessibility") },
+      { name: "Web Design", slug: "web-design", description: "Landing pages, marketing sites, and full website design.", children: c("Landing Pages", "Marketing Sites", "E-commerce Design", "Portfolio Sites", "Blog Design", "Webflow Sites", "WordPress Themes") },
+      { name: "Product Design", slug: "product-design", description: "End-to-end digital product design and design systems.", children: c("SaaS Dashboards", "Mobile Apps", "Admin Panels", "Design Systems", "Onboarding Flows", "Data Visualization", "B2B Products") },
+      { name: "Graphic Design", slug: "graphic-design", description: "Visual branding, print design, and marketing materials.", children: c("Flyers & Posters", "Business Cards", "Ad Creatives", "Infographics", "Merch Design", "Social Graphics", "Brochures") },
+      { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems.", children: c("Logo Design", "Brand Guidelines", "Style Guides", "Rebranding", "Naming", "Visual Identity", "Brand Strategy") },
+      { name: "Illustration", slug: "illustration", description: "Custom illustrations, icons, and digital art.", children: c("Editorial Illustration", "Character Design", "Icon Sets", "Digital Painting", "Comic Art", "Children's Illustration", "Technical Illustration") },
+      { name: "Motion Design", slug: "motion-design", description: "Animations, motion graphics, and video effects.", children: c("Explainer Videos", "Logo Animation", "Lottie Animations", "Kinetic Typography", "VFX", "Title Sequences", "Motion Branding") },
+      { name: "3D Design", slug: "3d-design", description: "3D modeling, rendering, and immersive visuals.", children: c("3D Modeling", "Product Rendering", "Architectural Viz", "Character Modeling", "Environment Design", "AR/VR Assets", "3D Printing") },
+      { name: "Packaging Design", slug: "packaging-design", description: "Product packaging, labels, and unboxing experiences.", children: c("Box Design", "Label Design", "Bottle Design", "Food Packaging", "Cosmetic Packaging", "Dieline Design", "Unboxing Experience") },
+      { name: "Presentation Design", slug: "presentation-design", description: "Pitch decks, keynote slides, and investor presentations.", children: c("Pitch Decks", "Investor Decks", "Sales Decks", "Keynote Templates", "Google Slides", "Conference Talks", "Webinar Slides") },
+      { name: "Print Design", slug: "print-design", description: "Brochures, posters, magazines, and print collateral.", children: c("Magazine Layout", "Book Design", "Catalog Design", "Poster Design", "Brochure Design", "Annual Reports", "Stationery") },
+      { name: "Design Systems", slug: "design-systems", description: "Component libraries, tokens, and scalable UI foundations.", children: c("Component Libraries", "Design Tokens", "Figma Libraries", "Storybook Setup", "Accessibility Audit", "Theming", "Documentation") },
     ],
   },
   marketing: {
@@ -172,11 +203,18 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
     description: "Grow your brand with expert marketers, strategists, and campaign specialists.",
     heroImage: unsplash("1557838923-2985c318be48"),
     subcategories: [
-      { name: "Digital Marketing", slug: "digital-marketing", description: "SEO, SEM, social media, and online advertising.", heroImage: unsplash("1533750349088-cd871a92f312") },
-      { name: "Content Marketing", slug: "content-marketing", description: "Blog posts, whitepapers, and content strategy.", heroImage: unsplash("1486312338219-ce68d2c6f44d") },
-      { name: "Email Marketing", slug: "email-marketing", description: "Campaigns, automation, and newsletter strategy.", heroImage: unsplash("1554200876-56c2f25224fa") },
-      { name: "Social Media", slug: "social-media", description: "Social strategy, community management, and growth.", heroImage: unsplash("1611162617213-7d7a39e9b1d7") },
-      { name: "Analytics & SEO", slug: "analytics-seo", description: "Performance tracking, keyword research, and optimization.", heroImage: unsplash("1460925895917-afdab827c52f") },
+      { name: "Digital Marketing", slug: "digital-marketing", description: "SEO, SEM, social media, and online advertising.", children: c("Google Ads", "Meta Ads", "TikTok Ads", "LinkedIn Ads", "Display Advertising", "Retargeting", "Programmatic", "Affiliate Marketing") },
+      { name: "Content Marketing", slug: "content-marketing", description: "Blog posts, whitepapers, and content strategy.", children: c("Blog Writing", "Whitepapers", "Case Studies", "E-books", "Content Strategy", "Editorial Calendars", "SEO Content") },
+      { name: "Email Marketing", slug: "email-marketing", description: "Campaigns, automation, and newsletter strategy.", children: c("Campaign Design", "Newsletter Setup", "Drip Automation", "Transactional Emails", "List Segmentation", "A/B Testing", "Deliverability") },
+      { name: "Social Media", slug: "social-media", description: "Social strategy, community management, and growth.", children: c("Instagram Growth", "TikTok Strategy", "LinkedIn B2B", "Community Management", "Influencer Outreach", "Content Calendars", "Social Analytics") },
+      { name: "Analytics & SEO", slug: "analytics-seo", description: "Performance tracking, keyword research, and optimization.", children: c("Keyword Research", "On-Page SEO", "Technical SEO", "Link Building", "GA4 Setup", "Tag Manager", "Conversion Tracking") },
+      { name: "Brand Marketing", slug: "brand-marketing", description: "Brand positioning, storytelling, and campaigns.", children: c("Brand Positioning", "Messaging Frameworks", "Storytelling", "Campaign Strategy", "Brand Audits", "Tone of Voice") },
+      { name: "Growth Marketing", slug: "growth-marketing", description: "Experimentation, funnels, and conversion optimization.", children: c("Funnel Optimization", "A/B Testing", "Activation", "Retention", "Referral Loops", "PLG Strategy") },
+      { name: "Performance Marketing", slug: "performance-marketing", description: "Paid acquisition and ROAS optimization.", children: c("Paid Search", "Paid Social", "Creative Testing", "Attribution", "LTV Modeling", "ROAS Optimization") },
+      { name: "Influencer Marketing", slug: "influencer-marketing", description: "Influencer sourcing, outreach, and campaign management.", children: c("Creator Sourcing", "Outreach", "Contract Negotiation", "Campaign Management", "UGC Campaigns", "Affiliate Programs") },
+      { name: "PR & Communications", slug: "pr-communications", description: "Press, media relations, and corporate comms.", children: c("Press Releases", "Media Relations", "Crisis Comms", "Investor Relations", "Internal Comms", "Speechwriting") },
+      { name: "Product Marketing", slug: "product-marketing", description: "Launches, positioning, and GTM for product teams.", children: c("Launch Plans", "Positioning", "Messaging", "Competitive Analysis", "Sales Enablement", "Customer Research") },
+      { name: "Event Marketing", slug: "event-marketing", description: "Conferences, webinars, and activations.", children: c("Conference Planning", "Webinars", "Trade Shows", "Field Marketing", "Activations", "Sponsorships") },
     ],
   },
   "data-analytics": {
@@ -185,11 +223,18 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
     description: "Turn data into decisions with expert analysts, engineers, and data scientists.",
     heroImage: unsplash("1551288049-bebda4e38f71"),
     subcategories: [
-      { name: "Data Engineering", slug: "data-engineering", description: "Pipelines, ETL, and data infrastructure.", heroImage: unsplash("1518770660439-4636190af475") },
-      { name: "Data Science", slug: "data-science", description: "Machine learning, modeling, and predictive analytics.", heroImage: unsplash("1555949963-ff9fe0c870eb") },
-      { name: "Business Intelligence", slug: "business-intelligence", description: "Dashboards, reporting, and KPI tracking.", heroImage: unsplash("1460925895917-afdab827c52f") },
-      { name: "Data Visualization", slug: "data-visualization", description: "Charts, infographics, and interactive dashboards.", heroImage: unsplash("1543286386-713bdd548da4") },
-      { name: "Big Data", slug: "big-data", description: "Large-scale data processing and distributed systems.", heroImage: unsplash("1506399558188-acca6f8cbf41") },
+      { name: "Data Engineering", slug: "data-engineering", description: "Pipelines, ETL, and data infrastructure.", children: c("ETL Pipelines", "Airflow", "dbt", "Data Warehousing", "Snowflake", "BigQuery", "Streaming Pipelines", "Data Lakes") },
+      { name: "Data Science", slug: "data-science", description: "Machine learning, modeling, and predictive analytics.", children: c("Predictive Modeling", "Classification", "Clustering", "Recommendation Systems", "NLP", "Computer Vision", "Forecasting", "Feature Engineering") },
+      { name: "Business Intelligence", slug: "business-intelligence", description: "Dashboards, reporting, and KPI tracking.", children: c("Tableau Dashboards", "Power BI", "Looker", "KPI Frameworks", "Executive Reports", "Self-Service BI", "SQL Reporting") },
+      { name: "Data Visualization", slug: "data-visualization", description: "Charts, infographics, and interactive dashboards.", children: c("D3.js Charts", "Interactive Dashboards", "Infographics", "Chart Design", "Data Storytelling", "Geospatial Viz", "Real-Time Dashboards") },
+      { name: "Big Data", slug: "big-data", description: "Large-scale data processing and distributed systems.", children: c("Apache Spark", "Hadoop", "Kafka", "Distributed Storage", "Stream Processing", "Data Partitioning", "Performance Tuning") },
+      { name: "Machine Learning", slug: "machine-learning", description: "Model development, training, and deployment.", children: c("Model Training", "Hyperparameter Tuning", "Model Serving", "Experiment Tracking", "Feature Stores", "Model Evaluation") },
+      { name: "MLOps", slug: "mlops", description: "Productionizing ML with reliable pipelines and monitoring.", children: c("Model Deployment", "Model Monitoring", "Drift Detection", "CI/CD for ML", "Model Registry", "Feature Pipelines") },
+      { name: "Data Strategy", slug: "data-strategy", description: "Data governance, architecture, and roadmaps.", children: c("Data Governance", "Data Catalogs", "Data Architecture", "Data Roadmaps", "Data Maturity Audits", "Privacy Compliance") },
+      { name: "Product Analytics", slug: "product-analytics", description: "Funnels, retention, and product experimentation.", children: c("Event Tracking", "Funnel Analysis", "Retention Analysis", "Cohort Analysis", "Amplitude", "Mixpanel", "Heap") },
+      { name: "Marketing Analytics", slug: "marketing-analytics", description: "Attribution, LTV, and channel performance.", children: c("Multi-Touch Attribution", "LTV Modeling", "Media Mix Modeling", "Channel Analysis", "Cohort Reporting", "Campaign Analytics") },
+      { name: "Finance Analytics", slug: "finance-analytics", description: "Financial reporting, modeling, and forecasting analytics.", children: c("FP&A Modeling", "Revenue Forecasting", "Cohort Economics", "Financial Reporting", "Cash Flow Modeling", "Budget Variance") },
+      { name: "Geospatial Analytics", slug: "geospatial-analytics", description: "Mapping, routing, and location intelligence.", children: c("GIS Analysis", "Mapbox", "Routing", "Geocoding", "Location Intelligence", "Spatial Clustering") },
     ],
   },
   writing: {
@@ -198,11 +243,18 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
     description: "Find skilled writers for copywriting, technical documentation, and creative content.",
     heroImage: unsplash("1455390582262-044cdead277a"),
     subcategories: [
-      { name: "Copywriting", slug: "copywriting", description: "Marketing copy, ad copy, and persuasive writing.", heroImage: unsplash("1486312338219-ce68d2c6f44d") },
-      { name: "Technical Writing", slug: "technical-writing", description: "Documentation, API guides, and knowledge bases.", heroImage: unsplash("1532619675605-1ede6c2ed2b0") },
-      { name: "Creative Writing", slug: "creative-writing", description: "Storytelling, scripts, and editorial content.", heroImage: unsplash("1455390582262-044cdead277a") },
-      { name: "Translation", slug: "translation", description: "Localization, multilingual content, and transcription.", heroImage: unsplash("1526385252912-31bb0c3e0d32") },
-      { name: "Editing & Proofreading", slug: "editing-proofreading", description: "Quality assurance for written content.", heroImage: unsplash("1455390582262-5dbbe2a9b6c7") },
+      { name: "Copywriting", slug: "copywriting", description: "Marketing copy, ad copy, and persuasive writing.", children: c("Website Copy", "Ad Copy", "Sales Pages", "Product Descriptions", "Taglines", "Email Copy", "Brand Voice") },
+      { name: "Technical Writing", slug: "technical-writing", description: "Documentation, API guides, and knowledge bases.", children: c("API Documentation", "Developer Guides", "Knowledge Bases", "User Manuals", "Release Notes", "Tutorials", "Architecture Docs") },
+      { name: "Creative Writing", slug: "creative-writing", description: "Storytelling, scripts, and editorial content.", children: c("Short Stories", "Screenwriting", "Video Scripts", "Podcast Scripts", "Children's Books", "Fiction Editing", "Ghostwriting") },
+      { name: "Translation", slug: "translation", description: "Localization, multilingual content, and transcription.", children: c("Website Localization", "App Localization", "Subtitling", "Transcription", "Document Translation", "Legal Translation", "Marketing Translation") },
+      { name: "Editing & Proofreading", slug: "editing-proofreading", description: "Quality assurance for written content.", children: c("Copyediting", "Line Editing", "Developmental Editing", "Proofreading", "Fact Checking", "Style Guide Enforcement", "Academic Editing") },
+      { name: "Content Strategy", slug: "content-strategy", description: "Editorial planning, content audits, and messaging.", children: c("Content Audits", "Editorial Calendars", "Style Guides", "Messaging Frameworks", "Topic Clusters", "Content Governance") },
+      { name: "SEO Writing", slug: "seo-writing", description: "Keyword-optimized content built to rank.", children: c("Blog Articles", "Pillar Pages", "Product SEO", "Keyword Research", "Content Briefs", "Internal Linking") },
+      { name: "Ghostwriting", slug: "ghostwriting", description: "Thought leadership, books, and bylines.", children: c("Thought Leadership", "LinkedIn Posts", "Book Writing", "Memoirs", "Speeches", "Executive Bylines") },
+      { name: "Scriptwriting", slug: "scriptwriting", description: "Scripts for video, podcast, and broadcast.", children: c("YouTube Scripts", "Podcast Scripts", "Explainer Scripts", "TV Scripts", "Film Scripts", "Ad Scripts") },
+      { name: "Academic & Research Writing", slug: "academic-research-writing", description: "Research papers, theses, and journal submissions.", children: c("Research Papers", "Thesis Writing", "Literature Reviews", "Journal Submissions", "Grant Proposals", "Dissertation Support") },
+      { name: "Grant & Proposal Writing", slug: "grant-proposal-writing", description: "RFPs, grants, and winning business proposals.", children: c("Grant Applications", "RFP Responses", "Business Proposals", "Fundraising Letters", "Case Statements", "Sponsorship Proposals") },
+      { name: "UX Writing", slug: "ux-writing", description: "Microcopy for interfaces, onboarding, and error states.", children: c("Microcopy", "Onboarding Copy", "Error Messages", "Notifications", "Empty States", "In-Product Education") },
     ],
   },
   "business-consulting": {
@@ -211,11 +263,18 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
     description: "Strategic advice, project management, and operational expertise for your business.",
     heroImage: unsplash("1454165804606-c3d57bc86b40"),
     subcategories: [
-      { name: "Strategy Consulting", slug: "strategy-consulting", description: "Business strategy, go-to-market, and growth planning.", heroImage: unsplash("1552664730-d307ca884978") },
-      { name: "Project Management", slug: "project-management", description: "Agile, Scrum, and project delivery.", heroImage: unsplash("1517245386807-bb43f82c33c4") },
-      { name: "Financial Consulting", slug: "financial-consulting", description: "Financial modeling, budgeting, and forecasting.", heroImage: unsplash("1554224155-6726b3ff858f") },
-      { name: "HR & Recruiting", slug: "hr-recruiting", description: "Talent acquisition, org design, and people ops.", heroImage: unsplash("1521737604893-d14cc237f11d") },
-      { name: "Legal & Compliance", slug: "legal-compliance", description: "Contracts, regulatory compliance, and legal ops.", heroImage: unsplash("1589829085413-56de8ae18c73") },
+      { name: "Strategy Consulting", slug: "strategy-consulting", description: "Business strategy, go-to-market, and growth planning.", children: c("Go-to-Market", "Growth Strategy", "Business Model Design", "Competitive Strategy", "Vision & Mission", "Strategic Planning", "OKR Design") },
+      { name: "Project Management", slug: "project-management", description: "Agile, Scrum, and project delivery.", children: c("Agile Coaching", "Scrum Master", "Kanban", "PMO Setup", "Project Recovery", "Roadmap Planning", "Risk Management") },
+      { name: "Financial Consulting", slug: "financial-consulting", description: "Financial modeling, budgeting, and forecasting.", children: c("Financial Modeling", "Budgeting", "Forecasting", "Valuation", "Cap Tables", "Fundraising", "Unit Economics") },
+      { name: "HR & Recruiting", slug: "hr-recruiting", description: "Talent acquisition, org design, and people ops.", children: c("Technical Recruiting", "Executive Search", "Org Design", "Compensation Planning", "Onboarding Programs", "HR Policies", "Performance Management") },
+      { name: "Legal & Compliance", slug: "legal-compliance", description: "Contracts, regulatory compliance, and legal ops.", children: c("Contract Drafting", "IP & Trademarks", "Privacy & GDPR", "Terms of Service", "NDA Templates", "Regulatory Filings", "Compliance Audits") },
+      { name: "Operations Consulting", slug: "operations-consulting", description: "Process design, supply chain, and efficiency.", children: c("Process Optimization", "Supply Chain", "Lean Six Sigma", "SOP Development", "Workflow Automation", "Vendor Management") },
+      { name: "Sales Consulting", slug: "sales-consulting", description: "Sales strategy, enablement, and revenue ops.", children: c("Sales Playbooks", "CRM Implementation", "Sales Enablement", "Outbound Strategy", "Revenue Operations", "Pipeline Management") },
+      { name: "Customer Success", slug: "customer-success", description: "Onboarding, retention, and account management programs.", children: c("Onboarding Programs", "Retention Strategy", "QBR Frameworks", "Health Scoring", "Playbook Design", "CS Tooling") },
+      { name: "Business Analysis", slug: "business-analysis", description: "Requirements gathering and process modeling.", children: c("Requirements Gathering", "Process Mapping", "Gap Analysis", "Stakeholder Interviews", "Use Case Modeling", "BPMN Diagrams") },
+      { name: "Change Management", slug: "change-management", description: "Transformation programs and org change.", children: c("Org Transformation", "Change Communications", "Training Programs", "Adoption Strategy", "Culture Change", "Executive Alignment") },
+      { name: "Accounting & Bookkeeping", slug: "accounting-bookkeeping", description: "Bookkeeping, tax, and accounting services.", children: c("Bookkeeping", "Tax Preparation", "Month-End Close", "Payroll", "AP/AR Management", "QuickBooks Setup") },
+      { name: "Executive Coaching", slug: "executive-coaching", description: "Leadership development and executive coaching.", children: c("Leadership Coaching", "Founder Coaching", "Team Coaching", "Conflict Resolution", "Career Coaching", "360 Reviews") },
     ],
   },
 }
@@ -396,16 +455,21 @@ export default function Projects() {
     isLoading: boolean
   }
 
-  // Subcategories: static taxonomy is the curated source of truth at L1;
-  // fall back to API children only when the static taxonomy has no entry for this category.
+  // Subcategories: static taxonomy is the curated source of truth.
+  //   L1 page → show L1's subcategories
+  //   L2 page → show L2's children (populated in the static taxonomy)
+  //   L3 page → no subcategories section (intentionally empty)
   const subcategories = useMemo(() => {
     if (!l2 && !l3 && l1Meta.subcategories.length > 0) {
       return l1Meta.subcategories.map((s) => ({ ...s, uuid: s.slug }))
     }
-    const apiChildren = (pageData?.children ?? []).filter((c: any) => c && c.name && c.slug)
+    if (l2 && !l3 && l2Meta && "children" in l2Meta && l2Meta.children && l2Meta.children.length > 0) {
+      return l2Meta.children.map((s) => ({ ...s, uuid: s.slug }))
+    }
+    const apiChildren = (pageData?.children ?? []).filter((ch: any) => ch && ch.name && ch.slug)
     if (apiChildren.length > 0) return apiChildren
     return []
-  }, [pageData?.children, l1Meta.subcategories, l2, l3])
+  }, [pageData?.children, l1Meta.subcategories, l2Meta, l2, l3])
 
   // Use actualCategory for categorySlugPath fallback
   const categorySlugPath =
