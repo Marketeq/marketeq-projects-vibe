@@ -1,10 +1,11 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 
 import { User } from '../user/entities/user.entity';
 import { CreateTalentDto } from './dto/create-talent.dto';
@@ -14,6 +15,8 @@ import { Experience } from '../experience/experience.entity';
 
 @Injectable()
 export class TalentService {
+  private readonly logger = new Logger(TalentService.name);
+
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
@@ -46,8 +49,17 @@ export class TalentService {
 
     let avatarUrl = user.avatarUrl;
     if (avatar) {
-      const upload = await this.r2Service.uploadAvatar(userId, avatar);
-      avatarUrl = upload.url ?? avatarUrl;
+      try {
+        const upload = await this.r2Service.uploadAvatar(userId, avatar);
+        avatarUrl = upload.url ?? avatarUrl;
+      } catch (error) {
+        // Keep profile creation non-blocking when object storage is down/misconfigured.
+        this.logger.warn(
+          `Avatar upload failed for user ${userId}; continuing without avatar update: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`,
+        );
+      }
     }
 
     Object.assign(user, {
@@ -74,7 +86,27 @@ export class TalentService {
         : {}),
     });
 
-    const updated = await this.userRepository.save(user);
+    let updated: User;
+    try {
+      updated = await this.userRepository.save(user);
+    } catch (error) {
+      if (error instanceof QueryFailedError) {
+        const driverError = error.driverError as {
+          code?: string;
+          detail?: string;
+          constraint?: string;
+        };
+
+        if (
+          driverError?.code === '23505' ||
+          `${driverError?.constraint ?? ''}`.includes('username')
+        ) {
+          throw new ConflictException('Username already exists');
+        }
+      }
+
+      throw error;
+    }
 
     return { user: updated };
   }

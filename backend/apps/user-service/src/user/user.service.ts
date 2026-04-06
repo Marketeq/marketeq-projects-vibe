@@ -157,6 +157,8 @@ export class UserService {
       typeof dto.username === 'string' ? dto.username.trim().toLowerCase() : undefined;
     // Treat empty/whitespace usernames as "unset" so we persist NULL/leave existing unchanged.
     if (normalizedIncomingUsername === '') normalizedIncomingUsername = undefined;
+    const fallbackUsername = `user_${dto.id.replace(/-/g, '').slice(0, 12)}`;
+    const resolvedRole = dto.role ?? UserRole.CLIENT;
 
     const existingById = await this.userRepository.findOne({
       where: { id: dto.id },
@@ -165,7 +167,7 @@ export class UserService {
     if (existingById) {
       Object.assign(existingById, {
         email: dto.email ?? existingById.email,
-        role: dto.role ?? existingById.role,
+        role: resolvedRole ?? existingById.role,
       });
       if (normalizedIncomingUsername) {
         existingById.username = normalizedIncomingUsername;
@@ -182,7 +184,7 @@ export class UserService {
         throw new ConflictException('User already exists with a different id');
       }
       Object.assign(existingByEmail, {
-        role: dto.role ?? existingByEmail.role,
+        role: resolvedRole ?? existingByEmail.role,
       });
       if (normalizedIncomingUsername) {
         existingByEmail.username = normalizedIncomingUsername;
@@ -193,8 +195,8 @@ export class UserService {
     const user = this.userRepository.create({
       id: dto.id,
       email: dto.email,
-      username: normalizedIncomingUsername ?? undefined,
-      role: dto.role as string,
+      username: normalizedIncomingUsername ?? fallbackUsername,
+      role: resolvedRole,
     });
 
     return this.userRepository.save(user);

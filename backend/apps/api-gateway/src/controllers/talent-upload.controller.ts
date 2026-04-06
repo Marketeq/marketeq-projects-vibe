@@ -15,7 +15,7 @@ import { FileInterceptor } from '@nestjs/platform-express'
 import { HttpService } from '@nestjs/axios'
 import { ConfigService } from '@nestjs/config'
 import { memoryStorage } from 'multer'
-import FormData from 'form-data'
+import * as FormDataPkg from 'form-data'
 import { Request, Response } from 'express'
 import { AxiosError } from 'axios'
 
@@ -49,7 +49,9 @@ export class TalentUploadController {
     @Body() body: Record<string, any>,
     @UploadedFile() avatar?: Express.Multer.File,
   ) {
-    const form = new FormData()
+    const FormDataCtor: any =
+      (FormDataPkg as any).default ?? (FormDataPkg as any)
+    const form = new FormDataCtor()
 
     Object.entries(body ?? {}).forEach(([key, value]) => {
       if (value === undefined || value === null) return

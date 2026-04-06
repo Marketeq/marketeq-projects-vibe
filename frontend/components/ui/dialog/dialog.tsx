@@ -47,11 +47,33 @@ const dialogContentVariants = cva(
   }
 )
 
+const hasDialogTitle = (children: React.ReactNode): boolean => {
+  return React.Children.toArray(children).some((child) => {
+    if (!React.isValidElement(child)) {
+      return false
+    }
+
+    const type = child.type as { displayName?: string; name?: string }
+    const displayName = type.displayName || type.name
+
+    if (
+      child.type === DialogPrimitive.Title ||
+      displayName === DialogPrimitive.Title.displayName ||
+      displayName === "DialogTitle"
+    ) {
+      return true
+    }
+
+    return hasDialogTitle((child.props as { children?: React.ReactNode }).children)
+  })
+}
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> &
     VariantProps<typeof dialogContentVariants> & {
       dialogOverlay?: React.ReactNode
+      accessibilityTitle?: string
     }
 >(
   (
@@ -60,6 +82,7 @@ const DialogContent = React.forwardRef<
       variant,
       children,
       dialogOverlay = <DialogOverlay />,
+      accessibilityTitle = "Dialog",
       onOpenAutoFocus,
       ...props
     },
@@ -78,6 +101,11 @@ const DialogContent = React.forwardRef<
         )}
         {...props}
       >
+        {!hasDialogTitle(children) ? (
+          <DialogPrimitive.Title className="sr-only">
+            {accessibilityTitle}
+          </DialogPrimitive.Title>
+        ) : null}
         {children}
       </DialogPrimitive.Content>
     </DialogPortal>

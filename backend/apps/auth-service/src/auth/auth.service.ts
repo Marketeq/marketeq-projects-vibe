@@ -3,6 +3,8 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  OnModuleDestroy,
+  OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
@@ -28,6 +30,22 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 
 type JwtPair = { access_token: string; refresh_token: string };
+type SyncUserProfilePayload = {
+  id: string;
+  email: string;
+  username?: string;
+  provider?: string;
+  hasPassword?: boolean;
+  firstName?: string;
+  lastName?: string;
+};
+
+type SyncRetryItem = {
+  payload: SyncUserProfilePayload;
+  attempts: number;
+  nextAttemptAt: number;
+  lastError?: string;
+};
 
 const normalizeKey = (value?: string) =>
   value ? value.replace(/\\n/g, '\n') : value;
@@ -36,8 +54,14 @@ const parseExpiresIn = (value: string): number | StringValue =>
   /^\d+$/.test(value) ? Number(value) : (value as StringValue);
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AuthService.name);
+  private readonly syncRetryQueue = new Map<string, SyncRetryItem>();
+  private retryTimer: NodeJS.Timeout | null = null;
+  private readonly syncRetryTickMs = 5000;
+  private readonly syncRetryBaseDelayMs = 5000;
+  private readonly syncRetryMaxDelayMs = 5 * 60 * 1000;
+  private readonly syncRetryMaxAttempts = 10;
 
   constructor(
     @InjectRepository(User)
@@ -45,6 +69,19 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {}
+
+  onModuleInit() {
+    this.retryTimer = setInterval(() => {
+      void this.processSyncRetryQueue();
+    }, this.syncRetryTickMs);
+  }
+
+  onModuleDestroy() {
+    if (this.retryTimer) {
+      clearInterval(this.retryTimer);
+      this.retryTimer = null;
+    }
+  }
 
   async register(dto: RegisterDto) {
     const existingUser = await this.userRepository.findOne({
@@ -70,8 +107,9 @@ export class AuthService {
     try {
       await this.syncUserProfile(user);
     } catch (error) {
-      await this.userRepository.delete({ id: user.id });
-      throw error;
+      this.logger.warn(
+        `register: user profile sync failed for ${user.email}; continuing with auth user. reason=${(error as Error)?.message}`,
+      );
     }
 
     const tokens = await this.issueTokens({
@@ -111,8 +149,9 @@ export class AuthService {
     try {
       await this.syncUserProfile(user);
     } catch (error) {
-      await this.userRepository.delete({ id: user.id });
-      throw error;
+      this.logger.warn(
+        `registerEmail: user profile sync failed for ${user.email}; continuing with auth user. reason=${(error as Error)?.message}`,
+      );
     }
 
     const tokens = await this.issueTokens({
@@ -725,6 +764,31 @@ export class AuthService {
   }
 
   private async syncUserProfile(user: User, extra?: { firstName?: string; lastName?: string }) {
+    const payload: SyncUserProfilePayload = {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      provider: user.provider ?? 'EMAIL',
+      hasPassword: user.hasPassword ?? false,
+      ...(extra?.firstName && { firstName: extra.firstName }),
+      ...(extra?.lastName && { lastName: extra.lastName }),
+    };
+
+    try {
+      await this.postUserProfileSync(payload);
+    } catch (error) {
+      this.enqueueSyncRetry(payload, (error as Error)?.message);
+      this.logger.error(
+        `Failed to sync user profile to user-service for user ${user.id}: ${(error as Error)?.message}`,
+        (error as Error)?.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to sync user profile to user-service',
+      );
+    }
+  }
+
+  private getUserSyncEndpoint(): { url: string; token: string } {
     const baseUrl =
       this.configService.get<string>('USER_SERVICE_URL') ??
       'http://localhost:3000';
@@ -736,34 +800,75 @@ export class AuthService {
       );
     }
 
-    const url = `${baseUrl.replace(/\/$/, '')}/internal/users`;
+    return {
+      url: `${baseUrl.replace(/\/$/, '')}/internal/users`,
+      token,
+    };
+  }
 
-    try {
-      await axios.post(
-        url,
-        {
-          id: user.id,
-          email: user.email,
-          username: user.username,
-          provider: user.provider ?? 'EMAIL',
-          hasPassword: user.hasPassword ?? false,
-          ...(extra?.firstName && { firstName: extra.firstName }),
-          ...(extra?.lastName && { lastName: extra.lastName }),
-        },
-        {
-          headers: {
-            'x-internal-token': token,
-          },
-        },
-      );
-    } catch (error) {
+  private async postUserProfileSync(payload: SyncUserProfilePayload) {
+    const { url, token } = this.getUserSyncEndpoint();
+    await axios.post(url, payload, {
+      headers: {
+        'x-internal-token': token,
+      },
+    });
+  }
+
+  private getRetryKey(payload: SyncUserProfilePayload): string {
+    return payload.id || payload.email;
+  }
+
+  private enqueueSyncRetry(payload: SyncUserProfilePayload, errorMessage?: string) {
+    const key = this.getRetryKey(payload);
+    const existing = this.syncRetryQueue.get(key);
+    const attempts = (existing?.attempts ?? 0) + 1;
+
+    if (attempts > this.syncRetryMaxAttempts) {
+      this.syncRetryQueue.delete(key);
       this.logger.error(
-        `Failed to sync user profile to user-service for user ${user.id}: ${(error as Error)?.message}`,
-        (error as Error)?.stack,
+        `[sync.retry] dropping user profile sync after ${this.syncRetryMaxAttempts} attempts for user=${payload.id} email=${payload.email}`,
       );
-      throw new InternalServerErrorException(
-        'Failed to sync user profile to user-service',
-      );
+      return;
+    }
+
+    const delayMs = Math.min(
+      this.syncRetryBaseDelayMs * 2 ** (attempts - 1),
+      this.syncRetryMaxDelayMs,
+    );
+
+    this.syncRetryQueue.set(key, {
+      payload,
+      attempts,
+      nextAttemptAt: Date.now() + delayMs,
+      lastError: errorMessage,
+    });
+
+    this.logger.warn(
+      `[sync.retry] queued user profile sync retry attempt=${attempts} delayMs=${delayMs} user=${payload.id} email=${payload.email}`,
+    );
+  }
+
+  private async processSyncRetryQueue() {
+    if (!this.syncRetryQueue.size) {
+      return;
+    }
+
+    const now = Date.now();
+    const dueEntries = [...this.syncRetryQueue.entries()].filter(
+      ([, item]) => item.nextAttemptAt <= now,
+    );
+
+    for (const [key, item] of dueEntries) {
+      try {
+        await this.postUserProfileSync(item.payload);
+        this.syncRetryQueue.delete(key);
+        this.logger.log(
+          `[sync.retry] replay succeeded for user=${item.payload.id} email=${item.payload.email} after attempts=${item.attempts}`,
+        );
+      } catch (error) {
+        this.enqueueSyncRetry(item.payload, (error as Error)?.message);
+      }
     }
   }
 
