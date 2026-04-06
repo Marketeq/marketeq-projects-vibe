@@ -1137,9 +1137,15 @@ export default function Projects() {
             <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">Popular Searches</h1>
             <div className="mt-6 flex items-center flex-wrap gap-3">
               {["API Development", "Cloud Migration", "Data Pipeline", "Machine Learning", "Mobile App", "Web Application", "Microservices", "DevOps", "UI/UX Design", "Database Optimization"].map((term) => (
-                <Badge key={term} variant="circular" visual="gray" size="lg" className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700 hover:border-gray-400 transition duration-300 cursor-pointer">
-                  {term}
-                </Badge>
+                <NextLink
+                  key={term}
+                  href={`/search?q=${encodeURIComponent(term)}&category=${l1Meta.slug}`}
+                  className="focus-visible:outline-none"
+                >
+                  <Badge variant="circular" visual="gray" size="lg" className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-200 transition duration-300 cursor-pointer">
+                    {term}
+                  </Badge>
+                </NextLink>
               ))}
             </div>
           </div>
