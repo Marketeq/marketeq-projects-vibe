@@ -94,16 +94,17 @@ export class SkillsService {
     return Array.from(dedupedByCaseInsensitiveName.values()).slice(0, safeLimit);
   }
 
-  async update(id: string, dto: UpdateSkillDto) {
-    const skill = await this.skillRepository.findOne({ where: { id } });
+  async update(userId: string, id: string, dto: UpdateSkillDto) {
+    // Scope to userId so users cannot modify other users' skills.
+    const skill = await this.skillRepository.findOne({ where: { id, userId } });
     if (!skill) throw new NotFoundException('Skill not found');
 
     Object.assign(skill, dto);
     return this.skillRepository.save(skill);
   }
 
-  async remove(id: string) {
-    const skill = await this.skillRepository.findOne({ where: { id } });
+  async remove(userId: string, id: string) {
+    const skill = await this.skillRepository.findOne({ where: { id, userId } });
     if (!skill) throw new NotFoundException('Skill not found');
 
     await this.skillRepository.remove(skill);

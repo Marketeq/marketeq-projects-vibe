@@ -28,9 +28,15 @@ export class UserService {
   ) {}
 
   async createUser(dto: CreateUserDto): Promise<User> {
-    const existing = await this.userRepository.findOne({
-      where: [{ email: dto.email }, { username: dto.username }],
-    });
+    // Build OR predicate without `{ username: undefined }`; otherwise TypeORM
+    // matches every row where username IS NULL and the first username-less
+    // user blocks all subsequent creates.
+    const where: Array<Record<string, string>> = [{ email: dto.email }];
+    if (dto.username) {
+      where.push({ username: dto.username });
+    }
+
+    const existing = await this.userRepository.findOne({ where });
 
     if (existing) {
       throw new ConflictException('User already exists');
@@ -127,10 +133,10 @@ export class UserService {
     return this.updateUser(id, { bio });
   }
 
-  async updateRate(id: string, dto: { rate_min?: number; rate_max?: number }) {
+  async updateRate(id: string, dto: { rateMin?: number; rateMax?: number }) {
     return this.updateUser(id, {
-      rate_min: dto.rate_min,
-      rate_max: dto.rate_max,
+      rateMin: dto.rateMin,
+      rateMax: dto.rateMax,
     });
   }
 

@@ -5,7 +5,6 @@ import {
   IsString,
   IsNumber,
   Min,
-  Max,
   MinLength,
   IsBoolean,
   IsEnum,
@@ -35,10 +34,10 @@ export class CreateUserDto {
   @IsEmail()
   email: string;
 
-  @ApiProperty()
-  @IsString()
-  @MinLength(6)
-  password: string;
+  // `password` intentionally omitted — the user-service never stores or
+  // echoes passwords. Credentials live in auth-service; including a
+  // password on this DTO would both leak into DB writes and expose the
+  // field in Swagger docs.
 
   @ApiPropertyOptional({ example : 'Data Analyst with a background in data modeling and visualization'})
   @IsOptional()
@@ -111,36 +110,21 @@ export class CreateUserDto {
   @IsOptional()
   customAvailability?: unknown;
 
-  @ApiPropertyOptional({ example : '65'})
+  @ApiPropertyOptional({ example : 65 })
   @IsOptional()
   @IsNumber()
   @Min(0)
-  rate_min?: number;
+  rateMin?: number;
 
-  @ApiPropertyOptional({ example : '85'})
+  @ApiPropertyOptional({ example : 85 })
   @IsOptional()
   @IsNumber()
   @Min(0)
-  rate_max?: number;
+  rateMax?: number;
 
-  @ApiPropertyOptional({ example : '4'})
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(5)
-  client_success_rating?: number;
-
-  @ApiPropertyOptional({ example : '70'})
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(100)
-  repeat_hire_rate?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  response_time?: string;
+  // `client_success_rating`, `repeat_hire_rate`, and `response_time` are
+  // derived metrics that are never set by user input. They are excluded
+  // from the input DTO to avoid client spoofing and to keep Swagger clean.
 
   @ApiPropertyOptional({ example : UserRole.TALENT})
   @IsOptional()

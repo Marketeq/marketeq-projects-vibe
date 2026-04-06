@@ -11,6 +11,8 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { TeamsService } from './teams.service';
 import { AddTeamMemberDto } from './dto/add-team-member.dto';
+import { CurrentUser } from '../decorators/current-user.decorator';
+import { JwtUser } from '../auth/types/jwt-user.type';
 
 @ApiTags('teams')
 @Controller('teams')
@@ -21,9 +23,12 @@ export class TeamsController {
   @Post(':teamId/members')
   @HttpCode(HttpStatus.CREATED)
   async addMember(
+    @CurrentUser() user: JwtUser,
     @Param('teamId') teamId: string,
     @Body() dto: AddTeamMemberDto,
   ) {
+    // Caller must already be a member of this team before inviting others.
+    await this.teamsService.assertIsMember(teamId, user.sub);
     const member = await this.teamsService.addMember(teamId, dto);
     return {
       success: true,
@@ -35,7 +40,11 @@ export class TeamsController {
   @ApiOperation({ summary: 'Get all members of a team' })
   @Get(':teamId/members')
   @HttpCode(HttpStatus.OK)
-  async getTeamMembers(@Param('teamId') teamId: string) {
+  async getTeamMembers(
+    @CurrentUser() user: JwtUser,
+    @Param('teamId') teamId: string,
+  ) {
+    await this.teamsService.assertIsMember(teamId, user.sub);
     const members = await this.teamsService.getTeamMembers(teamId);
     return {
       success: true,
@@ -48,9 +57,15 @@ export class TeamsController {
   @Delete(':teamId/members/:userId')
   @HttpCode(HttpStatus.OK)
   async removeMember(
+    @CurrentUser() user: JwtUser,
     @Param('teamId') teamId: string,
     @Param('userId') userId: string,
   ) {
+    // Allow self-removal without a prior membership check; otherwise caller
+    // must already belong to the team.
+    if (user.sub !== userId) {
+      await this.teamsService.assertIsMember(teamId, user.sub);
+    }
     const result = await this.teamsService.removeMember(teamId, userId);
     return {
       success: true,

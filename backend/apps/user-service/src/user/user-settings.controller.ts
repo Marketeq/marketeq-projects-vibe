@@ -71,6 +71,8 @@ export class UserSettingsController {
   @Delete('avatar')
   @HttpCode(HttpStatus.NO_CONTENT)
   removeAvatar(@CurrentUser() user: JwtUser) {
-    return this.userService.updateUser(user.sub, { avatarUrl: undefined });
+    // Explicit null persists a NULL — `undefined` would leave the column
+    // unchanged on save().
+    return this.userService.updateUser(user.sub, { avatarUrl: null as any });
   }
 }

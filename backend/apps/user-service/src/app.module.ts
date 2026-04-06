@@ -67,7 +67,6 @@ import { OwnerTargetModule } from './owner-target/owner-target.module';
     SimilarProfileModule,
     AffiliatedTeamModule,
     FavoritesModule,
-    TeamsModule,
     UserMangementModule,
     OffersModule,
     HireRequestsModule,
@@ -81,7 +80,7 @@ import { OwnerTargetModule } from './owner-target/owner-target.module';
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
-    // { provide: APP_FILTER, useClass: PgExceptionFilter },
+    { provide: APP_FILTER, useClass: PgExceptionFilter },
   ],
 })
 export class AppModule {}

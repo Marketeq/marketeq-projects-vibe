@@ -1,21 +1,17 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
   Param,
-  Patch,
   Post,
   Put,
   Query,
 } from '@nestjs/common';
 import { HireRequestsService } from './hire-requests.service';
-import {
-  ApiCreatedResponse,
-  ApiOkResponse,
-  ApiOperation,
-} from '@nestjs/swagger';
+import { ApiOperation } from '@nestjs/swagger';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { JwtUser } from '../auth/types/jwt-user.type';
 import { FindHireRequestsQueryDto } from './dtos/find-hire-requests-query.dto';
@@ -39,28 +35,65 @@ export class HireRequestsController {
   @ApiOperation({ summary: 'Get hire request by id for the current user' })
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  findOne(@Param('id') id: string) {
-    return this.hireRequestsService.findOne(id);
+  async findOne(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+    const hireRequest = await this.hireRequestsService.findOne(id);
+    if (
+      hireRequest.clientUserId !== user.sub &&
+      hireRequest.talentUserId !== user.sub
+    ) {
+      throw new ForbiddenException(
+        'You are not a participant in this hire request',
+      );
+    }
+    return hireRequest;
   }
 
   @ApiOperation({ summary: 'Create a hire request' })
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateHireRequestDto) {
-    return this.hireRequestsService.create(dto);
+  create(@CurrentUser() user: JwtUser, @Body() dto: CreateHireRequestDto) {
+    // Force clientUserId to the authenticated caller — clients must not be
+    // able to spoof hire requests on behalf of other users.
+    return this.hireRequestsService.create({
+      ...dto,
+      clientUserId: user.sub,
+    });
   }
 
   @ApiOperation({ summary: 'Update hire request' })
   @Put(':id')
   @HttpCode(HttpStatus.OK)
-  update(@Param('id') id: string, @Body() dto: UpdateHireRequestDto) {
+  async update(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateHireRequestDto,
+  ) {
+    const existing = await this.hireRequestsService.findOne(id);
+    if (existing.clientUserId !== user.sub) {
+      throw new ForbiddenException(
+        'Only the requesting client may edit this hire request',
+      );
+    }
     return this.hireRequestsService.update(id, dto);
   }
 
   @ApiOperation({ summary: 'Update hire request status' })
   @Put(':id/status')
   @HttpCode(HttpStatus.OK)
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateHireStatusDto) {
+  async updateStatus(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateHireStatusDto,
+  ) {
+    const existing = await this.hireRequestsService.findOne(id);
+    if (
+      existing.clientUserId !== user.sub &&
+      existing.talentUserId !== user.sub
+    ) {
+      throw new ForbiddenException(
+        'You are not a participant in this hire request',
+      );
+    }
     return this.hireRequestsService.updateStatus(id, dto);
   }
 }

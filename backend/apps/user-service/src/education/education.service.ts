@@ -4,7 +4,6 @@ import { Repository } from 'typeorm';
 import { Education } from './education.entity';
 import { CreateEducationDto } from './dto/create-education.dto';
 import { UpdateEducationDto } from './dto/update-education.dto';
-import { dot } from 'node:test/reporters';
 
 @Injectable()
 export class EducationService {
