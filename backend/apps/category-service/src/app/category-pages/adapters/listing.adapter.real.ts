@@ -3,114 +3,108 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { ListingAdapter } from './listing.adapter';
 import { PaginatedResponse, PaginatedQueryParams } from '../types/taxonomy.types';
-import { encodeCursor, decodeCursor } from '../utils/cursor.utils';
 
 /**
  * REAL implementation of ListingAdapter
- * Fetches projects, services, and teams from Strapi HTTP API
- * 
- * FIXED: Now includes image population
+ * Fetches projects, services, and teams from CMS service (Payload CMS REST API).
+ * Falls back to Strapi if CMS_SERVICE_URL is not set.
  */
 @Injectable()
 export class ListingAdapterReal extends ListingAdapter {
   private readonly logger = new Logger(ListingAdapterReal.name);
-  private readonly strapiUrl: string;
-  private readonly strapiToken: string;
+  private readonly cmsUrl: string;
+  private readonly apiKey: string;
 
   constructor(private readonly httpService: HttpService) {
     super();
-    this.strapiUrl = (process.env.STRAPI_URL || 'http://localhost:1337').replace(/\/+$/, '');
-    this.strapiToken = process.env.STRAPI_TOKEN || '';
+    this.cmsUrl = (
+      process.env.CMS_SERVICE_URL ||
+      process.env.STRAPI_URL ||
+      'http://localhost:3020'
+    ).replace(/\/+$/, '');
+    this.apiKey = process.env.CMS_API_KEY || process.env.STRAPI_TOKEN || '';
 
-    if (!this.strapiToken) {
-      this.logger.warn('STRAPI_TOKEN not configured - API requests may fail!');
+    if (!this.apiKey) {
+      this.logger.warn('CMS_API_KEY not configured — API requests may fail!');
     }
 
-    this.logger.log(`ListingAdapterReal initialized: ${this.strapiUrl}`);
+    this.logger.log(`ListingAdapterReal initialized (Payload CMS): ${this.cmsUrl}`);
+  }
+
+  private authHeaders() {
+    if (!this.apiKey) return { 'Content-Type': 'application/json' };
+    if (process.env.CMS_API_KEY) {
+      return { Authorization: `API-Key ${this.apiKey}`, 'Content-Type': 'application/json' };
+    }
+    return { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' };
   }
 
   /**
-   * Query projects from Strapi with pagination
-   * FIXED: Now populates images
+   * Query listings from Payload CMS with pagination.
+   * Payload REST: GET /api/listings?where[listingType][equals]=project&sort=-createdAt&limit=N&page=N&depth=1
    */
   async queryProjects(params: PaginatedQueryParams): Promise<PaginatedResponse<any>> {
+    return this.queryListings('project', params);
+  }
+
+  async queryServices(params: PaginatedQueryParams): Promise<PaginatedResponse<any>> {
+    return this.queryListings('service', params);
+  }
+
+  async queryTeams(params: PaginatedQueryParams): Promise<PaginatedResponse<any>> {
+    return this.queryListings('team', params);
+  }
+
+  private async queryListings(
+    listingType: string,
+    params: PaginatedQueryParams,
+  ): Promise<PaginatedResponse<any>> {
     try {
       this.logger.log(
-        `Fetching projects: order=${params.order}, limit=${params.limit}, cursor=${params.cursor || 'none'}`
+        `Fetching ${listingType}s: order=${params.order}, limit=${params.limit}, cursor=${params.cursor || 'none'}`,
       );
 
       const sortField = this.getSortField(params.order);
-      const sortOrder = 'desc';
-
-      // Simple pagination - just use page numbers
       const page = params.cursor ? parseInt(params.cursor) : 1;
 
-      // ✅ FIXED: Changed from 'populate': 'category' to 'populate': '*'
+      // Payload CMS query params
       const queryParams = new URLSearchParams({
-        'sort[0]': `${sortField}:${sortOrder}`,
-        'pagination[page]': page.toString(),
-        'pagination[pageSize]': params.limit.toString(),
-        'populate': '*', // ✅ This includes all relations (category, images, media)
+        [`where[listingType][equals]`]: listingType,
+        [`where[status][equals]`]: 'published',
+        sort: `-${sortField}`,
+        limit: params.limit.toString(),
+        page: page.toString(),
+        depth: '1',
       });
 
-      // Skip filters for now
-      // if (params.categoryUuid) {
-      //   queryParams.append('filters[category][uuid][$eq]', params.categoryUuid);
-      // }
+      const url = `${this.cmsUrl}/api/listings?${queryParams.toString()}`;
 
-      const url = `${this.strapiUrl}/api/projects?${queryParams.toString()}`;
-
-      this.logger.log(`Strapi URL: ${url}`);
+      this.logger.log(`CMS URL: ${url}`);
 
       const response = await firstValueFrom(
         this.httpService.get(url, {
-          headers: {
-            Authorization: `Bearer ${this.strapiToken}`,
-            'Content-Type': 'application/json',
-          },
+          headers: this.authHeaders(),
           timeout: 30000,
-        })
+        }),
       );
 
-      const rawItems = response.data.data || [];
+      // Payload response: { docs: [...], totalDocs, hasNextPage, ... }
+      const docs = response.data?.docs ?? response.data?.data ?? [];
 
-      this.logger.log(`Fetched ${rawItems.length} projects from Strapi`);
+      this.logger.log(`Fetched ${docs.length} ${listingType}s from CMS`);
 
-      // ✅ DEBUG: Log first project to see image structure
-      if (rawItems.length > 0) {
-        this.logger.log(`Sample project data: ${JSON.stringify(rawItems[0], null, 2)}`);
-      }
+      const items = docs.map((doc: any) => this.transformListing(doc));
 
-      // Transform Strapi format to our format
-      const items = rawItems.map((item: any) => this.transformProject(item));
-
-      // ✅ DEBUG: Log transformed item to verify images
-      if (items.length > 0) {
-        this.logger.log(`Transformed project: ${JSON.stringify(items[0], null, 2)}`);
-      }
-
-      // Simple pagination
-      const hasMore = items.length === params.limit;
+      const hasMore = response.data?.hasNextPage ?? items.length === params.limit;
       const nextCursor = hasMore ? (page + 1).toString() : undefined;
 
-      this.logger.log(
-        `Returning ${items.length} projects, hasMore: ${hasMore}, nextCursor: ${nextCursor}`
-      );
-
       return {
-        items: items,
+        items,
         nextCursor,
         hasMore,
       };
-
     } catch (error: any) {
-      this.logger.error(`Failed to fetch projects: ${error.message}`);
-
-      if (error.response?.status === 400) {
-        this.logger.error(`Bad request - query parameters might be invalid`);
-        this.logger.error(`Response: ${JSON.stringify(error.response?.data)}`);
-      }
-
+      this.logger.error(`Failed to fetch ${listingType}s: ${error.message}`);
       return {
         items: [],
         nextCursor: undefined,
@@ -120,134 +114,47 @@ export class ListingAdapterReal extends ListingAdapter {
   }
 
   /**
-   * Query services from Strapi with pagination
+   * Transform Payload CMS listing doc to our format.
+   * Payload returns flat objects — no nested .attributes wrapper.
    */
-  async queryServices(params: PaginatedQueryParams): Promise<PaginatedResponse<any>> {
-    try {
-      this.logger.log(
-        `Fetching services: order=${params.order}, limit=${params.limit}`
-      );
+  private transformListing(doc: any): any {
+    let coverImage: string | undefined;
+    let thumbnail: string | undefined;
 
-      // TODO: Implement when services content type is ready in Strapi
-      this.logger.warn('Services not yet implemented - returning empty array');
-
-      return {
-        items: [],
-        nextCursor: undefined,
-        hasMore: false,
-      };
-
-    } catch (error: any) {
-      this.logger.error(`Failed to fetch services: ${error.message}`);
-      return {
-        items: [],
-        nextCursor: undefined,
-        hasMore: false,
-      };
-    }
-  }
-
-  /**
-   * Query teams from Strapi with pagination
-   */
-  async queryTeams(params: PaginatedQueryParams): Promise<PaginatedResponse<any>> {
-    try {
-      this.logger.log(
-        `Fetching teams: order=${params.order}, limit=${params.limit}`
-      );
-
-      // TODO: Implement when teams content type is ready in Strapi
-      this.logger.warn('Teams not yet implemented - returning empty array');
-
-      return {
-        items: [],
-        nextCursor: undefined,
-        hasMore: false,
-      };
-
-    } catch (error: any) {
-      this.logger.error(`Failed to fetch teams: ${error.message}`);
-      return {
-        items: [],
-        nextCursor: undefined,
-        hasMore: false,
-      };
-    }
-  }
-
-  /**
-   * Transform Strapi project to our format
-   * ✅ FIXED: Now properly handles image URLs
-   */
-  private transformProject(rawProject: any): any {
-    const attrs = rawProject.attributes || rawProject;
-
-    // ✅ FIXED: Build full image URL with multiple fallbacks
-    let coverImage = undefined;
-    let thumbnail = undefined;
-
-    // Try cover_image first
-    if (attrs.cover_image?.data?.attributes?.url) {
-      const imageUrl = attrs.cover_image.data.attributes.url;
-      coverImage = imageUrl.startsWith('http') ? imageUrl : `${this.strapiUrl}${imageUrl}`;
+    // Payload populates upload fields as objects with url
+    if (doc.coverImage?.url) {
+      const imageUrl = doc.coverImage.url;
+      coverImage = imageUrl.startsWith('http') ? imageUrl : `${this.cmsUrl}${imageUrl}`;
       thumbnail = coverImage;
     }
-    // Fallback to featured_image
-    else if (attrs.featured_image?.data?.attributes?.url) {
-      const imageUrl = attrs.featured_image.data.attributes.url;
-      coverImage = imageUrl.startsWith('http') ? imageUrl : `${this.strapiUrl}${imageUrl}`;
-      thumbnail = coverImage;
-    }
-    // Fallback to first media item
-    else if (attrs.media?.data?.[0]?.attributes?.url) {
-      const imageUrl = attrs.media.data[0].attributes.url;
-      coverImage = imageUrl.startsWith('http') ? imageUrl : `${this.strapiUrl}${imageUrl}`;
-      thumbnail = coverImage;
-    }
-    // Fallback to image field (if exists)
-    else if (attrs.image?.data?.attributes?.url) {
-      const imageUrl = attrs.image.data.attributes.url;
-      coverImage = imageUrl.startsWith('http') ? imageUrl : `${this.strapiUrl}${imageUrl}`;
-      thumbnail = coverImage;
-    }
-
-    this.logger.log(`Project ${attrs.slug}: coverImage=${coverImage || 'NO IMAGE'}`);
 
     return {
-      id: rawProject.id || `project-${attrs.slug}`,
-      title: attrs.title,
-      slug: attrs.slug,
-      summary: attrs.summary,
-      description: attrs.description,
-      featured: attrs.featured || false,
-      rating: attrs.rating || 4.5,
-      reviewCount: attrs.review_count || attrs.reviewCount || 0,
-      price: attrs.price || 0,
-      coverImage,      // ✅ Now includes full URL
-      thumbnail,       // ✅ Frontend fallback
-      skills: attrs.required_skills || attrs.skills || [],
-      role: attrs.role,
-      projectStatus: attrs.project_status || attrs.projectStatus,
-      scopeTotal: {
-        timeline: attrs.timeline || attrs.scope_total?.timeline || '12 weeks',
-        budget: attrs.budget || attrs.scope_total?.budget || attrs.price || 50000,
-      },
-      createdAt: attrs.createdAt,
-      updatedAt: attrs.updatedAt,
+      id: doc.id || doc.sourceId || `listing-${doc.slug}`,
+      title: doc.title,
+      slug: doc.slug,
+      summary: doc.excerpt,
+      featured: doc.featured || false,
+      editorialLabel: doc.editorialLabel,
+      featuredOrder: doc.featuredOrder,
+      rating: doc.rating || 4.5,
+      reviewCount: doc.reviewCount || 0,
+      price: doc.price || 0,
+      coverImage,
+      thumbnail,
+      category: typeof doc.category === 'object' ? doc.category?.slug : doc.category,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
     };
   }
 
-  /**
-   * Map order type to Strapi field name
-   */
   private getSortField(order: string): string {
     switch (order) {
       case 'top_rated':
         return 'createdAt';
       case 'curated':
-        return 'featured';
+        return 'featuredOrder';
       case 'trending':
-        return 'createdAt';
+        return 'updatedAt';
       case 'new':
         return 'createdAt';
       default:

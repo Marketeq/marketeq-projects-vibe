@@ -74,7 +74,13 @@ export class CategoryController {
 
   @Post('strapi/delete')
   async handleStrapiDelete(@Body() payload: any) {
-    const { status, reason } = await this.service.handleStrapiDeleteWebhook(payload);
+    const { status, reason } = await this.service.handleCmsDeleteWebhook(payload);
+    return { status, reason };
+  }
+
+  @Post('cms/delete')
+  async handleCmsDelete(@Body() payload: any) {
+    const { status, reason } = await this.service.handleCmsDeleteWebhook(payload);
     return { status, reason };
   }
 
@@ -130,7 +136,12 @@ export class CategoryController {
 
   @Get('test-strapi')
   async testStrapi() {
-    return this.service.testStrapiConnection();
+    return this.service.testCmsConnection();
+  }
+
+  @Get('test-cms')
+  async testCms() {
+    return this.service.testCmsConnection();
   }
 
   @Get('test-delete/:uuid')

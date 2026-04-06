@@ -3,7 +3,6 @@ import {
   NotFoundException,
   Logger,
   BadRequestException,
-  InternalServerErrorException,
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -45,9 +44,13 @@ export class CategoryService {
   ) {}
 
   // ---------------------------------------------------------
-  // Strapi -> Nest upsert
+  // CMS -> Nest upsert (replaces syncFromStrapi)
   // ---------------------------------------------------------
   async syncFromStrapi(dto: CategoryDto): Promise<void> {
+    return this.syncFromCms(dto);
+  }
+
+  async syncFromCms(dto: CategoryDto): Promise<void> {
     // 1) Upsert tags first (by slug; create if missing)
     const tagEntities: TagEntity[] = [];
     for (const t of dto.tags ?? []) {
@@ -66,19 +69,19 @@ export class CategoryService {
       tag = await this.tagRepo.save(tag);
       tagEntities.push(tag);
     }
-  
+
     // 2) Find/create the category by uuid
     let cat = await this.catRepo.findOne({
       where: { uuid: dto.uuid },
       relations: ['parent', 'tags'],
     });
-    
+
     const isNew = !cat;
-    
+
     if (!cat) {
       cat = this.catRepo.create({ uuid: dto.uuid });
     }
-  
+
     // 3) Assign basic fields
     cat.name = dto.name;
     cat.slug = dto.slug;
@@ -86,16 +89,14 @@ export class CategoryService {
     cat.seo_meta_description = dto.seo_meta_description ?? undefined;
     cat.approved = !!dto.approved;
     cat.published_in_marketplace = !!dto.published_in_marketplace;
-  
+
     // 4) Resolve parent by uuid — WITH PROTECTION against clearing existing values
     if (dto.parent) {
-      // Parent UUID provided - update it
       const parent = await this.catRepo.findOne({ where: { uuid: dto.parent } });
       if (parent) {
         cat.parent = ({ id: parent.id } as any);
       } else {
         this.logger.warn(`Parent ${dto.parent} not found for ${dto.slug}`);
-        // Keep existing parent if not found
         if (!isNew && !cat.parent) {
           const existing = await this.catRepo.findOne({
             where: { id: cat.id },
@@ -108,11 +109,9 @@ export class CategoryService {
         }
       }
     } else if (dto.parent === null && !isNew) {
-      // Explicitly null - user wants to remove parent
       cat.parent = null;
       this.logger.log(`Removed parent from ${dto.slug}`);
     } else if (!isNew) {
-      // For existing categories: parent not in payload - KEEP EXISTING
       if (!cat.parent) {
         const existing = await this.catRepo.findOne({
           where: { id: cat.id },
@@ -124,57 +123,63 @@ export class CategoryService {
         }
       }
     }
-    // For new categories without parent: cat.parent remains undefined (no parent)
-  
+
     // 5) Attach tags
     cat.tags = tagEntities;
 
-    // 5b) Circular parent check (Nest-side, for AI/user paths and sync updates)
+    // 5b) Circular parent check
     if (dto.parent) {
       const parentRow = await this.catRepo.findOne({ where: { uuid: dto.parent } });
       if (parentRow) {
         await this.validateParent(dto.uuid, dto.parent);
       }
     }
-  
+
     // 6) Save
     await this.catRepo.save(cat);
     this.logger.log(`Category synced locally: ${cat.uuid} (${cat.slug})`);
   }
 
   // ---------------------------------------------------------
-  // Fallback: pull from Strapi (cron calls this)
+  // Fallback: pull from CMS service (cron calls this)
   // ---------------------------------------------------------
-  public async fallbackSyncFromStrapi(): Promise<void> {
-    const base = this.baseStrapiUrl();
-    
-    // CHANGED: Use populate=* to get all relations
-    const url = `${base}/api/categories?populate=*`;
-  
+  public async fallbackSyncFromCms(): Promise<void> {
+    const base = this.baseCmsUrl();
+
+    // Payload CMS REST: GET /api/categories?depth=2&limit=1000
+    const url = `${base}/api/categories?depth=2&limit=1000`;
+
     const res = await this.http.axiosRef.get(url, { headers: this.authHeader() });
-    const list = Array.isArray(res.data?.data) ? res.data.data : [];
-  
-    this.logger.log(`Strapi returned ${list.length} categories`);
+    // Payload response: { docs: [...], totalDocs, ... }
+    const list = Array.isArray(res.data?.docs) ? res.data.docs : (Array.isArray(res.data?.data) ? res.data.data : []);
+
+    this.logger.log(`CMS returned ${list.length} categories`);
 
     for (const raw of list) {
-      const dto = this.transformStrapiCategory(raw);
-      await this.syncFromStrapi(dto);
+      const dto = this.transformCmsCategory(raw);
+      await this.syncFromCms(dto);
     }
-    this.logger.log(`Fallback pulled ${list.length} categories from Strapi`);
+    this.logger.log(`Fallback pulled ${list.length} categories from CMS`);
   }
+
+  /** Backward-compatible alias */
+  public async fallbackSyncFromStrapi(): Promise<void> {
+    return this.fallbackSyncFromCms();
+  }
+
   // ---------------------------------------------------------
   // Queries
   // ---------------------------------------------------------
   async findBySlug(slug: string): Promise<CategoryEntity> {
     const cat = await this.catRepo.findOne({
       where: { slug },
-      relations: ['parent', 'tags'], // Add relations back
+      relations: ['parent', 'tags'],
     });
-  
+
     if (!cat) {
       throw new NotFoundException(`Category with slug '${slug}' not found`);
     }
-  
+
     return cat;
   }
 
@@ -229,7 +234,7 @@ export class CategoryService {
   }
 
   /**
-   * Doc: prevent self-parent and cycles when assigning parent (user/AI/sync).
+   * Prevent self-parent and cycles when assigning parent.
    */
   async validateParent(childUuid: string, parentUuid: string): Promise<void> {
     if (!parentUuid || !childUuid) return;
@@ -280,7 +285,7 @@ export class CategoryService {
   }
 
   /**
-   * Doc QA: dry-run before delete — no DB changes.
+   * Dry-run before delete — no DB changes.
    */
   async deleteDryRun(uuid: string, reassignTo?: string) {
     const cat = await this.catRepo.findOne({
@@ -343,7 +348,6 @@ export class CategoryService {
         order: { id: 'ASC' },
       })) || null;
 
-    // fallback: scan backwards for a capitalized word (no Array.findLast)
     if (!parent) {
       const words = cleaned.split(/\s+/);
       let lastCap: string | null = null;
@@ -399,7 +403,7 @@ export class CategoryService {
       relations: ['parent'],
     });
 
-    await this.pushCategoryToStrapi({
+    await this.pushCategoryToCms({
       ...withParent!,
       approved: true,
       published_in_marketplace: false,
@@ -450,7 +454,7 @@ export class CategoryService {
       relations: ['parent'],
     });
 
-    await this.pushCategoryToStrapi({
+    await this.pushCategoryToCms({
       ...withParent!,
       approved: true,
       published_in_marketplace: false,
@@ -462,7 +466,7 @@ export class CategoryService {
 
     return withParent!;
   }
- 
+
   // ---------------------------------------------------------
   // Delete (safe) — used by webhook + API
   // ---------------------------------------------------------
@@ -475,7 +479,6 @@ export class CategoryService {
 
     const hasChildren = (cat.children?.length ?? 0) > 0;
 
-    // Decide target: explicit → parent → env fallback (only if there are children)
     let targetUuid = reassignToUuid ?? cat.parent?.uuid ?? null;
     if (!targetUuid && hasChildren) {
       targetUuid = process.env.FALLBACK_PARENT_UUID || null;
@@ -485,7 +488,6 @@ export class CategoryService {
       await this.contentService.reassignCategory(uuid, targetUuid);
     }
 
-    // 2) Reparent local children if needed
     if (hasChildren) {
       if (!targetUuid) {
         throw new NotFoundException(
@@ -501,14 +503,13 @@ export class CategoryService {
       }
     }
 
-    // 3) Remove locally (leaf deletion allowed even without target)
     await this.catRepo.delete({ uuid });
 
-    this.logger.log(`Deleted category ${uuid}${targetUuid ? ` → reassigned to ${targetUuid}` : ''}`);
+    this.logger.log(`Deleted category ${uuid}${targetUuid ? ` -> reassigned to ${targetUuid}` : ''}`);
     return { status: 'deleted' };
   }
 
-  /** Reassign all direct children of `parentUuid` to `newParentUuid` (local DB + content rows). Does not delete `parentUuid`. */
+  /** Reassign all direct children of `parentUuid` to `newParentUuid` */
   async reassignChildrenToParent(
     parentUuid: string,
     newParentUuid: string,
@@ -531,19 +532,18 @@ export class CategoryService {
     return { updated: children.length };
   }
 
-  /** Strapi webhook handler (Entry delete) — idempotent */
-  async handleStrapiDeleteWebhook(payload: any): Promise<{ status: string; reason?: string }> {
+  /** CMS webhook handler (Entry delete) — idempotent */
+  async handleCmsDeleteWebhook(payload: any): Promise<{ status: string; reason?: string }> {
     const uuid = this.extractUuidFromWebhook(payload);
     if (!uuid) {
-      this.logger.warn(`Strapi delete webhook missing uuid. Payload keys: ${Object.keys(payload || {})}`);
+      this.logger.warn(`CMS delete webhook missing uuid. Payload keys: ${Object.keys(payload || {})}`);
       return { status: 'ignored', reason: 'no-uuid' };
     }
     try {
       await this.deleteCategory(uuid);
-      this.logger.log(`Deleted via Strapi webhook: ${uuid}`);
+      this.logger.log(`Deleted via CMS webhook: ${uuid}`);
       return { status: 'ok' };
     } catch (e: any) {
-      // If a second webhook (duplicate) arrives after the first succeeded, treat as idempotent
       if (typeof e?.message === 'string' && e.message.includes('Category not found')) {
         this.logger.warn(`Delete via webhook ignored (already deleted): ${uuid}`);
         return { status: 'ignored', reason: 'already-deleted' };
@@ -553,34 +553,43 @@ export class CategoryService {
     }
   }
 
-  /** Try multiple payload shapes from Strapi v4 */
+  /** Backward compat alias */
+  async handleStrapiDeleteWebhook(payload: any): Promise<{ status: string; reason?: string }> {
+    return this.handleCmsDeleteWebhook(payload);
+  }
+
+  /** Try multiple payload shapes */
   private extractUuidFromWebhook(body: any): string | null {
-    // Common shapes:
-    // { event:'entry.delete', data:{ id, attributes:{ uuid } } }
-    // { event:'entry.delete', entry:{ id, uuid } }
-    // { uuid: '...' }
     const data = body?.data ?? body?.entry ?? body;
     const attrs = data?.attributes ?? data;
-    return attrs?.uuid ?? data?.uuid ?? null;
+    return attrs?.uuid ?? data?.uuid ?? attrs?.slug ?? null;
   }
 
   // ---------------------------------------------------------
-  // Strapi helpers
+  // CMS helpers (replaces Strapi helpers)
   // ---------------------------------------------------------
-  private baseStrapiUrl(): string {
-    return (process.env.STRAPI_URL || 'http://localhost:1337').replace(/\/+$/, '');
+  private baseCmsUrl(): string {
+    return (
+      process.env.CMS_SERVICE_URL ||
+      process.env.STRAPI_URL ||
+      'http://localhost:3020'
+    ).replace(/\/+$/, '');
   }
 
-  /** Same resolution as `content/strapi-client.ts` — avoids silent mismatch when only STRAPI_API_TOKEN is set. */
-  private strapiBearerToken(): string | undefined {
-    const t = process.env.STRAPI_TOKEN || process.env.STRAPI_API_TOKEN;
-    const trimmed = t?.trim();
+  private cmsApiKey(): string | undefined {
+    const key = process.env.CMS_API_KEY || process.env.STRAPI_TOKEN || process.env.STRAPI_API_TOKEN;
+    const trimmed = key?.trim();
     return trimmed || undefined;
   }
 
   private authHeader() {
-    const token = this.strapiBearerToken();
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    const key = this.cmsApiKey();
+    if (!key) return {};
+    // Support both Payload API-Key and Strapi Bearer token
+    if (process.env.CMS_API_KEY) {
+      return { Authorization: `API-Key ${key}` };
+    }
+    return { Authorization: `Bearer ${key}` };
   }
 
   private formatHttpError(error: unknown): string {
@@ -599,130 +608,115 @@ export class CategoryService {
     return String(error);
   }
 
-  private async findStrapiCategoryIdByUuid(uuid: string): Promise<number | null> {
-    const url = `${this.baseStrapiUrl()}/api/categories?filters[uuid][$eq]=${encodeURIComponent(uuid)}`;
+  private async findCmsCategoryBySlug(slug: string): Promise<any | null> {
+    const url = `${this.baseCmsUrl()}/api/categories?where[slug][equals]=${encodeURIComponent(slug)}&limit=1`;
     const res = await this.http.axiosRef.get(url, { headers: this.authHeader() });
-    const arr = res.data?.data ?? [];
-  
-    // Handles both top-level and nested attribute structures
-    const match = arr.find(
-      (item: any) =>
-        item?.attributes?.uuid === uuid || item?.uuid === uuid
-    );
-  
-    return match ? match.id : null;
-  }
-  
-
-  private async findStrapiTagIdBySlug(slug: string): Promise<number | null> {
-    const url = `${this.baseStrapiUrl()}/api/tags?filters[slug][$eq]=${encodeURIComponent(slug)}`;
-    const res = await this.http.axiosRef.get(url, { headers: this.authHeader() });
-    const arr = res.data?.data ?? [];
-    return arr.length ? arr[0].id : null;
+    const docs = res.data?.docs ?? [];
+    return docs.length ? docs[0] : null;
   }
 
-  public async pushCategoryToStrapi(cat: CategoryEntity): Promise<{ id: number }> {
-    // 1) ensure parent exists in Strapi (recursively) to get numeric parentId
-    let parentId: number | null = null;
+  private async findCmsCategoryIdByUuid(uuid: string): Promise<number | string | null> {
+    const url = `${this.baseCmsUrl()}/api/categories?where[slug][equals]=${encodeURIComponent(uuid)}&limit=1`;
+    const res = await this.http.axiosRef.get(url, { headers: this.authHeader() });
+    const docs = res.data?.docs ?? [];
+    return docs.length ? docs[0].id : null;
+  }
+
+  /**
+   * Push a category from Nest DB to CMS service (Payload CMS).
+   * Uses Payload REST API: POST /api/categories or PATCH /api/categories/:id
+   */
+  public async pushCategoryToCms(cat: CategoryEntity): Promise<{ id: number | string }> {
+    let parentId: number | string | null = null;
 
     if (cat.parent?.uuid) {
-      parentId = await this.findStrapiCategoryIdByUuid(cat.parent.uuid);
-      if (!parentId) {
+      const parentDoc = await this.findCmsCategoryBySlug(cat.parent.slug);
+      if (parentDoc) {
+        parentId = parentDoc.id;
+      } else {
         const parentLocal = await this.catRepo.findOne({
           where: { uuid: cat.parent.uuid },
           relations: ['parent', 'tags'],
         });
         if (parentLocal) {
-          await this.pushCategoryToStrapi(parentLocal); // push parent first
-          parentId = await this.findStrapiCategoryIdByUuid(cat.parent.uuid);
+          await this.pushCategoryToCms(parentLocal);
+          const pushed = await this.findCmsCategoryBySlug(cat.parent.slug);
+          parentId = pushed?.id ?? null;
         }
       }
     }
 
-    // 2) tags (optional)
-    const tagIds: number[] = [];
-    for (const t of cat.tags ?? []) {
-      const id = await this.findStrapiTagIdBySlug(t.slug);
-      if (id) tagIds.push(id);
-    }
+    // Check if category already exists in CMS
+    const existing = await this.findCmsCategoryBySlug(cat.slug);
 
-    // 3) upsert in Strapi
-    const existingId = await this.findStrapiCategoryIdByUuid(cat.uuid);
     const payload = {
-      data: {
-        uuid: cat.uuid,
-        name: cat.name,
-        slug: cat.slug,
-        approved: !!cat.approved,
-        published_in_marketplace: !!cat.published_in_marketplace,
-        seo_meta_title: cat.seo_meta_title ?? null,
-        seo_meta_description: cat.seo_meta_description ?? null,
-        ...(parentId ? { parent: parentId } : { parent: null }),
-        ...(tagIds.length ? { tags: tagIds } : { tags: [] }),
-      },
+      name: cat.name,
+      slug: cat.slug,
+      status: cat.published_in_marketplace ? 'active' : 'inactive',
+      description: cat.seo_meta_description ?? '',
+      ...(parentId ? { parent: parentId } : { parent: null }),
     };
 
-    if (existingId) {
-      const url = `${this.baseStrapiUrl()}/api/categories/${existingId}`;
-      const res = await this.http.axiosRef.put(url, payload, { headers: this.authHeader() });
-      this.logger.log(`Updated Strapi category #${existingId} from Nest`);
-      return { id: res.data?.data?.id };
+    if (existing) {
+      const url = `${this.baseCmsUrl()}/api/categories/${existing.id}`;
+      const res = await this.http.axiosRef.patch(url, payload, { headers: this.authHeader() });
+      this.logger.log(`Updated CMS category #${existing.id} from Nest`);
+      return { id: res.data?.doc?.id ?? res.data?.id ?? existing.id };
     } else {
-      const url = `${this.baseStrapiUrl()}/api/categories`;
+      const url = `${this.baseCmsUrl()}/api/categories`;
       const res = await this.http.axiosRef.post(url, payload, { headers: this.authHeader() });
-      const id = res.data?.data?.id;
-      this.logger.log(`Created Strapi category #${id} from Nest`);
+      const id = res.data?.doc?.id ?? res.data?.id;
+      this.logger.log(`Created CMS category #${id} from Nest`);
       return { id };
     }
   }
 
-  /** Strapi REST -> your DTO */
-  private transformStrapiCategory(raw: any): CategoryDto {
-    // Handle both nested (v4) and flat (v5) structures
-    const a = raw?.attributes ?? raw ?? {};
-    
-    // CRITICAL FIX: Handle parent with multiple structures
+  /** Backward compat alias */
+  public async pushCategoryToStrapi(cat: CategoryEntity): Promise<{ id: number | string }> {
+    return this.pushCategoryToCms(cat);
+  }
+
+  /** Payload CMS REST -> your DTO */
+  private transformCmsCategory(raw: any): CategoryDto {
+    // Payload CMS returns flat objects (no nested attributes like Strapi v4)
     let parentUuid = null;
-    
-    if (a.parent) {
-      if (typeof a.parent === 'string') {
-        // Direct string UUID
-        parentUuid = a.parent;
-      } else if (a.parent.uuid) {
-        // Flat object: { uuid: "..." }
-        parentUuid = a.parent.uuid;
-      } else if (a.parent.data?.attributes?.uuid) {
-        // Nested v4 style: { data: { attributes: { uuid: "..." } } }
-        parentUuid = a.parent.data.attributes.uuid;
-      } else if (a.parent.data?.uuid) {
-        // Nested v4 style: { data: { uuid: "..." } }
-        parentUuid = a.parent.data.uuid;
+
+    if (raw.parent) {
+      if (typeof raw.parent === 'string') {
+        parentUuid = raw.parent;
+      } else if (raw.parent.uuid) {
+        parentUuid = raw.parent.uuid;
+      } else if (raw.parent.slug) {
+        // Payload populates the full parent object
+        parentUuid = raw.parent.slug;
+      } else if (raw.parent.id) {
+        parentUuid = String(raw.parent.id);
       }
     }
-    
-    this.logger.debug(`Transform: ${a.slug} → parent=${parentUuid || 'null'}`);
-    
+
+    this.logger.debug(`Transform: ${raw.slug} -> parent=${parentUuid || 'null'}`);
+
     return {
-      uuid: a.uuid,
-      name: a.name,
-      slug: a.slug,
-      approved: !!a.approved,
-      published_in_marketplace: !!a.published_in_marketplace,
-      parent: parentUuid,  // Now correctly extracted!
-      tags: (a.tags?.data ?? a.tags ?? []).map((t: any) => {
-        const tagData = t?.attributes ?? t;
+      uuid: raw.uuid ?? raw.slug ?? String(raw.id),
+      name: raw.name,
+      slug: raw.slug,
+      approved: raw.status === 'active',
+      published_in_marketplace: raw.status === 'active',
+      parent: parentUuid,
+      tags: (raw.tags ?? []).map((t: any) => {
+        const tagData = typeof t === 'object' ? t : { slug: t };
         return {
-          name: tagData?.name,
+          name: tagData?.name ?? tagData?.slug,
           slug: tagData?.slug,
           uuid: tagData?.uuid,
         };
       }),
-      seo_meta_title: a.seo_meta_title ?? null,
-      seo_meta_description: a.seo_meta_description ?? null,
+      seo_meta_title: raw.seo_meta_title ?? null,
+      seo_meta_description: raw.description ?? raw.seo_meta_description ?? null,
     };
   }
 
-  /** Convenience: create a dummy local category then push it to Strapi */
+  /** Convenience: create a dummy local category then push it to CMS */
   public async createAndPushDummyCategory() {
     const saved = await this.catRepo.save(
       this.catRepo.create({
@@ -737,49 +731,49 @@ export class CategoryService {
       }),
     );
 
-    // reload with relations so controller responses can include parent uuid
     const full = await this.catRepo.findOne({
       where: { id: saved.id },
       relations: ['parent'],
     });
 
-    await this.pushCategoryToStrapi(full!);
+    await this.pushCategoryToCms(full!);
     return full!;
   }
 
-  async testStrapiConnection() {
+  async testCmsConnection() {
     try {
-      const base = this.baseStrapiUrl();
-      const url = `${base}/api/categories?populate=*`;
-      
-      this.logger.log(`Testing Strapi connection: ${url}`);
-      
-      const res = await this.http.axiosRef.get(url, { 
-        headers: this.authHeader() 
+      const base = this.baseCmsUrl();
+      const url = `${base}/api/categories?depth=1&limit=10`;
+
+      this.logger.log(`Testing CMS connection: ${url}`);
+
+      const res = await this.http.axiosRef.get(url, {
+        headers: this.authHeader()
       });
-      
-      this.logger.log(`Strapi connected! Got ${res.data?.data?.length} categories`);
-      
-      // Find UI Design
-      const uiDesign = res.data?.data?.find((cat: any) => 
-        cat?.attributes?.slug === 'ui-design' || cat?.slug === 'ui-design'
-      );
-      
+
+      const docs = res.data?.docs ?? res.data?.data ?? [];
+      this.logger.log(`CMS connected! Got ${docs.length} categories`);
+
       return {
         success: true,
-        totalCategories: res.data?.data?.length,
-        uiDesignData: uiDesign,
-        hasToken: !!this.strapiBearerToken(),
+        totalCategories: res.data?.totalDocs ?? docs.length,
+        hasApiKey: !!this.cmsApiKey(),
+        cmsUrl: base,
       };
     } catch (error) {
       const detail = this.formatHttpError(error);
-      this.logger.error(`Strapi connection failed: ${detail}`);
+      this.logger.error(`CMS connection failed: ${detail}`);
       return {
         success: false,
         error: detail,
-        hasToken: !!this.strapiBearerToken(),
-        strapiUrl: this.baseStrapiUrl(),
+        hasApiKey: !!this.cmsApiKey(),
+        cmsUrl: this.baseCmsUrl(),
       };
     }
+  }
+
+  /** Backward compat alias */
+  async testStrapiConnection() {
+    return this.testCmsConnection();
   }
 }

@@ -1,10 +1,10 @@
-// apps/category-sync-service/src/content/content.types.ts
+// apps/category-service/src/content/content.types.ts
 export type RelationKind = 'single' | 'many';
 
 export interface ContentTypeConfig {
   /** human name for logs */
   name: string;
-  /** Strapi v4 plural UID (path after /api/) */
+  /** Payload CMS collection slug (path after /api/) */
   api: string;
   /** relation field on that type that points to Category */
   categoryField: string;
@@ -13,10 +13,10 @@ export interface ContentTypeConfig {
 }
 
 /**
- * CURRENT STRAPI SETUP (from your schemas):
- * - Tag has a many-to-many relation to Category via `categories`.
- * Add more types here later (e.g., listings, projects) when they exist.
+ * Content types in Payload CMS that reference categories.
+ * Used for reassignment when deleting/merging categories.
  */
 export const CONTENT_TYPES: ContentTypeConfig[] = [
-  { name: 'Tags', api: 'tags', categoryField: 'categories', relation: 'many' },
+  { name: 'Listings', api: 'listings', categoryField: 'category', relation: 'single' },
+  { name: 'BlogPosts', api: 'blog-posts', categoryField: 'category', relation: 'single' },
 ];

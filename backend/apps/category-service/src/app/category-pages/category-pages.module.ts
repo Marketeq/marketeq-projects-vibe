@@ -46,21 +46,20 @@ import { HealthModule } from './health/health.module';
     {
       provide: StrapiAdapter,
       useFactory: (http: HttpService) => {
-        // If STRAPI_TOKEN isn't set, StrapiAdapterReal will always return []
-        // (tax-groups endpoint is authenticated). In that case, fall back to the
-        // mock adapter so category-pages can still be exercised end-to-end.
-        const hasToken = !!process.env.STRAPI_TOKEN?.trim();
-        return hasToken ? new StrapiAdapterReal(http) : new StrapiAdapterMock();
+        // Use CMS_API_KEY (Payload CMS) or fall back to STRAPI_TOKEN for backward compat.
+        // If neither is set, use mock adapter so category-pages can still be exercised.
+        const hasKey = !!(process.env.CMS_API_KEY || process.env.STRAPI_TOKEN)?.trim();
+        return hasKey ? new StrapiAdapterReal(http) : new StrapiAdapterMock();
       },
       inject: [HttpService],
     },
     {
       provide: ListingAdapter,
       useFactory: (http: HttpService) => {
-        // ListingAdapterReal expects Strapi content-types like /api/projects to exist.
-        // For local smoke tests, fall back to the mock adapter when STRAPI_TOKEN is missing.
-        const hasToken = !!process.env.STRAPI_TOKEN?.trim();
-        return hasToken ? new ListingAdapterReal(http) : new ListingAdapterMock();
+        // ListingAdapterReal expects CMS/Strapi content-types.
+        // Fall back to mock when no API key is configured.
+        const hasKey = !!(process.env.CMS_API_KEY || process.env.STRAPI_TOKEN)?.trim();
+        return hasKey ? new ListingAdapterReal(http) : new ListingAdapterMock();
       },
       inject: [HttpService],
     },

@@ -1,35 +1,46 @@
-// apps/category-sync-service/src/content/strapi-client.ts
+// apps/category-service/src/content/cms-client.ts
+// Replaces the old Strapi v4 client with Payload CMS REST client
 import axios from 'axios';
 
-const STRAPI_URL = (process.env.STRAPI_URL || 'http://localhost:1337').replace(/\/+$/, '');
-const STRAPI_API_TOKEN = process.env.STRAPI_TOKEN || process.env.STRAPI_API_TOKEN || '';
+const CMS_URL = (process.env.CMS_SERVICE_URL || process.env.STRAPI_URL || 'http://localhost:3020').replace(/\/+$/, '');
+const CMS_API_KEY = process.env.CMS_API_KEY || process.env.STRAPI_TOKEN || process.env.STRAPI_API_TOKEN || '';
 
-export const strapi = axios.create({
-  baseURL: `${STRAPI_URL}/api`,
-  headers: STRAPI_API_TOKEN
-    ? { Authorization: `Bearer ${STRAPI_API_TOKEN}`, 'Content-Type': 'application/json' }
+export const cmsClient = axios.create({
+  baseURL: `${CMS_URL}/api`,
+  headers: CMS_API_KEY
+    ? { Authorization: `API-Key ${CMS_API_KEY}`, 'Content-Type': 'application/json' }
     : { 'Content-Type': 'application/json' },
 });
 
-// GET all pages for a given path with query params (Strapi v4)
-export async function getAllPages<T>(path: string, params: Record<string, any>) {
-  const pageSize = 100;
+// Backward-compatible alias
+export const strapi = cmsClient;
+
+/**
+ * Paginate through all docs from Payload CMS REST API.
+ * Payload uses { docs, totalDocs, page, totalPages, hasNextPage } response shape.
+ */
+export async function getAllPages<T>(path: string, params: Record<string, any>): Promise<T[]> {
+  const limit = 100;
   let page = 1;
   const items: T[] = [];
 
   while (true) {
-    const res = await strapi.get(path, {
+    const res = await cmsClient.get(path, {
       params: {
-        'pagination[page]': page,
-        'pagination[pageSize]': pageSize,
+        limit,
+        page,
         ...params,
       },
     });
-    const data = res.data?.data ?? [];
-    items.push(...data);
-    const meta = res.data?.meta?.pagination;
-    if (!meta || page >= meta.pageCount) break;
+
+    // Payload REST response shape
+    const docs = res.data?.docs ?? [];
+    items.push(...docs);
+
+    const hasNextPage = res.data?.hasNextPage ?? false;
+    if (!hasNextPage) break;
     page += 1;
   }
+
   return items;
 }

@@ -22,32 +22,46 @@ export class CategoryPagesController {
   constructor(private readonly categoryPagesService: CategoryPagesService) {}
 
   @Post('strapi-sync')
-  @ApiOperation({ summary: 'Webhook for Strapi category/tag sync' })
+  @ApiOperation({ summary: 'Webhook for CMS category/tag sync (backward-compat Strapi endpoint)' })
   async handleWebhook(@Body() body: any) {
+    return this.handleCmsSync(body);
+  }
+
+  @Post('cms-sync')
+  @ApiOperation({ summary: 'Webhook for CMS (Payload) category/tag sync' })
+  async handleCmsSync(@Body() body: any) {
     this.logger.log(`Full webhook payload: ${JSON.stringify(body, null, 2)}`);
-    
+
     if (!body) {
       this.logger.error('Webhook payload missing');
-      throw new BadRequestException('Invalid Strapi webhook payload');
+      throw new BadRequestException('Invalid CMS webhook payload');
     }
 
-    const model = body.model || (body.uid && body.uid.split('::')[1]?.split('.')[0]);
+    // Support both Strapi-style (model + entry) and Payload-style (collection + doc)
+    const model = body.model
+      || body.collection
+      || (body.uid && body.uid.split('::')[1]?.split('.')[0]);
 
     if (!model) {
       this.logger.error('Could not detect model type in webhook:', body);
-      throw new BadRequestException('Invalid Strapi webhook payload');
+      throw new BadRequestException('Invalid CMS webhook payload');
     }
 
     this.logger.log(`Webhook received for model: ${model}`);
 
-    if (model === 'category') {
-      await this.categoryPagesService.upsertCategory(body.entry);
-      return { status: 'success', message: `Category ${body.entry?.name} synced` };
+    // Payload sends `doc` instead of `entry`
+    const doc = body.entry ?? body.doc ?? body;
+
+    if (model === 'category' || model === 'categories') {
+      await this.categoryPagesService.upsertCategory(doc);
+      return { status: 'success', message: `Category ${doc?.name} synced` };
     }
 
-    if (model === 'tag' && this.categoryPagesService.upsertTag) {
-      await this.categoryPagesService.upsertTag(body.entry);
-      return { status: 'success', message: `Tag ${body.entry?.name} synced` };
+    if (model === 'tag' || model === 'tags') {
+      if (this.categoryPagesService.upsertTag) {
+        await this.categoryPagesService.upsertTag(doc);
+        return { status: 'success', message: `Tag ${doc?.name} synced` };
+      }
     }
 
     return { status: 'ignored', reason: `Model '${model}' not handled` };
