@@ -989,23 +989,28 @@ export default function Projects() {
                           </Button>
                         </article>
                       </SwiperSlide>
-                      {fromLength(8).map((key) => (
-                        <SwiperSlide key={key} className="w-[355px]">
+                      {fromLength(8).map((idx) => {
+                        // Cycle through real listings so every card links to a real project detail page.
+                        const project = listingsProjects.length > 0 ? listingsProjects[idx % listingsProjects.length] : null
+                        const href = project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : `/c/${l1Meta.slug}/projects`
+                        return (
+                        <SwiperSlide key={project?.id ?? idx} className="w-[355px]">
+                          <NextLink href={href} className="block focus-visible:outline-none">
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src="/dashboard.png" alt="Dashboard" fill sizes="33vw" />
+                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={project?.mediaUrls?.[0] || "/dashboard.png"} alt={project?.title || "Dashboard"} fill sizes="33vw" />
                             </div>
                             <div className="mt-3 flex items-start gap-x-3">
-                              <NextLink href={`/c/${l1Meta.slug}/projects`} className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">The Ultimate Mobile App Experience</NextLink>
+                              <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{project?.title || "The Ultimate Mobile App Experience"}</span>
                               <div className="inline-flex items-center gap-x-1">
                                 <Star className="size-[15px] text-primary-500 fill-primary-500" />
                                 <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span>
                               </div>
                             </div>
-                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.</p>
+                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">{project?.description?.slice(0, 140) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}</p>
                             <div className="mt-[14.5px] flex flex-col gap-y-3">
-                              <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from 12 weeks</span></div>
-                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">$50,000 budget</span></div>
+                              <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from {project?.duration || "12 weeks"}</span></div>
+                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${project?.budget ? Number(project.budget).toLocaleString() : "50,000"} budget</span></div>
                             </div>
                             <div className="mt-5 flex items-end justify-between">
                               <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
@@ -1014,8 +1019,10 @@ export default function Projects() {
                               <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
                             </div>
                           </article>
+                          </NextLink>
                         </SwiperSlide>
-                      ))}
+                        )
+                      })}
                     </SwiperContent>
                   </TabsContent>
                 </div>
