@@ -5,7 +5,7 @@
   "monorepo": true,
   "root": "apps/api-gateway",
   "compilerOptions": {
-    "deleteOutDir": true,
+    "deleteOutDir": false,
     "webpack": false
   },
   "projects": {

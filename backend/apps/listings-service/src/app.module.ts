@@ -7,7 +7,7 @@ import { ProjectService } from './listings/project.service';
 import { ProjectSyncModule } from './project-sync/project-sync.module';
 import { RelationalProjectPersistenceModule } from './publish/infrastructure/persistence/relational/relational-persistence.module';
 import { PublishModule } from './publish/publish.module';
-import { JwtAuthGuard } from './shared/guards/jwt-auth.guard';
+import { OwnerTargetGrpcModule } from './owner-target/owner-target.module';
 import { JobListingModule } from './job-listing/job-listing.module';
 
 @Module({
@@ -27,6 +27,7 @@ import { JobListingModule } from './job-listing/job-listing.module';
     RelationalProjectPersistenceModule,
     PublishModule,
     ProjectSyncModule,
+    OwnerTargetGrpcModule,
     // Job listing feature module — registers all entities, services, and controllers.
     // ClientsModule (RABBITMQ_CLIENT) is registered inside JobListingModule.
     JobListingModule,

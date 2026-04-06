@@ -189,4 +189,72 @@ describe('PublishService moderation flow', () => {
       service.publishExistingProject('user-4', 'project-4'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('does not attempt video moderation when videoUrl is a placeholder string', async () => {
+    projectRepository.findOne.mockResolvedValue({
+      id: 'project-6',
+      userId: 'user-6',
+    });
+    (moderationService as any).moderateUploadedImage = jest
+      .fn()
+      .mockResolvedValue({ status: 'approved' });
+    (moderationService as any).moderateVideoUrl = jest.fn();
+    (moderationService as any).moderateUploadedVideo = jest.fn();
+    cloudflareStorageService.uploadProjectMedia
+      .mockResolvedValueOnce({ url: 'https://cdn.example.com/featured-image.jpg' })
+      .mockResolvedValueOnce({ url: 'https://cdn.example.com/additional-image.jpg' });
+    mediaRepository.create.mockResolvedValue({
+      id: 'media-1',
+      projectId: 'project-6',
+      featuredImage: 'https://cdn.example.com/featured-image.jpg',
+      additionalImages: [],
+      featuredVideo: null,
+    });
+
+    const result = await service.createProjectOfMedia(
+      'user-6',
+      {
+        featuredImage: { originalname: 'cover.jpg' } as Express.Multer.File,
+        additionalImages: [],
+      },
+      {
+        projectId: 'project-6',
+        videoUrl: 'undefined',
+      } as any,
+    );
+
+    expect((moderationService as any).moderateVideoUrl).not.toHaveBeenCalled();
+    expect((moderationService as any).moderateUploadedVideo).not.toHaveBeenCalled();
+    expect(result.featuredVideo).toBeNull();
+  });
+
+  it('returns image moderation unavailable when image moderation fails before any video moderation', async () => {
+    projectRepository.findOne.mockResolvedValue({
+      id: 'project-7',
+      userId: 'user-7',
+    });
+    (moderationService as any).moderateUploadedImage = jest
+      .fn()
+      .mockRejectedValue(new ModerationUnavailableError());
+
+    await expect(
+      service.createProjectOfMedia(
+        'user-7',
+        {
+          featuredImage: { originalname: 'cover.jpg' } as Express.Multer.File,
+          additionalImages: [],
+        },
+        {
+          projectId: 'project-7',
+        } as any,
+      ),
+    ).rejects.toMatchObject({
+      response: {
+        message:
+          'Image moderation is currently unavailable. Please retry media upload.',
+        projectId: 'project-7',
+        status: 'publish_blocked',
+      },
+    });
+  });
 });

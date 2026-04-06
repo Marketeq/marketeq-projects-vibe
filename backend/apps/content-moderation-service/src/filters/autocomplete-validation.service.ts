@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class AutocompleteValidationService {
-  private allowedEntries: { [key: string]: string[] } = {
+  private allowedEntries: Record<string, string[]> = {
     role: ['developer', 'designer'],
     skill: ['typescript', 'nodejs'],
     // Add more types as needed

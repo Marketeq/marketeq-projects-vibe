@@ -1,9 +1,38 @@
 import { Injectable } from '@nestjs/common';
-const Filter = require('bad-words');
+
+class BasicProfanityFilter {
+  private words = new Set<string>(['fuck', 'shit', 'bitch', 'asshole', 'bastard', 'dick', 'fucker']);
+
+  addWords(...words: string[]) {
+    words.forEach((w) => this.words.add(String(w).toLowerCase()));
+  }
+
+  removeWords(...words: string[]) {
+    words.forEach((w) => this.words.delete(String(w).toLowerCase()));
+  }
+
+  isProfane(content: string): boolean {
+    const normalized = content.toLowerCase();
+    for (const word of this.words) {
+      const pattern = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (pattern.test(normalized)) return true;
+    }
+    return false;
+  }
+
+  clean(content: string): string {
+    let result = content;
+    for (const word of this.words) {
+      const pattern = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+      result = result.replace(pattern, '*'.repeat(word.length));
+    }
+    return result;
+  }
+}
 
 @Injectable()
 export class ProfanityFilterService {
-  private filter = new Filter();
+  private filter = new BasicProfanityFilter();
   constructor() {
     this.extendProfanityList();
   }

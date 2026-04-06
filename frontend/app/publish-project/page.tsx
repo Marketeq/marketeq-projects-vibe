@@ -22,6 +22,7 @@ import {
   type AutocompleteTypeSuggestion,
 } from "@/service/http/autocomplete"
 import { ProjectAPI } from "@/service/http/project"
+import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { HTTPS, ONE_SECOND } from "@/utils/constants"
 import {
   cn,
@@ -227,17 +228,36 @@ type SubmissionOutcome = {
   projectSlug?: string
 }
 
+function makeUniqueFile(
+  file: File | Blob | undefined
+): File | Blob | undefined {
+  if (!file) return file
+  // If already a File, clone with a unique name
+  if (file instanceof File) {
+    const ext = file.name.split(".").pop()
+    const base = file.name.replace(/\.[^/.]+$/, "")
+    const uniqueName = `${base}_${Date.now()}_${Math.floor(Math.random() * 10000)}.${ext}`
+    return new File([file], uniqueName, { type: file.type })
+  }
+  // If Blob or other, just return as is
+  return file
+}
+
 const Empty = ({ outcome }: { outcome?: SubmissionOutcome }) => {
   const status = outcome?.status ?? "in_review"
-  const marketplaceHref = outcome?.projectSlug
-    ? `/project/${outcome.projectSlug}`
-    : "/marketplace"
-  const myProjectsHref = "/my-projects"
-
+  const marketplaceHref =
+    outcome?.projectSlug && outcome?.projectId
+      ? buildProjectUrl([], outcome.projectSlug, outcome.projectId)
+      : "/marketplace"
+  const router = useRouter()
   return (
     <div className="grid flex-auto place-items-center">
-      <div className="flex flex-col max-w-[440px] items-center justify-between">
-        {status === "needs_update" ? (
+      <div className="flex w-full max-w-[460px] flex-col items-center px-6">
+        {status === "published" ? (
+          <div className="size-[56px] shrink-0 rounded-full inline-flex items-center justify-center bg-success-50 text-success-500">
+            <CheckCircle className="size-7" />
+          </div>
+        ) : status === "needs_update" ? (
           <div className="size-[56px] shrink-0 rounded-full inline-flex items-center justify-center bg-warning-50 text-warning-500">
             <AlertTriangle className="size-7" />
           </div>
@@ -247,55 +267,74 @@ const Empty = ({ outcome }: { outcome?: SubmissionOutcome }) => {
           </div>
         )}
 
-        <h1 className="mt-8 text-xl text-center text-gray-800 leading-[30px] font-semibold">
+        <h1
+          className={
+            status === "in_review" || status === "published"
+              ? "mt-8 text-xl text-center text-gray-800 leading-[30px] font-semibold"
+              : "mt-8 max-w-[420px] text-center text-[32px] leading-[38px] font-semibold text-gray-800"
+          }
+        >
           {status === "published"
-            ? "Your Project has been successfully published!"
+            ? "Your project has been successfully published"
             : status === "needs_update"
               ? "Please update your project to meet community guidelines."
               : "Your Project has been submitted for a review!"}
         </h1>
 
-        <p className="mt-6 text-sm leading-[16.94px] text-center text-gray-500">
+        <p className="mt-5 max-w-[420px] text-center text-sm leading-[21px] text-gray-500">
           {status === "published"
-            ? "Project is live in the marketplace and available for others to discover and collaborate."
+            ? "Your project is now live in the marketplace and available for others to discover and collaborate. Thank you for contributing!"
             : status === "needs_update"
               ? "Review and adjust your project to ensure it complies with policies before publishing."
               : "Our team will review your project over the next few days and will get back to you if there are any changes to be made."}
         </p>
 
-        <div className="flex items-center justify-center gap-x-1 mt-6">
-          <p className="text-sm leading-[16.94px] text-gray-500">
-            You can check your project status anytime in
+        {status !== "needs_update" ? (
+          <div className="mt-6 flex items-center justify-center gap-x-1">
+            <p className="text-sm leading-[16.94px] text-gray-500">
+              You can check your project status anytime in
+            </p>
+            <Button
+              variant="link"
+              className="px-0"
+              onClick={() => {
+                router.push("/my-projects")
+              }}
+            >
+              My Projects
+            </Button>
+          </div>
+        ) : (
+          <p className="mt-6 text-center text-sm leading-[21px] text-gray-500">
+            Read community guidelines{" "}
+            <Button
+              variant="link"
+              className="px-0"
+              onClick={() => router.push("/community-guidelines")}
+            >
+              Here.
+            </Button>
           </p>
-          <Button
-            variant="link"
-            onClick={() => {
-              window.location.href = myProjectsHref
-            }}
-          >
-            My Projects
-          </Button>
-        </div>
+        )}
 
         {status === "in_review" ? (
-          <p className="text-sm leading-[30px] font-semibold text-center text-gray-800 mt-6">
-            Thanks for submitting, we’ll be in touch soon!
+          <p className="mt-6 text-center text-sm font-semibold leading-[30px] text-gray-800">
+            Thanks for submitting, we&apos;ll be in touch soon!
           </p>
         ) : null}
 
-        <div className="flex justify-center gap-x-3 items-center mt-8">
-          <Button
-            visual="gray"
-            variant="outlined"
-            onClick={() => {
-              window.location.href = "/"
-            }}
-          >
-            <Home03 className="size-[15px]" />
-            Take me home
-          </Button>
-
-          {status === "published" ? (
+        {status === "published" ? (
+          <div className="mt-8 flex items-center justify-center gap-x-3">
+            <Button
+              visual="gray"
+              variant="outlined"
+              onClick={() => {
+                window.location.href = "/"
+              }}
+            >
+              <Home03 className="size-[15px]" />
+              Take me home
+            </Button>
             <Button
               onClick={() => {
                 window.location.href = marketplaceHref
@@ -303,40 +342,36 @@ const Empty = ({ outcome }: { outcome?: SubmissionOutcome }) => {
             >
               View in Marketplace
             </Button>
-          ) : status === "needs_update" ? (
+          </div>
+        ) : status === "needs_update" ? (
+          <div className="mt-8">
+            <Button onClick={() => window.location.reload()}>
+              Update Project
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-8 flex flex-col items-center">
             <Button
+              visual="gray"
+              variant="outlined"
               onClick={() => {
-                window.location.href = "/community-guidelines"
+                window.location.href = "/"
               }}
             >
-              Read community guidelines Here
+              <Home03 className="size-[15px]" />
+              Take me home
             </Button>
-          ) : null}
-        </div>
-
-        {status === "needs_update" ? (
-          <div className="mt-3">
-            <Button>Update Project</Button>
+            <Button
+              variant="link"
+              className="mt-3 px-0"
+              onClick={() => {
+                router.push("/my-projects")
+              }}
+            >
+              My Projects
+            </Button>
           </div>
-        ) : null}
-
-        {status === "in_review" ? (
-          <p className="text-sm leading-[16.94px] text-center text-gray-500 mt-3">
-            Review Project Message: Your Project has been submitted for a
-            review!
-          </p>
-        ) : null}
-
-        {status === "published" ? (
-          <p className="text-sm leading-[16.94px] text-center text-gray-500 mt-3">
-            Success Message: Your Project has been successfully published.
-          </p>
-        ) : null}
-        {status === "needs_update" ? (
-          <p className="text-sm leading-[16.94px] text-center text-gray-500 mt-3">
-            Update Project is required before publishing.
-          </p>
-        ) : null}
+        )}
       </div>
     </div>
   )
@@ -431,7 +466,8 @@ const projectScopeSchema = pickFromProjectScopeSchema()
 const Sidebar = () => {
   const { currentStep, stepsState } = useStepRootContext()
   const { setStep } = useStepperContext()
-  const projectInfoMethods = useProjectInfoContext()
+  const projectInfoMethods: UseFormReturn<ProjectInfoFormValues> =
+    useProjectInfoContext()
   const mediaMethods = useMediaContext()
 
   const projectInfoValues = useWatch({ control: projectInfoMethods.control })
@@ -667,8 +703,23 @@ const BottomBar = ({
   const [phases] = projectScopeMethods
 
   const handleSubmit = async () => {
-    const projectInfo = projectInfoMethods.getValues()
+    const projectInfo: ProjectInfoFormValues = projectInfoMethods.getValues()
     const media = mediaMethods.getValues()
+    let createdProjectId: string | undefined
+    let createdProjectSlug: string | undefined
+    const reviewStartTimeMs = Date.now()
+    const reviewDelayMs = 10 * 1000
+    const waitForReviewWindow = async () => {
+      const elapsedMs = Date.now() - reviewStartTimeMs
+      const remainingMs = reviewDelayMs - elapsedMs
+      if (remainingMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remainingMs))
+      }
+    }
+
+    // Show "submitted for review" state immediately while validation/publish APIs run.
+    setSubmissionOutcome({ status: "in_review" })
+    setIsProjectSubmitted(true)
 
     const categories = Array.from(
       new Set(
@@ -699,28 +750,17 @@ const BottomBar = ({
     }
 
     try {
-      if (process.env.NODE_ENV === "development") {
-        setSubmissionOutcome({ status: "in_review", projectId: "dev-123" })
-        setIsProjectSubmitted(true)
-        return
-      }
-
+      // 1. Create project first
       const createProjectResponse = await ProjectAPI.CreateProject(payload)
       const projectId =
         createProjectResponse?.data?.projectId ??
         createProjectResponse?.data?.id
-      const rawStatus = String(createProjectResponse?.data?.status ?? "")
-        .trim()
-        .toLowerCase()
-      const normalizedStatus: SubmissionStatus = rawStatus.includes("publish")
-        ? "published"
-        : rawStatus.includes("need") ||
-            rawStatus.includes("reject") ||
-            rawStatus.includes("update")
-          ? "needs_update"
-          : "in_review"
+      createdProjectId = projectId ? String(projectId) : undefined
+      createdProjectSlug = createProjectResponse?.data?.slug
 
-      // Upload media files only when a project id is available and files were selected.
+      // 2. Upload media after project is created
+      let mediaUploadSuccess = true
+      let mediaUploadErrorMsg = ""
       if (projectId) {
         const featuredFile = media.featuredImages?.[0]?.meta
         const additionalFiles =
@@ -728,24 +768,82 @@ const BottomBar = ({
             ?.flat()
             ?.map((item) => item?.meta)
             ?.filter(Boolean) ?? []
-
-        const videoUrl = media.featuredVideo?.trim()
+        const videoUrl = media.featuredVideo
+          ?.trim()
+          .replace(/^(https?:\/\/)+/i, "https://")
 
         if (featuredFile || additionalFiles.length || videoUrl) {
           const formData = new FormData()
           formData.append("projectId", String(projectId))
-          if (featuredFile) {
-            formData.append("featuredImage", featuredFile)
+          const uniqueFeatured = makeUniqueFile(featuredFile)
+          if (uniqueFeatured) {
+            formData.append("featuredImage", uniqueFeatured)
           }
           additionalFiles.forEach((file) => {
-            formData.append("additionalImages", file)
+            const uniqueAdditional = makeUniqueFile(file)
+            if (uniqueAdditional) {
+              formData.append("additionalImages", uniqueAdditional)
+            }
           })
           if (videoUrl) {
             formData.append("videoUrl", videoUrl)
           }
-          await ProjectAPI.UploadMedia(formData)
+          try {
+            await ProjectAPI.UploadMedia(formData)
+          } catch (error: any) {
+            mediaUploadSuccess = false
+            mediaUploadErrorMsg =
+              error?.response?.data?.reason ||
+              error?.response?.data?.message ||
+              error?.message ||
+              "Media upload failed. Please check your files."
+          }
+        }
+      }
+
+      // 3. If media upload failed, set project to needs_update and show re-upload option
+      if (!mediaUploadSuccess) {
+        const isVideoViolation =
+          /featured video|video moderation|unsafe frame|video rejected|video violates|frame_moderation/i.test(
+            mediaUploadErrorMsg
+          )
+        const isImageViolation =
+          /image|media|animation|blur|nudity|graphic|gore|weapon|hate symbol/i.test(
+            mediaUploadErrorMsg
+          )
+        const isContentModerationRejection =
+          /banned keyword|profanity|content failed validation|content moderation|community guidelines|rejected by moderation/i.test(
+            mediaUploadErrorMsg
+          )
+
+        if (!isVideoViolation && !isImageViolation && !isContentModerationRejection) {
+          toast({
+            title:
+              mediaUploadErrorMsg || "Media upload failed. Please try again.",
+            variant: "destructive",
+          })
+          return
         }
 
+        setSubmissionOutcome({
+          status: "needs_update",
+          projectId: projectId ? String(projectId) : undefined,
+          projectSlug: createProjectResponse?.data?.slug,
+        })
+        setIsProjectSubmitted(true)
+        toast({
+          title: isVideoViolation
+            ? `Project rejected: video violated moderation policy. ${mediaUploadErrorMsg}`
+            : isImageViolation
+              ? `Project rejected: image violated moderation policy. ${mediaUploadErrorMsg}`
+              : `Project rejected: content did not meet community guidelines. ${mediaUploadErrorMsg}`,
+          variant: "destructive",
+        })
+        return
+      }
+
+      // 4. Create phases as before
+      if (projectId) {
         const publishPhases = (phases ?? [])
           .map((phase, phaseIndex) => {
             const phaseName = phase?.phaseName?.trim()
@@ -802,18 +900,84 @@ const BottomBar = ({
         }
       }
 
-      setSubmissionOutcome({
-        status: normalizedStatus,
-        projectId: projectId ? String(projectId) : undefined,
-        projectSlug: createProjectResponse?.data?.slug,
-      })
-      setIsProjectSubmitted(true)
+      if (projectId) {
+        let publishResponse = await ProjectAPI.PublishProject(String(projectId))
+        let rawStatus = String(publishResponse?.data?.status ?? "")
+          .trim()
+          .toLowerCase()
+        await waitForReviewWindow()
+
+        // Prevent getting stuck on review UI: retry once after the review window.
+        if (
+          rawStatus === "pending_review" ||
+          rawStatus === "in_review" ||
+          rawStatus === ""
+        ) {
+          try {
+            publishResponse = await ProjectAPI.PublishProject(String(projectId))
+            rawStatus = String(publishResponse?.data?.status ?? "")
+              .trim()
+              .toLowerCase()
+          } catch {
+            rawStatus = "in_review"
+          }
+        }
+
+        const normalizedStatus: SubmissionStatus =
+          rawStatus === "approved" || rawStatus === "published"
+            ? "published"
+            : rawStatus === "rejected" || rawStatus === "needs_update"
+              ? "needs_update"
+              : "in_review"
+
+        setSubmissionOutcome({
+          status: normalizedStatus,
+          projectId: String(projectId),
+          projectSlug: publishResponse?.data?.slug ?? createdProjectSlug,
+        })
+        setIsProjectSubmitted(true)
+      }
     } catch (error: any) {
+      const errorMessage =
+        error?.response?.data?.reason ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Unable to submit project"
+
+      const isVideoViolation =
+        /featured video|video moderation|unsafe frame|video rejected|video violates|frame_moderation/i.test(
+          errorMessage
+        )
+      const isImageViolation =
+        /image|media|animation|blur|nudity|graphic|gore|weapon|hate symbol/i.test(
+          errorMessage
+        )
+      const isContentModerationRejection =
+        /banned keyword|profanity|content failed validation|content moderation|community guidelines|rejected by moderation/i.test(
+          errorMessage
+        )
+
+      if (isVideoViolation || isImageViolation || isContentModerationRejection) {
+        await waitForReviewWindow()
+        setSubmissionOutcome({
+          status: "needs_update",
+          projectId: createdProjectId,
+          projectSlug: createdProjectSlug,
+        })
+        setIsProjectSubmitted(true)
+      } else {
+        setSubmissionOutcome(null)
+        setIsProjectSubmitted(false)
+      }
+
       toast({
-        title:
-          error?.response?.data?.message ||
-          error?.message ||
-          "Unable to submit project",
+        title: isVideoViolation
+          ? `Project rejected: video violated moderation policy. ${errorMessage}`
+          : isImageViolation
+            ? `Project rejected: image violated moderation policy. ${errorMessage}`
+            : isContentModerationRejection
+              ? `Project rejected: content did not meet community guidelines. ${errorMessage}`
+              : errorMessage,
         variant: "destructive",
       })
     }
@@ -2109,15 +2273,12 @@ const ProjectInfo = ({
   )
 }
 
-const MediaTip = ({
-  showArrow,
-  closeTrigger,
-  className,
-}: {
+interface MediaTipProps {
   showArrow?: boolean
   closeTrigger?: React.ReactNode
   className?: string
-}) => {
+}
+const MediaTip = ({ showArrow, closeTrigger, className }: MediaTipProps) => {
   return (
     <div
       className={cn(
@@ -2137,7 +2298,7 @@ const MediaTip = ({
       </div>
       <div className="mt-1">
         <span className="text-xs leading-[14.52px] text-black/60">
-          Make your project stand out with better images.
+          Make your project stand out with a better images.
         </span>
       </div>
 
@@ -2211,8 +2372,22 @@ const mediaFormSchema = z
       .string()
       .refine(
         (value) => {
-          if (!value) return true //  allow empty value
-          return /^(https?):\/\/(?=.*\.[a-z]{2,})[^\s$.?#].[^\s]*$/i.test(value)
+          const rawValue = value?.trim()
+          if (!rawValue) return true // allow empty value
+
+          const normalized = /^https?:\/\//i.test(rawValue)
+            ? rawValue
+            : `https://${rawValue.replace(/^\/+/, "")}`
+
+          try {
+            const parsed = new URL(normalized)
+            return (
+              (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+              parsed.hostname.includes(".")
+            )
+          } catch {
+            return false
+          }
         },
         {
           message: "Please enter a valid URL",
@@ -2382,7 +2557,7 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                     Tip
                   </h1>
                   <p className="text-xs leading-[14.52px] text-dark-blue-400 tracking-[0.01em]">
-                    Make your project stand out with better images.
+                    Make your project stand out with a better images.
                   </p>
                 </div>
 
@@ -2572,12 +2747,22 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                       id="featured-video"
                       className="rounded-l-none"
                       placeholder="www.video.com"
-                      value={value.slice(8)}
+                      value={(value || "").replace(/^https?:\/\//i, "")}
                       onChange={(event) => {
                         const {
                           target: { value },
                         } = event
-                        onChange(value ? `${HTTPS}${value}` : value)
+                        const cleanedValue = value.trim()
+                        if (!cleanedValue) {
+                          onChange("")
+                          return
+                        }
+                        const normalized = /^https?:\/\//i.test(cleanedValue)
+                          ? cleanedValue
+                          : `${HTTPS}${cleanedValue.replace(/^\/+/, "")}`
+                        onChange(
+                          normalized.replace(/^(https?:\/\/)+/i, "https://")
+                        )
                       }}
                       {...field}
                       isInvalid={hookFormHasError({
@@ -2597,41 +2782,40 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                 )}
               />
 
-              {error?.formErrors.fieldErrors.featuredVideo ? null : (
-                <div className="group relative inline-block mt-6">
-                  {/* <ReactPlayer
-                    url={mediaValues.featuredVideo}
-                    width={229}
-                    height={140}
-                    style={{
-                      borderRadius: "0.5rem",
-                      overflow: "hidden",
-                    }}
-                  /> */}
-                  {mounted && (
-                    <ReactPlayer
-                      url={mediaValues.featuredVideo}
-                      width={229}
-                      height={140}
-                      style={{
-                        borderRadius: "0.5rem",
-                        overflow: "hidden",
-                      }}
-                    />
-                  )}
+              {(() => {
+                const previewUrl = mediaValues.featuredVideo
+                if (!previewUrl) return null
+                if (error?.formErrors.fieldErrors.featuredVideo) {
+                  return null
+                }
+                return (
+                  <div className="mt-6 inline-flex flex-col items-start gap-3">
+                    {mounted && (
+                      <ReactPlayer
+                        url={previewUrl}
+                        width={229}
+                        height={140}
+                        style={{
+                          borderRadius: "0.5rem",
+                          overflow: "hidden",
+                        }}
+                      />
+                    )}
 
-                  <button
-                    className="absolute right-[9.56px] transition duration-300 group-hover:opacity-100 opacity-0 text-white hover:text-error-500 top-2.5 size-7 focus-visible:outline-none bg-black/20 hover:bg-black rounded-full inline-flex items-center justify-center"
-                    type="button"
-                    onClick={() => {
-                      setValue("featuredVideo", "")
-                      isValid ? trigger("featuredVideo") : noop()
-                    }}
-                  >
-                    <Trash01 className="size-4" />
-                  </button>
-                </div>
-              )}
+                    <button
+                      className="inline-flex items-center gap-2 rounded-md border border-error-300 px-3 py-2 text-sm font-medium text-error-600 hover:bg-error-50 focus-visible:outline-none"
+                      type="button"
+                      onClick={() => {
+                        setValue("featuredVideo", "")
+                        isValid ? trigger("featuredVideo") : noop()
+                      }}
+                    >
+                      <Trash01 className="size-4" />
+                      Remove video
+                    </button>
+                  </div>
+                )
+              })()}
             </div>
           </div>
 
@@ -3041,106 +3225,6 @@ const TaskDialog = ({
   )
 }
 
-const durationFormSchema = taskFormSchema.pick({ duration: true })
-
-type DurationFormValues = z.infer<typeof durationFormSchema>
-
-const DurationDialog = ({
-  onOpenChange,
-  open,
-  durationFormValues,
-  onDurationFormValuesChange,
-}: {
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  durationFormValues?: DurationFormValues
-  onDurationFormValuesChange: (durationFormValues: DurationFormValues) => void
-}) => {
-  const [isOpen, toggleIsOpen] = useControllableState({
-    defaultValue: false,
-    value: open,
-    onChange: onOpenChange,
-  })
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    control,
-  } = useForm<DurationFormValues>({
-    resolver: zodResolver(durationFormSchema),
-    values: durationFormValues,
-  })
-
-  const onSubmit: SubmitHandler<DurationFormValues> = (values) => {
-    onDurationFormValuesChange?.(values)
-    toggleIsOpen(false)
-  }
-
-  return (
-    <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
-      <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
-        <form
-          className="max-w-[371px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]"
-          onSubmit={handleSubmit(onSubmit)}
-        >
-          <div className="space-y-1.5">
-            <Label htmlFor="duration" className="text-gray-700" size="sm">
-              Duration
-            </Label>
-            <div className="grid grid-cols-2 gap-x-3">
-              <Input
-                id="duration"
-                className="text-gray-900"
-                defaultValue="40"
-                {...register("duration.value")}
-                isInvalid={hookFormHasError({ errors, name: "duration.value" })}
-              />
-              <Controller
-                control={control}
-                name="duration.type"
-                render={({ field: { value, onChange } }) => (
-                  <Listbox value={value} onChange={onChange} id="duration">
-                    <ListboxButton placeholder="Select" />
-                    <ListboxOptions>
-                      {DURATION_TYPE.map((format) => (
-                        <ListboxOption key={format} value={format}>
-                          {format.charAt(0).toUpperCase() + format.slice(1)}
-                        </ListboxOption>
-                      ))}
-                    </ListboxOptions>
-                  </Listbox>
-                )}
-              />
-            </div>
-
-            {(hookFormHasError({ errors, name: "duration.value" }) ||
-              hookFormHasError({
-                errors,
-                name: "duration.type",
-              })) && (
-              <ErrorMessage size="sm">
-                {get(errors, "duration.value.message") ||
-                  get(errors, "duration.type.message")}
-              </ErrorMessage>
-            )}
-          </div>
-
-          <DialogFooter className="mt-8 grid gap-x-3">
-            <DialogClose asChild>
-              <Button variant="outlined" visual="gray">
-                Cancel
-              </Button>
-            </DialogClose>
-
-            <Button>Done</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 const SaveExitDialog = ({
   onOpenChange,
   open,
@@ -3148,7 +3232,6 @@ const SaveExitDialog = ({
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) => {
-  const router = useRouter()
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
     value: open,
@@ -3170,9 +3253,9 @@ const SaveExitDialog = ({
                 Cancel
               </Button>
             </DialogClose>
-            <Button onClick={() => { toggleIsOpen(false); router.push("/client-dashboard") }}>
-              Save & Exit
-            </Button>
+            <DialogClose asChild>
+              <Button>Save & Exit</Button>
+            </DialogClose>
           </DialogFooter>
         </div>
       </DialogContent>
@@ -3361,7 +3444,7 @@ const DeletePhaseDialog = ({
   })
   return (
     <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
-      <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none flex items-center justify-center min-h-screen">
+      <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
         <div className="max-w-[371px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]">
           <DialogTitle>Delete this phase</DialogTitle>
           <DialogDescription>
@@ -3449,10 +3532,10 @@ const MoreDropdown = (props: {
           <Copy className="h-4 w-4" /> Duplicate Phase
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onInsertAbove}>
+        <DropdownMenuItem onSelect={onInsertAbove}>
           <ArrowUpLeft className="h-4 w-4" /> Insert Phase Above
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onInsertBelow}>
+        <DropdownMenuItem onSelect={onInsertBelow}>
           <ArrowDownLeft className="h-4 w-4" /> Insert Phase Below
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -3994,9 +4077,15 @@ const ProjectScope = ({
   const handleRowsChange = useCallback(
     (phaseIndex: number, rows: PhaseRow[]) => {
       setPhases((prev) =>
-        prev.map((phase, index) =>
-          index === phaseIndex ? { ...phase, rows } : phase
-        )
+        prev.map((phase, index) => {
+          if (index === phaseIndex) {
+            return {
+              ...phase,
+              rows,
+            }
+          }
+          return phase
+        })
       )
     },
     [setPhases]
@@ -4048,25 +4137,25 @@ const ProjectScope = ({
               )
             )
 
-          return nextState
-        })
+          // Toast
+          toast({
+            variant: "success",
+            title: "Phase renamed",
+            action: (
+              <ToastAction
+                altText="Undo"
+                className="px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
+                onClick={() => {
+                  lastUndo.current?.()
+                  lastUndo.current = null
+                }}
+              >
+                Undo
+              </ToastAction>
+            ),
+          })
 
-        // toast: Phase renamed
-        toast({
-          variant: "success",
-          title: "Phase renamed",
-          action: (
-            <ToastAction
-              altText="Undo"
-              className="px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
-              onClick={() => {
-                lastUndo.current?.()
-                lastUndo.current = null
-              }}
-            >
-              Undo
-            </ToastAction>
-          ),
+          return nextState
         })
 
         return
@@ -4330,6 +4419,94 @@ const ProjectScope = ({
     return words[num] || num + 1 // fallback for numbers > 10
   }
 
+  // --- DurationFormValues type and DurationDialog component (hoisted) ---
+  type DurationFormValues = {
+    duration: {
+      value: number
+      type: "days" | "weeks" | "hours"
+    }
+  }
+
+  interface DurationDialogProps {
+    open: boolean
+    durationFormValues?: DurationFormValues
+    onDurationFormValuesChange: (values: DurationFormValues) => void
+    onOpenChange: (open: boolean) => void
+  }
+
+  const DurationDialog = ({
+    open,
+    durationFormValues,
+    onDurationFormValuesChange,
+    onOpenChange,
+  }: DurationDialogProps) => {
+    const { control, handleSubmit, reset } = useForm<DurationFormValues>({
+      defaultValues: durationFormValues || {
+        duration: { value: 1, type: "days" },
+      },
+      values: durationFormValues,
+    })
+
+    React.useEffect(() => {
+      if (open && durationFormValues) {
+        reset(durationFormValues)
+      }
+    }, [open, durationFormValues, reset])
+
+    const onSubmit = (data: DurationFormValues) => {
+      onDurationFormValuesChange(data)
+      onOpenChange(false)
+    }
+
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Duration</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="flex flex-col gap-4"
+          >
+            <div className="flex items-center gap-2">
+              <Controller
+                name="duration.value"
+                control={control}
+                render={({ field }) => (
+                  <Input
+                    {...field}
+                    type="number"
+                    min={1}
+                    className="w-24"
+                    placeholder="Value"
+                  />
+                )}
+              />
+              <Controller
+                name="duration.type"
+                control={control}
+                render={({ field }) => (
+                  <select {...field} className="border rounded px-2 py-1">
+                    <option value="days">Days</option>
+                    <option value="weeks">Weeks</option>
+                    <option value="hours">Hours</option>
+                  </select>
+                )}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="submit">Save</Button>
+              <DialogClose asChild>
+                <Button type="button" variant="ghost">
+                  Cancel
+                </Button>
+              </DialogClose>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    )
+  }
   const currentPhaseName =
     typeof phaseDialogState.editingPhaseIndex === "number"
       ? (phases[phaseDialogState.editingPhaseIndex]?.phaseName ?? "")
@@ -4359,7 +4536,7 @@ const ProjectScope = ({
 
                 <Dialog>
                   <DialogTrigger asChild>
-                    <Button variant="link">
+                    <Button variant="link" type="button">
                       <PlayCircle className="size-5" /> Show me how
                     </Button>
                   </DialogTrigger>

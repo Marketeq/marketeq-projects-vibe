@@ -1,15 +1,10 @@
-FROM node:20-alpine AS builder
+FROM node:20
 WORKDIR /app
 COPY package*.json ./
-COPY apps/listings-service/package*.json ./apps/listings-service/
-COPY shared/ ./shared/
+COPY apps/listings-service/package.json ./apps/listings-service/
 RUN npm install
 COPY . .
-RUN npm run build -w apps/listings-service
-
-FROM node:20-alpine
-WORKDIR /app
-COPY --from=builder /app/dist/apps/listings-service ./dist
-COPY --from=builder /app/node_modules ./node_modules
-EXPOSE 3003
-CMD ["node", "dist/main"]
+RUN npm run build:listings-service
+EXPOSE 3004
+EXPOSE 50052
+CMD ["node", "/app/dist/apps/listings-service/src/main.js"]

@@ -1,13 +1,12 @@
 
 import { Injectable } from '@nestjs/common';
 import axios from 'axios';
-import FormData from 'form-data';
+import FormData = require('form-data');
 import * as fs from 'fs';
 import { promises as fsPromises } from 'fs';
 import { isImageHighQuality as isImageHighQualitySharp } from './isImageHighQuality-sharp';
-import imageSize from 'image-size';
-import path from 'path';
-import os from 'os';
+import * as path from 'path';
+import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 import { spawn } from 'child_process';
 
@@ -26,24 +25,6 @@ export type MediaModerationResult = {
   status: string;
   reason?: string;
   debug: MediaModerationDebug;
-};
-
-
-// Utility: image-size with timeout fallback
-const getImageSizeWithTimeout = (buffer: Buffer, timeoutMs = 3000) => {
-  return Promise.race([
-    new Promise((resolve, reject) => {
-      try {
-        const dimensions = imageSize(buffer);
-        resolve(dimensions);
-      } catch (err) {
-        reject(err);
-      }
-    }),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Image size timeout")), timeoutMs)
-    )
-  ]);
 };
 
 @Injectable()
@@ -89,16 +70,7 @@ export class MediaModerationService {
     try {
       return await isImageHighQualitySharp(imagePath);
     } catch (err) {
-      console.error('[isImageHighQuality] sharp failed, falling back to image-size:', err);
-    }
-    // Fallback: image-size with timeout
-    try {
-      const buffer = await fsPromises.readFile(imagePath);
-      const dimensions = (await getImageSizeWithTimeout(buffer, 3000)) as { width: number; height: number };
-      console.log('[isImageHighQuality] (fallback) Image dimensions:', dimensions);
-      return dimensions.width > 200 && dimensions.height > 200;
-    } catch (err) {
-      console.error('[isImageHighQuality] Fallback image-size failed:', err);
+      console.error('[isImageHighQuality] sharp failed:', err);
       return false;
     }
   }

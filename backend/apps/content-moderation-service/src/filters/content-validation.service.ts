@@ -1,14 +1,36 @@
 import { Injectable } from '@nestjs/common';
-const BadWordsFilter = require('bad-words');
 import { BannedKeywordsService } from './banned-keywords.service';
 import { RoleValidationService } from './role-validation.service';
 import { SkillValidationService } from './skill-validation.service';
 import { LocationValidationService } from './location-validation.service';
 import { AutocompleteValidationService } from './autocomplete-validation.service';
 
+class BasicProfanityFilter {
+  private words = new Set<string>([
+    'fuck',
+    'shit',
+    'bitch',
+    'asshole',
+    'bastard',
+    'dick',
+    'fucker',
+  ]);
+
+  isProfane(content: string): boolean {
+    const normalized = content.toLowerCase();
+    for (const word of this.words) {
+      const pattern = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (pattern.test(normalized)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
 @Injectable()
 export class ContentValidationService {
-  private readonly filter = new BadWordsFilter();
+  private readonly filter = new BasicProfanityFilter();
 
   constructor(
     private readonly bannedKeywordsService: BannedKeywordsService,

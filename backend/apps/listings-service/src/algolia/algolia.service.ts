@@ -12,7 +12,7 @@ export class AlgoliaService {
     private readonly http: HttpService,
     private readonly config: ConfigService,
   ) {
-    this.baseUrl = this.config.get<string>('ALGOLIA_SERVICE_URL') || '';
+    this.baseUrl = this.config.get<string>('ALGOLIA_SERVICE_URL');
   }
 
   // Called by the moderation.approved consumer after status is set to published.
@@ -93,7 +93,7 @@ export class AlgoliaService {
         p => p.tasks?.map(t => t.location).filter(Boolean) ?? [],
       ) ?? [],
     ];
-    return [...new Set(locs)] as string[];
+    return [...new Set(locs)];
   }
 
   private extractExperienceLevels(listing: JobListing): string[] {
@@ -103,7 +103,7 @@ export class AlgoliaService {
         p => p.tasks?.map(t => t.experienceLevel).filter(Boolean) ?? [],
       ) ?? [],
     ];
-    return [...new Set(levels)] as string[];
+    return [...new Set(levels)];
   }
 
   private extractWorkSchedules(listing: JobListing): string[] {
