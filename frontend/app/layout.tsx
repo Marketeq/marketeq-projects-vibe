@@ -33,24 +33,34 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
+
+  const appTree = (
+    <AuthProvider>
+      <QueryProvider>
+        <div className="min-h-screen flex flex-col bg-gray-50">
+          {children}
+        </div>
+        <Suspense fallback={null}>
+          <NProgressBar />
+        </Suspense>
+        <Toaster />
+        <TimezoneSync />
+        <InviteWindow />
+      </QueryProvider>
+    </AuthProvider>
+  )
+
   return (
     <html className={`scroll-smooth ${font.variable}`} lang="en">
       <body>
-        <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!}>
-          <AuthProvider>
-            <QueryProvider>
-              <div className="min-h-screen flex flex-col bg-gray-50">
-                {children}
-              </div>
-              <Suspense fallback={null}>
-                <NProgressBar />
-              </Suspense>
-              <Toaster />
-              <TimezoneSync />
-              <InviteWindow />
-            </QueryProvider>
-          </AuthProvider>
-        </GoogleOAuthProvider>
+        {googleClientId ? (
+          <GoogleOAuthProvider clientId={googleClientId}>
+            {appTree}
+          </GoogleOAuthProvider>
+        ) : (
+          appTree
+        )}
       </body>
       <GoogleAnalytics gaId="G-265438626K" />
       <GoogleTagManager gtmId="GTM-MKB89M5M" />

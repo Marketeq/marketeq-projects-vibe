@@ -20,6 +20,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   suggestions: 'suggestions',
   'v1': 'transactions', // transaction-service uses /v1/transactions and /v1/invoices
   contracts: 'contracts',
+  client: 'users',              // client onboarding profile lives in user-service
   talent: 'users',              // talent profiles live in user-service
   publish: 'listings',          // project publish workflow lives in listings-service
   teams: 'users',               // team management lives in user-service
