@@ -4,7 +4,9 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UserService } from './user.service';
+import { Public } from '../decorators/public.decorator';
 
+@Public()
 @Controller('internal/users')
 export class InternalUserController {
   private readonly logger = new Logger(InternalUserController.name);
