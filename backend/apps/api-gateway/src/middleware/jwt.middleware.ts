@@ -32,7 +32,10 @@ export class JwtMiddleware implements NestMiddleware {
   constructor(private readonly jwt: JwtService) {}
 
   use(req: Request, _res: Response, next: NextFunction) {
-    const reqPath = req.originalUrl.split('?')[0]
+    // Strip a leading "/api" so callers using either NEXT_PUBLIC_API_URL
+    // (no /api) or NEXT_PUBLIC_API_BASE_URL (with /api) hit the same routes.
+    const rawPath = req.originalUrl.split('?')[0]
+    const reqPath = rawPath.replace(/^\/api(?=\/|$)/, '') || '/'
     const pub = isPublic(reqPath)
 
     const authHeader = req.headers.authorization

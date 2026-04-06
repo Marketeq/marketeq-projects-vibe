@@ -46,7 +46,10 @@ export class ProxyController {
 
   @All('*')
   async catchAll(@Req() req: Request, @Res() res: Response) {
-    const segments = req.path.replace(/^\//, '').split('/')
+    // Strip a leading "/api" so /api/auth/login and /auth/login both route
+    // to the same downstream service. Frontend uses both forms.
+    const normalizedPath = req.path.replace(/^\/api(?=\/|$)/, '') || '/'
+    const segments = normalizedPath.replace(/^\//, '').split('/')
     let prefix = segments[0]
 
     // /v1/users/* → user-service
@@ -65,8 +68,9 @@ export class ProxyController {
       return
     }
 
-    // Build downstream path — keep the full original path
-    const downstreamPath = req.path + (req.url.includes('?') ? '?' + req.url.split('?').slice(1).join('?') : '')
+    // Build downstream path from the normalized (api-stripped) path so
+    // downstream services receive /auth/login, not /api/auth/login.
+    const downstreamPath = normalizedPath + (req.url.includes('?') ? '?' + req.url.split('?').slice(1).join('?') : '')
     const user = (req as any).user
 
     await this.proxy.forward(serviceName, downstreamPath, req, res, user)

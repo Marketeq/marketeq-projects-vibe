@@ -48,8 +48,9 @@ export const IndustrySelectorSingle = ({
   useEffect(() => {
     const loadIndustries = async () => {
       try {
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || ""
         const res = await fetch(
-          "http://localhost:3000/talent/autocomplete?type=industry"
+          `${apiBase}/talent/autocomplete?type=industry`
         )
         const data = await res.json()
         const dynamic = data.map((entry: any) => entry.value)

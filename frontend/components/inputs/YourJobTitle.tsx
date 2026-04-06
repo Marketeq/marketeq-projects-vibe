@@ -46,8 +46,9 @@ export const YourJobTitle = ({ value, onValueChange, invalid }: Props) => {
   useEffect(() => {
     const loadJobTitles = async () => {
       try {
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || ""
         const res = await fetch(
-          "http://localhost:3002/talent/autocomplete?type=job-title"
+          `${apiBase}/talent/autocomplete?type=job-title`
         )
         const data = await res.json()
         const dynamic = data.map((entry: any) => entry.value)
