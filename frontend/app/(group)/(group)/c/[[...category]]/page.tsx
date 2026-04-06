@@ -277,6 +277,100 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
       { name: "Executive Coaching", slug: "executive-coaching", description: "Leadership development and executive coaching.", children: c("Leadership Coaching", "Founder Coaching", "Team Coaching", "Conflict Resolution", "Career Coaching", "360 Reviews") },
     ],
   },
+  development: {
+    name: "Development",
+    slug: "development",
+    description: "Build software with expert engineers across web, mobile, cloud, and emerging tech.",
+    heroImage: unsplash("1461749280684-dccba630e2f6"),
+    subcategories: [
+      { name: "Web Development", slug: "web-development", description: "Full-stack web apps, marketing sites, and SaaS platforms.", children: c("React", "Next.js", "Vue.js", "Angular", "Svelte", "Node.js", "Ruby on Rails", "Django") },
+      { name: "Mobile Development", slug: "mobile-development", description: "Native and cross-platform iOS and Android apps.", children: c("iOS Swift", "Android Kotlin", "React Native", "Flutter", "Ionic", "Mobile UI Kits", "App Store Optimization", "Push Notifications") },
+      { name: "Backend Development", slug: "backend-development", description: "APIs, microservices, and server-side architecture.", children: c("REST APIs", "GraphQL APIs", "Microservices", "Database Design", "Node.js", "Python", "Go", "Java") },
+      { name: "Frontend Development", slug: "frontend-development", description: "User interfaces, animations, and accessibility.", children: c("React", "Vue.js", "Angular", "TypeScript", "CSS & Tailwind", "Animations", "Accessibility", "Performance") },
+      { name: "Cloud & DevOps", slug: "cloud-devops", description: "Infrastructure, CI/CD, and cloud deployment.", children: c("AWS", "Google Cloud", "Azure", "Kubernetes", "Docker", "Terraform", "CI/CD Pipelines", "Observability") },
+      { name: "Game Development", slug: "game-development", description: "Unity, Unreal, and indie game development.", children: c("Unity", "Unreal Engine", "Godot", "Game Design", "Mobile Games", "Multiplayer Backends", "Game Art") },
+      { name: "AI & Machine Learning", slug: "ai-ml", description: "LLM apps, fine-tuning, and ML pipelines.", children: c("LLM Apps", "Prompt Engineering", "Fine-Tuning", "RAG Systems", "MLOps", "Computer Vision", "Recommendation Systems") },
+      { name: "Blockchain & Web3", slug: "blockchain-web3", description: "Smart contracts, DeFi, and NFT platforms.", children: c("Solidity", "Smart Contract Audits", "DeFi Protocols", "NFT Platforms", "Ethereum", "Solana", "Wallet Integration") },
+      { name: "Embedded & IoT", slug: "embedded-iot", description: "Firmware, edge devices, and connected hardware.", children: c("Firmware", "Arduino", "Raspberry Pi", "ESP32", "Edge AI", "IoT Gateways", "Protocol Integration") },
+      { name: "Desktop Apps", slug: "desktop-apps", description: "Native and cross-platform desktop apps.", children: c("Electron Apps", "Tauri", ".NET Desktop", "macOS Native", "Windows Native", "Qt", "Linux GTK") },
+      { name: "API & Integrations", slug: "api-integrations", description: "Third-party integrations, webhooks, and middleware.", children: c("Stripe Integration", "Salesforce Integration", "Zapier & Make", "Webhooks", "OAuth Flows", "iPaaS", "Middleware") },
+      { name: "E-commerce Development", slug: "ecommerce-development", description: "Shopify, WooCommerce, and custom storefronts.", children: c("Shopify", "WooCommerce", "BigCommerce", "Magento", "Custom Storefronts", "Headless Commerce", "Payment Integration") },
+    ],
+  },
+  testing: {
+    name: "Testing & QA",
+    slug: "testing",
+    description: "Ship with confidence — manual QA, test automation, and release quality at every layer.",
+    heroImage: unsplash("1454165804606-c3d57bc86b40"),
+    subcategories: [
+      { name: "Manual QA", slug: "manual-qa", description: "Exploratory testing, regression, and release QA.", children: c("Exploratory Testing", "Regression Testing", "Release QA", "Bug Reporting", "Cross-Browser Testing", "Mobile QA") },
+      { name: "Test Automation", slug: "test-automation", description: "Automated end-to-end and integration suites.", children: c("Cypress", "Playwright", "Selenium", "WebdriverIO", "TestCafe", "Puppeteer", "Robot Framework") },
+      { name: "Performance Testing", slug: "performance-testing", description: "Load, stress, and capacity testing.", children: c("Load Testing", "Stress Testing", "k6", "JMeter", "Gatling", "Lighthouse Audits", "APM Setup") },
+      { name: "Security Testing", slug: "security-testing", description: "Pentesting, vulnerability scans, and AppSec.", children: c("Penetration Testing", "Vulnerability Scanning", "OWASP Top 10", "API Security", "Mobile AppSec", "Static Analysis") },
+      { name: "API Testing", slug: "api-testing", description: "REST, GraphQL, and contract testing.", children: c("REST Testing", "GraphQL Testing", "Postman Collections", "Contract Testing", "Pact", "Schema Validation") },
+      { name: "Mobile Testing", slug: "mobile-testing", description: "iOS and Android test strategy and automation.", children: c("iOS Testing", "Android Testing", "Appium", "Detox", "Espresso", "XCUITest", "Device Labs") },
+      { name: "Accessibility Testing", slug: "accessibility-testing", description: "WCAG audits and assistive-tech compatibility.", children: c("WCAG Audits", "Screen Reader Testing", "Keyboard Navigation", "axe Audits", "Section 508", "ADA Compliance") },
+      { name: "Usability Testing", slug: "usability-testing", description: "User testing, moderated sessions, and UX validation.", children: c("Moderated Sessions", "Unmoderated Testing", "User Interviews", "First-Click Testing", "Task Completion", "Remote Testing") },
+      { name: "QA Strategy", slug: "qa-strategy", description: "Test planning, QA process, and team coaching.", children: c("Test Planning", "QA Process Design", "Test Case Management", "QA Coaching", "Shift-Left Testing", "Quality Metrics") },
+      { name: "CI/CD Quality Gates", slug: "ci-cd-quality-gates", description: "Build pipelines, test gating, and release checks.", children: c("GitHub Actions", "GitLab CI", "CircleCI", "Jenkins", "Test Reporting", "Coverage Gates", "Flaky Test Triage") },
+    ],
+  },
+  security: {
+    name: "Security",
+    slug: "security",
+    description: "Harden applications, infrastructure, and processes with expert security practitioners.",
+    heroImage: unsplash("1518770660439-4636190af475"),
+    subcategories: [
+      { name: "Application Security", slug: "application-security", description: "Secure coding, code review, and AppSec programs.", children: c("Secure Code Review", "Threat Modeling", "SAST", "DAST", "Dependency Scanning", "Secret Scanning", "AppSec Programs") },
+      { name: "Penetration Testing", slug: "penetration-testing", description: "Red team, external, and internal pentests.", children: c("Web Pentesting", "API Pentesting", "Mobile Pentesting", "Network Pentesting", "Red Team Exercises", "Social Engineering") },
+      { name: "Cloud Security", slug: "cloud-security", description: "AWS, GCP, Azure configuration and posture.", children: c("AWS Security", "GCP Security", "Azure Security", "IAM Design", "CSPM", "CNAPP", "Kubernetes Hardening") },
+      { name: "Compliance & Audits", slug: "compliance-audits", description: "SOC 2, ISO 27001, HIPAA, PCI, and more.", children: c("SOC 2 Prep", "ISO 27001", "HIPAA", "PCI DSS", "GDPR", "FedRAMP", "Audit Remediation") },
+      { name: "Identity & Access", slug: "identity-access", description: "SSO, MFA, RBAC, and identity architecture.", children: c("SSO Integration", "MFA Rollout", "RBAC Design", "OAuth/OIDC", "SAML", "Zero Trust", "Identity Federation") },
+      { name: "Incident Response", slug: "incident-response", description: "IR planning, tabletop exercises, and forensics.", children: c("IR Playbooks", "Tabletop Exercises", "Forensics", "Breach Response", "Post-Incident Review", "Threat Hunting") },
+      { name: "Security Operations", slug: "security-operations", description: "SOC, SIEM, detection engineering, and monitoring.", children: c("SIEM Setup", "Detection Engineering", "SOC Operations", "Alert Tuning", "Log Pipelines", "Threat Intelligence") },
+      { name: "DevSecOps", slug: "devsecops", description: "Security in CI/CD and developer workflows.", children: c("CI/CD Security", "Container Scanning", "IaC Scanning", "Policy as Code", "Supply Chain Security", "SBOM") },
+      { name: "Network Security", slug: "network-security", description: "Firewalls, segmentation, VPNs, and zero trust.", children: c("Firewall Design", "Network Segmentation", "VPN Setup", "IDS/IPS", "Zero Trust Networking", "DDoS Protection") },
+      { name: "Security Training", slug: "security-training", description: "Secure coding and awareness training.", children: c("Secure Coding Training", "Phishing Simulations", "Awareness Programs", "Tabletop Training", "Workshop Delivery") },
+    ],
+  },
+  maintenance: {
+    name: "Maintenance & Support",
+    slug: "maintenance",
+    description: "Keep your product healthy, up-to-date, and reliable with ongoing support and maintenance.",
+    heroImage: unsplash("1517245386807-bb43f82c33c4"),
+    subcategories: [
+      { name: "Bug Fixes", slug: "bug-fixes", description: "Triage and fix bugs across web, mobile, and backend.", children: c("Web Bug Fixes", "Mobile Bug Fixes", "Backend Bug Fixes", "CSS Issues", "Cross-Browser Fixes", "Hotfix Support") },
+      { name: "Dependency Updates", slug: "dependency-updates", description: "Package upgrades, security patches, and migrations.", children: c("NPM Upgrades", "Python Upgrades", "Framework Migrations", "Security Patching", "Breaking Change Fixes", "Lockfile Audits") },
+      { name: "Performance Tuning", slug: "performance-tuning", description: "Frontend, backend, and database optimization.", children: c("Frontend Perf", "Backend Perf", "Database Tuning", "Caching Strategy", "CDN Setup", "Core Web Vitals") },
+      { name: "Refactoring", slug: "refactoring", description: "Code cleanup, tech debt, and architecture updates.", children: c("Code Cleanup", "Tech Debt Paydown", "Architecture Refactor", "Test Coverage", "Legacy Modernization", "Module Splitting") },
+      { name: "WordPress Maintenance", slug: "wordpress-maintenance", description: "WordPress updates, backups, and security.", children: c("Plugin Updates", "Core Updates", "Backups", "Malware Removal", "Theme Customization", "Speed Optimization") },
+      { name: "Shopify Maintenance", slug: "shopify-maintenance", description: "Theme updates, app integrations, and store health.", children: c("Theme Updates", "App Integrations", "Liquid Edits", "Checkout Fixes", "Performance Audits", "SEO Fixes") },
+      { name: "Server & Uptime", slug: "server-uptime", description: "Monitoring, on-call, and infrastructure support.", children: c("Uptime Monitoring", "On-Call Support", "Log Monitoring", "Alerting Setup", "Incident Response", "Backup Strategy") },
+      { name: "Database Maintenance", slug: "database-maintenance", description: "Index tuning, migrations, and backup strategy.", children: c("Index Tuning", "Query Optimization", "Backup Strategy", "Migrations", "Replication Setup", "Disaster Recovery") },
+      { name: "Content Updates", slug: "content-updates", description: "Ongoing content, copy, and media updates.", children: c("Copy Edits", "Image Updates", "Landing Page Updates", "Blog Uploads", "Translation Updates", "CMS Updates") },
+      { name: "Legacy Code Rescue", slug: "legacy-code-rescue", description: "Rescue, document, and modernize legacy codebases.", children: c("Codebase Audits", "Documentation Writing", "Dependency Rescue", "Modernization Plans", "Test Suite Recovery", "Developer Onboarding") },
+    ],
+  },
+  "digital-marketing": {
+    name: "Digital Marketing",
+    slug: "digital-marketing",
+    description: "Acquire customers and grow revenue with expert digital marketers and performance specialists.",
+    heroImage: unsplash("1557838923-2985c318be48"),
+    subcategories: [
+      { name: "Paid Search", slug: "paid-search", description: "Google Ads, Bing Ads, and search campaign management.", children: c("Google Ads", "Bing Ads", "Shopping Ads", "Performance Max", "Keyword Research", "Bid Management", "Ad Copy Testing") },
+      { name: "Paid Social", slug: "paid-social", description: "Meta, TikTok, LinkedIn, and social ad campaigns.", children: c("Meta Ads", "TikTok Ads", "LinkedIn Ads", "Pinterest Ads", "Snapchat Ads", "Creative Testing", "Audience Research") },
+      { name: "SEO", slug: "seo", description: "On-page, technical, and link-building SEO.", children: c("Keyword Research", "On-Page SEO", "Technical SEO", "Link Building", "Local SEO", "SEO Audits", "Content Optimization") },
+      { name: "Content Marketing", slug: "content-marketing", description: "Blogs, ebooks, and content strategy.", children: c("Blog Writing", "Whitepapers", "Case Studies", "E-books", "Content Strategy", "Editorial Calendars", "SEO Content") },
+      { name: "Email Marketing", slug: "email-marketing", description: "Campaigns, automation, and newsletter strategy.", children: c("Campaign Design", "Newsletter Setup", "Drip Automation", "Transactional Emails", "List Segmentation", "A/B Testing", "Deliverability") },
+      { name: "Social Media Management", slug: "social-media-management", description: "Organic social, community, and content planning.", children: c("Instagram Growth", "TikTok Strategy", "LinkedIn B2B", "Community Management", "Influencer Outreach", "Content Calendars", "Social Analytics") },
+      { name: "Influencer Marketing", slug: "influencer-marketing", description: "Influencer sourcing, outreach, and campaign ops.", children: c("Creator Sourcing", "Outreach", "Contract Negotiation", "Campaign Management", "UGC Campaigns", "Affiliate Programs") },
+      { name: "Conversion Optimization", slug: "conversion-optimization", description: "Landing pages, A/B testing, and funnel optimization.", children: c("Landing Page Optimization", "A/B Testing", "Funnel Analysis", "Heatmaps", "Session Recordings", "CRO Strategy") },
+      { name: "Analytics & Reporting", slug: "analytics-reporting", description: "GA4, attribution, dashboards, and reporting.", children: c("GA4 Setup", "Tag Manager", "Attribution", "Dashboards", "KPI Reporting", "Data Studio", "Looker Studio") },
+      { name: "Marketing Automation", slug: "marketing-automation", description: "HubSpot, Marketo, and lifecycle automation.", children: c("HubSpot Workflows", "Marketo", "Pardot", "Braze", "Customer.io", "Lifecycle Campaigns", "Lead Scoring") },
+      { name: "Affiliate Marketing", slug: "affiliate-marketing", description: "Affiliate program setup and partner management.", children: c("Program Setup", "Partner Recruitment", "Commission Design", "Tracking Setup", "Partner Management", "Fraud Detection") },
+      { name: "Video Marketing", slug: "video-marketing", description: "YouTube strategy, video ads, and short-form content.", children: c("YouTube Strategy", "Video Ads", "Shorts & Reels", "Video SEO", "Scriptwriting", "Thumbnail Design") },
+    ],
+  },
 }
 
 // ── Technologies per category (logos served via cdn.simpleicons.org) ──
@@ -620,7 +714,12 @@ export default function Projects() {
             </div>
           </div>
 
-          {/* ✅ UPDATED: Dynamic subcategories section */}
+          {/* Dynamic subcategories section.
+              Per Doc 1 (L1/L2/L3 Category Pages), L3 is the leaf — it has no
+              subcategories, so the Explore block is hidden entirely on L3
+              pages and also hidden on any L1/L2 that has no populated
+              children (prevents an empty "No subcategories available" block). */}
+          {!l3 && subcategories.length > 0 && (
           <div className="mt-[50px]">
             <div className="flex items-center justify-between">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -677,6 +776,7 @@ export default function Projects() {
               </div>
             </div>
           </div>
+          )}
 
           {/* Recommended in {Category} — Swiper carousel with entity tabs */}
           <div className="mt-[50px]">
