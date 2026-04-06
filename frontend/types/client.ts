@@ -1,6 +1,7 @@
 export type CreateClientType = {
   firstName?: string
   lastName?: string
+  avatarUrl?: string
   username?: string
   teamName?: string
   role?: string

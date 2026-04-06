@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Request } from 'express';
@@ -50,6 +51,28 @@ export class UserService {
     const user = await this.userRepository.findOne({ where: { email } });
     if (!user) throw new NotFoundException('User not found');
     return user;
+  }
+
+  async getInternalSummary(id: string): Promise<{
+    id: string;
+    email: string;
+    role: UserRole;
+    onboardingDismissed: boolean;
+    hasCompletedOnboarding: boolean;
+    hasPassword: boolean;
+    isActive: boolean;
+  }> {
+    const user = await this.getUserById(id);
+
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      onboardingDismissed: user.onboardingDismissed,
+      hasCompletedOnboarding: user.onboardingDismissed,
+      hasPassword: user.hasPassword,
+      isActive: user.isActive,
+    };
   }
 
   async getUserByClaims(claims: { sub?: string; id?: string; email?: string }): Promise<User> {
@@ -141,25 +164,6 @@ export class UserService {
     });
   }
 
-  async getInternalSummary(id: string): Promise<{
-    id: string;
-    email: string;
-    role: string;
-    onboardingDismissed: boolean;
-    hasCompletedOnboarding: boolean;
-    isActive: boolean;
-  }> {
-    const user = await this.getUserById(id);
-    return {
-      id: user.id,
-      email: user.email,
-      role: user.role ?? '',
-      onboardingDismissed: user.onboardingDismissed,
-      hasCompletedOnboarding: user.onboardingDismissed,
-      isActive: user.isActive,
-    };
-  }
-
   async deactivateUser(id: string): Promise<void> {
     const user = await this.getUserById(id);
     user.isActive = false;
@@ -185,6 +189,11 @@ export class UserService {
       Object.assign(existingById, {
         email: dto.email ?? existingById.email,
         role: dto.role ?? existingById.role,
+        provider: dto.provider ?? existingById.provider,
+        hasPassword:
+          typeof dto.hasPassword === 'boolean'
+            ? dto.hasPassword
+            : existingById.hasPassword,
       });
       if (normalizedIncomingUsername) {
         existingById.username = normalizedIncomingUsername;
@@ -202,6 +211,11 @@ export class UserService {
       }
       Object.assign(existingByEmail, {
         role: dto.role ?? existingByEmail.role,
+        provider: dto.provider ?? existingByEmail.provider,
+        hasPassword:
+          typeof dto.hasPassword === 'boolean'
+            ? dto.hasPassword
+            : existingByEmail.hasPassword,
       });
       if (normalizedIncomingUsername) {
         existingByEmail.username = normalizedIncomingUsername;
@@ -212,29 +226,14 @@ export class UserService {
     const user = this.userRepository.create({
       id: dto.id,
       email: dto.email,
-      username: normalizedIncomingUsername ?? undefined,
-      role: dto.role as string,
+      // Username is allowed to be unset; only persist it when provided and non-empty.
+      username: normalizedIncomingUsername ?? null,
+      password: randomBytes(24).toString('hex'),
+      role: dto.role,
+      provider: dto.provider ?? 'EMAIL',
+      hasPassword: dto.hasPassword ?? false,
     });
 
-    return this.userRepository.save(user);
-  }
-
-  /* ── Aliases used by vibe controllers (me.controller, internal.controller) ── */
-
-  async findByEmail(email: string): Promise<User | null> {
-    return this.userRepository.findOne({ where: { email } });
-  }
-
-  async findById(id: string): Promise<User> {
-    return this.getUserById(id);
-  }
-
-  async update(id: string, data: Record<string, any>): Promise<User> {
-    return this.updateUser(id, data as any);
-  }
-
-  async create(data: Record<string, any>): Promise<User> {
-    const user = this.userRepository.create(data as Partial<User>);
     return this.userRepository.save(user);
   }
 }

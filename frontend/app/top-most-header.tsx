@@ -3,18 +3,13 @@
 import React, { useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { UserAPI } from "@/service/http/user"
-import { ROLE } from "@/types/user"
 import { cn } from "@/utils/functions"
 import {
   BarChart2,
   Bell,
   ChevronDown,
   CoinStack,
-  FileCheck02,
-  LayoutGrid02,
   LifeBuoy,
-  List,
   LogOut,
   Monitor,
   Plus,
@@ -22,7 +17,6 @@ import {
   SearchMd,
   Settings,
   Star,
-  User,
   Users,
   X,
 } from "@blend-metrics/icons"
@@ -64,7 +58,6 @@ import {
 import { ScrollBar } from "@/components/ui"
 
 const Notifications = () => {
-  const router = useRouter()
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -259,7 +252,7 @@ const Notifications = () => {
             </div>
 
             <div className="py-3.5 grid">
-              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/notifications")}>
+              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium">
                 View All
               </button>
             </div>
@@ -395,7 +388,7 @@ const Notifications = () => {
               </ScrollArea>
             </div>
             <div className="py-3.5 grid">
-              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/inbox")}>
+              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium">
                 View All
               </button>
             </div>
@@ -454,7 +447,22 @@ const suggestions = [
   { id: 6, value: "Magento development" },
 ]
 
-const listingTypes = ["Projects", "Services", "Teams", "Talent"]
+interface Person {
+  name: string
+}
+
+type People = Person[]
+
+const people: People = [
+  { name: "Wade Cooper" },
+  { name: "Arlene Mccoy" },
+  { name: "Devon Webb" },
+  { name: "Tom Cook" },
+  { name: "Tanya Fox" },
+  { name: "Hellen Schmidt" },
+  { name: "Hellen Walker" },
+  { name: "Hellen Waller" },
+]
 
 const SearchBar = () => {
   const [state, setState] = useState<string>()
@@ -464,16 +472,6 @@ const SearchBar = () => {
     icon?: React.JSXElementConstructor<any>
   }>()
   const [query, setQuery] = React.useState("")
-
-  const searchPlaceholder = (() => {
-    switch (state) {
-      case "Projects": return "Search by skills or project type"
-      case "Services": return "Search by skills or service type"
-      case "Teams": return "Search by skills or team type"
-      case "Talent": return "Search by skills or expertise"
-      default: return "Search by skills or keyword"
-    }
-  })()
 
   const filteredSuggestions =
     query === ""
@@ -492,11 +490,11 @@ const SearchBar = () => {
       value={selected}
       onChange={setSelected}
     >
-      <ComboboxTrigger className="relative flex h-[34px] lg:h-10 rounded-[5px] items-center gap-x-3 border border-gray-300 ui-open:rounded-b-none py-[7px] lg:py-2 pl-2.5 pr-3 lg:px-3">
+      <ComboboxTrigger className="relative flex h-[34px] 2xl:h-10 rounded-[5px] items-center gap-x-3 border border-gray-300 ui-open:rounded-b-none py-[7px] 2xl:py-2 pl-2.5 pr-3 2xl:px-3">
         <div className="flex items-center gap-x-2 flex-auto">
           <SearchMd className="size-4 shrink-0 text-gray-400" />
           <ComboboxInput
-            placeholder={searchPlaceholder}
+            placeholder="Search by skills or project type"
             className="p-0 border-0 text-xs leading-5 h-auto rounded-none hover:ring-0 hover:border-gray-300 focus:ring-0 focus:border-gray-300 ui-open:rounded-b-none"
             size="lg"
             displayValue={(value: {
@@ -510,14 +508,14 @@ const SearchBar = () => {
         <span className="w-px h-4 shrink-0 inline-block bg-gray-200" />
         <Listbox className="w-auto" value={state} onChange={setState}>
           <ListboxButton
-            className="p-0 border-0 text-[11px] leading-[16.67px] lg:text-sm lg:leading-5 font-semibold gap-x-[6.67px] lg:gap-x-1.5 w-auto h-auto rounded-none hover:ring-0 focus:ring-0"
-            placeholder="View All"
+            className="p-0 border-0 text-[11px] leading-[16.67px] 2xl:text-sm 2xl:leading-5 font-semibold gap-x-[6.67px] 2xl:gap-x-1.5 w-auto h-auto rounded-none hover:ring-0 focus:ring-0"
+            placeholder="Category"
             iconClassName="size-[12.5px]"
           />
           <ListboxOptions className="w-max -right-3 left-auto mt-3.5">
-            {listingTypes.map((type) => (
-              <ListboxOption key={type} value={type}>
-                {type}
+            {people.map((person) => (
+              <ListboxOption key={person.name} value={person.name}>
+                {person.name}
               </ListboxOption>
             ))}
           </ListboxOptions>
@@ -568,69 +566,47 @@ const SearchBar = () => {
 
 const PATHNAMES = ["/talent-dashboard", "/client-dashboard", "/talent-profile"]
 
-// Pages that have a secondary nav bar below the primary nav — shadow should only appear on the secondary nav, not the primary
-const HAS_SECONDARY_NAV = ["/", "/talent-profile", "/my-team", "/favorite-projects", "/favorite-talent", "/browser-history", "/search", "/talent-search"]
-
 const ONBOARDING = "/onboarding"
 
-export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) => {
+export const TopMostHeader = () => {
   const pathname = usePathname()
-  const [menuOpen, setMenuOpen] = React.useState(false)
-  const [secondaryNavHidden, setSecondaryNavHidden] = React.useState(false)
-
   const router = useRouter()
-  const { logoutHandler, user, setUser } = useAuth()
 
-  const hasSecondaryNav = HAS_SECONDARY_NAV.includes(pathname) || pathname.startsWith("/c/") || pathname.startsWith("/project-details/")
-
-  // Listen for secondary nav visibility changes
-  React.useEffect(() => {
-    if (!hasSecondaryNav) return
-    const observer = new MutationObserver(() => {
-      const val = document.documentElement.dataset.secondaryNav
-      setSecondaryNavHidden(val === "hidden")
-    })
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-secondary-nav"] })
-    return () => observer.disconnect()
-  }, [hasSecondaryNav])
+  const { logoutHandler, user } = useAuth()
 
   if (pathname.startsWith(ONBOARDING)) {
     return null
   }
 
-  // Show shadow: always on pages without secondary nav, or when secondary nav is hidden (scrolled away)
-  const showNavShadow = !hasSecondaryNav || secondaryNavHidden
-
   return (
     <div
       className={cn(
-        "px-3.5 md:px-6 lg:px-[50px] relative bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 sticky top-0 z-50",
-        showNavShadow
-          ? "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]"
-          : "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] md:shadow-none",
-        PATHNAMES.includes(pathname) && "md:max-lg:pb-2.5"
+        "px-3.5 md:px-6 2xl:px-[50px] relative bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5",
+        PATHNAMES.includes(pathname) && "md:max-2xl:pb-2.5 sticky top-0 z-50"
       )}
     >
-      <div className="flex items-center justify-between md:gap-x-3 lg:gap-x-[50px] md:pt-2 md:pb-1 lg:py-3">
-        <NextLink className="focus-visible:outline-none" href="/">
-          <Logo3 className="h-[14.25px] w-[97px] lg:w-[128px] lg:h-[18.81px]" />
+      <div className="flex items-center justify-between md:gap-x-3 2xl:gap-x-[50px] md:pt-2 md:pb-1 2xl:py-3">
+        <NextLink className="focus-visible:outline-none" href="/marketplace">
+          <Logo3 className="h-[14.25px] w-[97px] 2xl:w-[128px] 2xl:h-[18.81px]" />
         </NextLink>
 
-        <div className="flex flex-auto gap-x-3 xs:max-lg:ml-3 xs:max-md:hidden">
+        <div className="flex flex-auto gap-x-3 xs:max-2xl:ml-3 xs:max-md:hidden">
           <SearchBar />
+
+          {/* My Dashboard Button */}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                className="gap-x-2 xs:max-lg:h-[34px] xs:max-lg:px-[12.6px] xs:max-lg:py-[7.2px] bg-white"
+                className="gap-x-2 xs:max-2xl:h-[34px] xs:max-2xl:px-[12.6px] xs:max-2xl:py-[7.2px] bg-white"
                 visual="gray"
                 variant="outlined"
                 size="md"
               >
-                <span className="inline-flex items-center gap-x-[7.2px] lg:gap-x-1 text-[12.6px] leading-5 lg:text-base lg:leading-6 font-light">
+                <span className="inline-flex items-center gap-x-[7.2px] 2xl:gap-x-1 text-[12.6px] leading-5 2xl:text-base 2xl:leading-6 font-light">
                   <span className="font-semibold">$ 1,540</span> USD
                 </span>
-                <ChevronDown className="text-gray-500 size-[13.5px] lg:size-[15px]" />
+                <ChevronDown className="text-gray-500 size-[13.5px] 2xl:size-[15px]" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-[174px]">
@@ -658,7 +634,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
             </InviteWindowTrigger>
             <Notifications />
             <IconButton
-              className="rounded-full lg:hidden"
+              className="rounded-full 2xl:hidden"
               size="md"
               variant="ghost"
               visual="gray"
@@ -667,19 +643,26 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
             </IconButton>
           </div>
 
-          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-            <DropdownMenuTrigger className="hidden lg:inline-flex items-center gap-x-2 px-3 py-1.5 rounded-[8px] hover:bg-gray-100 focus-visible:outline-none">
+          <DropdownMenu>
+            <DropdownMenuTrigger className="hidden 2xl:inline-flex items-center gap-x-2 px-3 py-1.5 rounded-[8px] hover:bg-gray-100 focus-visible:outline-none">
               <div className="inline-flex items-center gap-x-2">
                 <Avatar>
                   <AvatarImage
-                    src={user?.avatarUrl ?? ""}
-                    alt={user?.firstName ?? "User"}
+                    src={
+                      user?.avatarUrl
+                        ? user?.avatarUrl?.startsWith("https://") ||
+                          user?.avatarUrl?.startsWith("http://")
+                          ? user?.avatarUrl
+                          : `${process?.env?.NEXT_PUBLIC_API_URL}/${user?.avatarUrl}`
+                        : ""
+                    }
+                    alt="Man"
                   />
                   <AvatarFallback>
                     {user?.firstName?.[0]?.toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex flex-col text-left">
+                <div className="flex flex-col">
                   <span className="text-xs font-semibold leading-[15px] text-gray-700">
                     {user?.firstName || ""} {user?.lastName || ""}
                   </span>
@@ -703,63 +686,41 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                     </span>
                   </div>
 
-                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>My Account</Button>
+                  <Button className="w-full">My Account</Button>
                 </div>
               </DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => router.push("/my-projects")}>
+                <Monitor className="size-4" />
+                My Projects
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/my-campaigns")}>
+                <BarChart2 className="size-4" />
+                My Campaigns
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/talent-profile")}>
-                <User className="size-4" />
-                My Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard")}>
-                <LayoutGrid02 className="size-4" />
-                My Dashboard
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/my-listings")}>
-                <List className="size-4" />
-                My Listings
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/my-contracts")}>
-                <FileCheck02 className="size-4" />
-                My Contracts
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push("/my-team")}>
                 <Users className="size-4" />
                 My Team
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/favorites")}>
+              <DropdownMenuItem
+                onClick={() =>
+                  (window.location.href = "http://localhost:3000/my-favorites")
+                }
+              >
                 <Star className="size-4" />
                 My Favorites
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setMenuOpen(false); router.push("/billing") }}>
+              <DropdownMenuItem onClick={() => router.push("/billing")}>
                 <CoinStack className="size-4" />
                 Billing
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setMenuOpen(false); router.push("/settings") }}>
+              <DropdownMenuItem onClick={() => router.push("/settings")}>
                 <Settings className="size-4" />
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={async () => {
-                setMenuOpen(false)
-                const newType = user?.accountType === "TALENT" ? "client" : "talent"
-                const newDashboard = newType === "client" ? "/client-dashboard" : "/talent-dashboard"
-                try {
-                  if (user?.id) {
-                    await UserAPI.updateProfile(user.id, { userType: newType })
-                  }
-                  setUser((prev) => prev ? { ...prev, userType: newType, accountType: newType === "talent" ? ROLE.TALENT : ROLE.CLIENT } : prev)
-                  router.push(newDashboard)
-                } catch {
-                  router.push(newDashboard)
-                }
-              }}>
-                <Repeat className="size-4" />
-                {user?.accountType === "TALENT" ? "Switch to Client" : "Switch to Talent"}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <div className="grid grid-cols-2 gap-x-[9px]">
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push("/help-center")}>
                   <LifeBuoy className="size-4" />
                   Help Center
                 </DropdownMenuItem>

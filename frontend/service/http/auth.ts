@@ -8,7 +8,12 @@ import {
 } from "@/types/auth"
 import AxiosRequest from ".."
 
-const AUTH_BASE = process.env.NEXT_PUBLIC_AUTH_URL ?? ""
+const AUTH_BASE_ENV = process.env.NEXT_PUBLIC_AUTH_URL ?? ""
+const AUTH_BASE =
+  AUTH_BASE_ENV === "http://localhost:3001" ||
+  AUTH_BASE_ENV === "http://127.0.0.1:3001"
+    ? "/__auth"
+    : AUTH_BASE_ENV || "/__auth"
 export const AuthAPI = {
   SignUpWithEmail: (data: SignUpParams) => {
     // email-only signup
@@ -35,16 +40,6 @@ export const AuthAPI = {
 
   CreatePassword: (data: CreatePasswordParams) => {
     return AxiosRequest.patch(`${AUTH_BASE}/auth/set-password`, data)
-  },
-
-  Refresh: (refreshToken: string) => {
-    return AxiosRequest.post(`${AUTH_BASE}/auth/refresh`, {
-      refresh_token: refreshToken,
-    })
-  },
-
-  DevLogin: (email: string) => {
-    return AxiosRequest.post(`${AUTH_BASE}/auth/dev-login`, { email })
   },
 
   Logout: () => {

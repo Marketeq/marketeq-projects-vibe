@@ -11,7 +11,6 @@ import {
   BarChartSquare02,
   Briefcase,
   Check,
-  FileCheck02,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -69,7 +68,7 @@ import {
 
 const LeftSidebar = () => {
   return (
-    <div className="w-[224px] shrink-0 bg-gray-50 min-[1200px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r space-y-6 border-gray-200 p-[15px]">
+    <div className="w-[224px] shrink-0 bg-gray-50 min-[1200px]:block fixed z-40 top-[62px] 2xl:top-[65px] left-0 bottom-0 hidden border-r space-y-6 border-gray-200 p-[15px]">
       <div className="flex flex-col gap-y-2">
         <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
           Work
@@ -78,42 +77,35 @@ const LeftSidebar = () => {
         <div className="flex flex-col gap-y-1">
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/client-dashboard"
+            href="#"
           >
             <Home03 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Home
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/search"
+            href="#"
           >
             <Search className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Find Jobs
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/my-listings"
+            href="#"
           >
             <Briefcase className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            My Listings
+            My Projects
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/my-contracts"
-          >
-            <FileCheck02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            My Contracts
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/publish-project"
+            href="#"
           >
             <Plus className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Create a Project
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/"
+            href="#"
           >
             <BarChartSquare02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Stats & Trends
@@ -129,14 +121,14 @@ const LeftSidebar = () => {
         <div className="flex flex-col gap-y-1">
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/talent-profile"
+            href="#"
           >
             <UserCircle className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Profile
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/inbox"
+            href="#"
           >
             <Mail01 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Inbox
@@ -146,7 +138,7 @@ const LeftSidebar = () => {
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/notifications"
+            href="#"
           >
             <AlertCircle className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Notifications
@@ -156,7 +148,7 @@ const LeftSidebar = () => {
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/settings"
+            href="#"
           >
             <Settings02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Settings
@@ -292,13 +284,12 @@ const Table = () => {
 }
 
 const Welcome = ({ onOpenProfile }: { onOpenProfile?: () => void }) => {
-  const { user } = useAuth()
   return (
     <div className="space-y-3.5 md:space-y-5">
       <div className="md:contents flex flex-col space-y-5">
         <div className="flex items-end justify-between">
           <h1 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
-            Welcome, {user?.firstName || "there"}!
+            Welcome, Christopher!
           </h1>
 
           <div className="flex items-center gap-x-3">

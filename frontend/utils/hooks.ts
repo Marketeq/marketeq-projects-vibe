@@ -465,7 +465,7 @@ export const useRouter = () => {
 }
 
 export function useHeadingObserver(slugs: string[]) {
-  const observer = useRef<IntersectionObserver>(null)
+  const observer = useRef<IntersectionObserver>()
   const [activeHeading, setActiveHeading] = React.useState<string>()
   const [visibleHeadings, setVisibleHeadings] = React.useState<string[]>([])
 

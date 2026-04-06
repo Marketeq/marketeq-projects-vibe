@@ -10,7 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { Request } from 'express';
 
 import { AuthService } from './auth.service';
@@ -59,7 +59,7 @@ export class AuthController {
   @Put('username')
   @HttpCode(HttpStatus.OK)
   updateUsername(@Req() req: Request, @Body() dto: UpdateUsernameDto) {
-    return this.authService.updateUsername(req.user!, dto);
+    return this.authService.updateUsername(req.user, dto);
   }
 
   @ApiOperation({ summary: 'Set password' })
@@ -68,7 +68,7 @@ export class AuthController {
   @Patch('set-password')
   @HttpCode(HttpStatus.OK)
   setPassword(@Req() req: Request, @Body() dto: SetPasswordDto) {
-    return this.authService.setPassword(req.user!, dto);
+    return this.authService.setPassword(req.user, dto);
   }
 
   @ApiOperation({ summary: 'Login' })
@@ -76,13 +76,6 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
-  }
-
-  @ApiOperation({ summary: 'Dev-only login by email (no password). Disabled in production.' })
-  @Post('dev-login')
-  @HttpCode(HttpStatus.OK)
-  devLogin(@Body() body: { email: string }) {
-    return this.authService.devLogin(body.email);
   }
 
   @ApiOperation({ summary: 'Forgot Password' })
@@ -126,10 +119,10 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   logout(@Req() req: Request) {
-    return this.authService.logout(req.user!);
+    return this.authService.logout(req.user);
   }
 
-  @ApiOperation({ summary: 'Get the current user' })
+  @ApiOperation({ summary: 'Get the current usser' })
   @ApiBearerAuth('access_token')
   @UseGuards(JwtAuthGuard)
   @Get('me')

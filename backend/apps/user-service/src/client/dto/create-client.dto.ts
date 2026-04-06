@@ -5,15 +5,9 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  Matches,
-  MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import {
-  USERNAME_PATTERN,
-  USERNAME_RULE_MESSAGE,
-} from '../../user-mangement/dtos/username-validation';
 
 export class CreateClientDto {
   @ApiPropertyOptional()
@@ -34,10 +28,6 @@ export class CreateClientDto {
   @ApiProperty()
   @IsString({ message: 'Username is required' })
   @IsNotEmpty({ message: 'Username is required' })
-  @MinLength(3, { message: 'Username must be at least 3 characters long' })
-  @Matches(USERNAME_PATTERN, {
-    message: USERNAME_RULE_MESSAGE,
-  })
   @Transform(({ value }) =>
     typeof value === 'string' ? value.toLowerCase().trim() : value,
   )

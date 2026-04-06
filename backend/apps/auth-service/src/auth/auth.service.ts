@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
-  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
@@ -37,8 +36,6 @@ const parseExpiresIn = (value: string): number | StringValue =>
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name);
-
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
@@ -184,7 +181,14 @@ export class AuthService {
 
     const current = await this.userRepository.findOne({
       where: { id: userId },
-      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword'],
+      select: [
+        'id',
+        'email',
+        'username',
+        'password',
+        'provider',
+        'hasPassword',
+      ],
     });
 
     if (!current) {
@@ -195,7 +199,7 @@ export class AuthService {
     current.hasPassword = true;
     await this.userRepository.save(current);
 
-    await this.syncUserProfile(current);
+    await this.syncUserSecurityState(current);
 
     return {
       user: {
@@ -209,7 +213,14 @@ export class AuthService {
   async login(dto: LoginDto): Promise<JwtPair> {
     const user = await this.userRepository.findOne({
       where: { email: dto.email },
-      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword'],
+      select: [
+        'id',
+        'email',
+        'username',
+        'password',
+        'provider',
+        'hasPassword',
+      ],
     });
 
     if (!user) throw new UnauthorizedException('Invalid credentials');
@@ -217,54 +228,9 @@ export class AuthService {
     const isMatch = await bcrypt.compare(dto.password, user.password);
     if (!isMatch) throw new UnauthorizedException('Invalid credentials');
 
-    await this.syncUserProfile(user);
+    await this.syncUserSecurityState(user);
 
     return this.issueTokens({ sub: user.id, email: user.email });
-  }
-
-  /**
-   * Dev-only login: issue real RS256 tokens for an existing user by email.
-   * Disabled in production. Behaves identically to real login (same token format,
-   * same gateway verification) so local dev matches cloud behavior exactly.
-   */
-  async devLogin(email: string): Promise<JwtPair & { user: { id: string; username: string; email: string } }> {
-    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DEV_LOGIN !== 'true') {
-      throw new UnauthorizedException('Dev login is not available in production');
-    }
-
-    let user = await this.userRepository.findOne({
-      where: { email },
-      select: ['id', 'email', 'username'],
-    });
-
-    // Auto-create auth entry for seed users that only exist in user-service
-    if (!user) {
-      const username = await this.generatePlaceholderUsername();
-      const hashedPassword = await bcrypt.hash(this.generateRandomPassword(), 10);
-
-      user = this.userRepository.create({
-        username,
-        email,
-        password: hashedPassword,
-        provider: 'EMAIL',
-        hasPassword: false,
-      });
-      await this.userRepository.save(user);
-
-      // Sync to user-service (will find existing user by email)
-      try {
-        await this.syncUserProfile(user);
-      } catch {
-        // User-service may already have this user — that's fine
-      }
-    }
-
-    const tokens = await this.issueTokens({ sub: user.id, email: user.email });
-
-    return {
-      ...tokens,
-      user: { id: user.id, username: user.username, email: user.email },
-    };
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
@@ -283,8 +249,17 @@ export class AuthService {
     const resetToken = await this.issuePasswordResetToken(user);
     const resetUrl =
       dto.redirectUrl && resetToken
-        ? `${dto.redirectUrl}${dto.redirectUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(resetToken)}`
+        ? `${dto.redirectUrl}${
+            dto.redirectUrl.includes('?') ? '&' : '?'
+          }token=${encodeURIComponent(resetToken)}`
         : undefined;
+
+    const isProduction =
+      this.configService.get<string>('NODE_ENV') === 'production';
+
+    if (isProduction) {
+      return { message };
+    }
 
     return {
       message,
@@ -310,7 +285,14 @@ export class AuthService {
 
     const user = await this.userRepository.findOne({
       where: { id: payload.sub },
-      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword'],
+      select: [
+        'id',
+        'email',
+        'username',
+        'password',
+        'provider',
+        'hasPassword',
+      ],
     });
 
     if (!user) {
@@ -321,7 +303,7 @@ export class AuthService {
     user.hasPassword = true;
     await this.userRepository.save(user);
 
-    await this.syncUserProfile(user);
+    await this.syncUserSecurityState(user);
 
     return { success: true };
   }
@@ -330,7 +312,7 @@ export class AuthService {
     let accessToken = dto.access_token;
     let idToken = dto.id_token ?? dto.credential;
 
-    this.logger.log('google login input', {
+    console.log('google login input', {
       hasAccess: !!dto.access_token,
       hasIdToken: !!dto.id_token || !!dto.credential,
       hasCode: !!dto.code,
@@ -393,8 +375,6 @@ export class AuthService {
     let email: string | undefined;
     let emailVerified: string | boolean | undefined;
     let aud: string | undefined;
-    let firstName: string | undefined;
-    let lastName: string | undefined;
 
     if (idToken) {
       let tokenInfo: {
@@ -402,8 +382,6 @@ export class AuthService {
         email?: string;
         email_verified?: string | boolean;
         sub?: string;
-        given_name?: string;
-        family_name?: string;
       };
 
       try {
@@ -434,8 +412,6 @@ export class AuthService {
       }
 
       email = tokenInfo.email;
-      firstName = tokenInfo.given_name;
-      lastName = tokenInfo.family_name;
     } else if (accessToken) {
       let tokenInfo: Record<string, any>;
       try {
@@ -458,21 +434,17 @@ export class AuthService {
         throw new UnauthorizedException('Invalid Google access token');
       }
 
-      // Always call userinfo to get profile data (name, avatar);
-      // tokeninfo only returns email/aud, not profile fields.
-      try {
-        const response = await axios.get(
-          'https://www.googleapis.com/oauth2/v3/userinfo',
-          {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          },
-        );
-        email = email ?? response.data?.email;
-        emailVerified = emailVerified ?? response.data?.email_verified;
-        firstName = response.data?.given_name;
-        lastName = response.data?.family_name;
-      } catch {
-        if (!email) {
+      if (!email) {
+        try {
+          const response = await axios.get(
+            'https://www.googleapis.com/oauth2/v3/userinfo',
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            },
+          );
+          email = response.data?.email;
+          emailVerified = response.data?.email_verified;
+        } catch {
           throw new UnauthorizedException('Invalid Google access token');
         }
       }
@@ -518,7 +490,7 @@ export class AuthService {
     }
 
     try {
-      await this.syncUserProfile(user, { firstName, lastName });
+      await this.syncUserProfile(user);
     } catch (error) {
       if (createdUser) {
         await this.userRepository.delete({ id: user.id });
@@ -533,7 +505,7 @@ export class AuthService {
 
     return {
       ...tokens,
-      user: { id: user.id, username: user.username, email: user.email, firstName, lastName },
+      user: { id: user.id, username: user.username, email: user.email },
     };
   }
 
@@ -591,8 +563,7 @@ export class AuthService {
       throw new BadRequestException('access_token or code is required');
     }
 
-    const { email, emailVerified, firstName, lastName } =
-      await this.fetchLinkedInProfile(accessToken);
+    const { email, emailVerified } = await this.fetchLinkedInEmail(accessToken);
 
     if (!email) {
       throw new UnauthorizedException('Invalid LinkedIn token');
@@ -630,7 +601,7 @@ export class AuthService {
     }
 
     try {
-      await this.syncUserProfile(user, { firstName, lastName });
+      await this.syncUserProfile(user);
     } catch (error) {
       if (createdUser) {
         await this.userRepository.delete({ id: user.id });
@@ -645,7 +616,7 @@ export class AuthService {
 
     return {
       ...tokens,
-      user: { id: user.id, username: user.username, email: user.email, firstName, lastName },
+      user: { id: user.id, username: user.username, email: user.email },
     };
   }
 
@@ -666,7 +637,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    return this.issueTokens({ sub: payload.sub, email: payload.email ?? '' });
+    return this.issueTokens({ sub: payload.sub, email: payload.email });
   }
 
   async logout(user: { id?: string; sub?: string }) {
@@ -724,7 +695,7 @@ export class AuthService {
     return secret;
   }
 
-  private async syncUserProfile(user: User, extra?: { firstName?: string; lastName?: string }) {
+  private async syncUserProfile(user: User) {
     const baseUrl =
       this.configService.get<string>('USER_SERVICE_URL') ??
       'http://localhost:3000';
@@ -747,8 +718,6 @@ export class AuthService {
           username: user.username,
           provider: user.provider ?? 'EMAIL',
           hasPassword: user.hasPassword ?? false,
-          ...(extra?.firstName && { firstName: extra.firstName }),
-          ...(extra?.lastName && { lastName: extra.lastName }),
         },
         {
           headers: {
@@ -757,37 +726,130 @@ export class AuthService {
         },
       );
     } catch (error) {
-      this.logger.error(
-        `Failed to sync user profile to user-service for user ${user.id}: ${(error as Error)?.message}`,
-        (error as Error)?.stack,
-      );
+      const { status, data } = this.extractAxiosErrorDetails(error);
+
+      // In local development, allow auth flow to continue even if profile sync fails.
+      if (this.configService.get<string>('NODE_ENV') !== 'production') {
+        // eslint-disable-next-line no-console
+        console.warn('User profile sync failed (dev mode, continuing):', {
+          url,
+          status,
+          data,
+          userId: user.id,
+          email: user.email,
+        });
+        return;
+      }
+
+      this.rethrowUserProfileSyncError(error);
+    }
+  }
+
+  private async syncUserSecurityState(user: User) {
+    const baseUrl =
+      this.configService.get<string>('USER_SERVICE_URL') ??
+      'http://localhost:3000';
+    const token = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+
+    if (!token) {
       throw new InternalServerErrorException(
-        'Failed to sync user profile to user-service',
+        'INTERNAL_SERVICE_TOKEN is required to sync user profiles',
+      );
+    }
+
+    const url = `${baseUrl.replace(/\/$/, '')}/internal/users`;
+
+    try {
+      await axios.post(
+        url,
+        {
+          id: user.id,
+          email: user.email,
+          provider: user.provider ?? 'EMAIL',
+          hasPassword: user.hasPassword ?? false,
+        },
+        {
+          headers: {
+            'x-internal-token': token,
+          },
+        },
+      );
+    } catch (error) {
+      const status = axios.isAxiosError(error)
+        ? error.response?.status
+        : undefined;
+      const data = axios.isAxiosError(error) ? error.response?.data : undefined;
+
+      // In local development, allow auth flow to continue even if profile sync fails.
+      if (this.configService.get<string>('NODE_ENV') !== 'production') {
+        // eslint-disable-next-line no-console
+        console.warn('User security sync failed (dev mode, continuing):', {
+          url,
+          status,
+          data,
+          userId: user.id,
+          email: user.email,
+        });
+        return;
+      }
+
+      throw new InternalServerErrorException(
+        'Failed to sync user security state to user-service',
       );
     }
   }
 
-  private async fetchLinkedInProfile(
+  private extractAxiosErrorDetails(error: unknown): {
+    status?: number;
+    data?: unknown;
+  } {
+    if (!axios.isAxiosError(error)) {
+      return {};
+    }
+
+    return {
+      status: error.response?.status,
+      data: error.response?.data,
+    };
+  }
+
+  private rethrowUserProfileSyncError(error: unknown): never {
+    const { status, data } = this.extractAxiosErrorDetails(error);
+    const message =
+      typeof data === 'object' && data !== null && 'message' in data
+        ? Array.isArray(data.message)
+          ? data.message.join(', ')
+          : String(data.message)
+        : undefined;
+
+    if (status === 409 && message?.toLowerCase().includes('user already exists')) {
+      throw new BadRequestException('User already exists');
+    }
+
+    throw new InternalServerErrorException(
+      'Failed to sync user profile to user-service',
+    );
+  }
+
+  private async fetchLinkedInEmail(
     accessToken: string,
-  ): Promise<{ email?: string; emailVerified?: boolean; firstName?: string; lastName?: string }> {
+  ): Promise<{ email?: string; emailVerified?: boolean }> {
     try {
       const response = await axios.get('https://api.linkedin.com/v2/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
       const email = response.data?.email;
-      const firstName = response.data?.given_name;
-      const lastName = response.data?.family_name;
       const emailVerifiedRaw = response.data?.email_verified;
       const emailVerified =
         emailVerifiedRaw === true || emailVerifiedRaw === 'true'
           ? true
           : emailVerifiedRaw === false || emailVerifiedRaw === 'false'
-            ? false
-            : undefined;
+          ? false
+          : undefined;
 
       if (email) {
-        return { email, emailVerified, firstName, lastName };
+        return { email, emailVerified };
       }
     } catch {
       // fallback below
@@ -811,6 +873,26 @@ export class AuthService {
     } catch {
       return {};
     }
+  }
+
+  private async generateUniqueUsername(email: string): Promise<string> {
+    const base = this.normalizeUsername(email.split('@')[0] ?? '');
+    const prefix = base || 'user';
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const suffix = attempt === 0 ? '' : `_${randomBytes(3).toString('hex')}`;
+      const candidate = `${prefix}${suffix}`.slice(0, 30);
+
+      const existing = await this.userRepository.findOne({
+        where: { username: candidate },
+      });
+      if (!existing) {
+        return candidate;
+      }
+    }
+
+    // Guaranteed-unique fallback
+    return `user_${randomBytes(8).toString('hex')}`;
   }
 
   private async generatePlaceholderUsername(): Promise<string> {

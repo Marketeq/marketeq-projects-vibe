@@ -44,6 +44,7 @@ type SignInFormValues = z.infer<typeof signInSchema>
 
 export default function SignIn() {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const { setUser } = useAuth()
   const { toast } = useToast()
@@ -51,6 +52,11 @@ export default function SignIn() {
   const [isVisible, toggleIsVisible] = useToggle(false)
 
   const [isLoading, setIsLoading] = useState(false)
+  const redirectTarget = searchParams.get("redirect")
+  const nextRoute =
+    redirectTarget && redirectTarget.startsWith("/") && !redirectTarget.startsWith("//")
+      ? redirectTarget
+      : "/"
 
   const {
     register,
@@ -72,10 +78,7 @@ export default function SignIn() {
     AuthAPI.LoginWithEmail({ email, password })
       .then(async (response) => {
         if (response?.status === 200 && response?.data?.access_token) {
-          Cookies.set("access_token", response?.data?.access_token, { path: "/" })
-          if (response?.data?.refresh_token) {
-            Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
-          }
+          Cookies.set("access_token", response?.data?.access_token)
 
           let nextUser = response?.data?.user
           if (!nextUser) {
@@ -96,15 +99,7 @@ export default function SignIn() {
             setUser(nextUser)
           }
 
-          // Route based on user type — new users go to onboarding
-          const destination = nextUser?.userType === "talent"
-            ? "/talent-dashboard"
-            : nextUser?.userType === "client"
-              ? "/client-dashboard"
-              : nextUser?.userType
-                ? "/"
-                : "/onboarding"
-          router.push(destination)
+          router.push(nextRoute)
           reset()
         }
       })
@@ -154,7 +149,7 @@ export default function SignIn() {
   return (
     <UnauthenticatedRoute>
       <div className="flex min-h-screen bg-white">
-        <div className="relative hidden lg:flex overflow-hidden flex-col justify-between p-[75px] w-[480px] bg-dark-blue-500 shrink-0">
+        <div className="relative hidden 2xl:flex overflow-hidden flex-col justify-between p-[75px] w-[480px] bg-dark-blue-500 shrink-0">
           <div>
             <Logo className="w-[245px] h-9" />
 
@@ -202,7 +197,7 @@ export default function SignIn() {
                 <path
                   d="M11.5955 2.21973C9.29477 -0.162931 5.28434 0.73532 4.42508 3.82574L0.744613 17.0629C-0.0339209 19.8629 2.59557 22.5434 5.50714 21.8913C6.71521 21.6207 7.65054 20.7109 8.62686 19.7017C10.1067 18.172 12.274 17.6503 14.3559 18.3132C14.4019 18.3279 14.4477 18.3425 14.4934 18.3571C15.9509 18.8218 17.2961 19.2508 18.5757 18.9642L19.049 18.8582C22.2152 18.149 23.3072 14.3487 21.0395 12.0001L11.5955 2.21973Z"
                   fill="currentColor"
-                  fillOpacity="0.5"
+                  fill-opacity="0.5"
                   stroke="currentColor"
                 />
               </svg>
@@ -219,64 +214,7 @@ export default function SignIn() {
               Login to your account below
             </p>
 
-            {process.env.NEXT_PUBLIC_ENV === "development" && (
-              <div className="mt-10 md:mt-[50px] grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const res = await AuthAPI.DevLogin("olivia.brooks@example.com")
-                      if (res?.data?.access_token) {
-                        Cookies.set("access_token", res.data.access_token, { path: "/" })
-                        if (res.data.refresh_token) {
-                          Cookies.set("refresh_token", res.data.refresh_token, { path: "/" })
-                        }
-                        const meRes = await UserAPI.me()
-                        const u = meRes?.data?.user ?? meRes?.data
-                        if (u?.id) {
-                          setUser(u)
-                          router.push(u.userType === "talent" ? "/talent-dashboard" : "/client-dashboard")
-                          return
-                        }
-                      }
-                    } catch (err: any) {
-                      toast({ title: err?.response?.data?.message || "Dev login failed", variant: "destructive" })
-                    }
-                  }}
-                  className="h-10 rounded-md border border-dashed border-gray-400 text-sm text-gray-600 hover:bg-gray-50"
-                >
-                  Dev: Client Login
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const res = await AuthAPI.DevLogin("maya.johnson@example.com")
-                      if (res?.data?.access_token) {
-                        Cookies.set("access_token", res.data.access_token, { path: "/" })
-                        if (res.data.refresh_token) {
-                          Cookies.set("refresh_token", res.data.refresh_token, { path: "/" })
-                        }
-                        const meRes = await UserAPI.me()
-                        const u = meRes?.data?.user ?? meRes?.data
-                        if (u?.id) {
-                          setUser(u)
-                          router.push(u.userType === "talent" ? "/talent-dashboard" : "/client-dashboard")
-                          return
-                        }
-                      }
-                    } catch (err: any) {
-                      toast({ title: err?.response?.data?.message || "Dev login failed", variant: "destructive" })
-                    }
-                  }}
-                  className="h-10 rounded-md border border-dashed border-gray-400 text-sm text-gray-600 hover:bg-gray-50"
-                >
-                  Dev: Talent Login
-                </button>
-              </div>
-            )}
-
-            <div className="grid md:grid-cols-2 mt-4 gap-3 items-center">
+            <div className="grid md:grid-cols-2 mt-10 md:mt-[50px] gap-3 items-center">
               <GoogleLoginButton />
 
               <LinkedInLoginButton />
@@ -423,4 +361,3 @@ export default function SignIn() {
     </UnauthenticatedRoute>
   )
 }
-

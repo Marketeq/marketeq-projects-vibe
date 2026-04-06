@@ -18,21 +18,16 @@ import LinkedInLoginButton from "@/components/auth/LinkedInLoginButton"
 import { Logo } from "@/components/icons"
 import { MarketeqIcon1 } from "@/components/marketeq-icon-1"
 import NextLink from "@/components/next-link"
-import {
-  Button,
-  Checkbox,
-  ErrorMessage,
-  Input,
-  Label,
-  useToast,
-} from "@/components/ui"
+import { Button, Checkbox, ErrorMessage, Input, Label } from "@/components/ui"
 
 const signUpSchema = z.object({
   email: z
     .string()
     .min(1, "Please enter at least 1 character(s)")
     .email("Please enter a valid email"),
-  agreesToTermsPrivacyPolicy: z.boolean(),
+  agreesToTermsPrivacyPolicy: z.boolean().refine((value) => value, {
+    message: "Please accept Terms of Use and Privacy Policy",
+  }),
 })
 
 type SignUpFormValues = z.infer<typeof signUpSchema>
@@ -41,7 +36,6 @@ export default function SignUp() {
   const router = useRouter()
 
   const { setUser } = useAuth()
-  const { toast } = useToast()
 
   const [isLoading, setIsLoading] = useState(false)
 
@@ -49,8 +43,10 @@ export default function SignUp() {
     register,
     formState: { errors },
     control,
+    clearErrors,
     handleSubmit,
     reset,
+    setError,
   } = useForm<SignUpFormValues>({
     resolver: zodResolver(signUpSchema),
     defaultValues: {
@@ -61,6 +57,7 @@ export default function SignUp() {
 
   const onSubmit: SubmitHandler<SignUpFormValues> = ({ email }) => {
     setIsLoading(true)
+    clearErrors("email")
 
     AuthAPI.SignUpWithEmail({ email })
       .then((response) => {
@@ -69,20 +66,24 @@ export default function SignUp() {
           response?.data?.access_token &&
           response?.data?.user
         ) {
-          Cookies.set("access_token", response?.data?.access_token, { path: "/" })
-          if (response?.data?.refresh_token) {
-            Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
-          }
+          Cookies.set("access_token", response?.data?.access_token)
           setUser(response?.data?.user)
           router.push("/onboarding")
           reset()
         }
       })
       .catch((error) => {
-        if (error?.response?.data?.errors?.message) {
-          toast({
-            title: error?.response?.data?.errors?.message,
-            variant: "destructive",
+        const errorMessage =
+          error?.response?.data?.errors?.message ||
+          (Array.isArray(error?.response?.data?.message) &&
+          error?.response?.data?.message?.length > 0
+            ? error?.response?.data?.message?.[0]
+            : error?.response?.data?.message)
+
+        if (errorMessage) {
+          setError("email", {
+            type: "server",
+            message: errorMessage,
           })
         }
       })
@@ -94,7 +95,7 @@ export default function SignUp() {
   return (
     <UnauthenticatedRoute>
       <div className="flex min-h-screen bg-white">
-        <div className="relative hidden lg:flex overflow-hidden flex-col justify-between p-[75px] w-[480px] bg-dark-blue-500 shrink-0">
+        <div className="relative hidden 2xl:flex overflow-hidden flex-col justify-between p-[75px] w-[480px] bg-dark-blue-500 shrink-0">
           <div>
             <Logo className="w-[245px] h-9" />
 
@@ -167,7 +168,7 @@ export default function SignUp() {
                 <path
                   d="M11.5955 2.21973C9.29477 -0.162931 5.28434 0.73532 4.42508 3.82574L0.744613 17.0629C-0.0339209 19.8629 2.59557 22.5434 5.50714 21.8913C6.71521 21.6207 7.65054 20.7109 8.62686 19.7017C10.1067 18.172 12.274 17.6503 14.3559 18.3132C14.4019 18.3279 14.4477 18.3425 14.4934 18.3571C15.9509 18.8218 17.2961 19.2508 18.5757 18.9642L19.049 18.8582C22.2152 18.149 23.3072 14.3487 21.0395 12.0001L11.5955 2.21973Z"
                   fill="currentColor"
-                  fillOpacity="0.5"
+                  fill-opacity="0.5"
                   stroke="currentColor"
                 />
               </svg>
@@ -258,9 +259,18 @@ export default function SignUp() {
                 </Label>
               </div>
 
+              <HookFormErrorMessage
+                errors={errors}
+                name="agreesToTermsPrivacyPolicy"
+                render={({ message }) => (
+                  <ErrorMessage size="sm">{message}</ErrorMessage>
+                )}
+              />
+
               <Button
                 className="mt-5 xs:max-md:text-sm xs:max-md:py-2 xs:max-md:px-[14px] xs:max-md:h-9 md:mt-6 w-full"
                 size="lg"
+                disabled={isLoading}
               >
                 {isLoading ? (
                   <Spinner

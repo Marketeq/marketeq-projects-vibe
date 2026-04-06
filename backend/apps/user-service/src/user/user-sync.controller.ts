@@ -4,8 +4,8 @@ import {
   ForbiddenException,
   Get,
   Headers,
-  Param,
   Patch,
+  Param,
   Post,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -23,20 +23,17 @@ export class UserSyncController {
     private readonly configService: ConfigService,
   ) {}
 
-  private validateInternalToken(token: string | undefined) {
-    const expected = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
-    if (!expected || token !== expected) {
-      throw new ForbiddenException('Invalid internal token');
-    }
-  }
-
   @ApiOperation({ summary: 'Sync user' })
   @Post()
   syncUser(
     @Headers('x-internal-token') token: string | undefined,
     @Body() dto: SyncUserDto,
   ) {
-    this.validateInternalToken(token);
+    const expected = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+    if (!expected || token !== expected) {
+      throw new ForbiddenException('Invalid internal token');
+    }
+
     return this.userService.syncFromAuth(dto);
   }
 
@@ -46,7 +43,11 @@ export class UserSyncController {
     @Headers('x-internal-token') token: string | undefined,
     @Param('id') id: string,
   ) {
-    this.validateInternalToken(token);
+    const expected = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+    if (!expected || token !== expected) {
+      throw new ForbiddenException('Invalid internal token');
+    }
+
     return this.userService.getInternalSummary(id);
   }
 
@@ -56,7 +57,11 @@ export class UserSyncController {
     @Headers('x-internal-token') token: string | undefined,
     @Param('id') id: string,
   ) {
-    this.validateInternalToken(token);
+    const expected = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+    if (!expected || token !== expected) {
+      throw new ForbiddenException('Invalid internal token');
+    }
+
     return this.userService.dismissOnboarding(id);
   }
 }

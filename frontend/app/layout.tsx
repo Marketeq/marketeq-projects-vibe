@@ -11,8 +11,8 @@ import "swiper/css/navigation"
 import "swiper/css/pagination"
 import "swiper/css/free-mode"
 import { InviteWindow } from "@/components/invite-window"
-import { TimezoneSync } from "@/components/timezone-sync"
 import { NProgressBar } from "@/components/n-progress-bar"
+import { TimezoneSync } from "@/components/timezone-sync"
 import { Toaster } from "@/components/ui"
 import "@/styles/globals.css"
 import "@/styles/nprogress.css"
@@ -38,14 +38,12 @@ export default function RootLayout({
   const appTree = (
     <AuthProvider>
       <QueryProvider>
-        <div className="min-h-screen flex flex-col bg-gray-50">
-          {children}
-        </div>
+        <div className="min-h-screen flex flex-col bg-gray-50">{children}</div>
+        <TimezoneSync />
         <Suspense fallback={null}>
           <NProgressBar />
         </Suspense>
         <Toaster />
-        <TimezoneSync />
         <InviteWindow />
       </QueryProvider>
     </AuthProvider>

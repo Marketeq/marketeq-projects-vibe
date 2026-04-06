@@ -7,7 +7,7 @@ import type { StringValue } from 'ms';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { JwtStrategy } from './strategies/jwt.strategy';
+import { JwtStrategy } from '../strategies/jwt.strategy';
 import { User } from '../user/entities/user.entity';
 
 const normalizeKey = (value?: string) =>
