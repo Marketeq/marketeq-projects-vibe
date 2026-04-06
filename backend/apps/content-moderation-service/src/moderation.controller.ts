@@ -1,7 +1,10 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ModerationLogService } from './moderation-log.service';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AdminGuard } from './guards/admin.guard';
 
 @Controller('api/moderate')
+@UseGuards(JwtAuthGuard, AdminGuard)
 export class ModerationController {
   constructor(private readonly moderationLogService: ModerationLogService) {}
 

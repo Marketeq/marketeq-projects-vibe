@@ -1,10 +1,12 @@
-import { Controller, Post, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
+import { Controller, Post, UploadedFile, UseInterceptors, BadRequestException, UseGuards } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ImageModerationService } from './image-moderation.service';
 import { diskStorage } from 'multer';
 import * as path from 'path';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
 @Controller('moderate-image')
+@UseGuards(JwtAuthGuard)
 export class ImageModerationController {
   constructor(private readonly imageModerationService: ImageModerationService) {}
 

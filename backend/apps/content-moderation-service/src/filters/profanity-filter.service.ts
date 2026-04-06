@@ -30,6 +30,11 @@ class BasicProfanityFilter {
   }
 }
 
+// TODO(prod): back profanity sensitivity + custom word list with a DB table;
+// currently per-instance ephemeral. Sensitivity set via
+// POST /api/moderate/admin/profanity-sensitivity only affects the replica
+// that handled the request and is lost on restart. Admin route is gated
+// behind AdminGuard.
 @Injectable()
 export class ProfanityFilterService {
   private filter = new BasicProfanityFilter();

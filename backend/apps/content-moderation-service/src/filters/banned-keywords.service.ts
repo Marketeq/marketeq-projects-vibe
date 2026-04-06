@@ -33,6 +33,10 @@ function levenshteinDistance(a: string, b: string): number {
   return dp[m][n];
 }
 
+// TODO(prod): back this with a DB table; currently per-instance ephemeral.
+// Admin mutations via POST /api/moderate/admin/keywords only affect the
+// replica that handled the request, and are lost on restart. Admin routes
+// are gated behind AdminGuard so this is safe but non-durable.
 @Injectable()
 export class BannedKeywordsService {
   private bannedKeywords = [

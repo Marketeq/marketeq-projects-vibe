@@ -80,18 +80,26 @@ export class ContentValidationService {
   }): void {
     const { title, description, tags, categories } = project;
 
-    // Test Case 11: Empty fields or invalid characters
+    // Test Case 11: Empty fields or dangerous control characters
     if (!title?.trim() || !description?.trim()) {
       throw new Error('Title and description are required.');
     }
 
-    const invalidCharRegex = /[^a-zA-Z0-9\s.,!?'"-]/;
-    if (invalidCharRegex.test(title) || invalidCharRegex.test(description)) {
+    // Block only clearly dangerous characters: C0 control chars (except
+    // tab/newline/CR), DEL, and zero-width / BOM / bidi override characters
+    // that are commonly used in homoglyph spoofing. Letters, digits,
+    // punctuation, accented characters, non-Latin scripts, emoji and common
+    // symbols ("&", "#", "/", "(", ")", "$", etc.) are all allowed so that
+    // real project titles like "C#/.NET developer", "React + Next.js",
+    // "Full-stack ($100/hr)", "Café", or "日本語 translation" pass.
+    const dangerousCharRegex =
+      /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\u200B-\u200F\u2028-\u202F\u2060-\u206F\uFEFF]/;
+    if (dangerousCharRegex.test(title) || dangerousCharRegex.test(description)) {
       throw new Error('Fields contain invalid characters.');
     }
 
-    // Test Case 12: Long strings or excessive whitespace
-    if (title.length > 100 || description.length > 1000) {
+    // Test Case 12: Length limits (generous to accommodate real descriptions)
+    if (title.length > 150 || description.length > 5000) {
       throw new Error('Title or description is too long.');
     }
 

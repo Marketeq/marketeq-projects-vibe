@@ -28,7 +28,13 @@ type UpdateTaskPayload = Pick<
   CreateTaskPayload,
   "taskName" | "role" | "location" | "experience" | "duration"
 >
-const LISTINGS_BASE = process.env.NEXT_PUBLIC_LISTINGS_URL ?? ""
+// Prefer a dedicated listings URL if set; otherwise fall back to the general
+// API URL so existing Vercel deployments keep working without a new env var.
+const LISTINGS_BASE =
+  process.env.NEXT_PUBLIC_LISTINGS_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.NEXT_PUBLIC_AUTH_URL ||
+  ""
 
 export const ProjectAPI = {
   CreateProject: (data: CreateProjectType | FormData) => {

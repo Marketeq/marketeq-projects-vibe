@@ -1,10 +1,16 @@
-FROM node:20
+FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-COPY apps/listings-service/package.json ./apps/listings-service/
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY . .
-RUN npm run build:listings-service
+RUN npx nest build listings-service
+
+FROM node:20-alpine
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/libs ./libs
 EXPOSE 3004
 EXPOSE 50052
-CMD ["node", "/app/dist/apps/listings-service/src/main.js"]
+CMD ["node", "dist/apps/listings-service/src/main.js"]

@@ -20,6 +20,7 @@ describe('PublishService moderation flow', () => {
 
   const mediaRepository = {
     create: jest.fn(),
+    find: jest.fn(),
   };
 
   const phaseRepository = {
@@ -66,10 +67,14 @@ describe('PublishService moderation flow', () => {
   });
 
   it('returns 503 and marks project as publish_blocked when moderation is unavailable', async () => {
-    projectRepository.create.mockResolvedValue({
+    projectRepository.findOne.mockResolvedValue({
       id: 'project-1',
       userId: 'user-1',
       title: createDto.title,
+      status: 'draft',
+    });
+    mediaRepository.find.mockResolvedValue({
+      featuredImage: 'https://cdn.example.com/featured.jpg',
     });
     projectRepository.update.mockResolvedValue({
       id: 'project-1',
@@ -79,9 +84,9 @@ describe('PublishService moderation flow', () => {
       new ModerationUnavailableError(),
     );
 
-    await expect(service.createNewProject('user-1', createDto)).rejects.toBeInstanceOf(
-      ServiceUnavailableException,
-    );
+    await expect(
+      service.publishExistingProject('user-1', 'project-1'),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
 
     expect(projectRepository.update).toHaveBeenCalledWith('project-1', {
       status: 'publish_blocked',
@@ -89,7 +94,7 @@ describe('PublishService moderation flow', () => {
     });
 
     try {
-      await service.createNewProject('user-1', createDto);
+      await service.publishExistingProject('user-1', 'project-1');
     } catch (error) {
       const response = (error as ServiceUnavailableException).getResponse() as {
         projectId?: string;
@@ -115,10 +120,14 @@ describe('PublishService moderation flow', () => {
   });
 
   it('returns 502 and marks project as publish_blocked when moderation response is invalid', async () => {
-    projectRepository.create.mockResolvedValue({
+    projectRepository.findOne.mockResolvedValue({
       id: 'project-5',
       userId: 'user-5',
       title: createDto.title,
+      status: 'draft',
+    });
+    mediaRepository.find.mockResolvedValue({
+      featuredImage: 'https://cdn.example.com/featured.jpg',
     });
     projectRepository.update.mockResolvedValue({
       id: 'project-5',
@@ -128,9 +137,9 @@ describe('PublishService moderation flow', () => {
       new ModerationInvalidResponseError(),
     );
 
-    await expect(service.createNewProject('user-5', createDto)).rejects.toBeInstanceOf(
-      BadGatewayException,
-    );
+    await expect(
+      service.publishExistingProject('user-5', 'project-5'),
+    ).rejects.toBeInstanceOf(BadGatewayException);
     expect(projectRepository.update).toHaveBeenCalledWith('project-5', {
       status: 'publish_blocked',
       projectDatePublished: null,
@@ -148,6 +157,9 @@ describe('PublishService moderation flow', () => {
       subCategories: ['Backend'],
       tags: ['api'],
       status: 'draft',
+    });
+    mediaRepository.find.mockResolvedValue({
+      featuredImage: 'https://cdn.example.com/featured.jpg',
     });
     (moderationService.moderateProject as jest.Mock).mockResolvedValue({
       status: 'approved',
@@ -175,6 +187,9 @@ describe('PublishService moderation flow', () => {
       userId: 'user-4',
       title: 'Rejected project',
       status: 'draft',
+    });
+    mediaRepository.find.mockResolvedValue({
+      featuredImage: 'https://cdn.example.com/featured.jpg',
     });
     (moderationService.moderateProject as jest.Mock).mockResolvedValue({
       status: 'rejected',

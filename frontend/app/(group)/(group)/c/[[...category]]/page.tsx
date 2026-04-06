@@ -130,6 +130,26 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
       { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems." },
     ],
   },
+  design: {
+    name: "Design",
+    slug: "design",
+    description: "Find world-class designers for branding, product, web, UX, illustration, and everything in between.",
+    heroImage: "/coding.png",
+    subcategories: [
+      { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile." },
+      { name: "Web Design", slug: "web-design", description: "Landing pages, marketing sites, and full website design." },
+      { name: "Product Design", slug: "product-design", description: "End-to-end digital product design and design systems." },
+      { name: "Graphic Design", slug: "graphic-design", description: "Visual branding, print design, and marketing materials." },
+      { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems." },
+      { name: "Illustration", slug: "illustration", description: "Custom illustrations, icons, and digital art." },
+      { name: "Motion Design", slug: "motion-design", description: "Animations, motion graphics, and video effects." },
+      { name: "3D Design", slug: "3d-design", description: "3D modeling, rendering, and immersive visuals." },
+      { name: "Packaging Design", slug: "packaging-design", description: "Product packaging, labels, and unboxing experiences." },
+      { name: "Presentation Design", slug: "presentation-design", description: "Pitch decks, keynote slides, and investor presentations." },
+      { name: "Print Design", slug: "print-design", description: "Brochures, posters, magazines, and print collateral." },
+      { name: "Design Systems", slug: "design-systems", description: "Component libraries, tokens, and scalable UI foundations." },
+    ],
+  },
   marketing: {
     name: "Marketing",
     slug: "marketing",
@@ -557,7 +577,7 @@ export default function Projects() {
                         const key = project?.id ?? idx
                         return (
                           <SwiperSlide className="w-[355px]" key={key}>
-                            <NextLink href={project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : "#"} className="block focus-visible:outline-none">
+                            <NextLink href={project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : `/c/${l1Meta.slug}/projects`} className="block focus-visible:outline-none">
                             <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                               <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border cursor-pointer border-black/15">
                                 <NextImage
@@ -687,7 +707,7 @@ export default function Projects() {
                         const key = service?.id ?? idx
                         return (
                         <SwiperSlide className="w-[355px]" key={key}>
-                          <NextLink href={service ? buildServiceUrl(l1Meta.slug, service.slug, service.id) : "#"} className="block focus-visible:outline-none">
+                          <NextLink href={service ? buildServiceUrl(l1Meta.slug, service.slug, service.id) : `/c/${l1Meta.slug}/services`} className="block focus-visible:outline-none">
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
                               <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={service?.mediaUrls?.[0] || "/dashboard.png"} alt={service?.title || "Service"} fill sizes="33vw" />
@@ -895,23 +915,26 @@ export default function Projects() {
                           </Button>
                         </article>
                       </SwiperSlide>
-                      {fromLength(8).map((key) => (
-                        <SwiperSlide key={key} className="w-[355px]">
+                      {(listingsProjects.length > 0 ? listingsProjects.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
+                        const project = listingsProjects.length > 0 ? item : null
+                        return (
+                        <SwiperSlide key={project?.id ?? idx} className="w-[355px]">
+                          <NextLink href={project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : `/c/${l1Meta.slug}/projects`} className="block focus-visible:outline-none">
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src="/dashboard.png" alt="Dashboard" fill sizes="33vw" />
+                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={project?.mediaUrls?.[0] || "/dashboard.png"} alt={project?.title || "Dashboard"} fill sizes="33vw" />
                             </div>
                             <div className="mt-3 flex items-start gap-x-3">
-                              <NextLink href="#" className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">The Ultimate Mobile App Experience</NextLink>
+                              <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{project?.title || "The Ultimate Mobile App Experience"}</span>
                               <div className="inline-flex items-center gap-x-1">
                                 <Star className="size-[15px] text-primary-500 fill-primary-500" />
                                 <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span>
                               </div>
                             </div>
-                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.</p>
+                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">{project?.description?.slice(0, 140) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}</p>
                             <div className="mt-[14.5px] flex flex-col gap-y-3">
-                              <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from 12 weeks</span></div>
-                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">$50,000 budget</span></div>
+                              <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from {project?.duration || "12 weeks"}</span></div>
+                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${project?.budget ? Number(project.budget).toLocaleString() : "50,000"} budget</span></div>
                             </div>
                             <div className="mt-5 flex items-end justify-between">
                               <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
@@ -920,8 +943,10 @@ export default function Projects() {
                               <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
                             </div>
                           </article>
+                          </NextLink>
                         </SwiperSlide>
-                      ))}
+                        )
+                      })}
                     </SwiperContent>
                   </TabsContent>
                 </div>
@@ -1201,18 +1226,51 @@ export default function Projects() {
               </div>
               <div className="mt-6">
                 <TabsContent className="grid grid-cols-5 gap-[15px]" value="Projects">
-                  {["Infrastructure as Code", "API Development", "Cloud Migration", "CI/CD Pipeline", "Database Design", "Microservices", "Containerization", "Serverless", "Monitoring", "Security Audit"].map((name) => (
-                    <article key={name} className="p-5 rounded-lg bg-white border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-                      <div className="size-[35px] bg-gray-200 rounded-lg" />
-                      <div className="mt-5">
-                        <span className="text-[10px] leading-none font-medium text-dark-blue-400">DevOps</span>
-                        <h1 className="mt-1 text-base leading-none font-semibold text-dark-blue-400">{name}</h1>
-                      </div>
-                      <div className="mt-3 flex flex-col gap-y-2">
-                        <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from 12 weeks</span></div>
-                        <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">$50,000 budget</span></div>
-                      </div>
-                    </article>
+                  {(listingsProjects.length > 0
+                    ? listingsProjects.slice(0, 10).map((p: any) => ({ name: p.title, project: p }))
+                    : ["Infrastructure as Code", "API Development", "Cloud Migration", "CI/CD Pipeline", "Database Design", "Microservices", "Containerization", "Serverless", "Monitoring", "Security Audit"].map((name) => ({ name, project: null }))
+                  ).map(({ name, project }: any, i: number) => (
+                    <NextLink
+                      key={project?.id ?? name ?? i}
+                      href={project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : `/c/${l1Meta.slug}/projects`}
+                      className="focus-visible:outline-none"
+                    >
+                      <article className="p-5 rounded-lg bg-white border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-300 transition duration-300 cursor-pointer h-full">
+                        <div className="size-[35px] bg-gray-200 rounded-lg" />
+                        <div className="mt-5">
+                          <span className="text-[10px] leading-none font-medium text-dark-blue-400">{project?.category || currentName}</span>
+                          <h1 className="mt-1 text-base leading-none font-semibold text-dark-blue-400 line-clamp-2">{name}</h1>
+                        </div>
+                        <div className="mt-3 flex flex-col gap-y-2">
+                          <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from {project?.duration || "12 weeks"}</span></div>
+                          <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${project?.budget ? Number(project.budget).toLocaleString() : "50,000"} budget</span></div>
+                        </div>
+                      </article>
+                    </NextLink>
+                  ))}
+                </TabsContent>
+                <TabsContent className="grid grid-cols-5 gap-[15px]" value="Services">
+                  {(listingsServices.length > 0
+                    ? listingsServices.slice(0, 10).map((s: any) => ({ name: s.title, service: s }))
+                    : ["Brand Strategy", "Logo Design", "Web Design", "Mobile UI", "Design System", "Illustration", "Motion Graphics", "Print Design", "Packaging", "UX Audit"].map((name) => ({ name, service: null }))
+                  ).map(({ name, service }: any, i: number) => (
+                    <NextLink
+                      key={service?.id ?? name ?? i}
+                      href={service ? buildServiceUrl(l1Meta.slug, service.slug, service.id) : `/c/${l1Meta.slug}/services`}
+                      className="focus-visible:outline-none"
+                    >
+                      <article className="p-5 rounded-lg bg-white border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-300 transition duration-300 cursor-pointer h-full">
+                        <div className="size-[35px] bg-gray-200 rounded-lg" />
+                        <div className="mt-5">
+                          <span className="text-[10px] leading-none font-medium text-dark-blue-400">{service?.category || currentName}</span>
+                          <h1 className="mt-1 text-base leading-none font-semibold text-dark-blue-400 line-clamp-2">{name}</h1>
+                        </div>
+                        <div className="mt-3 flex flex-col gap-y-2">
+                          <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">{service?.deliveryTime || "Monthly"}</span></div>
+                          <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${service?.priceMin ? `${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month</span></div>
+                        </div>
+                      </article>
+                    </NextLink>
                   ))}
                 </TabsContent>
               </div>
@@ -1320,30 +1378,33 @@ export default function Projects() {
                       Explore more <ArrowRight className="size-[15px]" />
                     </Button>
                   </article>
-                  {Array(3)
-                    .fill(0)
-                    .map((_, index) => (
+                  {(listingsProjects.length > 0 ? listingsProjects.slice(0, 3) : Array(3).fill(0)).map((itemOrZero: any, index: number) => {
+                    const project = listingsProjects.length > 0 ? itemOrZero : null
+                    return (
+                      <NextLink
+                        key={project?.id ?? index}
+                        href={project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : `/c/${l1Meta.slug}/projects`}
+                        className="focus-visible:outline-none"
+                      >
                       <article
-                        key={index}
-                        className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] flex flex-col"
+                        className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] flex flex-col h-full cursor-pointer hover:ring-1 hover:ring-gray-300 transition duration-300"
                       >
                         <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
                           <NextImage
                             className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                            src="/dashboard.png"
-                            alt="Dashboard"
+                            src={project?.mediaUrls?.[0] || "/dashboard.png"}
+                            alt={project?.title || "Dashboard"}
                             fill
                             sizes="33vw"
                           />
                         </div>
 
                         <div className="mt-3 flex items-start gap-x-3">
-                          <NextLink
-                            href="#"
-                            className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
+                          <span
+                            className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
                           >
-                            The Ultimate Mobile App Experience
-                          </NextLink>
+                            {project?.title || "The Ultimate Mobile App Experience"}
+                          </span>
 
                           <div className="inline-flex items-center gap-x-1">
                             <Star className="size-[15px] text-primary-500 fill-primary-500" />
@@ -1605,7 +1666,9 @@ export default function Projects() {
                           </FavoriteRoot>
                         </div>
                       </article>
-                    ))}
+                      </NextLink>
+                    )
+                  })}
                 </TabsContent>
               </div>
             </Tabs>
@@ -1641,7 +1704,7 @@ export default function Projects() {
                         const project = listingsProjects.length > 0 ? item : null
                         return (
                         <SwiperSlide className="w-[355px]" key={project?.id ?? idx}>
-                          <NextLink href={project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : "#"} className="block focus-visible:outline-none">
+                          <NextLink href={project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : `/c/${l1Meta.slug}/projects`} className="block focus-visible:outline-none">
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
                               <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={project?.mediaUrls?.[0] || "/dashboard.png"} alt={project?.title || "Dashboard"} fill sizes="33vw" />
@@ -1703,7 +1766,7 @@ export default function Projects() {
                         const service = listingsServices.length > 0 ? item : null
                         return (
                         <SwiperSlide className="w-[355px]" key={service?.id ?? idx}>
-                          <NextLink href={service ? buildServiceUrl(l1Meta.slug, service.slug, service.id) : "#"} className="block focus-visible:outline-none">
+                          <NextLink href={service ? buildServiceUrl(l1Meta.slug, service.slug, service.id) : `/c/${l1Meta.slug}/services`} className="block focus-visible:outline-none">
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
                               <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={service?.mediaUrls?.[0] || "/dashboard.png"} alt={service?.title || "Service"} fill sizes="33vw" />

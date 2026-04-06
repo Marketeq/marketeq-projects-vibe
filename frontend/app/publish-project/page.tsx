@@ -245,9 +245,12 @@ function makeUniqueFile(
 
 const Empty = ({ outcome }: { outcome?: SubmissionOutcome }) => {
   const status = outcome?.status ?? "in_review"
+  // Category slug is not known at this point in the flow; fall back to an
+  // empty string so buildProjectUrl returns "/c//projects/<slug>-<shortId>",
+  // which downstream category pages resolve. If no slug/id, go to marketplace.
   const marketplaceHref =
     outcome?.projectSlug && outcome?.projectId
-      ? buildProjectUrl([], outcome.projectSlug, outcome.projectId)
+      ? buildProjectUrl("", outcome.projectSlug, outcome.projectId)
       : "/marketplace"
   const router = useRouter()
   return (

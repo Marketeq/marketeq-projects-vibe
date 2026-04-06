@@ -1,4 +1,4 @@
-import { BadRequestException, Get, HttpCode, HttpStatus, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, Get, HttpCode, HttpStatus, UnprocessableEntityException, UseGuards } from '@nestjs/common';
 import { Controller, Post, Body, Param, UploadedFile, UseInterceptors, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -8,6 +8,8 @@ import { ContentModerationService } from './filters/content-moderation.service';
 import { BannedKeywordsService } from './filters/banned-keywords.service';
 import { FileValidationService } from './filters/file-validation.service';
 import { ProfanityFilterService } from './filters/profanity-filter.service';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AdminGuard } from './guards/admin.guard';
 import { Request } from 'express';
 import { Logger } from '@nestjs/common';
 import { promises as fsPromises } from 'fs';
@@ -15,6 +17,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 @Controller('api/moderate')
+@UseGuards(JwtAuthGuard)
 export class ContentModerationController {
   private readonly logger = new Logger(ContentModerationController.name);
 
@@ -184,10 +187,11 @@ export class ContentModerationController {
     contentId?: string;
     contentType?: string;
   }> {
-    console.log('Headers:', req.headers);
-    console.log('File:', file);
-    console.log('Body:', contentId);
-    
+    // Minimal diagnostic log — no headers, no body, no file contents.
+    this.logger.log(
+      `moderateFile ${req.method} ${req.url} content-length=${req.headers['content-length'] ?? 'n/a'}`,
+    );
+
     const contentType = req.headers['content-type'] || '';
     
     // Validate content-type
@@ -302,7 +306,9 @@ export class ContentModerationController {
     };
   }
 
+  // TODO(prod): back banned keywords with a DB table; currently per-instance ephemeral.
   @Post('admin/keywords')
+  @UseGuards(AdminGuard)
   async addBannedKeyword(@Body() body: { newKeyword?: string; keywords?: string[] }) {
     const keywords = Array.isArray(body.keywords)
       ? body.keywords
@@ -335,7 +341,9 @@ export class ContentModerationController {
     };
   }
 
+  // TODO(prod): profanity sensitivity is per-instance ephemeral; persist to DB.
   @Post('admin/profanity-sensitivity')
+  @UseGuards(AdminGuard)
   async setProfanitySensitivity(@Body() body: { sensitivity: string }) {
     this.profanityFilterService.adjustSensitivity(body.sensitivity);
     return { status: 'success', message: `Profanity sensitivity set to '${body.sensitivity}'.` };

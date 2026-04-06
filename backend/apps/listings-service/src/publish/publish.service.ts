@@ -10,8 +10,8 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { EntityCondition } from 'src/utils/types/entity-condition.type';
-import { IPaginationOptions } from 'src/utils/types/pagination-options';
+import { EntityCondition } from '../utils/types/entity-condition.type';
+import { IPaginationOptions } from '../utils/types/pagination-options';
 import { NullableType } from '../utils/types/nullable.type';
 import { ProjectRepository } from './infrastructure/persistence/project.repository';
 import { Project } from './interface/project';
@@ -383,6 +383,9 @@ export class PublishService {
     try {
       await this.ensurePhaseOwnership(phaseId, userId);
       const data = await this.phaseRepository.update(phaseId, dto);
+      if (!data) {
+        throw new NotFoundException('Phase not found');
+      }
       return data;
     } catch (error) {
       console.log('err', error);
@@ -468,6 +471,9 @@ export class PublishService {
     try {
       await this.ensureTaskOwnership(phaseId, userId);
       const data = await this.taskRepository.update(phaseId, dto);
+      if (!data) {
+        throw new NotFoundException('Task not found');
+      }
       return data;
     } catch (error) {
       console.log('err', error);
@@ -587,7 +593,7 @@ export class PublishService {
       const media = await this.mediaRepository.create({
         featuredImage: featuredImageUpload.url,
         additionalImages: additionalImageUploads.map((image) => image.url),
-        featuredVideo: persistedVideoUrl,
+        featuredVideo: persistedVideoUrl ?? undefined,
         projectId: dto.projectId,
       });
 

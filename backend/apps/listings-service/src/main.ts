@@ -6,28 +6,33 @@ import { resolveOwnerTargetProtoPath } from '@libs/owner-target-grpc';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  const logger = new Logger('ListingsService');
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, errorHttpStatusCode: 422 }));
+
   const grpcPort = Number(process.env.LISTINGS_SERVICE_GRPC_PORT ?? 50052);
+  // Default gRPC to loopback; set GRPC_HOST=0.0.0.0 only when exposing externally.
+  const grpcHost = process.env.GRPC_HOST || '127.0.0.1';
+
   app.enableCors({
-    origin: 'http://localhost:3000',
+    origin: process.env.FE_ORIGIN || 'http://localhost:3000',
     credentials: true,
   });
-  
+
   app.connectMicroservice({
     transport: Transport.GRPC,
     options: {
       package: 'owner_target',
       protoPath: resolveOwnerTargetProtoPath(),
-      url: `0.0.0.0:${grpcPort}`,
+      url: `${grpcHost}:${grpcPort}`,
     },
   });
   await app.startAllMicroservices();
 
-  const httpPort = Number(process.env.PORT ?? 3016);
+  const httpPort = Number(process.env.PORT ?? 3004);
   await app.listen(httpPort, '0.0.0.0');
-  Logger.log(
-    `Listings Service HTTP on ${httpPort}, gRPC (owner-target) on ${grpcPort}`,
+  logger.log(
+    `Listings Service HTTP on ${httpPort}, gRPC (owner-target) on ${grpcHost}:${grpcPort}`,
   );
 }
 bootstrap();
