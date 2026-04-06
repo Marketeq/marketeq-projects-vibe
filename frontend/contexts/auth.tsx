@@ -89,13 +89,18 @@ function useProvideAuth() {
         }
       })
       .catch((error) => {
-        console.error("[auth] /user/me error:", error?.response?.status, error?.message)
         const status = error?.response?.status
         if (status === 401 || status === 403) {
+          console.warn("[auth] /user/me unauthorized; clearing local session")
           // Session is dead — clear user and cookies so AuthenticatedRoute redirects to sign-in
           Cookies.remove("access_token", { path: "/" })
           Cookies.remove("refresh_token", { path: "/" })
           setUser(null)
+        } else if (!status) {
+          // Backend unavailable/offline during local dev; avoid noisy error-level logs.
+          console.warn("[auth] /user/me unavailable:", error?.message)
+        } else {
+          console.warn("[auth] /user/me request failed:", status, error?.message)
         }
         setIsAuthChecked(true)
         setIsLoading(false)

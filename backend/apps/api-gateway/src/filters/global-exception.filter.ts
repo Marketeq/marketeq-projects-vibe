@@ -30,13 +30,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     response.status(status).json({
       statusCode: status,
-      code: typeof exceptionResponse === 'object'
+      code: typeof exceptionResponse === 'object' && exceptionResponse !== null
         ? (exceptionResponse as any).code ?? 'INTERNAL_ERROR'
         : 'INTERNAL_ERROR',
-      message: typeof exceptionResponse === 'object'
+      message: typeof exceptionResponse === 'object' && exceptionResponse !== null
         ? (exceptionResponse as any).message ?? 'An unexpected error occurred.'
         : isProd ? 'An unexpected error occurred.' : String(exception),
-      details: typeof exceptionResponse === 'object'
+      details: typeof exceptionResponse === 'object' && exceptionResponse !== null
         ? (exceptionResponse as any).details ?? undefined
         : undefined,
     })

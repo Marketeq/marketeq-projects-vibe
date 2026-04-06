@@ -24,6 +24,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   publish: 'listings',          // project publish workflow lives in listings-service
   teams: 'users',               // team management lives in user-service
   'affiliated-teams': 'users',  // affiliated teams lives in user-service
+  client: 'users',              // client onboarding profile lives in user-service
   categories: 'categories',      // category taxonomy service
   tags: 'categories',            // tags managed by category-service
   'category-pages': 'categories', // category page assembly
