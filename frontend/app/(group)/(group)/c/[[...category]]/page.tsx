@@ -77,7 +77,18 @@ interface SubcategoryData {
   heroImage?: string
 }
 
-/** Build an Unsplash image URL from a photo ID. */
+/**
+ * Build a deterministic hero-banner URL from a category/subcategory slug.
+ * Uses Picsum Photos (which sources its archive from Unsplash) so every
+ * category and subcategory gets a unique, visually distinct banner that
+ * can never 404.
+ */
+const heroBannerFor = (...segments: string[]): string => {
+  const seed = segments.filter(Boolean).join("-") || "marketeq"
+  return `https://picsum.photos/seed/${encodeURIComponent(seed)}/1600/600`
+}
+
+/** Back-compat shim for entries that still pass an explicit Unsplash id. */
 const unsplash = (id: string) =>
   `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=1600&q=80`
 
@@ -495,12 +506,15 @@ export default function Projects() {
         <div className="max-w-[1440px] mx-auto px-[50px]">
           <div className="relative rounded-lg overflow-hidden h-[227px]">
             <NextImage
-              src={(l2Meta && "heroImage" in l2Meta && l2Meta.heroImage) || l1Meta.heroImage}
+              // Deterministic banner per deepest selected slug — every
+              // category and subcategory gets a unique, visually distinct image.
+              src={heroBannerFor(l1Meta.slug, l2Meta?.slug ?? "", l3Meta?.slug ?? "")}
               alt={`${currentName} banner`}
               fill
               className="object-cover"
               sizes="100vw"
               priority
+              unoptimized
             />
             <div className="absolute inset-0 bg-black/60" />
             <div className="absolute inset-0 p-6">
