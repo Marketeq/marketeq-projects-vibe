@@ -109,6 +109,10 @@ export default function Search() {
         </DialogContent>
       </Dialog>
 
+      {/* Top dark-blue promo banner — hidden (commented out) and replaced by
+          a contextual banner rendered directly above the results count.
+          Preserved here so it can be restored easily if needed. */}
+      {/*
       <div className="p-10 lg:py-5 flex items-center md:flex-row gap-y-10 flex-col justify-between lg:px-[250px] bg-dark-blue-800">
         <div className="flex xs:max-md:items-center lg:items-center lg:flex-row flex-col lg:gap-y-5 lg:gap-x-[37px]">
           <Logo4 className="shrink-0 xs:max-lg:w-[262.31px]" />
@@ -128,11 +132,21 @@ export default function Search() {
           <ChevronRight className="size-[15px]" />
         </Button>
       </div>
+      */}
 
       <div className="lg:p-[50px] lg:flex gap-x-[50px]">
         <Sidebar />
 
         <div className="flex-auto">
+          {/* Contextual search banner — appears directly above the results count. */}
+          <div className="mb-5 rounded-lg overflow-hidden">
+            <img
+              src="/search-banner-swift.png"
+              alt="Swift Development"
+              className="w-full h-auto block"
+            />
+          </div>
+
           <div className="hidden lg:inline-flex items-center gap-x-3">
             <h1 className="text-base leading-[19.36px] font-light text-dark-blue-400">
               <span className="font-bold">147</span> Results for{" "}
