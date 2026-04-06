@@ -70,7 +70,14 @@ export class ProxyController {
 
     // Build downstream path from the normalized (api-stripped) path so
     // downstream services receive /auth/login, not /api/auth/login.
-    const downstreamPath = normalizedPath + (req.url.includes('?') ? '?' + req.url.split('?').slice(1).join('?') : '')
+    // Also strip /v1/ when gateway resolved it to user-service or listings-service.
+    let downstreamPath = normalizedPath
+    if (segments[0] === 'v1' && (segments[1] === 'users' || segments[1] === 'projects' || segments[1] === 'services')) {
+      downstreamPath = '/' + segments.slice(1).join('/')
+    }
+    if (req.url.includes('?')) {
+      downstreamPath += '?' + req.url.split('?').slice(1).join('?')
+    }
     const user = (req as any).user
 
     await this.proxy.forward(serviceName, downstreamPath, req, res, user)
