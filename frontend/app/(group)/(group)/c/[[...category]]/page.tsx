@@ -74,7 +74,12 @@ interface SubcategoryData {
   name: string
   slug: string
   description: string
+  heroImage?: string
 }
+
+/** Build an Unsplash image URL from a photo ID. */
+const unsplash = (id: string) =>
+  `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=1600&q=80`
 
 interface CategoryMeta {
   name: string
@@ -89,117 +94,117 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
     name: "Research",
     slug: "research",
     description: "Discover research projects, meet expert analysts, and find the insights you need to succeed.",
-    heroImage: "/coding.png",
+    heroImage: unsplash("1532094349884-543bc11b234d"),
     subcategories: [
-      { name: "Market Research", slug: "market-research", description: "Consumer insights, competitive analysis, and market sizing." },
-      { name: "User Research", slug: "user-research", description: "Usability testing, interviews, and persona development." },
-      { name: "Academic Research", slug: "academic-research", description: "Literature reviews, white papers, and scholarly analysis." },
-      { name: "Clinical Research", slug: "clinical-research", description: "Clinical trials, pharma research, and regulatory compliance." },
-      { name: "Consumer Research", slug: "consumer-research", description: "Behavioral analysis, focus groups, and consumer sentiment." },
-      { name: "Data Analysis", slug: "data-analysis", description: "Statistical analysis, data visualization, and reporting." },
-      { name: "Competitive Intelligence", slug: "competitive-intelligence", description: "Competitor tracking, benchmarking, and strategic insights." },
-      { name: "Survey Research", slug: "survey-research", description: "Survey design, distribution, response analysis, and insights." },
-      { name: "Qualitative Research", slug: "qualitative-research", description: "In-depth interviews, focus groups, and ethnographic studies." },
-      { name: "Sentiment Analysis", slug: "sentiment-analysis", description: "Brand monitoring, social listening, and NLP-powered analysis." },
-      { name: "Industry Analysis", slug: "industry-analysis", description: "Industry benchmarking, KPI analysis, and market positioning." },
+      { name: "Market Research", slug: "market-research", description: "Consumer insights, competitive analysis, and market sizing.", heroImage: unsplash("1460925895917-afdab827c52f") },
+      { name: "User Research", slug: "user-research", description: "Usability testing, interviews, and persona development.", heroImage: unsplash("1522071820081-009f0129c71c") },
+      { name: "Academic Research", slug: "academic-research", description: "Literature reviews, white papers, and scholarly analysis.", heroImage: unsplash("1481627834876-b7833e8f5570") },
+      { name: "Clinical Research", slug: "clinical-research", description: "Clinical trials, pharma research, and regulatory compliance.", heroImage: unsplash("1579154204601-01588f351e67") },
+      { name: "Consumer Research", slug: "consumer-research", description: "Behavioral analysis, focus groups, and consumer sentiment.", heroImage: unsplash("1556761175-5973dc0f32e7") },
+      { name: "Data Analysis", slug: "data-analysis", description: "Statistical analysis, data visualization, and reporting.", heroImage: unsplash("1551288049-bebda4e38f71") },
+      { name: "Competitive Intelligence", slug: "competitive-intelligence", description: "Competitor tracking, benchmarking, and strategic insights.", heroImage: unsplash("1542744173-8e7e53415bb0") },
+      { name: "Survey Research", slug: "survey-research", description: "Survey design, distribution, response analysis, and insights.", heroImage: unsplash("1586281380349-632531db7ed4") },
+      { name: "Qualitative Research", slug: "qualitative-research", description: "In-depth interviews, focus groups, and ethnographic studies.", heroImage: unsplash("1543269865-cbf427effbad") },
+      { name: "Sentiment Analysis", slug: "sentiment-analysis", description: "Brand monitoring, social listening, and NLP-powered analysis.", heroImage: unsplash("1611162617213-7d7a39e9b1d7") },
+      { name: "Industry Analysis", slug: "industry-analysis", description: "Industry benchmarking, KPI analysis, and market positioning.", heroImage: unsplash("1486406146926-c627a92ad1ab") },
     ],
   },
   "software-development": {
     name: "Software Development",
     slug: "software-development",
     description: "Discover exciting projects, meet talented teams, and find the skills you need to succeed.",
-    heroImage: "/coding.png",
+    heroImage: unsplash("1461749280684-dccba630e2f6"),
     subcategories: [
-      { name: "Front-end Development", slug: "front-end-development", description: "Create the interface that users interact with directly." },
-      { name: "Back-end Development", slug: "back-end-development", description: "Build the server logic, APIs, and databases." },
-      { name: "Mobile Development", slug: "mobile-development", description: "Native and cross-platform mobile applications." },
-      { name: "DevOps & Cloud", slug: "devops-cloud", description: "Infrastructure, CI/CD, and cloud deployment." },
-      { name: "Blockchain", slug: "blockchain", description: "Smart contracts, DeFi, and Web3 development." },
+      { name: "Front-end Development", slug: "front-end-development", description: "Create the interface that users interact with directly.", heroImage: unsplash("1498050108023-c5249f4df085") },
+      { name: "Back-end Development", slug: "back-end-development", description: "Build the server logic, APIs, and databases.", heroImage: unsplash("1558494949-ef010cbdcc31") },
+      { name: "Mobile Development", slug: "mobile-development", description: "Native and cross-platform mobile applications.", heroImage: unsplash("1512941937669-90a1b58e7e9c") },
+      { name: "DevOps & Cloud", slug: "devops-cloud", description: "Infrastructure, CI/CD, and cloud deployment.", heroImage: unsplash("1518770660439-4636190af475") },
+      { name: "Blockchain", slug: "blockchain", description: "Smart contracts, DeFi, and Web3 development.", heroImage: unsplash("1639762681485-074b7f938ba0") },
     ],
   },
   "design-creative": {
     name: "Design & Creative",
     slug: "design-creative",
     description: "Find creative talent for branding, UI/UX, illustration, and visual storytelling.",
-    heroImage: "/coding.png",
+    heroImage: unsplash("1558655146-9f40138edfeb"),
     subcategories: [
-      { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile." },
-      { name: "Graphic Design", slug: "graphic-design", description: "Visual branding, print design, and marketing materials." },
-      { name: "Illustration", slug: "illustration", description: "Custom illustrations, icons, and digital art." },
-      { name: "Motion Design", slug: "motion-design", description: "Animations, motion graphics, and video effects." },
-      { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems." },
+      { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile.", heroImage: unsplash("1586717791821-3f44a563fa4c") },
+      { name: "Graphic Design", slug: "graphic-design", description: "Visual branding, print design, and marketing materials.", heroImage: unsplash("1626785774573-4b799315345d") },
+      { name: "Illustration", slug: "illustration", description: "Custom illustrations, icons, and digital art.", heroImage: unsplash("1513364776144-60967b0f800f") },
+      { name: "Motion Design", slug: "motion-design", description: "Animations, motion graphics, and video effects.", heroImage: unsplash("1535016120720-40c646be5580") },
+      { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems.", heroImage: unsplash("1600775508114-5c30cf911a40") },
     ],
   },
   design: {
     name: "Design",
     slug: "design",
     description: "Find world-class designers for branding, product, web, UX, illustration, and everything in between.",
-    heroImage: "/coding.png",
+    heroImage: unsplash("1561070791-2526d30994b8"),
     subcategories: [
-      { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile." },
-      { name: "Web Design", slug: "web-design", description: "Landing pages, marketing sites, and full website design." },
-      { name: "Product Design", slug: "product-design", description: "End-to-end digital product design and design systems." },
-      { name: "Graphic Design", slug: "graphic-design", description: "Visual branding, print design, and marketing materials." },
-      { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems." },
-      { name: "Illustration", slug: "illustration", description: "Custom illustrations, icons, and digital art." },
-      { name: "Motion Design", slug: "motion-design", description: "Animations, motion graphics, and video effects." },
-      { name: "3D Design", slug: "3d-design", description: "3D modeling, rendering, and immersive visuals." },
-      { name: "Packaging Design", slug: "packaging-design", description: "Product packaging, labels, and unboxing experiences." },
-      { name: "Presentation Design", slug: "presentation-design", description: "Pitch decks, keynote slides, and investor presentations." },
-      { name: "Print Design", slug: "print-design", description: "Brochures, posters, magazines, and print collateral." },
-      { name: "Design Systems", slug: "design-systems", description: "Component libraries, tokens, and scalable UI foundations." },
+      { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile.", heroImage: unsplash("1586717791821-3f44a563fa4c") },
+      { name: "Web Design", slug: "web-design", description: "Landing pages, marketing sites, and full website design.", heroImage: unsplash("1467232004584-a241de8bcf5d") },
+      { name: "Product Design", slug: "product-design", description: "End-to-end digital product design and design systems.", heroImage: unsplash("1581291518857-4e27b48ff24e") },
+      { name: "Graphic Design", slug: "graphic-design", description: "Visual branding, print design, and marketing materials.", heroImage: unsplash("1626785774573-4b799315345d") },
+      { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems.", heroImage: unsplash("1600775508114-5c30cf911a40") },
+      { name: "Illustration", slug: "illustration", description: "Custom illustrations, icons, and digital art.", heroImage: unsplash("1513364776144-60967b0f800f") },
+      { name: "Motion Design", slug: "motion-design", description: "Animations, motion graphics, and video effects.", heroImage: unsplash("1535016120720-40c646be5580") },
+      { name: "3D Design", slug: "3d-design", description: "3D modeling, rendering, and immersive visuals.", heroImage: unsplash("1617791160536-598cf32026fb") },
+      { name: "Packaging Design", slug: "packaging-design", description: "Product packaging, labels, and unboxing experiences.", heroImage: unsplash("1542736667-069246bdbc6d") },
+      { name: "Presentation Design", slug: "presentation-design", description: "Pitch decks, keynote slides, and investor presentations.", heroImage: unsplash("1542744173-8e7e53415bb0") },
+      { name: "Print Design", slug: "print-design", description: "Brochures, posters, magazines, and print collateral.", heroImage: unsplash("1504450758481-7338eba7524a") },
+      { name: "Design Systems", slug: "design-systems", description: "Component libraries, tokens, and scalable UI foundations.", heroImage: unsplash("1558655146-605d86ed31b3") },
     ],
   },
   marketing: {
     name: "Marketing",
     slug: "marketing",
     description: "Grow your brand with expert marketers, strategists, and campaign specialists.",
-    heroImage: "/coding.png",
+    heroImage: unsplash("1557838923-2985c318be48"),
     subcategories: [
-      { name: "Digital Marketing", slug: "digital-marketing", description: "SEO, SEM, social media, and online advertising." },
-      { name: "Content Marketing", slug: "content-marketing", description: "Blog posts, whitepapers, and content strategy." },
-      { name: "Email Marketing", slug: "email-marketing", description: "Campaigns, automation, and newsletter strategy." },
-      { name: "Social Media", slug: "social-media", description: "Social strategy, community management, and growth." },
-      { name: "Analytics & SEO", slug: "analytics-seo", description: "Performance tracking, keyword research, and optimization." },
+      { name: "Digital Marketing", slug: "digital-marketing", description: "SEO, SEM, social media, and online advertising.", heroImage: unsplash("1533750349088-cd871a92f312") },
+      { name: "Content Marketing", slug: "content-marketing", description: "Blog posts, whitepapers, and content strategy.", heroImage: unsplash("1486312338219-ce68d2c6f44d") },
+      { name: "Email Marketing", slug: "email-marketing", description: "Campaigns, automation, and newsletter strategy.", heroImage: unsplash("1554200876-56c2f25224fa") },
+      { name: "Social Media", slug: "social-media", description: "Social strategy, community management, and growth.", heroImage: unsplash("1611162617213-7d7a39e9b1d7") },
+      { name: "Analytics & SEO", slug: "analytics-seo", description: "Performance tracking, keyword research, and optimization.", heroImage: unsplash("1460925895917-afdab827c52f") },
     ],
   },
   "data-analytics": {
     name: "Data & Analytics",
     slug: "data-analytics",
     description: "Turn data into decisions with expert analysts, engineers, and data scientists.",
-    heroImage: "/coding.png",
+    heroImage: unsplash("1551288049-bebda4e38f71"),
     subcategories: [
-      { name: "Data Engineering", slug: "data-engineering", description: "Pipelines, ETL, and data infrastructure." },
-      { name: "Data Science", slug: "data-science", description: "Machine learning, modeling, and predictive analytics." },
-      { name: "Business Intelligence", slug: "business-intelligence", description: "Dashboards, reporting, and KPI tracking." },
-      { name: "Data Visualization", slug: "data-visualization", description: "Charts, infographics, and interactive dashboards." },
-      { name: "Big Data", slug: "big-data", description: "Large-scale data processing and distributed systems." },
+      { name: "Data Engineering", slug: "data-engineering", description: "Pipelines, ETL, and data infrastructure.", heroImage: unsplash("1518770660439-4636190af475") },
+      { name: "Data Science", slug: "data-science", description: "Machine learning, modeling, and predictive analytics.", heroImage: unsplash("1555949963-ff9fe0c870eb") },
+      { name: "Business Intelligence", slug: "business-intelligence", description: "Dashboards, reporting, and KPI tracking.", heroImage: unsplash("1460925895917-afdab827c52f") },
+      { name: "Data Visualization", slug: "data-visualization", description: "Charts, infographics, and interactive dashboards.", heroImage: unsplash("1543286386-713bdd548da4") },
+      { name: "Big Data", slug: "big-data", description: "Large-scale data processing and distributed systems.", heroImage: unsplash("1506399558188-acca6f8cbf41") },
     ],
   },
   writing: {
     name: "Writing & Content",
     slug: "writing",
     description: "Find skilled writers for copywriting, technical documentation, and creative content.",
-    heroImage: "/coding.png",
+    heroImage: unsplash("1455390582262-044cdead277a"),
     subcategories: [
-      { name: "Copywriting", slug: "copywriting", description: "Marketing copy, ad copy, and persuasive writing." },
-      { name: "Technical Writing", slug: "technical-writing", description: "Documentation, API guides, and knowledge bases." },
-      { name: "Creative Writing", slug: "creative-writing", description: "Storytelling, scripts, and editorial content." },
-      { name: "Translation", slug: "translation", description: "Localization, multilingual content, and transcription." },
-      { name: "Editing & Proofreading", slug: "editing-proofreading", description: "Quality assurance for written content." },
+      { name: "Copywriting", slug: "copywriting", description: "Marketing copy, ad copy, and persuasive writing.", heroImage: unsplash("1486312338219-ce68d2c6f44d") },
+      { name: "Technical Writing", slug: "technical-writing", description: "Documentation, API guides, and knowledge bases.", heroImage: unsplash("1532619675605-1ede6c2ed2b0") },
+      { name: "Creative Writing", slug: "creative-writing", description: "Storytelling, scripts, and editorial content.", heroImage: unsplash("1455390582262-044cdead277a") },
+      { name: "Translation", slug: "translation", description: "Localization, multilingual content, and transcription.", heroImage: unsplash("1526385252912-31bb0c3e0d32") },
+      { name: "Editing & Proofreading", slug: "editing-proofreading", description: "Quality assurance for written content.", heroImage: unsplash("1455390582262-5dbbe2a9b6c7") },
     ],
   },
   "business-consulting": {
     name: "Business & Consulting",
     slug: "business-consulting",
     description: "Strategic advice, project management, and operational expertise for your business.",
-    heroImage: "/coding.png",
+    heroImage: unsplash("1454165804606-c3d57bc86b40"),
     subcategories: [
-      { name: "Strategy Consulting", slug: "strategy-consulting", description: "Business strategy, go-to-market, and growth planning." },
-      { name: "Project Management", slug: "project-management", description: "Agile, Scrum, and project delivery." },
-      { name: "Financial Consulting", slug: "financial-consulting", description: "Financial modeling, budgeting, and forecasting." },
-      { name: "HR & Recruiting", slug: "hr-recruiting", description: "Talent acquisition, org design, and people ops." },
-      { name: "Legal & Compliance", slug: "legal-compliance", description: "Contracts, regulatory compliance, and legal ops." },
+      { name: "Strategy Consulting", slug: "strategy-consulting", description: "Business strategy, go-to-market, and growth planning.", heroImage: unsplash("1552664730-d307ca884978") },
+      { name: "Project Management", slug: "project-management", description: "Agile, Scrum, and project delivery.", heroImage: unsplash("1517245386807-bb43f82c33c4") },
+      { name: "Financial Consulting", slug: "financial-consulting", description: "Financial modeling, budgeting, and forecasting.", heroImage: unsplash("1554224155-6726b3ff858f") },
+      { name: "HR & Recruiting", slug: "hr-recruiting", description: "Talent acquisition, org design, and people ops.", heroImage: unsplash("1521737604893-d14cc237f11d") },
+      { name: "Legal & Compliance", slug: "legal-compliance", description: "Contracts, regulatory compliance, and legal ops.", heroImage: unsplash("1589829085413-56de8ae18c73") },
     ],
   },
 }
@@ -289,7 +294,7 @@ function getCategoryMeta(slug: string): CategoryMeta {
     name: slugToTitle(slug),
     slug,
     description: `Discover exciting projects, meet talented teams, and find the skills you need to succeed.`,
-    heroImage: "/coding.png",
+    heroImage: unsplash("1519389950473-47ba0277781c"),
     subcategories: [],
   }
 }
@@ -490,10 +495,12 @@ export default function Projects() {
         <div className="max-w-[1440px] mx-auto px-[50px]">
           <div className="relative rounded-lg overflow-hidden h-[227px]">
             <NextImage
-              src={l1Meta.heroImage}
+              src={(l2Meta && "heroImage" in l2Meta && l2Meta.heroImage) || l1Meta.heroImage}
+              alt={`${currentName} banner`}
               fill
               className="object-cover"
               sizes="100vw"
+              priority
             />
             <div className="absolute inset-0 bg-black/60" />
             <div className="absolute inset-0 p-6">
