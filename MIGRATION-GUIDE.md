@@ -168,6 +168,7 @@ Old repo used shared postgres with all DBs created via init script. New repo exp
 | favorites-service | 3012 |
 | time-tracking-service | 3017 |
 
+
 ---
 
 ## 6. KNOWN ISSUES (Current State)
