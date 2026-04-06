@@ -65,8 +65,14 @@ export class ProxyController {
       return
     }
 
-    // Build downstream path — keep the full original path
-    const downstreamPath = req.path + (req.url.includes('?') ? '?' + req.url.split('?').slice(1).join('?') : '')
+    // Build downstream path — strip /v1/ prefix when gateway resolved it to a service
+    let downstreamPath = req.path
+    if (segments[0] === 'v1' && (segments[1] === 'users' || segments[1] === 'projects' || segments[1] === 'services')) {
+      downstreamPath = '/' + segments.slice(1).join('/')
+    }
+    if (req.url.includes('?')) {
+      downstreamPath += '?' + req.url.split('?').slice(1).join('?')
+    }
     const user = (req as any).user
 
     await this.proxy.forward(serviceName, downstreamPath, req, res, user)
