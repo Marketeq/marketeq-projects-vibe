@@ -130,6 +130,26 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
       { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems." },
     ],
   },
+  design: {
+    name: "Design",
+    slug: "design",
+    description: "Find world-class designers for branding, product, web, UX, illustration, and everything in between.",
+    heroImage: "/coding.png",
+    subcategories: [
+      { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile." },
+      { name: "Web Design", slug: "web-design", description: "Landing pages, marketing sites, and full website design." },
+      { name: "Product Design", slug: "product-design", description: "End-to-end digital product design and design systems." },
+      { name: "Graphic Design", slug: "graphic-design", description: "Visual branding, print design, and marketing materials." },
+      { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems." },
+      { name: "Illustration", slug: "illustration", description: "Custom illustrations, icons, and digital art." },
+      { name: "Motion Design", slug: "motion-design", description: "Animations, motion graphics, and video effects." },
+      { name: "3D Design", slug: "3d-design", description: "3D modeling, rendering, and immersive visuals." },
+      { name: "Packaging Design", slug: "packaging-design", description: "Product packaging, labels, and unboxing experiences." },
+      { name: "Presentation Design", slug: "presentation-design", description: "Pitch decks, keynote slides, and investor presentations." },
+      { name: "Print Design", slug: "print-design", description: "Brochures, posters, magazines, and print collateral." },
+      { name: "Design Systems", slug: "design-systems", description: "Component libraries, tokens, and scalable UI foundations." },
+    ],
+  },
   marketing: {
     name: "Marketing",
     slug: "marketing",
@@ -182,6 +202,76 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
       { name: "Legal & Compliance", slug: "legal-compliance", description: "Contracts, regulatory compliance, and legal ops." },
     ],
   },
+}
+
+// ── Technologies per category (logos served via cdn.simpleicons.org) ──
+interface TechItem { name: string; slug: string }
+
+const CATEGORY_TECHNOLOGIES: Record<string, TechItem[]> = {
+  design: [
+    { name: "Figma", slug: "figma" }, { name: "Sketch", slug: "sketch" },
+    { name: "Adobe XD", slug: "adobexd" }, { name: "Photoshop", slug: "adobephotoshop" },
+    { name: "Illustrator", slug: "adobeillustrator" }, { name: "InDesign", slug: "adobeindesign" },
+    { name: "After Effects", slug: "adobeaftereffects" }, { name: "Framer", slug: "framer" },
+    { name: "InVision", slug: "invision" }, { name: "Webflow", slug: "webflow" },
+    { name: "Blender", slug: "blender" }, { name: "Canva", slug: "canva" },
+  ],
+  "design-creative": [
+    { name: "Figma", slug: "figma" }, { name: "Sketch", slug: "sketch" },
+    { name: "Adobe XD", slug: "adobexd" }, { name: "Photoshop", slug: "adobephotoshop" },
+    { name: "Illustrator", slug: "adobeillustrator" }, { name: "InDesign", slug: "adobeindesign" },
+    { name: "After Effects", slug: "adobeaftereffects" }, { name: "Framer", slug: "framer" },
+    { name: "InVision", slug: "invision" }, { name: "Webflow", slug: "webflow" },
+    { name: "Blender", slug: "blender" }, { name: "Canva", slug: "canva" },
+  ],
+  "software-development": [
+    { name: "React", slug: "react" }, { name: "Vue.js", slug: "vuedotjs" },
+    { name: "Angular", slug: "angular" }, { name: "Next.js", slug: "nextdotjs" },
+    { name: "Node.js", slug: "nodedotjs" }, { name: "TypeScript", slug: "typescript" },
+    { name: "Python", slug: "python" }, { name: "Go", slug: "go" },
+    { name: "Rust", slug: "rust" }, { name: "Docker", slug: "docker" },
+    { name: "Kubernetes", slug: "kubernetes" }, { name: "PostgreSQL", slug: "postgresql" },
+  ],
+  "data-analytics": [
+    { name: "Python", slug: "python" }, { name: "R", slug: "r" },
+    { name: "Tableau", slug: "tableau" }, { name: "Power BI", slug: "powerbi" },
+    { name: "Apache Spark", slug: "apachespark" }, { name: "Snowflake", slug: "snowflake" },
+    { name: "Databricks", slug: "databricks" }, { name: "Jupyter", slug: "jupyter" },
+    { name: "Pandas", slug: "pandas" }, { name: "TensorFlow", slug: "tensorflow" },
+    { name: "PyTorch", slug: "pytorch" }, { name: "PostgreSQL", slug: "postgresql" },
+  ],
+  marketing: [
+    { name: "Google Analytics", slug: "googleanalytics" }, { name: "HubSpot", slug: "hubspot" },
+    { name: "Mailchimp", slug: "mailchimp" }, { name: "Google Ads", slug: "googleads" },
+    { name: "Meta", slug: "meta" }, { name: "Salesforce", slug: "salesforce" },
+    { name: "Semrush", slug: "semrush" }, { name: "Ahrefs", slug: "ahrefs" },
+    { name: "Hootsuite", slug: "hootsuite" }, { name: "Zapier", slug: "zapier" },
+    { name: "Canva", slug: "canva" }, { name: "Notion", slug: "notion" },
+  ],
+  writing: [
+    { name: "Google Docs", slug: "googledocs" }, { name: "Notion", slug: "notion" },
+    { name: "Grammarly", slug: "grammarly" }, { name: "WordPress", slug: "wordpress" },
+    { name: "Medium", slug: "medium" }, { name: "Substack", slug: "substack" },
+    { name: "Ghost", slug: "ghost" }, { name: "Contentful", slug: "contentful" },
+    { name: "Dropbox Paper", slug: "dropbox" }, { name: "Evernote", slug: "evernote" },
+    { name: "Obsidian", slug: "obsidian" }, { name: "Scribd", slug: "scribd" },
+  ],
+  research: [
+    { name: "Python", slug: "python" }, { name: "R", slug: "r" },
+    { name: "Jupyter", slug: "jupyter" }, { name: "Tableau", slug: "tableau" },
+    { name: "Pandas", slug: "pandas" }, { name: "Kaggle", slug: "kaggle" },
+    { name: "Google Scholar", slug: "googlescholar" }, { name: "Mendeley", slug: "mendeley" },
+    { name: "Zotero", slug: "zotero" }, { name: "Overleaf", slug: "overleaf" },
+    { name: "LaTeX", slug: "latex" }, { name: "ORCID", slug: "orcid" },
+  ],
+  "business-consulting": [
+    { name: "Excel", slug: "microsoftexcel" }, { name: "PowerPoint", slug: "microsoftpowerpoint" },
+    { name: "Notion", slug: "notion" }, { name: "Salesforce", slug: "salesforce" },
+    { name: "HubSpot", slug: "hubspot" }, { name: "Slack", slug: "slack" },
+    { name: "Asana", slug: "asana" }, { name: "Trello", slug: "trello" },
+    { name: "Jira", slug: "jira" }, { name: "Monday", slug: "mondaydotcom" },
+    { name: "Airtable", slug: "airtable" }, { name: "Zoom", slug: "zoom" },
+  ],
 }
 
 /** Convert a slug like "software-development" to title case "Software Development" */
@@ -290,10 +380,14 @@ export default function Projects() {
     isLoading: boolean
   }
 
-  // Subcategories: prefer API data, fall back to static taxonomy
+  // Subcategories: static taxonomy is the curated source of truth at L1;
+  // fall back to API children only when the static taxonomy has no entry for this category.
   const subcategories = useMemo(() => {
-    if (pageData?.children && pageData.children.length > 0) return pageData.children
-    if (!l2 && !l3) return l1Meta.subcategories.map((s) => ({ ...s, uuid: s.slug }))
+    if (!l2 && !l3 && l1Meta.subcategories.length > 0) {
+      return l1Meta.subcategories.map((s) => ({ ...s, uuid: s.slug }))
+    }
+    const apiChildren = (pageData?.children ?? []).filter((c: any) => c && c.name && c.slug)
+    if (apiChildren.length > 0) return apiChildren
     return []
   }, [pageData?.children, l1Meta.subcategories, l2, l3])
 
@@ -557,7 +651,7 @@ export default function Projects() {
                         const key = project?.id ?? idx
                         return (
                           <SwiperSlide className="w-[355px]" key={key}>
-                            <NextLink href={project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : "#"} className="block focus-visible:outline-none">
+                            <NextLink href={project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : `/c/${l1Meta.slug}/projects`} className="block focus-visible:outline-none">
                             <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                               <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border cursor-pointer border-black/15">
                                 <NextImage
@@ -687,7 +781,7 @@ export default function Projects() {
                         const key = service?.id ?? idx
                         return (
                         <SwiperSlide className="w-[355px]" key={key}>
-                          <NextLink href={service ? buildServiceUrl(l1Meta.slug, service.slug, service.id) : "#"} className="block focus-visible:outline-none">
+                          <NextLink href={service ? buildServiceUrl(l1Meta.slug, service.slug, service.id) : `/c/${l1Meta.slug}/services`} className="block focus-visible:outline-none">
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
                               <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={service?.mediaUrls?.[0] || "/dashboard.png"} alt={service?.title || "Service"} fill sizes="33vw" />
@@ -902,7 +996,7 @@ export default function Projects() {
                               <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src="/dashboard.png" alt="Dashboard" fill sizes="33vw" />
                             </div>
                             <div className="mt-3 flex items-start gap-x-3">
-                              <NextLink href="#" className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">The Ultimate Mobile App Experience</NextLink>
+                              <NextLink href={`/c/${l1Meta.slug}/projects`} className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">The Ultimate Mobile App Experience</NextLink>
                               <div className="inline-flex items-center gap-x-1">
                                 <Star className="size-[15px] text-primary-500 fill-primary-500" />
                                 <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span>
@@ -1012,13 +1106,7 @@ export default function Projects() {
 
           {/* Popular Searches */}
           <div className="mt-[50px]">
-            <div className="flex items-center justify-between">
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">Popular Searches</h1>
-              <div className="flex items-center gap-x-3">
-                <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton>
-                <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100" visual="gray" variant="outlined" data-state="active"><ChevronRight className="size-[18px]" /></IconButton>
-              </div>
-            </div>
+            <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">Popular Searches</h1>
             <div className="mt-6 flex items-center flex-wrap gap-3">
               {["API Development", "Cloud Migration", "Data Pipeline", "Machine Learning", "Mobile App", "Web Application", "Microservices", "DevOps", "UI/UX Design", "Database Optimization"].map((term) => (
                 <Badge key={term} variant="circular" visual="gray" size="lg" className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700 hover:border-gray-400 transition duration-300 cursor-pointer">
@@ -1091,14 +1179,104 @@ export default function Projects() {
               </div>
 
               <div className="mt-6">
+                {/*
+                  Each tab corresponds to an Algolia facet on the projects index.
+                  Spec: /docs/md/Search Service/ ✅ Finalized Filter Fields table for project search.md
+                        /docs/md/Search Service/📄 search-config.ts — Filters Only (projects).md
+                  - Project Type    → project_type (string facet)
+                  - Industry        → industry (string facet)
+                  - Budget          → budget_range (numberRange → budget_min/budget_max)
+                  - Project Length  → project_duration_range (enum — exact values)
+                  - Team Size       → team_size_range (enum — exact values)
+                  Each tile links to /search with the filter pre-applied and scoped to the current category.
+                */}
                 <TabsContent
                   className="grid grid-cols-5 gap-[15px]"
                   value="Project Type"
                 >
+                  {["Web App", "Mobile App", "Desktop App", "SaaS Platform", "API / Backend", "E-commerce Store", "Landing Page", "Chrome Extension", "CLI Tool", "Game"].map((projectType) => (
+                    <NextLink
+                      key={projectType}
+                      href={`/search?category=${l1Meta.slug}&project_type=${encodeURIComponent(projectType)}`}
+                      className="focus-visible:outline-none"
+                    >
+                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                        {projectType}
+                      </article>
+                    </NextLink>
+                  ))}
+                </TabsContent>
+                <TabsContent
+                  className="grid grid-cols-5 gap-[15px]"
+                  value="Industry"
+                >
                   {["Agriculture", "Oil & Gas", "Manufacturing", "Construction", "Utilities", "Retail & Wholesale", "Transportation", "Finance & Banking", "Real Estate", "Healthcare"].map((industry) => (
-                    <article key={industry} className="cursor-pointer transition duration-300 h-[62px] bg-white text-lg leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300">
-                      {industry}
-                    </article>
+                    <NextLink
+                      key={industry}
+                      href={`/search?category=${l1Meta.slug}&industry=${encodeURIComponent(industry)}`}
+                      className="focus-visible:outline-none"
+                    >
+                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                        {industry}
+                      </article>
+                    </NextLink>
+                  ))}
+                </TabsContent>
+                <TabsContent
+                  className="grid grid-cols-5 gap-[15px]"
+                  value="Budget"
+                >
+                  {[
+                    { label: "Under $5k", min: 0, max: 5000 },
+                    { label: "$5k – $15k", min: 5000, max: 15000 },
+                    { label: "$15k – $50k", min: 15000, max: 50000 },
+                    { label: "$50k – $100k", min: 50000, max: 100000 },
+                    { label: "$100k – $250k", min: 100000, max: 250000 },
+                    { label: "$250k – $500k", min: 250000, max: 500000 },
+                    { label: "$500k – $1M", min: 500000, max: 1000000 },
+                    { label: "$1M+", min: 1000000, max: null as number | null },
+                  ].map((b) => (
+                    <NextLink
+                      key={b.label}
+                      href={`/search?category=${l1Meta.slug}&budget_min=${b.min}${b.max != null ? `&budget_max=${b.max}` : ""}`}
+                      className="focus-visible:outline-none"
+                    >
+                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                        {b.label}
+                      </article>
+                    </NextLink>
+                  ))}
+                </TabsContent>
+                <TabsContent
+                  className="grid grid-cols-5 gap-[15px]"
+                  value="Project Length"
+                >
+                  {["1 - 3 months", "3 - 6 months", "6 - 12 months", "12 - 18 months", "18 - 24 months", "24+ months"].map((duration) => (
+                    <NextLink
+                      key={duration}
+                      href={`/search?category=${l1Meta.slug}&project_duration_range=${encodeURIComponent(duration)}`}
+                      className="focus-visible:outline-none"
+                    >
+                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                        {duration}
+                      </article>
+                    </NextLink>
+                  ))}
+                </TabsContent>
+                <TabsContent
+                  className="grid grid-cols-5 gap-[15px]"
+                  value="Team Size"
+                >
+                  {["1 - 2 members", "2 - 5 members", "5 - 10 members", "10 - 15 members", "15 - 20 members", "20+ members"].map((size) => (
+                    <NextLink
+                      key={size}
+                      href={`/search?category=${l1Meta.slug}&team_size_range=${encodeURIComponent(size)}`}
+                      className="focus-visible:outline-none"
+                    >
+                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                        {size}
+                      </article>
+                    </NextLink>
                   ))}
                 </TabsContent>
               </div>
@@ -1339,7 +1517,7 @@ export default function Projects() {
 
                         <div className="mt-3 flex items-start gap-x-3">
                           <NextLink
-                            href="#"
+                            href={`/c/${l1Meta.slug}/projects`}
                             className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
                           >
                             The Ultimate Mobile App Experience
@@ -1641,7 +1819,7 @@ export default function Projects() {
                         const project = listingsProjects.length > 0 ? item : null
                         return (
                         <SwiperSlide className="w-[355px]" key={project?.id ?? idx}>
-                          <NextLink href={project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : "#"} className="block focus-visible:outline-none">
+                          <NextLink href={project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : `/c/${l1Meta.slug}/projects`} className="block focus-visible:outline-none">
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
                               <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={project?.mediaUrls?.[0] || "/dashboard.png"} alt={project?.title || "Dashboard"} fill sizes="33vw" />
@@ -1703,7 +1881,7 @@ export default function Projects() {
                         const service = listingsServices.length > 0 ? item : null
                         return (
                         <SwiperSlide className="w-[355px]" key={service?.id ?? idx}>
-                          <NextLink href={service ? buildServiceUrl(l1Meta.slug, service.slug, service.id) : "#"} className="block focus-visible:outline-none">
+                          <NextLink href={service ? buildServiceUrl(l1Meta.slug, service.slug, service.id) : `/c/${l1Meta.slug}/services`} className="block focus-visible:outline-none">
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
                               <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={service?.mediaUrls?.[0] || "/dashboard.png"} alt={service?.title || "Service"} fill sizes="33vw" />
@@ -1812,11 +1990,25 @@ export default function Projects() {
             </div>
 
             <div className="gap-[15px] mt-6 grid grid-cols-6">
-              {["React", "Vue.js", "Angular", "Next.js", "Django", "Rails", "Flutter", "Swift", "Node.js", "PostgreSQL", "Docker", "Kubernetes"].map((tech) => (
-                <article key={tech} className="h-[80px] flex flex-col items-center gap-y-0.5 px-[20px] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] justify-center rounded-lg border-gray-200 cursor-pointer hover:ring-1 hover:ring-gray-200 transition duration-300">
-                  <div className="size-8 bg-gray-100 shrink-0 rounded" />
-                  <h1 className="text-xs font-medium leading-none text-dark-blue-400">{tech}</h1>
-                </article>
+              {(CATEGORY_TECHNOLOGIES[l1Meta.slug] ?? CATEGORY_TECHNOLOGIES["software-development"]).map((tech) => (
+                <NextLink
+                  key={tech.slug}
+                  href={`/search?skill=${encodeURIComponent(tech.name)}`}
+                  className="focus-visible:outline-none"
+                >
+                  <article className="h-[80px] flex flex-col items-center justify-center gap-y-1.5 px-[20px] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] rounded-lg border border-gray-200 cursor-pointer hover:ring-1 hover:ring-gray-300 transition duration-300">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`https://cdn.simpleicons.org/${tech.slug}`}
+                      alt={tech.name}
+                      width={28}
+                      height={28}
+                      className="size-7 shrink-0 object-contain"
+                      loading="lazy"
+                    />
+                    <h1 className="text-xs font-medium leading-none text-dark-blue-400 text-center">{tech.name}</h1>
+                  </article>
+                </NextLink>
               ))}
             </div>
           </div>
