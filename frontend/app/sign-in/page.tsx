@@ -42,6 +42,22 @@ const signInSchema = z.object({
 
 type SignInFormValues = z.infer<typeof signInSchema>
 
+const resolveDestination = (user?: { userType?: string | null; accountType?: string | null; role?: string | null }) => {
+  const normalizedUserType = user?.userType?.toLowerCase?.()
+  const normalizedAccountType = user?.accountType?.toUpperCase?.()
+  const normalizedRole = user?.role?.toUpperCase?.()
+
+  if (normalizedUserType === "talent" || normalizedAccountType === "TALENT" || normalizedRole === "TALENT") {
+    return "/talent-dashboard"
+  }
+
+  if (normalizedUserType === "client" || normalizedAccountType === "CLIENT" || normalizedRole === "CLIENT") {
+    return "/client-dashboard"
+  }
+
+  return "/onboarding"
+}
+
 export default function SignIn() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -81,18 +97,23 @@ export default function SignIn() {
           Cookies.set("access_token", response?.data?.access_token)
 
           let nextUser = response?.data?.user
-          if (!nextUser) {
-            try {
-              const meResponse = await UserAPI.me()
-              if (meResponse?.status === 200) {
-                nextUser =
-                  meResponse?.data?.user ??
-                  meResponse?.data?.data?.user ??
-                  meResponse?.data
+          try {
+            const meResponse = await UserAPI.me()
+            if (meResponse?.status === 200) {
+              const profileUser =
+                meResponse?.data?.user ??
+                meResponse?.data?.data?.user ??
+                meResponse?.data
+
+              if (profileUser && typeof profileUser === "object") {
+                nextUser = {
+                  ...nextUser,
+                  ...profileUser,
+                }
               }
-            } catch {
-              // noop: auth context will refresh user on load
             }
+          } catch {
+            // noop: fall back to auth payload when profile refresh is unavailable
           }
 
           if (nextUser && typeof nextUser === "object") {

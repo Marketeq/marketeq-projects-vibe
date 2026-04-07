@@ -16,6 +16,7 @@ import {
 import { ClientAPI } from "@/service/http/client"
 import { InvitationsAPI } from "@/service/http/invitations"
 import { UserAPI } from "@/service/http/user"
+import { generateUsernameSuggestions } from "@/utils/username"
 import { HOT_KEYS } from "@/utils/constants"
 import {
   cn,
@@ -118,23 +119,8 @@ import {
 
 const getClientUsernameSuggestions = (email?: string | null) => {
   const localPart = (email ?? "").split("@")[0]?.trim().toLowerCase() ?? ""
-  const normalized = localPart.replace(/[^a-z0-9._-]/g, "")
-
-  if (!normalized) return []
-
-  const compact = normalized.replace(/[._-]+/g, "")
-  const suggestions = [
-    `@${normalized}`,
-    compact ? `@${compact}` : "",
-    compact ? `@${compact}.team` : "",
-    normalized.includes(".")
-      ? `@${normalized}er`
-      : compact
-        ? `@${compact}hq`
-        : "",
-  ]
-
-  return Array.from(new Set(suggestions.filter(Boolean)))
+  const normalized = localPart.replace(/[^a-z0-9_]/g, "")
+  return normalized ? [normalized] : []
 }
 
 const toNameCase = (value?: string | null) => {
@@ -1134,8 +1120,23 @@ const CreateYourUsername = ({
   const { username } = watch()
 
   const usernameSuggestions = useMemo(
-    () => getClientUsernameSuggestions(user?.email),
-    [user?.email]
+    () =>
+      getClientUsernameSuggestions({
+        email: user?.email,
+        firstName: user?.firstName ?? stepData?.firstName,
+        lastName: user?.lastName ?? stepData?.lastName,
+        teamName: stepData?.teamName,
+        role: stepData?.role,
+      }),
+    [
+      stepData?.firstName,
+      stepData?.lastName,
+      stepData?.role,
+      stepData?.teamName,
+      user?.email,
+      user?.firstName,
+      user?.lastName,
+    ]
   )
 
   const { toggleValidation } = useStepContext()
@@ -1300,7 +1301,7 @@ const CreateYourUsername = ({
               />
             </div>
 
-            {show ? (
+            {usernameSuggestions.length > 0 && (show ? (
               <div className="mt-6">
                 {usernameSuggestions.map((username, index) => (
                   <React.Fragment key={username}>
@@ -1356,7 +1357,7 @@ const CreateYourUsername = ({
                   More suggestions
                 </Button>
               </div>
-            )}
+            ))}
 
             <div className="mt-10 2xl:mt-[50px]">
               <Alert>
@@ -2526,7 +2527,7 @@ const DoNext = ({
           nextUser = {
             ...fallbackUser,
             onboardingDismissed: true,
-            role: fallbackUser.role ?? ROLE.CLIENT,
+            userType: "client",
           }
         }
       }

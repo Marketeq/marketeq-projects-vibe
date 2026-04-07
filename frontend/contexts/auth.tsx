@@ -31,6 +31,20 @@ const AuthContext: Context<AuthContextType> = createContext<AuthContextType>({
   logoutHandler: () => {},
 })
 
+const mergeUserAuthFields = (prev: User | null, next: User | null): User | null => {
+  if (!next) return next
+
+  return {
+    ...prev,
+    ...next,
+    provider: next.provider ?? prev?.provider,
+    hasPassword: next.hasPassword ?? prev?.hasPassword,
+    socialId: next.socialId ?? prev?.socialId,
+    emailVerified: next.emailVerified ?? prev?.emailVerified,
+    deletedAt: next.deletedAt ?? prev?.deletedAt,
+  }
+}
+
 function useProvideAuth() {
   const router = useRouter()
   const { toast } = useToast()

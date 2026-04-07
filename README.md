@@ -9,8 +9,8 @@ npm install --legacy-peer-deps
 ## Backend:
 ### Ports:
 Auth: 3001
-Gateway: 3002
-User: 3003
+Gateway: 4000
+User: 3002
 Listings: 3004
 Autocomplete: 3019
 Content moderation: 3014

@@ -2,6 +2,8 @@
   "name": "@marketeq/user-service",
   "version": "1.0.0",
   "scripts": {
+    "migration:run": "typeorm-ts-node-commonjs -d src/data-source.ts migration:run",
+    "migration:show": "typeorm-ts-node-commonjs -d src/data-source.ts migration:show",
     "build": "nest build user-service",
     "start": "node dist/apps/user-service/src/main",
     "start:dev": "nest start user-service --watch",
