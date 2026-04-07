@@ -12,8 +12,56 @@ import { useRouter } from "next/navigation"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
 import Cookies from "js-cookie"
-import { User } from "@/types/user"
+import { ROLE, User } from "@/types/user"
 import { useToast } from "@/components/ui"
+
+type DashboardResolvableUser = {
+  userType?: string | null
+  accountType?: string | null
+  role?: string | null
+}
+
+export const resolveDashboardRole = (
+  user?: DashboardResolvableUser | null,
+): ROLE | undefined => {
+  const normalizedUserType = user?.userType?.toLowerCase?.()
+  const normalizedAccountType = user?.accountType?.toUpperCase?.()
+  const normalizedRole = user?.role?.toUpperCase?.()
+
+  if (
+    normalizedUserType === "talent" ||
+    normalizedAccountType === ROLE.TALENT ||
+    normalizedRole === ROLE.TALENT
+  ) {
+    return ROLE.TALENT
+  }
+
+  if (
+    normalizedUserType === "client" ||
+    normalizedAccountType === ROLE.CLIENT ||
+    normalizedRole === ROLE.CLIENT
+  ) {
+    return ROLE.CLIENT
+  }
+
+  return undefined
+}
+
+export const resolveDashboardRoute = (
+  user?: DashboardResolvableUser | null,
+): string => {
+  const dashboardRole = resolveDashboardRole(user)
+
+  if (dashboardRole === ROLE.TALENT) {
+    return "/talent-dashboard"
+  }
+
+  if (dashboardRole === ROLE.CLIENT) {
+    return "/client-dashboard"
+  }
+
+  return "/onboarding"
+}
 
 interface AuthContextType {
   isLoading: boolean
@@ -41,7 +89,7 @@ const mergeUserAuthFields = (prev: User | null, next: User | null): User | null 
     hasPassword: next.hasPassword ?? prev?.hasPassword,
     socialId: next.socialId ?? prev?.socialId,
     emailVerified: next.emailVerified ?? prev?.emailVerified,
-    deletedAt: next.deletedAt ?? prev?.deletedAt,
+    deletedAt: next.deletedAt ?? prev?.deletedAt ?? null,
   }
 }
 

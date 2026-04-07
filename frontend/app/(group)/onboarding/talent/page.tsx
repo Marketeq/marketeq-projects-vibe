@@ -1092,9 +1092,6 @@ const ShareYourLocation = ({
   const [isHomeCountry, setIsHomeCountry] = useState(true)
   const [suppressLanguageFocusOpen, setSuppressLanguageFocusOpen] =
     useState(false)
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(
-    parseMultiSelectString(stepData?.language)
-  )
   const [languageOptions, setLanguageOptions] = useState<string[]>(
     getUniqueOptions(languagesMock.map((item) => item.label))
   )
@@ -1112,10 +1109,19 @@ const ShareYourLocation = ({
 
   const addLanguageValue = async (
     nextValue: string,
-    onChange: (values: string[]) => void
+    onChange: (values: string[]) => void,
+    currentValues: string[]
   ) => {
     const value = nextValue.trim()
     if (!value) return
+
+    const normalizedCurrentValues = getUniqueOptions(currentValues)
+    if (normalizedCurrentValues.includes(value)) {
+      setLanguagesQuery("")
+      setIsLanguagesOpen(false)
+      setSuppressLanguageFocusOpen(true)
+      return
+    }
 
     const isKnownSuggestion = hasCaseInsensitiveExactMatch(languageOptions, value)
     if (!isKnownSuggestion) {
@@ -1134,12 +1140,8 @@ const ShareYourLocation = ({
 
     clearErrors("languages")
     setLanguageOptions((prev) => getUniqueOptions([...prev, value]))
-    setSelectedLanguages((prev) => {
-      if (prev.includes(value)) return prev
-      const next = [...prev, value]
-      onChange(next)
-      return next
-    })
+    const next = getUniqueOptions([...normalizedCurrentValues, value])
+    onChange(next)
     setLanguagesQuery("")
     setIsLanguagesOpen(false)
     setSuppressLanguageFocusOpen(true)
@@ -1147,10 +1149,10 @@ const ShareYourLocation = ({
 
   const removeLanguageValue = (
     target: string,
-    onChange: (values: string[]) => void
+    onChange: (values: string[]) => void,
+    currentValues: string[]
   ) => {
-    const next = selectedLanguages.filter((item) => item !== target)
-    setSelectedLanguages(next)
+    const next = currentValues.filter((item) => item !== target)
     onChange(next)
   }
   const { toggleValidation } = useStepContext()
@@ -1404,14 +1406,15 @@ const ShareYourLocation = ({
                 <Controller
                   control={control}
                   name="languages"
-                  render={({ field: { onChange } }) => (
-                    <div className="space-y-3">
+                  render={({ field: { onChange, value } }) => {
+                    const selectedLanguages = Array.isArray(value) ? value : []
+
+                    return <div className="space-y-3">
                       <Combobox
                         className="w-full"
                         value={selectedLanguages}
                         onChange={(values) => {
                           const next = values as string[]
-                          setSelectedLanguages(next)
                           onChange(next)
                           setLanguagesQuery("")
                           setIsLanguagesOpen(false)
@@ -1456,13 +1459,21 @@ const ShareYourLocation = ({
                                     activeOption?.textContent?.trim() ?? ""
 
                                   if (activeLabel) {
-                                    void addLanguageValue(activeLabel, onChange)
+                                    void addLanguageValue(
+                                      activeLabel,
+                                      onChange,
+                                      selectedLanguages
+                                    )
                                     return
                                   }
                                 }
 
                                 event.preventDefault()
-                                void addLanguageValue(languagesQuery, onChange)
+                                void addLanguageValue(
+                                  languagesQuery,
+                                  onChange,
+                                  selectedLanguages
+                                )
                               }
                             }}
                             invalid={hookFormHasError({
@@ -1479,7 +1490,11 @@ const ShareYourLocation = ({
                                   key={item}
                                   value={item}
                                   onClick={() =>
-                                    void addLanguageValue(item, onChange)
+                                    void addLanguageValue(
+                                      item,
+                                      onChange,
+                                      selectedLanguages
+                                    )
                                   }
                                 >
                                   {item}
@@ -1498,7 +1513,11 @@ const ShareYourLocation = ({
                               <button
                                 className="focus-visible:outline-none"
                                 onClick={() =>
-                                  removeLanguageValue(item, onChange)
+                                  removeLanguageValue(
+                                    item,
+                                    onChange,
+                                    selectedLanguages
+                                  )
                                 }
                                 type="button"
                               >
@@ -1509,7 +1528,7 @@ const ShareYourLocation = ({
                         </div>
                       )}
                     </div>
-                  )}
+                  }}
                 />
                 <HookFormErrorMessage
                   errors={errors}
@@ -1958,12 +1977,11 @@ const ShowcaseYourTalent = ({
 
     clearErrors("industriesWorkedWith")
     setIndustriesOptions((prev) => getUniqueOptions([...prev, value]))
-    setSelectedIndustries((prev) => {
-      if (prev.includes(value)) return prev
-      const next = [...prev, value]
+    if (!selectedIndustries.includes(value)) {
+      const next = [...selectedIndustries, value]
+      setSelectedIndustries(next)
       setValue("industriesWorkedWith", next, { shouldValidate: true })
-      return next
-    })
+    }
     setIndustriesQuery("")
     setIsIndustriesOpen(false)
   }

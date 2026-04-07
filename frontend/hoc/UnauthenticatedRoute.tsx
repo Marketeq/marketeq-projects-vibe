@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/contexts/auth"
+import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import { ROLE } from "@/types/user"
 import { Spinner } from "@/components/ui/spinner/spinner"
 
@@ -15,10 +15,12 @@ const UnauthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
     setIsPageLoading(true)
 
     if (user && !isLoading) {
-      if (user?.role) {
-        if (user.role === ROLE.TALENT) {
+      const dashboardRole = resolveDashboardRole(user)
+
+      if (dashboardRole) {
+        if (dashboardRole === ROLE.TALENT) {
           router.push(`/talent-dashboard`)
-        } else if (user.role === ROLE.CLIENT) {
+        } else if (dashboardRole === ROLE.CLIENT) {
           router.push(`/client-dashboard`)
         } else {
           router.push(`/`)
