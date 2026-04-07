@@ -1,5 +1,5 @@
 import { CollectionConfig } from 'payload/types';
-import { isAdmin, isAuthorOfDocument, isContentEditorOrAbove } from '../access/roles';
+import { isAdmin, isAuthorOfDocument, isContentEditorOrAbove, isPublished } from '../access/roles';
 
 export const HelpArticles: CollectionConfig = {
   slug: 'help-articles',
@@ -8,7 +8,7 @@ export const HelpArticles: CollectionConfig = {
     defaultColumns: ['title', 'topic', 'status', 'helpfulCount'],
   },
   access: {
-    read: isAuthorOfDocument,
+    read: isPublished,
     create: isContentEditorOrAbove,
     update: isAuthorOfDocument,
     delete: isAdmin,

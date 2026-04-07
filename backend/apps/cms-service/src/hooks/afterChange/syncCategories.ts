@@ -18,7 +18,20 @@ export const syncCategoryToService: CollectionAfterChangeHook = async ({
       return doc;
     }
 
-    const parentUuid = typeof doc.parent === 'object' ? doc.parent?.uuid : null;
+    let parentUuid: string | null = null;
+    if (doc.parent) {
+      if (typeof doc.parent === 'object') {
+        parentUuid = doc.parent?.uuid || null;
+      } else {
+        // parent is a Payload ID (number) — look up the uuid
+        try {
+          const parentDoc = await req.payload.findByID({
+            collection: 'categories', id: doc.parent, depth: 0,
+          });
+          parentUuid = (parentDoc as any)?.uuid || null;
+        } catch { /* parent may have been deleted concurrently */ }
+      }
+    }
 
     await publisher.publishCategorySaved({
       id: doc.uuid || String(doc.id),
