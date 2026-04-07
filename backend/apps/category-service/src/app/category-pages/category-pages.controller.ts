@@ -21,12 +21,6 @@ export class CategoryPagesController {
 
   constructor(private readonly categoryPagesService: CategoryPagesService) {}
 
-  @Post('strapi-sync')
-  @ApiOperation({ summary: 'Webhook for CMS category/tag sync (backward-compat Strapi endpoint)' })
-  async handleWebhook(@Body() body: any) {
-    return this.handleCmsSync(body);
-  }
-
   @Post('cms-sync')
   @ApiOperation({ summary: 'Webhook for CMS (Payload) category/tag sync' })
   async handleCmsSync(@Body() body: any) {

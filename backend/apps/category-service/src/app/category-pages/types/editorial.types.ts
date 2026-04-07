@@ -1,7 +1,7 @@
 /**
  * Editorial content for category pages
- * Populated from Strapi CMS (currently mocked)
- * @see StrapiAdapter.getEditorial()
+ * Populated from CMS service (currently mocked)
+ * @see CmsAdapter.getEditorial()
  */
 
 export interface EditorialContent {

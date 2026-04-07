@@ -1,9 +1,8 @@
 // apps/category-service/src/content/cms-client.ts
-// Replaces the old Strapi v4 client with Payload CMS REST client
 import axios from 'axios';
 
-const CMS_URL = (process.env.CMS_SERVICE_URL || process.env.STRAPI_URL || 'http://localhost:3020').replace(/\/+$/, '');
-const CMS_API_KEY = process.env.CMS_API_KEY || process.env.STRAPI_TOKEN || process.env.STRAPI_API_TOKEN || '';
+const CMS_URL = (process.env.CMS_SERVICE_URL || 'http://localhost:3020').replace(/\/+$/, '');
+const CMS_API_KEY = process.env.CMS_API_KEY || '';
 
 export const cmsClient = axios.create({
   baseURL: `${CMS_URL}/api`,
@@ -11,9 +10,6 @@ export const cmsClient = axios.create({
     ? { Authorization: `API-Key ${CMS_API_KEY}`, 'Content-Type': 'application/json' }
     : { 'Content-Type': 'application/json' },
 });
-
-// Backward-compatible alias
-export const strapi = cmsClient;
 
 /**
  * Paginate through all docs from Payload CMS REST API.
@@ -33,7 +29,6 @@ export async function getAllPages<T>(path: string, params: Record<string, any>):
       },
     });
 
-    // Payload REST response shape
     const docs = res.data?.docs ?? [];
     items.push(...docs);
 

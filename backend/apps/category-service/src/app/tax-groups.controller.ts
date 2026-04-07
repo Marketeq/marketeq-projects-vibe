@@ -21,22 +21,16 @@ export class TaxGroupsController {
   @ApiOperation({ summary: 'Taxonomy groups that reference categories in a subtree' })
   async affectedBySubtree(@Param('oldParentUuid') oldParentUuid: string) {
     const subtree = await this.categoryService.getSubtreeUuids(oldParentUuid);
-    const cmsUrl = (
-      process.env.CMS_SERVICE_URL ||
-      process.env.STRAPI_URL ||
-      'http://localhost:3020'
-    ).replace(/\/+$/, '');
-    const apiKey = process.env.CMS_API_KEY || process.env.STRAPI_TOKEN || '';
+    const cmsUrl = (process.env.CMS_SERVICE_URL || 'http://localhost:3020').replace(/\/+$/, '');
+    const apiKey = process.env.CMS_API_KEY || '';
 
     // Payload CMS REST: GET /api/taxonomy-groups?depth=2
     const url = `${cmsUrl}/api/taxonomy-groups?depth=2&limit=1000`;
 
     try {
       const headers: Record<string, string> = {};
-      if (apiKey && process.env.CMS_API_KEY) {
+      if (apiKey) {
         headers['Authorization'] = `API-Key ${apiKey}`;
-      } else if (apiKey) {
-        headers['Authorization'] = `Bearer ${apiKey}`;
       }
 
       const res = await firstValueFrom(

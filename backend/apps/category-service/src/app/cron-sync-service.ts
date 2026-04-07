@@ -15,8 +15,8 @@ export class CronSyncService {
 
   @Cron('*/10 * * * *')
   async handleCronSync() {
-    const cmsUrl = process.env.CMS_SERVICE_URL || process.env.STRAPI_URL;
-    const apiKey = (process.env.CMS_API_KEY || process.env.STRAPI_TOKEN || process.env.STRAPI_API_TOKEN)?.trim();
+    const cmsUrl = process.env.CMS_SERVICE_URL;
+    const apiKey = process.env.CMS_API_KEY?.trim();
 
     if (!cmsUrl) {
       this.logger.debug('CMS_SERVICE_URL not configured, skipping sync');
@@ -25,7 +25,7 @@ export class CronSyncService {
 
     if (!apiKey) {
       this.logger.debug(
-        'CMS_API_KEY / STRAPI_TOKEN not set, skipping hierarchy verify (CMS REST requires auth)',
+        'CMS_API_KEY not set, skipping hierarchy verify (CMS REST requires auth)',
       );
       return;
     }

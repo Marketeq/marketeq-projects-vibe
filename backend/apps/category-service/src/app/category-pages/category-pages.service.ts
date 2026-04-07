@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { CategoryEntity } from '../entities/category.entity';
 import { TagEntity } from '../entities/tag.entity';
-import { StrapiAdapter } from './adapters/strapi.adapter';
+import { CmsAdapter } from './adapters/cms.adapter';
 import { EvaluatorFactory } from './evaluators/evaluator-factory';
 import { Rule, BlockSpec } from './types/taxonomy.types';  // ← ADD BlockSpec
 import { SuggestionsAdapter } from './suggestions/suggestions.adapter';
@@ -27,7 +27,7 @@ export class CategoryPagesService {
     private categoryRepo: Repository<CategoryEntity>,
     @InjectRepository(TagEntity)
     private tagRepo: Repository<TagEntity>,
-    private readonly strapiAdapter: StrapiAdapter,
+    private readonly cmsAdapter: CmsAdapter,
     private readonly evaluatorFactory: EvaluatorFactory,
     private readonly suggestionsAdapter: SuggestionsAdapter,
     private readonly healthService: HealthService,
@@ -195,7 +195,7 @@ private async buildBlocks(
     );
 
     // Fetch Taxonomy Groups from Strapi
-    const taxonomyGroups = await this.strapiAdapter.getTaxonomyGroups(categoryUuid);
+    const taxonomyGroups = await this.cmsAdapter.getTaxonomyGroups(categoryUuid);
 
     if (taxonomyGroups.length === 0) {
       this.logger.warn(`No taxonomy groups found for category ${categoryUuid}`);
@@ -397,7 +397,7 @@ private getBlockDescription(rule: Rule): string {
         skills: 12,
       },
     });
-    const editorial = await this.strapiAdapter.getEditorial(category.uuid);
+    const editorial = await this.cmsAdapter.getEditorial(category.uuid);
 
     const level = slugParts.length as 1 | 2 | 3;
     const slugPath = [...slugParts];

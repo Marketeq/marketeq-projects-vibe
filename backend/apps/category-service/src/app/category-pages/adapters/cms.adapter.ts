@@ -2,12 +2,11 @@ import { TaxonomyGroup } from '../types/taxonomy.types';
 import { EditorialContent } from '../types/editorial.types';
 
 /**
- * StrapiAdapter Interface
- * 
- * Defines contract for fetching Taxonomy Groups and Editorial content from Strapi.
- * Real implementation will be provided by Jayesh.
+ * CmsAdapter Interface
+ *
+ * Defines contract for fetching Taxonomy Groups and Editorial content from the CMS.
  */
-export abstract class StrapiAdapter {
+export abstract class CmsAdapter {
   /**
    * Fetch taxonomy groups for a specific category
    * @param categoryUuid - Category UUID to fetch rules for

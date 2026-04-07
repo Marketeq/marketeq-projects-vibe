@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { cmsClient, getAllPages } from './strapi-client';
+import { cmsClient, getAllPages } from './cms-client';
 import { CONTENT_TYPES, ContentTypeConfig } from './content.types';
 
 @Injectable()

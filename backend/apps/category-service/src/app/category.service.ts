@@ -44,12 +44,8 @@ export class CategoryService {
   ) {}
 
   // ---------------------------------------------------------
-  // CMS -> Nest upsert (replaces syncFromStrapi)
+  // CMS -> Nest upsert
   // ---------------------------------------------------------
-  async syncFromStrapi(dto: CategoryDto): Promise<void> {
-    return this.syncFromCms(dto);
-  }
-
   async syncFromCms(dto: CategoryDto): Promise<void> {
     // 1) Upsert tags first (by slug; create if missing)
     const tagEntities: TagEntity[] = [];
@@ -162,10 +158,6 @@ export class CategoryService {
     this.logger.log(`Fallback pulled ${list.length} categories from CMS`);
   }
 
-  /** Backward-compatible alias */
-  public async fallbackSyncFromStrapi(): Promise<void> {
-    return this.fallbackSyncFromCms();
-  }
 
   // ---------------------------------------------------------
   // Queries
@@ -553,10 +545,6 @@ export class CategoryService {
     }
   }
 
-  /** Backward compat alias */
-  async handleStrapiDeleteWebhook(payload: any): Promise<{ status: string; reason?: string }> {
-    return this.handleCmsDeleteWebhook(payload);
-  }
 
   /** Try multiple payload shapes */
   private extractUuidFromWebhook(body: any): string | null {
@@ -566,30 +554,20 @@ export class CategoryService {
   }
 
   // ---------------------------------------------------------
-  // CMS helpers (replaces Strapi helpers)
+  // CMS helpers
   // ---------------------------------------------------------
   private baseCmsUrl(): string {
-    return (
-      process.env.CMS_SERVICE_URL ||
-      process.env.STRAPI_URL ||
-      'http://localhost:3020'
-    ).replace(/\/+$/, '');
+    return (process.env.CMS_SERVICE_URL || 'http://localhost:3020').replace(/\/+$/, '');
   }
 
   private cmsApiKey(): string | undefined {
-    const key = process.env.CMS_API_KEY || process.env.STRAPI_TOKEN || process.env.STRAPI_API_TOKEN;
-    const trimmed = key?.trim();
-    return trimmed || undefined;
+    return process.env.CMS_API_KEY?.trim() || undefined;
   }
 
   private authHeader() {
     const key = this.cmsApiKey();
     if (!key) return {};
-    // Support both Payload API-Key and Strapi Bearer token
-    if (process.env.CMS_API_KEY) {
-      return { Authorization: `API-Key ${key}` };
-    }
-    return { Authorization: `Bearer ${key}` };
+    return { Authorization: `API-Key ${key}` };
   }
 
   private formatHttpError(error: unknown): string {
@@ -671,14 +649,9 @@ export class CategoryService {
     }
   }
 
-  /** Backward compat alias */
-  public async pushCategoryToStrapi(cat: CategoryEntity): Promise<{ id: number | string }> {
-    return this.pushCategoryToCms(cat);
-  }
-
-  /** Payload CMS REST -> your DTO */
+  /** Payload CMS REST -> CategoryDto */
   private transformCmsCategory(raw: any): CategoryDto {
-    // Payload CMS returns flat objects (no nested attributes like Strapi v4)
+    // Payload CMS returns flat objects
     let parentUuid = null;
 
     if (raw.parent) {
@@ -772,8 +745,4 @@ export class CategoryService {
     }
   }
 
-  /** Backward compat alias */
-  async testStrapiConnection() {
-    return this.testCmsConnection();
-  }
 }

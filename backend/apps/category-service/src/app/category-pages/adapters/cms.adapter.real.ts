@@ -1,35 +1,31 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { StrapiAdapter } from './strapi.adapter';
+import { CmsAdapter } from './cms.adapter';
 import { TaxonomyGroup } from '../types/taxonomy.types';
 import { EditorialContent } from '../types/editorial.types';
 
 /**
- * REAL implementation of StrapiAdapter — now targets Payload CMS REST API
- * instead of Strapi. The adapter interface is unchanged so consumers
- * (CategoryPagesService) don't need to change.
+ * REAL implementation of CmsAdapter — targets Payload CMS REST API.
  */
 @Injectable()
-export class StrapiAdapterReal extends StrapiAdapter {
-  private readonly logger = new Logger(StrapiAdapterReal.name);
+export class CmsAdapterReal extends CmsAdapter {
+  private readonly logger = new Logger(CmsAdapterReal.name);
   private readonly cmsUrl: string;
   private readonly cmsApiKey: string;
 
   constructor(private readonly httpService: HttpService) {
     super();
     this.cmsUrl = (
-      process.env.CMS_SERVICE_URL ||
-      process.env.STRAPI_URL ||
-      'http://localhost:3020'
+      process.env.CMS_SERVICE_URL || 'http://localhost:3020'
     ).replace(/\/+$/, '');
-    this.cmsApiKey = process.env.CMS_API_KEY || process.env.STRAPI_TOKEN || '';
+    this.cmsApiKey = process.env.CMS_API_KEY || '';
 
     if (!this.cmsApiKey) {
       this.logger.warn('CMS_API_KEY not configured — Taxonomy Groups will not work!');
     }
 
-    this.logger.log(`StrapiAdapterReal initialized (Payload CMS): ${this.cmsUrl}`);
+    this.logger.log(`CmsAdapterReal initialized: ${this.cmsUrl}`);
   }
 
   private authHeaders() {
@@ -38,10 +34,6 @@ export class StrapiAdapterReal extends StrapiAdapter {
       : { 'Content-Type': 'application/json' };
   }
 
-  /**
-   * Fetch Taxonomy Groups for a specific category UUID from Payload CMS.
-   * In Payload, taxonomy-groups is a collection with a categories relationship.
-   */
   async getTaxonomyGroups(categoryUuid: string): Promise<TaxonomyGroup[]> {
     try {
       const url = `${this.cmsUrl}/api/taxonomy-groups?depth=2&limit=1000`;
@@ -55,12 +47,9 @@ export class StrapiAdapterReal extends StrapiAdapter {
         }),
       );
 
-      // Payload response: { docs: [...], totalDocs, ... }
       const docs = response.data?.docs ?? response.data?.data ?? [];
-
       this.logger.log(`Found ${docs.length} total Taxonomy Groups in CMS`);
 
-      // Filter groups linked to this category
       const matchingGroups = docs.filter((group: any) => {
         const categories = group.categories ?? [];
         return categories.some((cat: any) => {
@@ -97,13 +86,9 @@ export class StrapiAdapterReal extends StrapiAdapter {
     }
   }
 
-  /**
-   * Fetch Editorial content for a category from Payload CMS
-   */
   async getEditorial(categoryUuid: string): Promise<EditorialContent | null> {
     try {
       this.logger.log(`Fetching Editorial content for category: ${categoryUuid}`);
-      // Editorial content not yet implemented in Payload CMS
       return null;
     } catch (error: any) {
       this.logger.error(`Failed to fetch Editorial content: ${error.message}`);
@@ -111,9 +96,6 @@ export class StrapiAdapterReal extends StrapiAdapter {
     }
   }
 
-  /**
-   * Transform Payload CMS doc to TaxonomyGroup format
-   */
   private transformTaxonomyGroup(doc: any): TaxonomyGroup {
     const categories = doc.categories ?? [];
     const categoryUuids = categories
@@ -129,13 +111,9 @@ export class StrapiAdapterReal extends StrapiAdapter {
     };
   }
 
-  /**
-   * Get all Taxonomy Groups (for testing/admin purposes)
-   */
   async getAllTaxonomyGroups(): Promise<TaxonomyGroup[]> {
     try {
       const url = `${this.cmsUrl}/api/taxonomy-groups?depth=2&limit=1000`;
-
       this.logger.log(`Fetching ALL Taxonomy Groups`);
 
       const response = await firstValueFrom(
@@ -146,9 +124,7 @@ export class StrapiAdapterReal extends StrapiAdapter {
       );
 
       const docs = response.data?.docs ?? response.data?.data ?? [];
-
       this.logger.log(`Found ${docs.length} total Taxonomy Groups`);
-
       return docs.map((doc: any) => this.transformTaxonomyGroup(doc));
     } catch (error: any) {
       this.logger.error(`Failed to fetch all Taxonomy Groups: ${error.message}`);

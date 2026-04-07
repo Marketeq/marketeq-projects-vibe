@@ -26,7 +26,7 @@ export class CategoryController {
 
   @Post('sync')
   async sync(@Body() dto: CategoryDto) {
-    await this.service.syncFromStrapi(dto);
+    await this.service.syncFromCms(dto);
     return { status: 'ok' };
   }
 
@@ -38,13 +38,12 @@ export class CategoryController {
 
   @Post('push')
   async push(@Body() dto: CategoryDto) {
-    await this.service.syncFromStrapi(dto);
+    await this.service.syncFromCms(dto);
     const saved = await this.service.findBySlug(dto.slug);
-    const pushed = await this.service.pushCategoryToStrapi(saved);
-    return { status: 'ok', strapiId: pushed.id };
+    const pushed = await this.service.pushCategoryToCms(saved);
+    return { status: 'ok', cmsId: pushed.id };
   }
 
-  /** Doc alias: POST /categories/user */
   @Post('user')
   async createUserDocAlias(@Body() body: { name: string; parentUuid: string }) {
     const saved = await this.service.createUserSubcategory(body.name, body.parentUuid);
@@ -72,12 +71,6 @@ export class CategoryController {
     };
   }
 
-  @Post('strapi/delete')
-  async handleStrapiDelete(@Body() payload: any) {
-    const { status, reason } = await this.service.handleCmsDeleteWebhook(payload);
-    return { status, reason };
-  }
-
   @Post('cms/delete')
   async handleCmsDelete(@Body() payload: any) {
     const { status, reason } = await this.service.handleCmsDeleteWebhook(payload);
@@ -85,9 +78,8 @@ export class CategoryController {
   }
 
   /**
-   * Doc: POST /categories/reassigned — move all direct children from old parent to new parent (does not delete the old parent).
-   * Accepts: { parentUuid, newParentUuid } or { oldParentUuid, newParentUuid } or nested { data: { oldParentUuid, newParentUuid } } (webhook-style).
-   * Strapi numeric ids are not supported here (Nest uses UUIDs); resolve ids in Strapi or call with UUIDs.
+   * Reassign all direct children from old parent to new parent (by UUID).
+   * Accepts: { parentUuid, newParentUuid } or { oldParentUuid, newParentUuid }
    */
   @Post('reassigned')
   @ApiOperation({ summary: 'Reassign all children of one parent to another parent (by UUID)' })
@@ -105,21 +97,19 @@ export class CategoryController {
 
     if (!parentUuid || !newParentUuid) {
       throw new BadRequestException(
-        'Provide parentUuid and newParentUuid (or oldParentUuid and newParentUuid / webhook data.oldParentUuid & data.newParentUuid)',
+        'Provide parentUuid and newParentUuid (or oldParentUuid and newParentUuid)',
       );
     }
     const { updated } = await this.service.reassignChildrenToParent(parentUuid, newParentUuid);
     return { status: 'ok', updated };
   }
 
-  /** Doc: GET /categories */
   @Get()
   @ApiOperation({ summary: 'List all categories' })
   findAll() {
     return this.service.findAll();
   }
 
-  /** Doc: GET /categories/tree — optional ?parentUuid= */
   @Get('tree')
   @ApiOperation({ summary: 'Category tree (optionally rooted at parentUuid)' })
   getTree(@Query('parentUuid') parentUuid?: string) {
@@ -132,11 +122,6 @@ export class CategoryController {
   @Get('slug/:slug')
   findBySlug(@Param('slug') slug: string) {
     return this.service.findBySlug(slug);
-  }
-
-  @Get('test-strapi')
-  async testStrapi() {
-    return this.service.testCmsConnection();
   }
 
   @Get('test-cms')
@@ -157,14 +142,12 @@ export class CategoryController {
     };
   }
 
-  /** Doc: GET /categories/:uuid/breadcrumbs */
   @Get(':uuid/breadcrumbs')
   @ApiOperation({ summary: 'Breadcrumb chain for a category UUID' })
   getBreadcrumbs(@Param('uuid') uuid: string) {
     return this.service.getBreadcrumbs(uuid);
   }
 
-  /** Doc: GET /categories/:uuid/delete-dry-run?reassignTo= */
   @Get(':uuid/delete-dry-run')
   @ApiOperation({ summary: 'Dry-run delete impact (no DB changes)' })
   deleteDryRun(@Param('uuid') uuid: string, @Query('reassignTo') reassignTo?: string) {
