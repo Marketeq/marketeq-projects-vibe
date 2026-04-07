@@ -14,15 +14,16 @@ export class AlgoliaService {
   ) {
     const url = this.config.get<string>('ALGOLIA_SERVICE_URL');
     if (!url) {
-      throw new Error(
-        'ALGOLIA_SERVICE_URL is not set — listings-service cannot reach algolia-service',
+      console.warn(
+        'ALGOLIA_SERVICE_URL is not set — Algolia indexing will be disabled',
       );
     }
-    this.baseUrl = url;
+    this.baseUrl = url || '';
   }
 
   // Called by the moderation.approved consumer after status is set to published.
   async indexJobListing(listing: JobListing): Promise<void> {
+    if (!this.baseUrl) return;
     const record = this.buildIndexRecord(listing);
     await lastValueFrom(
       this.http.post(
@@ -34,6 +35,7 @@ export class AlgoliaService {
 
   // Called when any text or structural field changes on a published listing.
   async updateJobListingIndex(listing: JobListing): Promise<void> {
+    if (!this.baseUrl) return;
     const record = this.buildIndexRecord(listing);
     await lastValueFrom(
       this.http.put(
@@ -45,6 +47,7 @@ export class AlgoliaService {
 
   // Called on closed, deleted, or reverted-to-draft.
   async removeJobListingIndex(listingId: string): Promise<void> {
+    if (!this.baseUrl) return;
     await lastValueFrom(
       this.http.delete(
         `${this.baseUrl}/v1/index/job-listings/${listingId}`,
