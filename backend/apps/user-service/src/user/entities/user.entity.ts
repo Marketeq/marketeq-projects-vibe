@@ -59,6 +59,12 @@ export class User {
   @Column({ nullable: true })
   role?: string;
 
+  @Column({ default: 'EMAIL' })
+  provider: string;
+
+  @Column({ default: false })
+  hasPassword: boolean;
+
   @Column({ nullable: true })
   industry?: string;
 

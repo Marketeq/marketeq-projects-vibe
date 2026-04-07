@@ -17,7 +17,6 @@ import * as os from 'os';
 import * as path from 'path';
 
 @Controller('api/moderate')
-@UseGuards(JwtAuthGuard)
 export class ContentModerationController {
   private readonly logger = new Logger(ContentModerationController.name);
 

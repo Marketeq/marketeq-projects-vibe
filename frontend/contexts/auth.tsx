@@ -31,6 +31,20 @@ const AuthContext: Context<AuthContextType> = createContext<AuthContextType>({
   logoutHandler: () => {},
 })
 
+const mergeUserAuthFields = (prev: User | null, next: User | null): User | null => {
+  if (!next) return next
+
+  return {
+    ...prev,
+    ...next,
+    provider: next.provider ?? prev?.provider,
+    hasPassword: next.hasPassword ?? prev?.hasPassword,
+    socialId: next.socialId ?? prev?.socialId,
+    emailVerified: next.emailVerified ?? prev?.emailVerified,
+    deletedAt: next.deletedAt ?? prev?.deletedAt,
+  }
+}
+
 function useProvideAuth() {
   const router = useRouter()
   const { toast } = useToast()
@@ -42,7 +56,8 @@ function useProvideAuth() {
   // Wrap setUser to derive accountType from userType (without overwriting role, which is the job title)
   const setUser: Dispatch<React.SetStateAction<User | null>> = (action) => {
     setUserRaw((prev) => {
-      const next = typeof action === "function" ? action(prev) : action
+      const requested = typeof action === "function" ? action(prev) : action
+      const next = mergeUserAuthFields(prev, requested)
       if (next && next.userType) {
         const typeMap: Record<string, ROLE> = { talent: ROLE.TALENT, client: ROLE.CLIENT }
         next.accountType = typeMap[next.userType] ?? next.accountType

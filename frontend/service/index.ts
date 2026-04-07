@@ -12,6 +12,19 @@ interface Config extends AxiosRequestConfig {}
 
 const BASE = process.env.NEXT_PUBLIC_API_URL
 
+const getAccessToken = () => {
+  const cookieToken = Cookies.get("access_token") || Cookies.get("accessToken")
+  if (cookieToken) return cookieToken
+
+  if (typeof window === "undefined") return undefined
+
+  return (
+    window.localStorage.getItem("access_token") ||
+    window.localStorage.getItem("token") ||
+    undefined
+  )
+}
+
 axios.defaults.baseURL = BASE
 
 const axiosInstance = axios.create({
@@ -21,7 +34,7 @@ const axiosInstance = axios.create({
 
 axiosInstance.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
-    const access_token = Cookies.get("access_token")
+    const access_token = getAccessToken()
     if (access_token) {
       config.headers.Authorization = `Bearer ${access_token}`
     }

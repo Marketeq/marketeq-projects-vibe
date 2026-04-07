@@ -9,7 +9,10 @@ import { NotificationsClient } from './invitations/notifications.client';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['apps/invitations-service/.env', '.env'],
+    }),
     HttpModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -18,7 +21,7 @@ import { NotificationsClient } from './invitations/notifications.client';
         type: 'postgres',
         url: config.get<string>('DATABASE_URL'),
         entities: [Invitation],
-        synchronize: config.get('NODE_ENV') !== 'production',
+        synchronize: false,
         migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,

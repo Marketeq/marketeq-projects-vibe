@@ -74,6 +74,13 @@ export class UserService {
       }
     }
 
+    if (candidateId && claims.email) {
+      return this.syncFromAuth({
+        id: candidateId,
+        email: claims.email,
+      });
+    }
+
     throw new NotFoundException('User not found');
   }
 
@@ -141,9 +148,16 @@ export class UserService {
   }
 
   async dismissOnboarding(id: string, role?: UserRole): Promise<User> {
+    const userType =
+      role === UserRole.TALENT
+        ? 'talent'
+        : role === UserRole.CLIENT
+          ? 'client'
+          : undefined;
+
     return this.updateUser(id, {
       onboardingDismissed: true,
-      ...(role ? { role } : {}),
+      ...(userType ? { userType } : {}),
     });
   }
 
@@ -165,6 +179,8 @@ export class UserService {
     if (normalizedIncomingUsername === '') normalizedIncomingUsername = undefined;
     const fallbackUsername = `user_${dto.id.replace(/-/g, '').slice(0, 12)}`;
     const resolvedRole = dto.role ?? UserRole.CLIENT;
+    const resolvedProvider = dto.provider ?? 'EMAIL';
+    const resolvedHasPassword = dto.hasPassword ?? false;
 
     const existingById = await this.userRepository.findOne({
       where: { id: dto.id },
@@ -174,6 +190,8 @@ export class UserService {
       Object.assign(existingById, {
         email: dto.email ?? existingById.email,
         role: resolvedRole ?? existingById.role,
+        provider: dto.provider ?? existingById.provider ?? resolvedProvider,
+        hasPassword: dto.hasPassword ?? existingById.hasPassword ?? resolvedHasPassword,
       });
       if (normalizedIncomingUsername) {
         existingById.username = normalizedIncomingUsername;
@@ -191,6 +209,8 @@ export class UserService {
       }
       Object.assign(existingByEmail, {
         role: resolvedRole ?? existingByEmail.role,
+        provider: dto.provider ?? existingByEmail.provider ?? resolvedProvider,
+        hasPassword: dto.hasPassword ?? existingByEmail.hasPassword ?? resolvedHasPassword,
       });
       if (normalizedIncomingUsername) {
         existingByEmail.username = normalizedIncomingUsername;
@@ -203,6 +223,8 @@ export class UserService {
       email: dto.email,
       username: normalizedIncomingUsername ?? fallbackUsername,
       role: resolvedRole,
+      provider: resolvedProvider,
+      hasPassword: resolvedHasPassword,
     });
 
     return this.userRepository.save(user);
