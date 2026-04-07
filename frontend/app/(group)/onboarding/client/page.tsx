@@ -1141,13 +1141,7 @@ const CreateYourUsername = ({
 
   const usernameSuggestions = useMemo(
     () =>
-      getClientUsernameSuggestions({
-        email: user?.email,
-        firstName: user?.firstName ?? stepData?.firstName,
-        lastName: user?.lastName ?? stepData?.lastName,
-        teamName: stepData?.teamName,
-        role: stepData?.role,
-      }),
+      getClientUsernameSuggestions(user?.email),
     [
       stepData?.firstName,
       stepData?.lastName,
