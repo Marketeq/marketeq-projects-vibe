@@ -18,8 +18,8 @@ export class JwtAuthGuard implements CanActivate, OnModuleInit {
   constructor(private reflector: Reflector) {}
 
   onModuleInit(): void {
-    const publicKey = process.env.AUTH_JWT_PUBLIC_KEY;
-    if (!publicKey) {
+    const rawKey = process.env.AUTH_JWT_PUBLIC_KEY;
+    if (!rawKey) {
       // Fatal — we refuse to start with a weak (HS256) fallback because the
       // auth-service now issues RS256 tokens. Missing key = misconfigured
       // deployment; fail loudly instead of silently trusting every request.
@@ -28,7 +28,7 @@ export class JwtAuthGuard implements CanActivate, OnModuleInit {
       );
       throw new Error('AUTH_JWT_PUBLIC_KEY is required');
     }
-    this.publicKey = publicKey;
+    this.publicKey = rawKey.replace(/\\n/g, '\n');
   }
 
   canActivate(context: ExecutionContext): boolean {

@@ -21,7 +21,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 @Inj()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(config: ConfigService) {
-    const publicKey = config.get<string>('AUTH_JWT_PUBLIC_KEY')
+    const rawKey = config.get<string>('AUTH_JWT_PUBLIC_KEY')
+    const publicKey = rawKey?.replace(/\\n/g, '\n')
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         ExtractJwt.fromAuthHeaderAsBearerToken(),
