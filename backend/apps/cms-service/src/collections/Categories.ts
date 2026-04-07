@@ -20,6 +20,23 @@ export const Categories: CollectionConfig = {
   },
   fields: [
     {
+      name: 'uuid',
+      type: 'text',
+      unique: true,
+      index: true,
+      admin: { description: 'Stable UUID for cross-service identity. Auto-generated on create.' },
+      hooks: {
+        beforeValidate: [
+          ({ value, operation }) => {
+            if (operation === 'create' && !value) {
+              return require('crypto').randomUUID();
+            }
+            return value;
+          },
+        ],
+      },
+    },
+    {
       name: 'name',
       type: 'text',
       required: true,

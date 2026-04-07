@@ -9,10 +9,12 @@ import {
   BadRequestException,
   Headers,
   ForbiddenException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam, ApiQuery, ApiOkResponse, ApiNotFoundResponse } from '@nestjs/swagger';
 import { CategoryPagesService } from './category-pages.service';
 import { clampLimit } from './utils/cursor.utils';
+import { ServiceAuthGuard } from '../../guards/service-auth.guard';
 
 @ApiTags('Category Pages')
 @Controller('category-pages')
@@ -22,6 +24,7 @@ export class CategoryPagesController {
   constructor(private readonly categoryPagesService: CategoryPagesService) {}
 
   @Post('cms-sync')
+  @UseGuards(ServiceAuthGuard)
   @ApiOperation({ summary: 'Webhook for CMS (Payload) category/tag sync' })
   async handleCmsSync(@Body() body: any) {
     this.logger.log(`Full webhook payload: ${JSON.stringify(body, null, 2)}`);

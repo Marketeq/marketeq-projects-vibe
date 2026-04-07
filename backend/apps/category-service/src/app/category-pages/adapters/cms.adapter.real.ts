@@ -87,13 +87,10 @@ export class CmsAdapterReal extends CmsAdapter {
   }
 
   async getEditorial(categoryUuid: string): Promise<EditorialContent | null> {
-    try {
-      this.logger.log(`Fetching Editorial content for category: ${categoryUuid}`);
-      return null;
-    } catch (error: any) {
-      this.logger.error(`Failed to fetch Editorial content: ${error.message}`);
-      return null;
-    }
+    // Not yet implemented — editorial content collection not yet added to CMS.
+    // Returns null so category pages render without editorial sections.
+    this.logger.debug(`Editorial content not available for category: ${categoryUuid}`);
+    return null;
   }
 
   private transformTaxonomyGroup(doc: any): TaxonomyGroup {

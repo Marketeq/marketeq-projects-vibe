@@ -4,11 +4,11 @@ import { CategoryService } from '../app/category.service';
 
 interface CategorySavedEvent {
   event: 'category.saved';
-  id: string;
+  id: string;    // UUID from CMS Categories.uuid field
   name: string;
   slug: string;
   status: 'active' | 'inactive';
-  parent: string | null;
+  parent: string | null;  // parent UUID or null
   listingTypes: string[];
   sortOrder?: number;
   algoliaFacetOrder?: number;
@@ -16,7 +16,7 @@ interface CategorySavedEvent {
 
 interface CategoryDeletedEvent {
   event: 'category.deleted';
-  id: string;
+  id: string;    // UUID from CMS Categories.uuid field
   slug: string;
 }
 

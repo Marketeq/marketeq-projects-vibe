@@ -1,14 +1,27 @@
 // apps/category-service/src/content/cms-client.ts
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 
-const CMS_URL = (process.env.CMS_SERVICE_URL || 'http://localhost:3020').replace(/\/+$/, '');
-const CMS_API_KEY = process.env.CMS_API_KEY || '';
+let _client: AxiosInstance | null = null;
 
-export const cmsClient = axios.create({
-  baseURL: `${CMS_URL}/api`,
-  headers: CMS_API_KEY
-    ? { Authorization: `API-Key ${CMS_API_KEY}`, 'Content-Type': 'application/json' }
-    : { 'Content-Type': 'application/json' },
+function getClient(): AxiosInstance {
+  if (!_client) {
+    const cmsUrl = (process.env.CMS_SERVICE_URL || 'http://localhost:3020').replace(/\/+$/, '');
+    const apiKey = process.env.CMS_API_KEY || '';
+
+    _client = axios.create({
+      baseURL: `${cmsUrl}/api`,
+      headers: apiKey
+        ? { Authorization: `API-Key ${apiKey}`, 'Content-Type': 'application/json' }
+        : { 'Content-Type': 'application/json' },
+    });
+  }
+  return _client;
+}
+
+export const cmsClient = new Proxy({} as AxiosInstance, {
+  get(_target, prop) {
+    return (getClient() as any)[prop];
+  },
 });
 
 /**
@@ -19,8 +32,9 @@ export async function getAllPages<T>(path: string, params: Record<string, any>):
   const limit = 100;
   let page = 1;
   const items: T[] = [];
+  const MAX_PAGES = 500;
 
-  while (true) {
+  while (page <= MAX_PAGES) {
     const res = await cmsClient.get(path, {
       params: {
         limit,

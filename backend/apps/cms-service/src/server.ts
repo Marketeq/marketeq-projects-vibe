@@ -18,14 +18,9 @@ app.get('/ready', async (_req, res) => {
   const checks: Record<string, boolean> = { database: false, rabbitmq: false };
 
   try {
-    // Verify actual DB connectivity, not just adapter existence
-    const pool = (payload.db as any).pool;
-    if (pool) {
-      const client = await pool.connect();
-      await client.query('SELECT 1');
-      client.release();
-      checks.database = true;
-    }
+    // Use Payload local API for adapter-agnostic DB connectivity check
+    await payload.find({ collection: 'users', limit: 0 });
+    checks.database = true;
   } catch {
     checks.database = false;
   }

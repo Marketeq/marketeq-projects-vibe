@@ -10,30 +10,6 @@ export class ContentService {
     return err?.response?.status === 404;
   }
 
-  /** Get Payload CMS category doc by slug */
-  async getCategoryBySlug(slug: string) {
-    const res = await cmsClient.get('categories', {
-      params: {
-        'where[slug][equals]': slug,
-        limit: 1,
-      },
-    });
-    const doc = res.data?.docs?.[0];
-    if (!doc) return null;
-    return { id: doc.id, ...doc };
-  }
-
-  /** Get Payload CMS category doc by ID */
-  async getCategoryById(id: string | number) {
-    try {
-      const res = await cmsClient.get(`categories/${id}`);
-      return res.data;
-    } catch (e) {
-      if (this.isNotFound(e)) return null;
-      throw e;
-    }
-  }
-
   // ---------- discovery ----------
 
   /** Count items per content-type referencing the category ID */

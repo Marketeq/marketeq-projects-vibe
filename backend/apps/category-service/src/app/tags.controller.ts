@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Logger, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { TagService } from './tag.service';
+import { ServiceAuthGuard } from '../guards/service-auth.guard';
 
 type TagDto = { uuid?: string | null; name: string; slug: string };
 
@@ -13,6 +14,7 @@ export class TagsController {
 
   /** CMS -> Nest upsert (or manual test) */
   @Post('sync')
+  @UseGuards(ServiceAuthGuard)
   async sync(@Body() body: any) {
     this.logger.debug('Incoming Tag Sync Payload');
 
@@ -40,6 +42,7 @@ export class TagsController {
 
   /** Upsert locally, then push to CMS */
   @Post('push')
+  @UseGuards(ServiceAuthGuard)
   async push(@Body() dto: TagDto) {
     await this.service.upsertFromCms(dto);
     const saved = await this.service.findBySlug(dto.slug);
@@ -49,6 +52,7 @@ export class TagsController {
 
   /** Create a dummy local tag and push it to CMS */
   @Post('push-test')
+  @UseGuards(ServiceAuthGuard)
   async pushTest() {
     const t = await this.service.createAndPushDummyTag();
     return { status: 'ok', data: { uuid: t.uuid, slug: t.slug } };

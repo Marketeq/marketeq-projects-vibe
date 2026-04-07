@@ -51,16 +51,16 @@ export const categorySyncPlugin: Plugin = (incomingConfig) => {
             totalDocs = categories.totalDocs;
 
             for (const cat of categories.docs) {
-              const parentId = typeof cat.parent === 'object'
-                ? (cat.parent as any)?.id
-                : cat.parent;
+              const parentUuid = typeof cat.parent === 'object'
+                ? (cat.parent as any)?.uuid
+                : null;
 
               await publisher.publishCategorySaved({
-                id: String(cat.id),
+                id: (cat as any).uuid || String(cat.id),
                 name: cat.name as string,
                 slug: cat.slug as string,
                 status: (cat.status as 'active' | 'inactive') || 'active',
-                parent: parentId ? String(parentId) : null,
+                parent: parentUuid || null,
                 listingTypes: (cat.listingTypes as string[]) || [],
                 sortOrder: cat.sortOrder as number | undefined,
                 algoliaFacetOrder: cat.algoliaFacetOrder as number | undefined,

@@ -41,10 +41,23 @@ export class CmsEventPublisher {
     this.channelWrapper = connection.createChannel({
       json: true,
       setup: async (channel: ConfirmChannel) => {
-        // Publisher only declares exchanges.
-        // Consumer queues are owned and declared by the consuming services.
+        // Declare exchanges
         await channel.assertExchange(EXCHANGE, 'topic', { durable: true });
         await channel.assertExchange(EXCHANGE_DLX, 'fanout', { durable: true });
+
+        // Declare consumer queue and bind to exchange so messages are routed
+        const QUEUE = 'cms.category.category';
+        const DLQ = `${QUEUE}.dlq`;
+        await channel.assertQueue(QUEUE, {
+          durable: true,
+          arguments: {
+            'x-dead-letter-exchange': EXCHANGE_DLX,
+            'x-message-ttl': 30000,
+          },
+        });
+        await channel.assertQueue(DLQ, { durable: true });
+        await channel.bindQueue(QUEUE, EXCHANGE, 'category.*');
+        await channel.bindQueue(DLQ, EXCHANGE_DLX, '');
       },
     });
 
@@ -68,8 +81,7 @@ export class CmsEventPublisher {
 
   private async publishWithRetry(routingKey: string, payload: unknown): Promise<void> {
     if (!this.channelWrapper) {
-      console.error('[CmsEventPublisher] Not connected — skipping publish');
-      return;
+      throw new Error('[CmsEventPublisher] Not connected — cannot publish event');
     }
 
     for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {

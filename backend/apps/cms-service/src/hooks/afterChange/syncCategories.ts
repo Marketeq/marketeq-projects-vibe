@@ -18,14 +18,14 @@ export const syncCategoryToService: CollectionAfterChangeHook = async ({
       return doc;
     }
 
-    const parentId = typeof doc.parent === 'object' ? doc.parent?.id : doc.parent;
+    const parentUuid = typeof doc.parent === 'object' ? doc.parent?.uuid : null;
 
     await publisher.publishCategorySaved({
-      id: String(doc.id),
+      id: doc.uuid || String(doc.id),
       name: doc.name,
       slug: doc.slug,
       status: doc.status || 'active',
-      parent: parentId ? String(parentId) : null,
+      parent: parentUuid || null,
       listingTypes: doc.listingTypes || [],
       sortOrder: doc.sortOrder,
       algoliaFacetOrder: doc.algoliaFacetOrder,
@@ -57,7 +57,7 @@ export const deleteCategoryFromService: CollectionAfterDeleteHook = async ({
     }
 
     await publisher.publishCategoryDeleted({
-      id: String(doc.id),
+      id: doc.uuid || String(doc.id),
       slug: doc.slug,
     });
 

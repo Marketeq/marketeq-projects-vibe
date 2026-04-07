@@ -8,11 +8,13 @@ import {
   Query,
   Logger,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { CategoryService } from './category.service';
 import { CategoryDto } from './dto/category.dto';
 import { ContentService } from '../content/content.service';
+import { ServiceAuthGuard } from '../guards/service-auth.guard';
 
 @ApiTags('Categories')
 @Controller('categories')
@@ -25,18 +27,21 @@ export class CategoryController {
   ) {}
 
   @Post('sync')
+  @UseGuards(ServiceAuthGuard)
   async sync(@Body() dto: CategoryDto) {
     await this.service.syncFromCms(dto);
     return { status: 'ok' };
   }
 
   @Post('push-test')
+  @UseGuards(ServiceAuthGuard)
   async pushTest() {
     const res = await this.service.createAndPushDummyCategory();
     return { status: 'ok', data: { uuid: res.uuid, slug: res.slug } };
   }
 
   @Post('push')
+  @UseGuards(ServiceAuthGuard)
   async push(@Body() dto: CategoryDto) {
     await this.service.syncFromCms(dto);
     const saved = await this.service.findBySlug(dto.slug);
@@ -72,6 +77,7 @@ export class CategoryController {
   }
 
   @Post('cms/delete')
+  @UseGuards(ServiceAuthGuard)
   async handleCmsDelete(@Body() payload: any) {
     const { status, reason } = await this.service.handleCmsDeleteWebhook(payload);
     return { status, reason };
@@ -82,6 +88,7 @@ export class CategoryController {
    * Accepts: { parentUuid, newParentUuid } or { oldParentUuid, newParentUuid }
    */
   @Post('reassigned')
+  @UseGuards(ServiceAuthGuard)
   @ApiOperation({ summary: 'Reassign all children of one parent to another parent (by UUID)' })
   async reassignChildren(@Body() body: Record<string, unknown>) {
     const data = (body?.data ?? body) as Record<string, unknown>;
@@ -162,12 +169,14 @@ export class CategoryController {
   }
 
   @Post(':uuid/reassign')
+  @UseGuards(ServiceAuthGuard)
   async reassign(@Param('uuid') from: string, @Query('to') to: string) {
     await this.content.reassignCategory(from, to);
     return { status: 'ok' };
   }
 
   @Delete(':uuid')
+  @UseGuards(ServiceAuthGuard)
   async deleteCategory(
     @Param('uuid') uuid: string,
     @Query('reassignTo') reassignTo?: string,
@@ -177,6 +186,7 @@ export class CategoryController {
   }
 
   @Post(':uuid/delete')
+  @UseGuards(ServiceAuthGuard)
   async deleteCategoryPost(
     @Param('uuid') uuid: string,
     @Body('reassignTo') reassignTo?: string,

@@ -141,21 +141,30 @@ export class CategoryService {
   // ---------------------------------------------------------
   public async fallbackSyncFromCms(): Promise<void> {
     const base = this.baseCmsUrl();
+    const PAGE_SIZE = 100;
+    let page = 1;
+    let total = 0;
+    let hasNextPage = true;
 
-    // Payload CMS REST: GET /api/categories?depth=2&limit=1000
-    const url = `${base}/api/categories?depth=2&limit=1000`;
+    while (hasNextPage) {
+      const url = `${base}/api/categories?depth=2&limit=${PAGE_SIZE}&page=${page}`;
+      const res = await this.http.axiosRef.get(url, { headers: this.authHeader() });
 
-    const res = await this.http.axiosRef.get(url, { headers: this.authHeader() });
-    // Payload response: { docs: [...], totalDocs, ... }
-    const list = Array.isArray(res.data?.docs) ? res.data.docs : (Array.isArray(res.data?.data) ? res.data.data : []);
+      const list = Array.isArray(res.data?.docs) ? res.data.docs : [];
 
-    this.logger.log(`CMS returned ${list.length} categories`);
+      for (const raw of list) {
+        const dto = this.transformCmsCategory(raw);
+        await this.syncFromCms(dto);
+      }
 
-    for (const raw of list) {
-      const dto = this.transformCmsCategory(raw);
-      await this.syncFromCms(dto);
+      total += list.length;
+      hasNextPage = res.data?.hasNextPage ?? false;
+      page++;
+
+      if (page > 500) break; // safety limit
     }
-    this.logger.log(`Fallback pulled ${list.length} categories from CMS`);
+
+    this.logger.log(`Fallback pulled ${total} categories from CMS`);
   }
 
 
@@ -546,11 +555,11 @@ export class CategoryService {
   }
 
 
-  /** Try multiple payload shapes */
+  /** Try multiple payload shapes — always prefer uuid field */
   private extractUuidFromWebhook(body: any): string | null {
     const data = body?.data ?? body?.entry ?? body;
     const attrs = data?.attributes ?? data;
-    return attrs?.uuid ?? data?.uuid ?? attrs?.slug ?? null;
+    return attrs?.uuid ?? data?.uuid ?? null;
   }
 
   // ---------------------------------------------------------
@@ -591,13 +600,6 @@ export class CategoryService {
     const res = await this.http.axiosRef.get(url, { headers: this.authHeader() });
     const docs = res.data?.docs ?? [];
     return docs.length ? docs[0] : null;
-  }
-
-  private async findCmsCategoryIdByUuid(uuid: string): Promise<number | string | null> {
-    const url = `${this.baseCmsUrl()}/api/categories?where[slug][equals]=${encodeURIComponent(uuid)}&limit=1`;
-    const res = await this.http.axiosRef.get(url, { headers: this.authHeader() });
-    const docs = res.data?.docs ?? [];
-    return docs.length ? docs[0].id : null;
   }
 
   /**
@@ -655,22 +657,19 @@ export class CategoryService {
     let parentUuid = null;
 
     if (raw.parent) {
-      if (typeof raw.parent === 'string') {
-        parentUuid = raw.parent;
-      } else if (raw.parent.uuid) {
+      if (typeof raw.parent === 'object' && raw.parent.uuid) {
         parentUuid = raw.parent.uuid;
+      } else if (typeof raw.parent === 'string') {
+        parentUuid = raw.parent;
       } else if (raw.parent.slug) {
-        // Payload populates the full parent object
         parentUuid = raw.parent.slug;
-      } else if (raw.parent.id) {
-        parentUuid = String(raw.parent.id);
       }
     }
 
     this.logger.debug(`Transform: ${raw.slug} -> parent=${parentUuid || 'null'}`);
 
     return {
-      uuid: raw.uuid ?? raw.slug ?? String(raw.id),
+      uuid: raw.uuid,
       name: raw.name,
       slug: raw.slug,
       approved: raw.status === 'active',

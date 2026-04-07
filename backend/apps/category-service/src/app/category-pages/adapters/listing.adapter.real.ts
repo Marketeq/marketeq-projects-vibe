@@ -131,7 +131,7 @@ export class ListingAdapterReal extends ListingAdapter {
       featured: doc.featured || false,
       editorialLabel: doc.editorialLabel,
       featuredOrder: doc.featuredOrder,
-      rating: doc.rating || 4.5,
+      rating: doc.rating || 0,
       reviewCount: doc.reviewCount || 0,
       price: doc.price || 0,
       coverImage,
