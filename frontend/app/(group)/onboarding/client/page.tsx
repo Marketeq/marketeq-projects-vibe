@@ -1179,7 +1179,7 @@ const CreateYourUsername = ({
   }
 
   const checkUsernameAvailability = () => {
-    if (username?.length > 2 && USERNAME_PATTERN.test(username)) {
+    if (username?.length > 2) {
       setIsUsernameLoading(true)
       clearErrors("username")
 
@@ -2827,10 +2827,10 @@ const IntroduceYourself = ({
     setStep(nextStepIndex)
   }
   return (
-    <div className="min-h-screen flex lg:pl-[480px] bg-white">
+    <div className="min-h-screen flex 2xl:pl-[480px] bg-white">
       {sidebar}
       <form
-        className="relative grid items-start flex-auto py-10 px-5 md:px-10 lg:py-[100px] lg:px-[200px]"
+        className="relative grid items-start flex-auto py-10 px-5 md:px-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={handleSubmit(onSubmit)}
       >
         <div className="max-w-[488px] lg:max-w-[560px] w-full mx-auto">
@@ -2846,7 +2846,7 @@ const IntroduceYourself = ({
             Tell us a bit about you to help us connect you with the right
             opportunities!
           </p>
-          <div className="mt-10 lg:mt-[50px]">
+          <div className="mt-10 2xl:mt-[50px]">
             <div className="space-y-6">
               <div className="flex flex-col gap-y-1.5">
                 <Label
