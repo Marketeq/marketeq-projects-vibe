@@ -1,75 +1,71 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
-import { useAuth } from "@/contexts/auth"
-import { cn } from "@/utils/functions"
-import { ChevronLeft, ChevronRight, Clock, Star } from "@blend-metrics/icons"
-import { Swiper as SwiperRoot, SwiperSlide } from "swiper/react"
-import { Swiper } from "swiper/types"
-import { Blocks1 } from "@/components/blocks-1"
+import React from "react"
+import { fromLength, cn } from "@/utils/functions"
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Star,
+  Check,
+} from "@blend-metrics/icons"
+import { TabsList, TabsTrigger } from "@radix-ui/react-tabs"
+import { Tabs, TabsContent } from "@/components/ui"
+import { SwiperSlide } from "swiper/react"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
-import SecuritySettingsStepper from "@/components/security-settings"
+import { Blocks1 } from "@/components/blocks-1"
+import {
+  SwiperContent,
+  SwiperNextTrigger,
+  SwiperPrevTrigger,
+  SwiperRoot,
+} from "@/components/swiper"
 import {
   Avatar,
   AvatarFallback,
   AvatarGroup,
   AvatarImage,
+  Badge,
   Button,
   Favorite,
   FavoriteRoot,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
+  IconButton,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
 
-const swiperBaseConfig = {
-  slidesPerView: 1,
-  spaceBetween: 20,
-  observer: true,
-  observeParents: true,
-  resizeObserver: true,
-  breakpoints: {
-    1200: {
-      slidesPerView: 5,
-    },
-    768: {
-      slidesPerView: 3,
-    },
-  },
-}
-
+// ── Hero ─────────────────────────────────────────────────────────────────────
+// Contained banner (matches L1 category page hero pattern), 350px tall, content
+// hugged with 75px padding all around. NOT edge-to-edge — sits inside the
+// shared content container with rounded corners.
 const Hero = () => {
   return (
-    <div className="relative bg-[#313237]">
-      <div className="absolute left-0 inset-y-0 right-0 lg:right-auto lg:w-[53%]">
-        <NextImage
-          className="object-cover"
-          src="/sending-emails.png"
-          alt="Sending emails"
-          sizes="50vw"
-          fill
-        />
-      </div>
-      <div className="absolute lg:hidden inset-0 bg-[linear-gradient(255.56deg,rgba(49,50,55,1)_19.12%,rgba(49,50,55,0)_127.26%)]" />
+    <div className="relative rounded-lg overflow-hidden h-[350px]">
+      <NextImage
+        className="object-cover"
+        src="/sending-emails.png"
+        alt="UX / UI Experts on Demand"
+        fill
+        sizes="100vw"
+        priority
+      />
+      <div className="absolute inset-0 bg-black/55" />
 
-      <div className="relative max-w-[290.41px] md:max-w-[562.83px] lg:max-w-[1420px] lg:mx-auto pt-10 pl-10 pb-[75px] lg:pl-0 lg:pb-[126.25px] lg:pt-[92px]">
-        <div className="lg:max-w-[493px] lg:ml-auto">
-          <h1 className="text-[30px] leading-[36.31px] lg:text-4xl lg:leading-[43.57px] font-bold text-white">
+      <div className="absolute inset-0 flex">
+        <div className="ml-auto p-[75px] max-w-[643px] flex flex-col justify-center">
+          <h1 className="text-[36px] leading-[43.57px] font-bold text-white">
             UX / UI Experts on Demand
           </h1>
-          <p className="text-sm leading-[16.94px] lg:text-lg mt-[7px] lg:mt-[5px] lg:leading-[21.78px] text-white font-light">
-            Get your ux / ui done right with one of our ux/ui experts
-            customizable done for you campaigns.
+          <p className="text-lg leading-[21.78px] mt-[7px] text-white font-light">
+            Get your ux / ui done right with one of our product design experts,
+            fully customizable done for you services.
           </p>
 
-          <button className="focus-visible:outline-none whitespace-nowrap shrink-0 mt-[46px] lg:mt-[38px] border-2 h-10 border-white px-3.5 rounded-[5px] flex items-center justify-center text-[13px] leading-6 font-semibold text-white">
+          <button className="self-start focus-visible:outline-none whitespace-nowrap shrink-0 mt-[38px] border-2 h-10 border-white px-3.5 rounded-[5px] flex items-center justify-center text-[13px] leading-6 font-semibold text-white">
             browse UX / UI experts
           </button>
         </div>
@@ -78,530 +74,290 @@ const Hero = () => {
   )
 }
 
-const useMounted = () => {
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-  return mounted
-}
-
-const ClientOnlySwiper = ({
-  children,
-  onInit,
+// ── Section header (title + description + nav controls) ─────────────────────
+const SectionHeader = ({
+  title,
+  description,
+  rightSlot,
 }: {
-  children: React.ReactNode
-  onInit: (swiper: Swiper) => void
-}) => {
-  const mounted = useMounted()
-
-  if (!mounted) {
-    const items = Array.isArray(children)
-      ? children
-      : React.Children.toArray(children)
-    return (
-      <div className="overflow-hidden">
-        <div className="flex flex-nowrap gap-5">
-          {items.map((child, index) => (
-            <div key={index} className="w-[280px] shrink-0">
-              {child}
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <SwiperRoot
-      {...swiperBaseConfig}
-      onInit={onInit}
-      className="!overflow-hidden"
-    >
-      {children}
-    </SwiperRoot>
-  )
-}
-
-interface MockProject {
   title: string
-  rating: number
-  reviewCount: number
-  summary: string
-  timeline: string
-  budget: string
-  image: string
-  href: string
+  description?: string
+  rightSlot?: React.ReactNode
+}) => (
+  <div className="flex items-start justify-between gap-x-6">
+    <div className="space-y-2">
+      <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+        {title}
+      </h1>
+      {description && (
+        <p className="text-base leading-[19.36px] font-light text-gray-500 max-w-[800px]">
+          {description}
+        </p>
+      )}
+    </div>
+    {rightSlot}
+  </div>
+)
+
+// ── Carousel section ─────────────────────────────────────────────────────────
+// Mirrors the L1 category page "Recommended in {Category}" Swiper carousel
+// (SwiperRoot/SwiperContent/SwiperPrevTrigger/SwiperNextTrigger), with the
+// Projects/Services/Teams/Talent pill tabs from that same section.
+interface CarouselSectionProps {
+  title: string
+  description?: string
+  count?: number
 }
 
-const mockProjects: MockProject[] = [
-  {
-    title: "The Ultimate Mobile App Experience",
-    rating: 4.9,
-    reviewCount: 128,
-    summary: "A complete funnel for your customer service needs. Designed to convert visitors into loyal customers with proven UX patterns.",
-    timeline: "12 weeks",
-    budget: "40,000",
-    image: "/design-screens.png",
-    href: "/c/design",
-  },
-  {
-    title: "Enterprise SEO & Content Strategy",
-    rating: 4.8,
-    reviewCount: 94,
-    summary: "Dominate search rankings with a full-stack SEO strategy backed by data-driven content and technical optimization.",
-    timeline: "8 weeks",
-    budget: "25,000",
-    image: "/dashboard.png",
-    href: "/c/digital-marketing",
-  },
-  {
-    title: "Cloud Infrastructure & DevOps Setup",
-    rating: 4.7,
-    reviewCount: 61,
-    summary: "Scalable, secure cloud architecture with CI/CD pipelines, monitoring, and automated deployments.",
-    timeline: "6 weeks",
-    budget: "30,000",
-    image: "/sending-emails.png",
-    href: "/c/development",
-  },
-  {
-    title: "E-Commerce Platform Redesign",
-    rating: 4.9,
-    reviewCount: 203,
-    summary: "A conversion-focused redesign of your online store with streamlined checkout and mobile-first design.",
-    timeline: "10 weeks",
-    budget: "55,000",
-    image: "/working-2.jpeg",
-    href: "/c/design",
-  },
-  {
-    title: "Marketing Automation Campaign Suite",
-    rating: 4.6,
-    reviewCount: 77,
-    summary: "Automate lead nurturing, follow-ups, and conversions with a fully integrated marketing automation workflow.",
-    timeline: "4 weeks",
-    budget: "18,000",
-    image: "/design-screens.png",
-    href: "/c/digital-marketing",
-  },
-  {
-    title: "Cybersecurity Audit & Hardening",
-    rating: 4.8,
-    reviewCount: 45,
-    summary: "Comprehensive security audit, penetration testing, and infrastructure hardening to protect your business.",
-    timeline: "3 weeks",
-    budget: "15,000",
-    image: "/dashboard.png",
-    href: "/c/security",
-  },
-  {
-    title: "Custom CRM Integration",
-    rating: 4.7,
-    reviewCount: 88,
-    summary: "Seamless CRM integration with your existing tools — automate workflows, sync data, and close more deals.",
-    timeline: "5 weeks",
-    budget: "22,000",
-    image: "/sending-emails.png",
-    href: "/c/development",
-  },
-]
-
-const ProjectCard = ({ project }: { project: MockProject }) => {
+const CarouselSection = ({
+  title,
+  description,
+  count = 8,
+}: CarouselSectionProps) => {
   return (
-    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] flex flex-col">
-      {/* Image */}
-      <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-        <NextImage
-          className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-          src={project.image}
-          alt={project.title}
-          fill
-          sizes="25vw"
-        />
-      </div>
+    <div>
+      <Tabs defaultValue="Projects">
+        <SectionHeader title={title} description={description} />
+        <SwiperRoot>
+          <div className="mt-6 flex justify-between items-center">
+            <TabsList className="flex items-center gap-x-3">
+              {["Projects", "Services", "Teams", "Talent"].map((tab) => (
+                <Badge
+                  key={tab}
+                  variant="circular"
+                  visual="gray"
+                  size="lg"
+                  className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                  asChild
+                >
+                  <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                </Badge>
+              ))}
+            </TabsList>
 
-      {/* Title and Rating */}
-      <div className="mt-3 flex items-start gap-x-3">
-        <NextLink
-          href={project.href}
-          className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-        >
-          {project.title}
-        </NextLink>
-        <div className="inline-flex shrink-0 items-center gap-x-1">
-          <Star className="size-[15px] text-primary-500 fill-primary-500" />
-          <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-            {project.rating}{" "}
-            <span className="font-extralight">({project.reviewCount})</span>
-          </span>
+            <div className="flex items-center gap-x-3">
+              <SwiperPrevTrigger asChild>
+                <IconButton
+                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                  visual="gray"
+                  variant="outlined"
+                >
+                  <ChevronLeft className="size-[18px]" />
+                </IconButton>
+              </SwiperPrevTrigger>
+              <SwiperNextTrigger asChild>
+                <IconButton
+                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                  visual="gray"
+                  variant="outlined"
+                >
+                  <ChevronRight className="size-[18px]" />
+                </IconButton>
+              </SwiperNextTrigger>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <TabsContent
+              className="gap-5 flex items-center"
+              value="Projects"
+            >
+              <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                {fromLength(count).map((key) => (
+                  <SwiperSlide className="w-[355px]" key={key}>
+                    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border cursor-pointer border-black/15">
+                        <NextImage
+                          className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                          src="/dashboard.png"
+                          alt="Project"
+                          fill
+                          sizes="33vw"
+                        />
+                      </div>
+
+                      <div className="mt-3 flex items-start gap-x-3">
+                        <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
+                          The Ultimate Mobile App Experience
+                        </span>
+                        <div className="inline-flex items-center gap-x-1">
+                          <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                          <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                            4.9 <span className="font-extralight">(5)</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">
+                        Brief description of the project. Lorem ipsum dolor sit
+                        amet, consectetur adipiscing elit, sed do eiusmod tempor
+                        incididunt.
+                      </p>
+
+                      <div className="mt-[14.5px] flex flex-col gap-y-3">
+                        <div className="flex items-center gap-x-[6.4px]">
+                          <Clock className="size-[18px] shrink-0 text-primary-500" />
+                          <span className="font-medium text-sm leading-none text-dark-blue-400">
+                            Starting from 12 weeks
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-x-[6.4px]">
+                          <Money className="size-[18px] shrink-0 text-primary-500" />
+                          <span className="font-medium text-sm leading-none text-dark-blue-400">
+                            $50,000 budget
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex items-end justify-between">
+                        <AvatarGroup
+                          max={5}
+                          size="sm"
+                          excess
+                          excessClassName="border-gray-300 text-gray-500"
+                        >
+                          {fromLength(6).map((k) => (
+                            <Avatar
+                              key={k}
+                              size="sm"
+                              className="border-2 border-white hover:ring-0 active:ring-0"
+                            >
+                              <AvatarImage src="/woman.jpg" alt="Woman" />
+                              <AvatarFallback>W</AvatarFallback>
+                            </Avatar>
+                          ))}
+                        </AvatarGroup>
+
+                        <FavoriteRoot>
+                          {({ pressed }) => (
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-block">
+                                    <Favorite />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {pressed ? (
+                                    <span className="inline-flex items-center gap-x-1">
+                                      <Check className="size-[15px] shrink-0 text-green-500" />
+                                      Saved
+                                    </span>
+                                  ) : (
+                                    "Save to favorites"
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </FavoriteRoot>
+                      </div>
+                    </article>
+                  </SwiperSlide>
+                ))}
+              </SwiperContent>
+            </TabsContent>
+          </div>
+        </SwiperRoot>
+      </Tabs>
+    </div>
+  )
+}
+
+// ── Recently Viewed grid section ─────────────────────────────────────────────
+// Mirrors the storybook "Recently Viewed" compact list pattern from
+// stories/similar-projects.stories.tsx (3-col grid, 100px thumb + text), with
+// pill tabs from the L1 category page pattern.
+const RecentlyViewedSection = ({
+  title,
+  description,
+}: {
+  title: string
+  description?: string
+}) => {
+  return (
+    <div>
+      <Tabs defaultValue="Projects">
+        <div className="flex items-start justify-between gap-x-6">
+          <div className="space-y-2">
+            <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
+              {title}
+            </h1>
+            {description && (
+              <p className="text-base leading-[19.36px] font-light text-gray-500 max-w-[800px]">
+                {description}
+              </p>
+            )}
+          </div>
+          <Button variant="link" visual="gray">
+            View All
+          </Button>
         </div>
-      </div>
 
-      {/* Description */}
-      <p className="mt-3 text-sm leading-[1.4] font-extralight text-dark-blue-400 line-clamp-3">
-        {project.summary}
-      </p>
-
-      {/* Timeline and Budget */}
-      <div className="mt-[14.5px] flex flex-col gap-y-3">
-        <div className="flex items-center gap-x-[6.4px]">
-          <Clock className="size-[18px] shrink-0 text-primary-500" />
-          <span className="font-medium text-sm leading-none text-dark-blue-400">
-            Starting from {project.timeline}
-          </span>
-        </div>
-        <div className="flex items-center gap-x-[6.4px]">
-          <Money className="size-[18px] shrink-0 text-primary-500" />
-          <span className="font-medium text-sm leading-none text-dark-blue-400">
-            ${project.budget} budget
-          </span>
-        </div>
-      </div>
-
-      {/* Bottom: Avatars + Favorite */}
-      <div className="mt-auto pt-5 flex items-end justify-between">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <AvatarGroup
-                max={5}
-                size="sm"
-                excess
-                excessClassName="border-gray-300 text-gray-500"
+        <div className="mt-6">
+          <TabsList className="flex items-center gap-x-3">
+            {["Projects", "Services", "Teams", "Talent"].map((tab) => (
+              <Badge
+                key={tab}
+                variant="circular"
+                visual="gray"
+                size="lg"
+                className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                asChild
               >
-                {Array(3)
-                  .fill(0)
-                  .map((_, i) => (
-                    <Avatar
-                      key={i}
-                      size="sm"
-                      className="border-2 border-white hover:ring-0 active:ring-0"
-                    >
-                      <AvatarImage src="/woman.jpg" alt="Team member" />
-                      <AvatarFallback>U</AvatarFallback>
-                    </Avatar>
-                  ))}
-              </AvatarGroup>
-            </TooltipTrigger>
-            <TooltipContent>Team members</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+                <TabsTrigger value={tab}>{tab}</TabsTrigger>
+              </Badge>
+            ))}
+          </TabsList>
+        </div>
 
-        <FavoriteRoot>
-          {() => (
-            <Favorite
-              starClassName="size-5"
-              className="size-5 shrink-0 text-[#122A4B]/[.15]"
-            />
-          )}
-        </FavoriteRoot>
-      </div>
-    </article>
-  )
-}
+        <TabsContent value="Projects">
+          <div className="mt-[29px] grid grid-cols-3 gap-x-[42px] gap-y-10">
+            {fromLength(6).map((key) => (
+              <article key={key} className="flex items-start gap-x-6">
+                <div className="relative size-[100px] overflow-hidden rounded-lg shrink-0">
+                  <NextImage
+                    className="object-cover"
+                    src="/dashboard.png"
+                    alt="Dashboard"
+                    sizes="25vw"
+                    fill
+                  />
+                </div>
 
-const FavoriteProjectCard = ({ project }: { project: MockProject }) => (
-  <ProjectCard project={project} />
-)
+                <div className="pr-[45.54px]">
+                  <h1 className="cursor-pointer hover:underline transition duration-300 text-base font-bold leading-none line-clamp-2 text-dark-blue-400">
+                    BI Sales Forecasting & Inventory Management
+                  </h1>
 
-const FavoriteProjects = () => {
-  const [controller, setController] = useState<Swiper>()
-  return (
-    <div className="max-w-[1420px] mx-auto">
-      <div className="flex items-end justify-between">
-        <h1 className="text-2xl leading-[29.05px] lg:text-4xl lg:leading-[43.57px] font-bold text-dark-blue-600">
-          Our Favorite Projects
-        </h1>
+                  <p className="mt-2 text-sm font-light text-dark-blue-400 line-clamp-2">
+                    Tempor nam commodo sapien lobortis pellentesque non.
+                    Elementum adipiscing sit senectus faucibus mauris amet.
+                    Elementum vitae semper lorem ornare congue.
+                  </p>
 
-        <Button className="xs:max-lg:hidden" visual="gray" variant="link">
-          View More
-        </Button>
-      </div>
-
-      <div className="relative mt-5 lg:mt-[42px]">
-        <button
-          className="xs:max-lg:hidden focus-visible:outline-none absolute inset-y-0 my-auto -left-[71px] text-gray-300 hover:text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
-          onClick={() => controller?.slidePrev()}
-          disabled={!controller?.allowSlidePrev}
-        >
-          <ChevronLeft className="size-[55px]" />
-        </button>
-
-        <ClientOnlySwiper onInit={setController}>
-          {mockProjects.map((project, i) => (
-            <SwiperSlide key={i}>
-              <FavoriteProjectCard project={project} />
-            </SwiperSlide>
-          ))}
-        </ClientOnlySwiper>
-
-        <button
-          className="xs:max-lg:hidden focus-visible:outline-none absolute inset-y-0 my-auto -right-[71px] text-gray-300 hover:text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
-          onClick={() => controller?.slideNext()}
-          disabled={!controller?.allowSlideNext}
-        >
-          <ChevronRight className="size-[55px]" />
-        </button>
-      </div>
-
-      <div className="flex items-center mt-5 justify-center lg:hidden">
-        <Button visual="gray" variant="ghost">
-          View More
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-const NewestAdditionCard = ({ project }: { project: MockProject }) => (
-  <ProjectCard project={project} />
-)
-
-const NewestAdditions = () => {
-  return (
-    <div className="max-w-[1420px] mx-auto">
-      <div className="flex items-end justify-between">
-        <h1 className="text-2xl leading-[29.05px] lg:text-4xl lg:leading-[43.57px] font-bold text-dark-blue-600">
-          Newest Additions
-        </h1>
-
-        <Button className="xs:max-lg:hidden" visual="gray" variant="link">
-          View More
-        </Button>
-      </div>
-
-      <div className="mt-[29px] grid md:grid-cols-2 xl:grid-cols-3 gap-[25px] lg:gap-y-10 lg:gap-x-[42px]">
-        {mockProjects.slice(0, 6).map((project, i) => (
-          <NewestAdditionCard key={i} project={project} />
-        ))}
-      </div>
-
-      <div className="flex items-center mt-[29px] justify-center lg:hidden">
-        <Button visual="gray" variant="ghost">
-          View More
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-const PopularProjectCard = ({ project }: { project: MockProject }) => (
-  <ProjectCard project={project} />
-)
-
-const PopularProjects = () => {
-  return (
-    <div className="max-w-[1420px] mx-auto">
-      <div className="flex items-end justify-between">
-        <h1 className="text-2xl leading-[29.05px] lg:text-4xl lg:leading-[43.57px] font-bold text-dark-blue-600">
-          Most Popular Projects
-        </h1>
-
-        <Button className="xs:max-lg:hidden" visual="gray" variant="link">
-          View More
-        </Button>
-      </div>
-
-      <Tabs className="mt-[29px]" defaultValue="view-all">
-        <TabsList className="px-0 w-full justify-start">
-          <TabsTrigger value="view-all">View All</TabsTrigger>
-          <TabsTrigger value="top-web-projects">Top Web Projects</TabsTrigger>
-          <TabsTrigger value="top-mobile-projects">
-            Top Mobile Projects
-          </TabsTrigger>
-          <TabsTrigger value="top-cloud-projects">
-            Top Cloud Projects
-          </TabsTrigger>
-          <TabsTrigger value="top-digital-marketing-projects">
-            Top Digital Marketing Projects
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="view-all">
-          <div className="pt-[29px] grid md:grid-cols-2 xl:grid-cols-3 gap-[25px] lg:gap-y-10 lg:gap-x-[42px]">
-            {mockProjects.slice(0, 6).map((project, i) => (
-              <PopularProjectCard key={i} project={project} />
+                  <div className="mt-3 flex items-center gap-x-3">
+                    <span className="text-sm font-medium leading-none text-dark-blue-400">
+                      Starting at $25,000
+                    </span>
+                    <span className="inline-block shrink-0 rounded-full size-1 bg-gray-300" />
+                    <span className="text-sm font-medium leading-none text-dark-blue-400">
+                      2 weeks
+                    </span>
+                  </div>
+                </div>
+              </article>
             ))}
           </div>
         </TabsContent>
       </Tabs>
-
-      <div className="flex items-center mt-[29px] justify-center lg:hidden">
-        <Button visual="gray" variant="ghost">
-          View More
-        </Button>
-      </div>
     </div>
   )
 }
 
-const OnlineSalesFunnels = () => {
-  const [controller, setController] = useState<Swiper>()
-  return (
-    <div className="max-w-[1420px] mx-auto">
-      <div className="flex items-end lg:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-2xl leading-[29.05px] lg:text-4xl lg:leading-[43.57px] font-bold text-dark-blue-600">
-            Online Sales Funnels
-          </h1>
-          <p className="text-sm leading-[16.94px] lg:text-lg lg:leading-[21.78px] font-light text-gray-500">
-            Connect Referrizer with your favorite ecommerce shopping carts
-          </p>
-        </div>
-
-        <Button className="xs:max-lg:hidden" visual="gray" variant="link">
-          View More
-        </Button>
-      </div>
-
-      <div className="relative mt-5 lg:mt-[42px]">
-        {controller?.allowSlidePrev && (
-          <button
-            className="xs:max-lg:hidden focus-visible:outline-none absolute inset-y-0 my-auto -left-[71px] text-gray-300 hover:text-gray-500"
-            onClick={() => controller?.slidePrev()}
-          >
-            <ChevronLeft className="size-[55px]" />
-          </button>
-        )}
-        <ClientOnlySwiper onInit={setController}>
-          {mockProjects.map((project, i) => (
-            <SwiperSlide key={i}>
-              <FavoriteProjectCard project={project} />
-            </SwiperSlide>
-          ))}
-        </ClientOnlySwiper>
-
-        {controller?.allowSlideNext && (
-          <button
-            className="xs:max-lg:hidden focus-visible:outline-none absolute inset-y-0 my-auto -right-[71px] text-gray-300 hover:text-gray-500"
-            onClick={() => controller?.slideNext()}
-          >
-            <ChevronRight className="size-[55px]" />
-          </button>
-        )}
-      </div>
-      <div className="flex items-center mt-[29px] justify-center lg:hidden">
-        <Button visual="gray" variant="ghost">
-          View More
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-const CustomerServiceSolutions = () => {
-  const [controller, setController] = useState<Swiper>()
-  return (
-    <div className="max-w-[1420px] mx-auto">
-      <div className="flex items-end lg:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-2xl leading-[29.05px] lg:text-4xl lg:leading-[43.57px] font-bold text-dark-blue-600">
-            Customer Service Solutions
-          </h1>
-          <p className="text-sm leading-[16.94px] lg:text-lg lg:leading-[21.78px] font-light text-gray-500">
-            Improve support issues and customer satisfaction with these customer
-            service projects
-          </p>
-        </div>
-
-        <Button className="xs:max-lg:hidden" visual="gray" variant="link">
-          View More
-        </Button>
-      </div>
-
-      <div className="relative mt-5 lg:mt-[42px]">
-        {controller?.allowSlidePrev && (
-          <button
-            className="xs:max-lg:hidden focus-visible:outline-none absolute inset-y-0 my-auto -left-[71px] text-gray-300 hover:text-gray-500"
-            onClick={() => controller?.slidePrev()}
-          >
-            <ChevronLeft className="size-[55px]" />
-          </button>
-        )}
-
-        <ClientOnlySwiper onInit={setController}>
-          {mockProjects.map((project, i) => (
-            <SwiperSlide key={i}>
-              <FavoriteProjectCard project={project} />
-            </SwiperSlide>
-          ))}
-        </ClientOnlySwiper>
-
-        {controller?.allowSlideNext && (
-          <button
-            className="xs:max-lg:hidden focus-visible:outline-none absolute inset-y-0 my-auto -right-[71px] text-gray-300 hover:text-gray-500"
-            onClick={() => controller?.slideNext()}
-          >
-            <ChevronRight className="size-[55px]" />
-          </button>
-        )}
-      </div>
-      <div className="flex items-center mt-[29px] justify-center lg:hidden">
-        <Button visual="gray" variant="ghost">
-          View More
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-const MarketingAutomationCampaigns = () => {
-  const [controller, setController] = useState<Swiper>()
-  return (
-    <div className="max-w-[1420px] mx-auto">
-      <div className="flex items-end lg:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-2xl leading-[29.05px] lg:text-4xl lg:leading-[43.57px] font-bold text-dark-blue-600">
-            Marketing Automation Campaigns
-          </h1>
-          <p className="text-sm leading-[16.94px] lg:text-lg lg:leading-[21.78px] font-light text-gray-500">
-            Automate lead nurturing, follow ups, conversions, and more with
-            these marketing automation campaigns
-          </p>
-        </div>
-
-        <Button className="xs:max-lg:hidden" visual="gray" variant="link">
-          View More
-        </Button>
-      </div>
-
-      <div className="relative mt-5 lg:mt-[42px]">
-        {controller?.allowSlidePrev && (
-          <button
-            className="xs:max-lg:hidden focus-visible:outline-none absolute inset-y-0 my-auto -left-[71px] text-gray-300 hover:text-gray-500"
-            onClick={() => controller?.slidePrev()}
-          >
-            <ChevronLeft className="size-[55px]" />
-          </button>
-        )}
-
-        <ClientOnlySwiper onInit={setController}>
-          {mockProjects.map((project, i) => (
-            <SwiperSlide key={i}>
-              <FavoriteProjectCard project={project} />
-            </SwiperSlide>
-          ))}
-        </ClientOnlySwiper>
-
-        {controller?.allowSlideNext && (
-          <button
-            className="xs:max-lg:hidden focus-visible:outline-none absolute inset-y-0 my-auto -right-[71px] text-gray-300 hover:text-gray-500"
-            onClick={() => controller?.slideNext()}
-          >
-            <ChevronRight className="size-[55px]" />
-          </button>
-        )}
-      </div>
-      <div className="flex items-center mt-[29px] justify-center lg:hidden">
-        <Button visual="gray" variant="ghost">
-          View More
-        </Button>
-      </div>
-    </div>
-  )
-}
-
+// ── More Categories section ──────────────────────────────────────────────────
+// Reused from the existing home page "Categories" block (originally from the
+// nestjs frontend repo). Uses the inline category card variants below.
 const CategoryTransparentVerticalCard = () => {
   return (
     <article className="flex rounded-lg overflow-hidden relative p-5 lg:px-[50px] lg:py-[55px] bg-white shadow-[0px_2px_5px_0px_theme(colors.black/[0.04])]">
@@ -620,7 +376,6 @@ const CategoryTransparentVerticalCard = () => {
         <h1 className="text-[22px] leading-none lg:text-[62px] lg:leading-[57.4px] font-bold text-white">
           Interaction Design
         </h1>
-
         <button className="focus-visible:outline-none whitespace-nowrap shrink-0 border-2 h-10 border-white px-3.5 rounded-[5px] flex items-center justify-center text-[13px] leading-6 font-semibold text-white">
           Browse Projects
         </button>
@@ -636,12 +391,10 @@ const CategoryVerticalCard = () => {
         <h1 className="text-[22px] leading-none lg:text-[62px] lg:leading-[57.4px] font-bold text-white">
           Blockchain Development
         </h1>
-
         <button className="focus-visible:outline-none whitespace-nowrap shrink-0 border-2 h-10 border-white px-3.5 rounded-[5px] flex items-center justify-center text-[13px] leading-6 font-semibold text-white">
           Browse Projects
         </button>
       </div>
-
       <div className="md:-bottom-[92.44px] xs:max-md:flex xs:max-md:justify-end xs:max-md:mt-[75px] md:-right-8 md:max-lg:absolute lg:mr-[76.8px] self-end">
         <Blocks1 />
       </div>
@@ -661,7 +414,6 @@ const CategoryTransparentCard = ({ className }: { className?: string }) => {
         <h1 className="text-lg leading-[21.78px] lg:text-4xl lg:leading-[43.57px] font-bold text-dark-blue-600">
           Cloud Security
         </h1>
-
         <button className="focus-visible:outline-none whitespace-nowrap shrink-0 border-2 h-10 border-primary-500 px-3.5 rounded-[5px] flex items-center justify-center text-[13px] leading-6 font-semibold text-primary-500">
           Browse Projects
         </button>
@@ -680,20 +432,19 @@ const CategoryTransparentCard = ({ className }: { className?: string }) => {
   )
 }
 
-const Categories = () => {
+const MoreCategories = () => {
   return (
-    <div className="max-w-[1420px] mx-auto">
+    <div>
       <div className="flex items-end justify-between">
         <div className="space-y-2">
           <h1 className="text-2xl leading-[29.05px] lg:text-4xl lg:leading-[43.57px] font-bold text-dark-blue-600">
-            Most Popular Projects
+            More Categories
           </h1>
           <p className="text-lg leading-[21.78px] font-light text-gray-500">
             Find more ways to maximize your results with Marketeq‘s curated
             project teams
           </p>
         </div>
-
         <Button className="xs:max-lg:hidden" visual="gray" variant="link">
           View More
         </Button>
@@ -721,46 +472,48 @@ const Categories = () => {
   )
 }
 
+// ── Page ─────────────────────────────────────────────────────────────────────
 export default function Marketplace() {
-  const { user } = useAuth()
-  const [showSecurityModal, setShowSecurityModal] = useState(false)
-
-  useEffect(() => {
-    const safeUser = user as {
-      provider?: string
-      hasPassword?: boolean
-    }
-
-    const needsPasswordSetup =
-      safeUser?.provider === "EMAIL" && !safeUser?.hasPassword
-
-    if (safeUser && needsPasswordSetup) {
-      setShowSecurityModal(true)
-    }
-  }, [user])
-
   return (
-    <>
-      {showSecurityModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
-          <SecuritySettingsStepper
-            onCloseModal={() => setShowSecurityModal(false)}
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      <div className="py-[50px]">
+        <div className="max-w-[1440px] mx-auto px-[50px] space-y-[50px]">
+          <Hero />
+          <CarouselSection
+            title="Our Favorite Projects"
+            description="Hand-picked projects from our top-rated experts across every category — see what teams are building right now."
           />
-        </div>
-      )}
-
-      <div className="bg-gray-25">
-        <Hero />
-        <div className="py-10 px-3.5 md:px-10 lg:px-[100px] xl:px-[150px] 2xl:px-[250px] overflow-hidden space-y-10 lg:space-y-[100px] lg:py-[100px]">
-          <FavoriteProjects />
-          <NewestAdditions />
-          <PopularProjects />
-          <OnlineSalesFunnels />
-          <CustomerServiceSolutions />
-          <MarketingAutomationCampaigns />
-          <Categories />
+          <RecentlyViewedSection
+            title="Newest Additions"
+            description="The latest projects, services, teams, and talent added to the Marketeq marketplace this week."
+          />
+          <RecentlyViewedSection
+            title="Most Popular Projects"
+            description="The projects, services, teams, and talent generating the most interest from clients across the platform."
+          />
+          <CarouselSection
+            title="Online Sales Funnels"
+            description="High-converting funnels, landing pages, and lead capture systems built by proven growth experts."
+          />
+          <CarouselSection
+            title="Customer Service Solutions"
+            description="Help desks, chatbots, and support workflows designed to scale your customer experience."
+          />
+          <CarouselSection
+            title="Marketing Automation Campaigns"
+            description="End-to-end automation workflows across email, SMS, and CRM that turn prospects into customers."
+          />
+          <CarouselSection
+            title="Cloud Software Applications"
+            description="Custom SaaS builds, internal tools, and cloud-native applications shipped by senior engineering teams."
+          />
+          <CarouselSection
+            title="Mobile Applications"
+            description="Native and cross-platform iOS and Android apps designed and developed by expert mobile teams."
+          />
+          <MoreCategories />
         </div>
       </div>
-    </>
+    </div>
   )
 }

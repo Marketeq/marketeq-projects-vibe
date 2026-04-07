@@ -1,8 +1,10 @@
 "use client"
 
 import React, { useState } from "react"
-import { usePathname, useRouter } from "next/navigation"
+import { createPortal } from "react-dom"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { useAutocomplete } from "@/libs/autocomplete"
 import { UserAPI } from "@/service/http/user"
 import { ROLE } from "@/types/user"
 import { cn } from "@/utils/functions"
@@ -36,6 +38,7 @@ import {
   AvatarImage,
   Button,
   Combobox,
+  ComboboxButton,
   ComboboxInput,
   ComboboxOption,
   ComboboxOptions,
@@ -427,22 +430,23 @@ const options = [
 
 const [{ value: defaultValue }] = options
 
-const fixedSuggestions = [
-  {
-    id: 1,
-    icon: Talent,
-    value: "Browse Talent",
-  },
-  {
-    id: 2,
-    icon: Project,
-    value: "Browse Project",
-  },
-  {
-    id: 3,
-    icon: Campaigns,
-    value: "Browse Campaigns",
-  },
+// Fixed "Browse ..." suggestions shown in the empty-state dropdown.
+// `route` marks these as navigation targets — the Combobox onChange handler
+// routes to `route` instead of treating `value` as a search term.
+//
+// Routes point at the dedicated L1 browse pages restored from
+// `archive/backup_old_structure/level-1/` into the app routing tree.
+const fixedSuggestions: Array<{
+  id: number
+  icon: React.JSXElementConstructor<any>
+  value: string
+  route: string
+}> = [
+  { id: 1, icon: Talent, value: "Browse Talent", route: "/talent" },
+  { id: 2, icon: Project, value: "Browse Projects", route: "/projects" },
+  { id: 3, icon: Campaigns, value: "Browse Services", route: "/services" },
+  { id: 4, icon: Users, value: "Browse Teams", route: "/teams" },
+  { id: 5, icon: SearchMd, value: "Find Jobs", route: "/find-jobs" },
 ]
 
 const suggestions = [
@@ -457,6 +461,8 @@ const suggestions = [
 const listingTypes = ["Projects", "Services", "Teams", "Talent"]
 
 const SearchBar = () => {
+  const router = useRouter()
+  const pathname = usePathname()
   const [state, setState] = useState<string>()
   const [selected, setSelected] = React.useState<{
     id: number
@@ -464,6 +470,60 @@ const SearchBar = () => {
     icon?: React.JSXElementConstructor<any>
   }>()
   const [query, setQuery] = React.useState("")
+  // Nonce used as `key` on the Combobox wrapper. Incrementing it forces
+  // Headless UI to unmount/remount, which reliably resets its internal open
+  // state. Used to force-close the dropdown after a search submit even when
+  // the keyword hasn't changed (router.push to same URL is a no-op).
+  const [resetNonce, setResetNonce] = React.useState(0)
+  // Ref to the hidden ComboboxButton so we can click-through from the input
+  // and explicitly open the dropdown on focus/click (industry standard).
+  const openButtonRef = React.useRef<HTMLButtonElement>(null)
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  // Industry-standard behavior (Amazon/Upwork/Fiverr):
+  //  • On /search → show the active query term in the bar (from ?q=)
+  //  • On any other route → clear the bar so the next search starts fresh
+  const searchParamsHook = useSearchParams()
+  React.useEffect(() => {
+    if (pathname?.startsWith("/search")) {
+      const qParam = searchParamsHook?.get("q") ?? ""
+      setQuery(qParam)
+      // Mirror into `selected` so Headless UI's displayValue renders the term
+      setSelected(qParam ? { id: -1, value: qParam } : undefined)
+    } else {
+      setQuery("")
+      setSelected(undefined)
+    }
+  }, [pathname, searchParamsHook])
+
+  // Imperative flag set while submitting a search, so `onFocus` knows not
+  // to re-open the combobox during the final blur/navigation step.
+  const submittingRef = React.useRef(false)
+
+  const closeDropdown = () => {
+    // Force-close by remounting the Combobox via a key change. This is the
+    // only reliable way to close when the search URL doesn't change (e.g.
+    // user hits Enter with the same keyword — router.push is a no-op, so
+    // effect-based closes never fire). The remount also resets Headless
+    // UI's internal focus/active-index state.
+    submittingRef.current = true
+    inputRef.current?.blur()
+    setResetNonce((n) => n + 1)
+    // Release the re-open guard flag after React flushes the remount.
+    setTimeout(() => {
+      submittingRef.current = false
+    }, 300)
+  }
+
+  const submitSearch = (term: string) => {
+    const trimmed = term.trim()
+    if (!trimmed) return
+    const params = new URLSearchParams()
+    params.set("q", trimmed)
+    if (state) params.set("category", state.toLowerCase())
+    closeDropdown()
+    router.push(`/search?${params.toString()}`)
+  }
 
   const searchPlaceholder = (() => {
     switch (state) {
@@ -475,8 +535,37 @@ const SearchBar = () => {
     }
   })()
 
-  const filteredSuggestions =
-    query === ""
+  // Live autocomplete from backend — debounced at 250ms, hits
+  // /autocomplete/{type}. Falls back to /public/mock/{type}.json on error.
+  // Type depends on the category selector: Talent/Projects → job_titles,
+  // Teams/Services → skills, default (All) → skills.
+  const autocompleteType = (() => {
+    switch (state) {
+      case "Talent":
+      case "Projects":
+        return "job_titles"
+      case "Teams":
+      case "Services":
+        return "skills"
+      default:
+        return "skills"
+    }
+  })()
+
+  const { suggestions: liveSuggestions } = useAutocomplete(
+    autocompleteType,
+    query
+  )
+
+  const filteredSuggestions = React.useMemo(() => {
+    if (Array.isArray(liveSuggestions) && liveSuggestions.length > 0) {
+      return liveSuggestions.slice(0, 10).map((s: any, i: number) => ({
+        id: typeof s?.id === "number" ? s.id : i + 1000,
+        value: s?.label ?? s?.value ?? String(s),
+      }))
+    }
+    // Static fallback: preserves the previous UX when the API is unreachable
+    return query === ""
       ? suggestions
       : suggestions.filter((industry) =>
           industry.value
@@ -484,18 +573,53 @@ const SearchBar = () => {
             .replace(/\s+/g, "")
             .includes(query.toLowerCase().replace(/\s+/g, ""))
         )
+  }, [liveSuggestions, query])
+
   const reset = () => setQuery("")
 
   return (
     <Combobox
+      key={resetNonce}
       className="group/root w-auto flex-auto"
       value={selected}
-      onChange={setSelected}
+      onChange={(value: { id: number; value: string; icon?: React.JSXElementConstructor<any>; route?: string }) => {
+        if (!value) return
+        // Fixed "Browse ..." items have a route — navigate instead of searching.
+        if (value.route) {
+          closeDropdown()
+          setSelected(undefined)
+          router.push(value.route)
+          return
+        }
+        if (value.value) {
+          submitSearch(value.value)
+          // Do NOT persist the selected object — pathname effect will reset
+          // on the next route, and we want the bar to show the term via the
+          // pathname-synced query instead.
+          setSelected(undefined)
+        }
+      }}
     >
-      <ComboboxTrigger className="relative flex h-[34px] lg:h-10 rounded-[5px] items-center gap-x-3 border border-gray-300 ui-open:rounded-b-none py-[7px] lg:py-2 pl-2.5 pr-3 lg:px-3">
+      {({ open }) => (
+      <>
+      {/* Amazon-style page overlay: when the search combobox is open, dim
+          the rest of the page so focus is entirely on the search. Rendered
+          via portal to document.body so it escapes the header's stacking
+          context, allowing z-40 to sit cleanly below the z-50 sticky nav. */}
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="fixed inset-0 bg-black/40 z-40 pointer-events-none animate-in fade-in duration-150"
+            aria-hidden="true"
+          />,
+          document.body
+        )}
+      <ComboboxTrigger className="relative z-50 flex h-[34px] lg:h-10 rounded-[5px] items-center gap-x-3 border border-gray-300 bg-white ui-open:rounded-b-none py-[7px] lg:py-2 pl-2.5 pr-3 lg:px-3">
         <div className="flex items-center gap-x-2 flex-auto">
           <SearchMd className="size-4 shrink-0 text-gray-400" />
           <ComboboxInput
+            ref={inputRef}
             placeholder={searchPlaceholder}
             className="p-0 border-0 text-xs leading-5 h-auto rounded-none hover:ring-0 hover:border-gray-300 focus:ring-0 focus:border-gray-300 ui-open:rounded-b-none"
             size="lg"
@@ -503,8 +627,44 @@ const SearchBar = () => {
               id: number
               value: string
               icon?: React.JSXElementConstructor<any>
-            }) => value.value}
+            }) => value?.value ?? ""}
             onChange={(event) => setQuery(event.target.value)}
+            onFocus={() => {
+              // Open the dropdown the moment the user focuses the input
+              // (industry-standard behavior — Amazon, Upwork, Fiverr all do this).
+              // Guard against double-firing: only click the hidden trigger if
+              // the options aren't already open, otherwise we'd toggle it shut.
+              // Also skip if we're in the middle of submitting a search, so
+              // the dropdown doesn't reopen right as it's closing.
+              if (submittingRef.current) return
+              const btn = openButtonRef.current
+              if (btn && btn.getAttribute("aria-expanded") !== "true") {
+                btn.click()
+              }
+            }}
+            onKeyDownCapture={(e: React.KeyboardEvent<HTMLInputElement>) => {
+              // Capture-phase so we intercept Enter before Headless UI's own
+              // keydown handler tries to "select the highlighted option"
+              // (which would otherwise swallow the event when nothing is
+              // highlighted, or submit the wrong term if something is).
+              if (e.key === "Enter") {
+                e.preventDefault()
+                e.stopPropagation()
+                submitSearch(query)
+              } else if (e.key === "Escape") {
+                // Standard: Escape clears the input without submitting
+                setQuery("")
+                setSelected(undefined)
+              }
+            }}
+          />
+          {/* Hidden trigger — gives clicking/focusing the input the ability
+              to open the Headless UI Combobox popover. */}
+          <ComboboxButton
+            ref={openButtonRef}
+            className="hidden"
+            aria-hidden="true"
+            tabIndex={-1}
           />
         </div>
         <span className="w-px h-4 shrink-0 inline-block bg-gray-200" />
@@ -524,44 +684,68 @@ const SearchBar = () => {
         </Listbox>
       </ComboboxTrigger>
       <ScaleOutIn afterLeave={reset}>
-        <ComboboxOptions className="px-0 mt-0 space-y-0 border border-gray-300 border-t-0 rounded-t-none">
-          <div className="p-3">
-            {fixedSuggestions.map((fixedSuggestion) => (
-              <ComboboxOption
-                key={fixedSuggestion.id}
-                value={fixedSuggestion}
-                className="text-xs flex items-center gap-x-3 leading-[13.3px] text-gray-400"
-              >
-                <fixedSuggestion.icon className="size-5" />
-                {fixedSuggestion.value}
-              </ComboboxOption>
-            ))}
-          </div>
+        <ComboboxOptions className="px-0 mt-0 space-y-0 border border-gray-300 border-t-0 rounded-t-none bg-white">
+          {query === "" ? (
+            <>
+              {/* Empty state: fixed "Browse ..." suggestions + Recent Searches */}
+              <div className="p-3">
+                {fixedSuggestions.map((fixedSuggestion) => (
+                  <ComboboxOption
+                    key={fixedSuggestion.id}
+                    value={fixedSuggestion}
+                    className="text-xs flex items-center gap-x-3 leading-[13.3px] text-gray-400"
+                  >
+                    <fixedSuggestion.icon className="size-5" />
+                    {fixedSuggestion.value}
+                  </ComboboxOption>
+                ))}
+              </div>
 
-          <div className="space-y-1 p-3 border-t border-gray-100">
-            <div className="px-3 flex items-center justify-between">
-              <h1 className="text-[13px] leading-6 font-semibold text-dark-blue-400">
-                Recent Searches
-              </h1>
+              <div className="space-y-1 p-3 border-t border-gray-100">
+                <div className="px-3 flex items-center justify-between">
+                  <h1 className="text-[13px] leading-6 font-semibold text-dark-blue-400">
+                    Recent Searches
+                  </h1>
 
-              <Button
-                className="opacity-50 hover:opacity-100"
-                variant="link"
-                visual="gray"
-              >
-                Clear Search History
-              </Button>
+                  <Button
+                    className="opacity-50 hover:opacity-100"
+                    variant="link"
+                    visual="gray"
+                  >
+                    Clear Search History
+                  </Button>
+                </div>
+                <ScrollArea viewportClassName="max-h-[360px]">
+                  {suggestions.map((suggestion) => (
+                    <ComboboxOption key={suggestion.id} value={suggestion}>
+                      {suggestion.value}
+                    </ComboboxOption>
+                  ))}
+                </ScrollArea>
+              </div>
+            </>
+          ) : (
+            /* Typing state: live autocomplete matches only */
+            <div className="p-3">
+              <ScrollArea viewportClassName="max-h-[360px]">
+                {filteredSuggestions.length > 0 ? (
+                  filteredSuggestions.map((suggestion) => (
+                    <ComboboxOption key={suggestion.id} value={suggestion}>
+                      {suggestion.value}
+                    </ComboboxOption>
+                  ))
+                ) : (
+                  <div className="px-3 py-2 text-xs text-gray-400">
+                    No matches
+                  </div>
+                )}
+              </ScrollArea>
             </div>
-            <ScrollArea viewportClassName="max-h-[360px]">
-              {filteredSuggestions.map((suggestion) => (
-                <ComboboxOption key={suggestion.id} value={suggestion}>
-                  {suggestion.value}
-                </ComboboxOption>
-              ))}
-            </ScrollArea>
-          </div>
+          )}
         </ComboboxOptions>
       </ScaleOutIn>
+      </>
+      )}
     </Combobox>
   )
 }
@@ -569,7 +753,7 @@ const SearchBar = () => {
 const PATHNAMES = ["/talent-dashboard", "/client-dashboard", "/talent-profile"]
 
 // Pages that have a secondary nav bar below the primary nav — shadow should only appear on the secondary nav, not the primary
-const HAS_SECONDARY_NAV = ["/", "/talent-profile", "/my-team", "/favorite-projects", "/favorite-talent", "/browser-history", "/search", "/talent-search"]
+const HAS_SECONDARY_NAV = ["/", "/talent-profile", "/my-team", "/favorite-projects", "/favorite-talent", "/browser-history", "/search", "/talent-search", "/projects", "/services", "/teams", "/talent", "/find-jobs"]
 
 const ONBOARDING = "/onboarding"
 

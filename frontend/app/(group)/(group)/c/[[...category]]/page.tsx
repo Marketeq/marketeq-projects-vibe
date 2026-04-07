@@ -94,20 +94,125 @@ const c = (...names: string[]): SubcategoryData[] =>
     description: `${name} projects, specialists, and services.`,
   }))
 
-/**
- * Build a deterministic hero-banner URL from a category/subcategory slug.
- * Uses Picsum Photos (which sources its archive from Unsplash) so every
- * category and subcategory gets a unique, visually distinct banner that
- * can never 404.
- */
-const heroBannerFor = (...segments: string[]): string => {
-  const seed = segments.filter(Boolean).join("-") || "marketeq"
-  return `https://picsum.photos/seed/${encodeURIComponent(seed)}/1600/600`
-}
-
 /** Back-compat shim for entries that still pass an explicit Unsplash id. */
 const unsplash = (id: string) =>
   `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=1600&q=80`
+
+/**
+ * Curated Unsplash photo IDs per L1 category. Every image in the pool is
+ * topic-matched to the category (no random nature shots). We pick
+ * deterministically from the pool so L2/L3 pages within the same L1 get
+ * visually distinct — but still on-theme — banners.
+ */
+const L1_BANNER_POOL: Record<string, string[]> = {
+  research: [
+    "1532094349884-543bc11b234d", // science/lab
+    "1507668077129-56e32842fceb", // research charts
+    "1576086213369-97a306d36557", // lab equipment
+    "1581094794329-c8112a89af12", // analysis
+  ],
+  "software-development": [
+    "1461749280684-dccba630e2f6", // code on laptop (Luca Bravo)
+    "1555066931-4365d14bab8c", // code screen
+    "1517180102446-f3ece451e9d8", // matrix code
+    "1542831371-29b0f74f9713", // dev workstation
+  ],
+  development: [
+    "1461749280684-dccba630e2f6",
+    "1555066931-4365d14bab8c",
+    "1517180102446-f3ece451e9d8",
+    "1542831371-29b0f74f9713",
+  ],
+  "design-creative": [
+    "1558655146-9f40138edfeb", // design tools (known-good)
+    "1454165804606-c3d57bc86b40", // creative workspace (known-good)
+    "1455390582262-044cdead277a", // notebook / sketching (known-good)
+    "1558655146-9f40138edfeb", // duplicate — keeps pool size stable
+  ],
+  design: [
+    "1558655146-9f40138edfeb",
+    "1454165804606-c3d57bc86b40",
+    "1455390582262-044cdead277a",
+    "1558655146-9f40138edfeb",
+  ],
+  marketing: [
+    "1557838923-2985c318be48", // marketing analytics
+    "1432888622747-4eb9a8efeb07", // charts/marketing
+    "1533750516457-a7f992034fec", // marketing planning
+    "1460925895917-afdab827c52f", // analytics screens
+  ],
+  "digital-marketing": [
+    "1557838923-2985c318be48",
+    "1432888622747-4eb9a8efeb07",
+    "1533750516457-a7f992034fec",
+    "1460925895917-afdab827c52f",
+  ],
+  "data-analytics": [
+    "1551288049-bebda4e38f71", // laptop charts
+    "1460925895917-afdab827c52f", // analytics screens
+    "1504868584819-f8e8b4b6d7e3", // dashboards
+    "1518186285589-2f7649de83e0", // data visualization
+  ],
+  writing: [
+    "1455390582262-044cdead277a", // notebook writing
+    "1486312338219-ce68d2c6f44d", // typewriter
+    "1519682577862-22b62b24e493", // writing desk
+    "1470225620780-dba8ba36b745", // journal pen
+  ],
+  "business-consulting": [
+    "1454165804606-c3d57bc86b40", // meeting
+    "1486406146926-c627a92ad1ab", // boardroom
+    "1542744173-8e7e53415bb0", // business charts
+    "1551836022-d5d88e9218df", // strategy
+  ],
+  testing: [
+    "1581091226825-a6a2a5aee158", // woman coding QA
+    "1454165804606-c3d57bc86b40", // workspace
+    "1517180102446-f3ece451e9d8", // code matrix
+    "1542831371-29b0f74f9713", // dev
+  ],
+  security: [
+    "1518770660439-4636190af475", // circuit board / tech
+    "1555949963-aa79dcee981c", // cybersecurity
+    "1563986768609-322da13575f3", // lock security
+    "1614064641938-3bbee52942c7", // security code
+  ],
+  maintenance: [
+    "1517245386807-bb43f82c33c4", // ops dashboard
+    "1542831371-29b0f74f9713", // dev tools
+    "1555066931-4365d14bab8c", // code repair
+    "1461749280684-dccba630e2f6", // fixing code
+  ],
+}
+
+/** Stable, fast string hash (djb2-ish) — used for deterministic pool picks. */
+function hashSlug(s: string): number {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0
+  return Math.abs(h)
+}
+
+/**
+ * Build a category-matched hero-banner URL. Picks deterministically from
+ * a per-L1 curated Unsplash pool, so every L1/L2/L3 page within the same
+ * category shows an on-theme image and sibling subcategories get visually
+ * distinct-but-related banners.
+ */
+const heroBannerFor = (
+  l1Slug: string,
+  l2Slug: string = "",
+  l3Slug: string = ""
+): string => {
+  const pool = L1_BANNER_POOL[l1Slug]
+  if (pool && pool.length > 0) {
+    const seed = [l1Slug, l2Slug, l3Slug].filter(Boolean).join("-") || l1Slug
+    const idx = hashSlug(seed) % pool.length
+    return unsplash(pool[idx])
+  }
+  // Unknown L1 — fall back to the taxonomy's hero image if any category
+  // entry matches, otherwise a neutral, on-brand workspace photo.
+  return unsplash("1519389950473-47ba0277781c")
+}
 
 interface CategoryMeta {
   name: string
@@ -181,7 +286,7 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
     name: "Design",
     slug: "design",
     description: "Find world-class designers for branding, product, web, UX, illustration, and everything in between.",
-    heroImage: unsplash("1561070791-2526d30994b8"),
+    heroImage: unsplash("1558655146-9f40138edfeb"),
     subcategories: [
       { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile.", children: c("Wireframing", "Prototyping", "Interaction Design", "Usability Testing", "Information Architecture", "Mobile UX", "Web UX", "Accessibility") },
       { name: "Web Design", slug: "web-design", description: "Landing pages, marketing sites, and full website design.", children: c("Landing Pages", "Marketing Sites", "E-commerce Design", "Portfolio Sites", "Blog Design", "Webflow Sites", "WordPress Themes") },
@@ -484,9 +589,30 @@ export default function Projects() {
   const params = useParams()
   const category = params.category as string[]
   const [favoritedItems, setFavoritedItems] = useState<Set<string>>(new Set())
+
+  /**
+   * Page-kind detection — matches the category-service contract
+   * (see `backend/apps/category-service/src/app/category-pages/README.md`).
+   *
+   * URL scheme per docs:
+   *   /c/:l1[/:l2[/:l3]]                    → "show-all" page (mixed blocks)
+   *   /c/:l1[/:l2[/:l3]]/projects           → kind=projects listing
+   *   /c/:l1[/:l2[/:l3]]/services           → kind=services listing
+   *   /c/:l1[/:l2[/:l3]]/teams              → kind=teams listing
+   *   /c/:l1[/:l2[/:l3]]/talent             → kind=talent listing
+   */
+  const KIND_SUFFIXES = ["projects", "services", "teams", "talent"] as const
+  type PageKind = "show-all" | (typeof KIND_SUFFIXES)[number]
   const lastSegment = category?.[category.length - 1]
-  const isProjectsPage = lastSegment === "projects"
-  const actualCategory = isProjectsPage ? category.slice(0, -1) : category
+  const pageKind: PageKind = (KIND_SUFFIXES as readonly string[]).includes(
+    lastSegment
+  )
+    ? (lastSegment as PageKind)
+    : "show-all"
+  const hasKindSuffix = pageKind !== "show-all"
+  const actualCategory = hasKindSuffix ? category.slice(0, -1) : category
+  // Back-compat alias (old name used in a few spots)
+  const isProjectsPage = pageKind === "projects"
 
   const categoryPath = useMemo(() => {
     try {
@@ -504,12 +630,51 @@ export default function Projects() {
   const [talentUsers, setTalentUsers] = useState<any[]>([])
 
   // ✅ Extract l1, l2, l3
-  const l1 = categoryPath?.l1
+  const rawL1 = categoryPath?.l1
+  // Root browse sentinel — bare `/projects`, `/services`, `/teams`, `/talent`
+  // rewrite to `/c/_browse/<kind>`. In this mode we show the list of L1
+  // categories instead of drilling into a specific category's subcategories.
+  const rootBrowseMode = rawL1 === "_browse"
+  const l1 = rootBrowseMode ? undefined : rawL1
   const l2 = categoryPath?.l2
   const l3 = categoryPath?.l3
 
-  // Resolve category metadata from the static taxonomy
-  const l1Meta = useMemo(() => getCategoryMeta(l1 ?? ""), [l1])
+  // Resolve category metadata from the static taxonomy. In rootBrowseMode we
+  // synthesize an l1Meta whose "subcategories" are the canonical top-level
+  // categories — mirrors the secondary-nav pills so `/teams` shows exactly
+  // the same L1 set the user sees everywhere else in the app.
+  const ROOT_L1_SLUGS = [
+    "research",
+    "design",
+    "development",
+    "testing",
+    "security",
+    "maintenance",
+    "digital-marketing",
+    "business-consulting",
+    "writing",
+    "data-analytics",
+  ] as const
+  const l1Meta = useMemo(() => {
+    if (rootBrowseMode) {
+      return {
+        name: "All Categories",
+        slug: "_browse",
+        description: "",
+        heroImage: unsplash("1519389950473-47ba0277781c"),
+        subcategories: ROOT_L1_SLUGS
+          .map((slug) => CATEGORY_TAXONOMY[slug])
+          .filter(Boolean)
+          .map((cat) => ({
+            name: cat.name,
+            slug: cat.slug,
+            description: cat.description,
+            children: [],
+          })),
+      } as CategoryMeta
+    }
+    return getCategoryMeta(l1 ?? "")
+  }, [l1, rootBrowseMode])
   const l2Meta = useMemo(() => l2 ? (l1Meta.subcategories.find((s) => s.slug === l2) ?? { name: slugToTitle(l2), slug: l2, description: "" }) : null, [l1Meta, l2])
   const l3Meta = useMemo(() => l3 ? { name: slugToTitle(l3), slug: l3, description: "" } : null, [l3])
 
@@ -517,23 +682,70 @@ export default function Projects() {
   const currentName = l3Meta?.name ?? l2Meta?.name ?? l1Meta.name
   const currentDescription = (l2Meta && "description" in l2Meta ? l2Meta.description : null) ?? l1Meta.description
 
+  /**
+   * Label used in section headers ("Top ___ Projects", "Recommended ___",
+   * "Guides Related to ___", etc).
+   *
+   * On kind-filtered URLs (/c/<l1>/projects, /c/<l1>/services, ...) and on
+   * the top-level Browse routes (/projects, /services, /teams, /talent —
+   * rewritten to /c/development/<kind>), we strip the category name from
+   * row titles and use only the entity label. Example:
+   *
+   *   /c/development/projects → "Top Projects" (not "Top Development Projects")
+   *   /c/development          → "Top Development Projects" (show-all keeps currentName)
+   *
+   * This matches the requirement that every row title reflects the listing
+   * type instead of the category name.
+   */
+  const sectionLabel =
+    pageKind === "projects"
+      ? "Projects"
+      : pageKind === "services"
+      ? "Services"
+      : pageKind === "teams"
+      ? "Teams"
+      : pageKind === "talent"
+      ? "Talent"
+      : currentName
+
+  /**
+   * Canonical slug path for the currently-viewed category, excluding any
+   * kind suffix. Used as the base for "View all X" style links so they
+   * always route to the deepest level the user is browsing.
+   */
+  const currentCategoryPath = [l1Meta.slug, l2Meta?.slug, l3Meta?.slug]
+    .filter(Boolean)
+    .join("/")
+
+  /** Build a link to the kind-specific listing page at the current depth.
+   *  When the user is already on a kind-filtered browse page, prefer the
+   *  kind-first URL so navigation stays consistent (e.g. /teams/development
+   *  rather than /c/development/teams). */
+  const listingHref = (
+    kind: "projects" | "services" | "teams" | "talent" | "all"
+  ) => {
+    if (kind === "all") return `/c/${currentCategoryPath}`
+    if (pageKind !== "show-all") return `/${kind}/${currentCategoryPath}`
+    return `/c/${currentCategoryPath}/${kind}`
+  }
+
   // Call hooks unconditionally to satisfy React rules
   const l1Query = useCategoryPageL1(
     l1 ?? "",
-    { kind: "projects" },
+    { kind: pageKind },
     { enabled: !!l1 && !l2 && !l3 }
   )
   const l2Query = useCategoryPageL2(
     l1 ?? "",
     l2 ?? "",
-    { kind: "projects" },
+    { kind: pageKind },
     { enabled: !!l1 && !!l2 && !l3 }
   )
   const l3Query = useCategoryPageL3(
     l1 ?? "",
     l2 ?? "",
     l3 ?? "",
-    { kind: "projects" },
+    { kind: pageKind },
     { enabled: !!l1 && !!l2 && !!l3 }
   )
 
@@ -676,39 +888,98 @@ export default function Projects() {
             />
             <div className="absolute inset-0 bg-black/60" />
             <div className="absolute inset-0 p-6">
-              {/* Dynamic breadcrumbs */}
+              {/* Dynamic breadcrumbs.
+                  On kind-filtered browse pages (/projects, /services, /teams,
+                  /talent) the breadcrumb reflects the entity only. On true
+                  category pages it shows the L1/L2/L3 chain. */}
               <div className="flex items-center gap-x-2">
                 <NextLink href="/">
                   <Home03 className="size-[18px] text-white opacity-60" />
                 </NextLink>
                 <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
-                <NextLink href={`/c/${l1Meta.slug}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
-                  {l1Meta.name}
-                </NextLink>
-                {l2Meta && (
+                {pageKind === "show-all" ? (
                   <>
-                    <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
-                    <NextLink href={`/c/${l1Meta.slug}/${l2Meta.slug}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
-                      {l2Meta.name}
+                    <NextLink href={`/c/${l1Meta.slug}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
+                      {l1Meta.name}
                     </NextLink>
+                    {l2Meta && (
+                      <>
+                        <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                        <NextLink href={`/c/${l1Meta.slug}/${l2Meta.slug}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
+                          {l2Meta.name}
+                        </NextLink>
+                      </>
+                    )}
+                    {l3Meta && (
+                      <>
+                        <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                        <span className="text-xs leading-6 font-semibold text-white">
+                          {l3Meta.name}
+                        </span>
+                      </>
+                    )}
                   </>
-                )}
-                {l3Meta && (
+                ) : (
                   <>
-                    <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
-                    <span className="text-xs leading-6 font-semibold text-white">
-                      {l3Meta.name}
-                    </span>
+                    {/* Entity root — links to /projects, /services, etc. */}
+                    {l2Meta || l3Meta ? (
+                      <NextLink href={`/${pageKind}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
+                        {sectionLabel}
+                      </NextLink>
+                    ) : (
+                      <span className="text-xs leading-6 font-semibold text-white">
+                        {sectionLabel}
+                      </span>
+                    )}
+                    {/* L1 shown only when drilling into L2/L3 */}
+                    {(l2Meta || l3Meta) && (
+                      <>
+                        <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                        <NextLink href={`/${pageKind}/${l1Meta.slug}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
+                          {l1Meta.name}
+                        </NextLink>
+                      </>
+                    )}
+                    {l2Meta && (
+                      <>
+                        <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                        {l3Meta ? (
+                          <NextLink href={`/${pageKind}/${l1Meta.slug}/${l2Meta.slug}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
+                            {l2Meta.name}
+                          </NextLink>
+                        ) : (
+                          <span className="text-xs leading-6 font-semibold text-white">
+                            {l2Meta.name}
+                          </span>
+                        )}
+                      </>
+                    )}
+                    {l3Meta && (
+                      <>
+                        <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                        <span className="text-xs leading-6 font-semibold text-white">
+                          {l3Meta.name}
+                        </span>
+                      </>
+                    )}
                   </>
                 )}
               </div>
 
               <div className="mt-[50px] px-[50px]">
                 <h1 className="text-[36px] font-bold leading-none text-white">
-                  {currentName}
+                  {pageKind === "show-all" ? currentName : sectionLabel}
                 </h1>
                 <p className="text-xl mt-3 leading-none text-white">
-                  {currentDescription}
+                  {pageKind === "show-all"
+                    ? currentDescription
+                    : pageKind === "projects"
+                    ? `Browse ${currentName.toLowerCase()} projects posted by clients worldwide.`
+                    : pageKind === "services"
+                    ? `Discover ${currentName.toLowerCase()} services from top-rated freelancers.`
+                    : pageKind === "teams"
+                    ? `Hire vetted ${currentName.toLowerCase()} teams ready to deliver.`
+                    : `Find expert ${currentName.toLowerCase()} talent for your next project.`}
                 </p>
               </div>
             </div>
@@ -723,7 +994,7 @@ export default function Projects() {
           <div className="mt-[50px]">
             <div className="flex items-center justify-between">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Explore {currentName}
+                Explore {sectionLabel}
               </h1>
 
               <div className="flex items-center gap-x-3">
@@ -751,7 +1022,13 @@ export default function Projects() {
                   subcategories.map((subcat: any) => (
                     <NextLink
                       key={subcat.uuid ?? subcat.slug}
-                      href={`/c/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`}
+                      href={
+                        rootBrowseMode
+                          ? `/${pageKind}/${subcat.slug}`
+                          : pageKind === "show-all"
+                          ? `/c/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`
+                          : `/${pageKind}/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`
+                      }
                       className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300"
                     >
                       <article>
@@ -761,7 +1038,7 @@ export default function Projects() {
                           <h1 className="text-base leading-none font-semibold text-dark-blue-400 transition duration-300">
                             {subcat.name}
                           </h1>
-                          <p className="text-[13px] leading-none font-light text-dark-blue-400 mt-1">
+                          <p className="text-[13px] leading-[1.4] font-light text-dark-blue-400 mt-1 line-clamp-2">
                             {subcat.description || `Explore ${subcat.name} category`}
                           </p>
                         </div>
@@ -778,7 +1055,10 @@ export default function Projects() {
           </div>
           )}
 
-          {/* Recommended in {Category} — Swiper carousel with entity tabs */}
+          {/* Recommended in {Category} — entity-tab carousel. Show-all only,
+              because kind-filtered browse pages (/projects, /teams, etc.)
+              should contain a single entity kind — no tabs that switch kinds. */}
+          {pageKind === "show-all" && (
           <div className="mt-[50px]">
             <Tabs defaultValue="Projects">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -836,7 +1116,7 @@ export default function Projects() {
                         const key = project?.id ?? idx
                         return (
                           <SwiperSlide className="w-[355px]" key={key}>
-                            <NextLink href={project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : `/c/${l1Meta.slug}/projects`} className="block focus-visible:outline-none">
+                            <NextLink href={project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")} className="block focus-visible:outline-none">
                             <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                               <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border cursor-pointer border-black/15">
                                 <NextImage
@@ -966,7 +1246,7 @@ export default function Projects() {
                         const key = service?.id ?? idx
                         return (
                         <SwiperSlide className="w-[355px]" key={key}>
-                          <NextLink href={service ? buildServiceUrl(l1Meta.slug, service.slug, service.id) : `/c/${l1Meta.slug}/services`} className="block focus-visible:outline-none">
+                          <NextLink href={service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")} className="block focus-visible:outline-none">
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
                               <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={service?.mediaUrls?.[0] || "/dashboard.png"} alt={service?.title || "Service"} fill sizes="33vw" />
@@ -1121,12 +1401,17 @@ export default function Projects() {
               </SwiperRoot>
             </Tabs>
           </div>
+          )}
 
-          {/* Top-Rated {Category} Projects — Swiper with subcategory tabs */}
+          {/* Top-Rated {Category} Projects — projects-backed carousel.
+              Show-all only: the kind-filtered /projects page already has the
+              "Top Projects" section further down, so skipping this here
+              avoids two identical "Top" rows on the same page. */}
+          {pageKind === "show-all" && (
           <div className="mt-[50px]">
             <Tabs defaultValue={subcategories[0]?.name || "All"}>
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Top-Rated {currentName} Projects
+                Top-Rated {sectionLabel}
               </h1>
               <SwiperRoot>
                 <div className="mt-6 flex justify-between items-center">
@@ -1177,7 +1462,7 @@ export default function Projects() {
                       {fromLength(8).map((idx) => {
                         // Cycle through real listings so every card links to a real project detail page.
                         const project = listingsProjects.length > 0 ? listingsProjects[idx % listingsProjects.length] : null
-                        const href = project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : `/c/${l1Meta.slug}/projects`
+                        const href = project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")
                         return (
                         <SwiperSlide key={project?.id ?? idx} className="w-[355px]">
                           <NextLink href={href} className="block focus-visible:outline-none">
@@ -1214,12 +1499,17 @@ export default function Projects() {
               </SwiperRoot>
             </Tabs>
           </div>
+          )}
 
-          {/* {Category} Teams — Swiper carousel with filter tabs */}
+          {/* {Category} Teams — teams-backed carousel. Visible on show-all
+              and on the kind-filtered /teams page, where it serves as the
+              primary "Top Software Development Teams" section from the L1
+              Teams design. */}
+          {(pageKind === "show-all" || pageKind === "teams") && (
           <div className="mt-[50px]">
             <Tabs defaultValue="Featured">
               <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
-                {currentName} Teams
+                {pageKind === "show-all" ? `${currentName} Teams` : `Top ${currentName} Teams`}
               </h1>
               <SwiperRoot>
                 <div className="mt-6 flex justify-between items-center">
@@ -1295,6 +1585,7 @@ export default function Projects() {
               </SwiperRoot>
             </Tabs>
           </div>
+          )}
 
           {/* Popular Searches */}
           <div className="mt-[50px]">
@@ -1317,7 +1608,7 @@ export default function Projects() {
           <div className="mt-[50px]">
             <Tabs defaultValue="Project Type">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Narrow Your Project Search
+                Narrow Your {sectionLabel} Search
               </h1>
               <div className="mt-6 flex justify-between items-center">
                 <TabsList className="flex items-center gap-x-3">
@@ -1598,7 +1889,7 @@ export default function Projects() {
           <div className="mt-[50px]">
             <Tabs defaultValue="Back-End Development">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Recommended {currentName} Projects
+                Recommended {pageKind === "show-all" ? `${currentName} Projects` : sectionLabel}
               </h1>
               <div className="mt-6 flex justify-between items-center">
                 <TabsList className="flex items-center gap-x-3">
@@ -1715,7 +2006,7 @@ export default function Projects() {
 
                         <div className="mt-3 flex items-start gap-x-3">
                           <NextLink
-                            href={`/c/${l1Meta.slug}/projects`}
+                            href={listingHref("projects")}
                             className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
                           >
                             The Ultimate Mobile App Experience
@@ -1991,7 +2282,7 @@ export default function Projects() {
           <div className="mt-[50px]">
             <Tabs defaultValue="Featured">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Top {currentName} Projects
+                {pageKind === "show-all" ? `Top ${currentName} Projects` : "Top Projects"}
               </h1>
               <SwiperRoot>
                 <div className="mt-6 flex justify-between items-center">
@@ -2017,7 +2308,7 @@ export default function Projects() {
                         const project = listingsProjects.length > 0 ? item : null
                         return (
                         <SwiperSlide className="w-[355px]" key={project?.id ?? idx}>
-                          <NextLink href={project ? buildProjectUrl(l1Meta.slug, project.slug, project.id) : `/c/${l1Meta.slug}/projects`} className="block focus-visible:outline-none">
+                          <NextLink href={project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")} className="block focus-visible:outline-none">
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
                               <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={project?.mediaUrls?.[0] || "/dashboard.png"} alt={project?.title || "Dashboard"} fill sizes="33vw" />
@@ -2053,7 +2344,7 @@ export default function Projects() {
           <div className="mt-[50px]">
             <Tabs defaultValue="Featured">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Top {currentName} Services
+                {pageKind === "show-all" ? `Top ${currentName} Services` : "Top Services"}
               </h1>
               <SwiperRoot>
                 <div className="mt-6 flex justify-between items-center">
@@ -2079,7 +2370,7 @@ export default function Projects() {
                         const service = listingsServices.length > 0 ? item : null
                         return (
                         <SwiperSlide className="w-[355px]" key={service?.id ?? idx}>
-                          <NextLink href={service ? buildServiceUrl(l1Meta.slug, service.slug, service.id) : `/c/${l1Meta.slug}/services`} className="block focus-visible:outline-none">
+                          <NextLink href={service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")} className="block focus-visible:outline-none">
                           <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                             <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
                               <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={service?.mediaUrls?.[0] || "/dashboard.png"} alt={service?.title || "Service"} fill sizes="33vw" />
@@ -2115,7 +2406,7 @@ export default function Projects() {
           <div className="mt-[50px]">
             <Tabs defaultValue="Featured">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                {currentName} All Stars
+                {pageKind === "show-all" ? `${currentName} All Stars` : "Top Talent"}
               </h1>
               <SwiperRoot>
                 <div className="mt-6 flex justify-between items-center">
@@ -2182,9 +2473,11 @@ export default function Projects() {
                 Browse by Technology
               </h1>
 
-              <Button size="lg" variant="link" visual="gray">
-                View All technologies <ArrowRight className="size-[15px]" />
-              </Button>
+              <NextLink href="/technologies">
+                <Button size="lg" variant="link" visual="gray">
+                  View All technologies <ArrowRight className="size-[15px]" />
+                </Button>
+              </NextLink>
             </div>
 
             <div className="gap-[15px] mt-6 grid grid-cols-6">
@@ -2214,7 +2507,7 @@ export default function Projects() {
           <div className="mt-[50px]">
             <div className="flex justify-between items-center">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Guides Related to {currentName}
+                Guides Related to {sectionLabel}
               </h1>
 
               <Button size="lg" variant="link" visual="gray">
