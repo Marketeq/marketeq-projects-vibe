@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { useAuth } from "@/contexts/auth"
+import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import { ROLE } from "@/types/user"
 import { Spinner } from "@/components/ui/spinner/spinner"
 
@@ -21,7 +21,8 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
       return
     }
 
-    const hasRole = !!user?.role
+    const dashboardRole = resolveDashboardRole(user)
+    const hasRole = !!dashboardRole
     const onboardingDismissed = user?.onboardingDismissed
 
     //New user, no role yet
@@ -47,9 +48,9 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
     //Has role and onboarding is dismissed
     if (hasRole && onboardingDismissed) {
       if (!pathname?.includes("onboarding")) {
-        if (user.role === ROLE.TALENT) {
+        if (dashboardRole === ROLE.TALENT) {
           router.push(`/talent-dashboard`)
-        } else if (user.role === ROLE.CLIENT) {
+        } else if (dashboardRole === ROLE.CLIENT) {
           router.push(`/client-dashboard`)
         } else {
           router.push(`/`)

@@ -118,8 +118,32 @@ import {
   useToast,
 } from "@/components/ui"
 
-const getClientUsernameSuggestions = (email?: string | null) => {
-  const localPart = (email ?? "").split("@")[0]?.trim().toLowerCase() ?? ""
+const getClientUsernameSuggestions = ({
+  email,
+  firstName,
+  lastName,
+  teamName,
+  role,
+}: {
+  email?: unknown
+  firstName?: string | null
+  lastName?: string | null
+  teamName?: string | null
+  role?: string | null
+}) => {
+  const safeEmail = typeof email === "string" ? email : ""
+
+  const primarySuggestions = generateUsernameSuggestions(
+    firstName ?? "",
+    lastName ?? "",
+    `${teamName ?? ""} ${role ?? ""} ${safeEmail}`.trim()
+  )
+
+  if (primarySuggestions.length > 0) {
+    return primarySuggestions
+  }
+
+  const localPart = safeEmail.split("@")[0]?.trim().toLowerCase() ?? ""
   const normalized = localPart.replace(/[^a-z0-9_]/g, "")
   return normalized ? [normalized] : []
 }
@@ -1380,9 +1404,9 @@ const CreateYourUsername = ({
                 </AlertIcon>
                 <AlertContent>
                   <AlertDescription className="mt-0">
-                    {`We’ve just released a new feature Feel free to browse
+                    {`We’ve just released a new feature. Feel free to browse
                     projects and explore talent without a username. To connect
-                    with profiles or post a project, you'll need to create one.`}
+                    with profiles or post a project, you’ll need to create one.`}
                   </AlertDescription>
                 </AlertContent>
               </Alert>

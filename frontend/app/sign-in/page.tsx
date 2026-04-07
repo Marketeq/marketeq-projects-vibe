@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useAuth } from "@/contexts/auth"
+import { resolveDashboardRoute, useAuth } from "@/contexts/auth"
 import UnauthenticatedRoute from "@/hoc/UnauthenticatedRoute"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
@@ -41,22 +41,6 @@ const signInSchema = z.object({
 })
 
 type SignInFormValues = z.infer<typeof signInSchema>
-
-const resolveDestination = (user?: { userType?: string | null; accountType?: string | null; role?: string | null }) => {
-  const normalizedUserType = user?.userType?.toLowerCase?.()
-  const normalizedAccountType = user?.accountType?.toUpperCase?.()
-  const normalizedRole = user?.role?.toUpperCase?.()
-
-  if (normalizedUserType === "talent" || normalizedAccountType === "TALENT" || normalizedRole === "TALENT") {
-    return "/talent-dashboard"
-  }
-
-  if (normalizedUserType === "client" || normalizedAccountType === "CLIENT" || normalizedRole === "CLIENT") {
-    return "/client-dashboard"
-  }
-
-  return "/onboarding"
-}
 
 export default function SignIn() {
   const router = useRouter()
@@ -120,7 +104,8 @@ export default function SignIn() {
             setUser(nextUser)
           }
 
-          router.push(nextRoute)
+          const destination = redirectTarget ? nextRoute : resolveDashboardRoute(nextUser)
+          router.push(destination)
           reset()
         }
       })
