@@ -818,7 +818,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-[174px]">
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => router.push("/add-funds")}>
                 <Plus className="size-4" /> Add Funds
               </DropdownMenuItem>
               <DropdownMenuItem>
@@ -928,15 +928,13 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                 setMenuOpen(false)
                 const newType = user?.accountType === "TALENT" ? "client" : "talent"
                 const newDashboard = newType === "client" ? "/client-dashboard" : "/talent-dashboard"
-                try {
-                  if (user?.id) {
-                    await UserAPI.updateProfile(user.id, { userType: newType })
-                  }
-                  setUser((prev) => prev ? { ...prev, userType: newType, accountType: newType === "talent" ? ROLE.TALENT : ROLE.CLIENT } : prev)
-                  router.push(newDashboard)
-                } catch {
-                  router.push(newDashboard)
+                // Optimistically update local user so the dropdown label flips immediately,
+                // even if the backend doesn't accept the userType change.
+                setUser((prev) => prev ? { ...prev, userType: newType, accountType: newType === "talent" ? ROLE.TALENT : ROLE.CLIENT } : prev)
+                if (user?.id) {
+                  UserAPI.updateProfile(user.id, { userType: newType }).catch(() => {})
                 }
+                router.push(newDashboard)
               }}>
                 <Repeat className="size-4" />
                 {user?.accountType === "TALENT" ? "Switch to Client" : "Switch to Talent"}
