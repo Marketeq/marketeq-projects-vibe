@@ -630,6 +630,7 @@ export class CategoryService {
     const existing = await this.findCmsCategoryBySlug(cat.slug);
 
     const payload = {
+      uuid: cat.uuid,
       name: cat.name,
       slug: cat.slug,
       status: cat.published_in_marketplace ? 'active' : 'inactive',
@@ -661,8 +662,6 @@ export class CategoryService {
         parentUuid = raw.parent.uuid;
       } else if (typeof raw.parent === 'string') {
         parentUuid = raw.parent;
-      } else if (raw.parent.slug) {
-        parentUuid = raw.parent.slug;
       }
     }
 

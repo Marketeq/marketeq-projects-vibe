@@ -50,6 +50,7 @@ export class CategoryController {
   }
 
   @Post('user')
+  @UseGuards(ServiceAuthGuard)
   async createUserDocAlias(@Body() body: { name: string; parentUuid: string }) {
     const saved = await this.service.createUserSubcategory(body.name, body.parentUuid);
     return {
@@ -59,6 +60,7 @@ export class CategoryController {
   }
 
   @Post('user-subcategory')
+  @UseGuards(ServiceAuthGuard)
   async createUserSubcategory(@Body() body: { name: string; parentUuid: string }) {
     const saved = await this.service.createUserSubcategory(body.name, body.parentUuid);
     return {
@@ -68,6 +70,7 @@ export class CategoryController {
   }
 
   @Post('user-subcategory/moderated')
+  @UseGuards(ServiceAuthGuard)
   async createUserSubcategoryModerated(@Body() body: { name: string; parentUuid?: string }) {
     const saved = await this.service.createUserSubcategoryModerated(body.name, body.parentUuid);
     return {
