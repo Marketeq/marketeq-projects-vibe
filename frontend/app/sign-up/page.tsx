@@ -18,21 +18,16 @@ import LinkedInLoginButton from "@/components/auth/LinkedInLoginButton"
 import { Logo } from "@/components/icons"
 import { MarketeqIcon1 } from "@/components/marketeq-icon-1"
 import NextLink from "@/components/next-link"
-import {
-  Button,
-  Checkbox,
-  ErrorMessage,
-  Input,
-  Label,
-  useToast,
-} from "@/components/ui"
+import { Button, Checkbox, ErrorMessage, Input, Label } from "@/components/ui"
 
 const signUpSchema = z.object({
   email: z
     .string()
     .min(1, "Please enter at least 1 character(s)")
     .email("Please enter a valid email"),
-  agreesToTermsPrivacyPolicy: z.boolean(),
+  agreesToTermsPrivacyPolicy: z.boolean().refine((value) => value, {
+    message: "Please accept Terms of Use and Privacy Policy",
+  }),
 })
 
 type SignUpFormValues = z.infer<typeof signUpSchema>
@@ -41,7 +36,6 @@ export default function SignUp() {
   const router = useRouter()
 
   const { setUser } = useAuth()
-  const { toast } = useToast()
 
   const [isLoading, setIsLoading] = useState(false)
 
@@ -49,8 +43,10 @@ export default function SignUp() {
     register,
     formState: { errors },
     control,
+    clearErrors,
     handleSubmit,
     reset,
+    setError,
   } = useForm<SignUpFormValues>({
     resolver: zodResolver(signUpSchema),
     defaultValues: {
@@ -61,6 +57,7 @@ export default function SignUp() {
 
   const onSubmit: SubmitHandler<SignUpFormValues> = ({ email }) => {
     setIsLoading(true)
+    clearErrors("email")
 
     AuthAPI.SignUpWithEmail({ email })
       .then((response) => {
@@ -69,20 +66,24 @@ export default function SignUp() {
           response?.data?.access_token &&
           response?.data?.user
         ) {
-          Cookies.set("access_token", response?.data?.access_token, { path: "/" })
-          if (response?.data?.refresh_token) {
-            Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
-          }
+          Cookies.set("access_token", response?.data?.access_token)
           setUser(response?.data?.user)
           router.push("/onboarding")
           reset()
         }
       })
       .catch((error) => {
-        if (error?.response?.data?.errors?.message) {
-          toast({
-            title: error?.response?.data?.errors?.message,
-            variant: "destructive",
+        const errorMessage =
+          error?.response?.data?.errors?.message ||
+          (Array.isArray(error?.response?.data?.message) &&
+          error?.response?.data?.message?.length > 0
+            ? error?.response?.data?.message?.[0]
+            : error?.response?.data?.message)
+
+        if (errorMessage) {
+          setError("email", {
+            type: "server",
+            message: errorMessage,
           })
         }
       })
@@ -137,16 +138,8 @@ export default function SignUp() {
           <MarketeqIcon1 className="absolute -bottom-[36.41px] left-[41.11px]" />
 
           <div className="flex items-start gap-y-5 flex-col relative">
-            {/* <Button
-              className="text-white"
-              visual="gray"
-              variant="link"
-              size="md"
-            >
-              Don’t have an account?
-            </Button> */}
             <p className="text-white text-sm font-medium">
-              Don’t have an account?
+              Don't have an account?
             </p>
 
             <div className="inline-block relative">
@@ -239,7 +232,7 @@ export default function SignUp() {
                   className="text-[#939DA7] font-normal"
                   htmlFor="agrees-to-terms-privacy-policy"
                 >
-                  I agree to Markerteq’s{" "}
+                  I agree to Markerteq's{" "}
                   <Button
                     className="whitespace-normal font-normal"
                     size="sm"
@@ -258,9 +251,18 @@ export default function SignUp() {
                 </Label>
               </div>
 
+              <HookFormErrorMessage
+                errors={errors}
+                name="agreesToTermsPrivacyPolicy"
+                render={({ message }) => (
+                  <ErrorMessage size="sm">{message}</ErrorMessage>
+                )}
+              />
+
               <Button
                 className="mt-5 xs:max-md:text-sm xs:max-md:py-2 xs:max-md:px-[14px] xs:max-md:h-9 md:mt-6 w-full"
                 size="lg"
+                disabled={isLoading}
               >
                 {isLoading ? (
                   <Spinner

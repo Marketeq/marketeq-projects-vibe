@@ -16,6 +16,10 @@ export default function MarketplaceGroupLayout({
 }) {
   return (
     <>
+      {/* Hidden for now — sub-nav pill bar (Mobile Development / Security / Mobile /
+          Front-End / API / Database / Cloud / ... / More). Preserved here so it
+          can be restored easily when content is wired up. */}
+      {/*
       <div className="xs:max-lg:hidden py-1.5 flex border-t border-gray-200 bg-[#FAFBFB] items-center gap-x-[30px] px-[50px] shadow-[0px_1px_3px_0px_theme(colors.gray.900/.1)]">
         <Button
           className="text-[13px] text-gray-800 leading-6 opacity-50 hover:opacity-100 font-bold"
@@ -125,6 +129,7 @@ export default function MarketplaceGroupLayout({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      */}
       {children}
     </>
   )

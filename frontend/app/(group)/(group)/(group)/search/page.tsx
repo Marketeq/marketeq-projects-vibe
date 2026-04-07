@@ -1,6 +1,14 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import {
+  SearchAPI,
+  SearchCategory as SearchCategoryType,
+  SearchHit,
+  SearchResponse,
+  isGroupedResponse,
+} from "@/service/http/search"
 import { HOT_KEYS } from "@/utils/constants"
 import { cn, getFirstItem, getIsNotEmpty, keys } from "@/utils/functions"
 import {
@@ -67,9 +75,183 @@ import { Sidebar } from "./sidebar"
 const GRID_LAYOUT = "GRID"
 const LIST_LAYOUT = "LIST"
 
+/**
+ * Extract a human-friendly title from a raw Algolia hit. The field used
+ * depends on which index the hit came from — talent/teams have `name`,
+ * projects have `project_title`, services have `service_title`.
+ */
+function getHitTitle(hit: SearchHit): string {
+  return (
+    hit.project_title ||
+    hit.service_title ||
+    hit.team_name ||
+    hit.name ||
+    hit.title ||
+    hit.job_title ||
+    "Untitled"
+  )
+}
+
+function getHitSubtitle(hit: SearchHit): string {
+  return (
+    hit.description ||
+    hit.headline ||
+    hit.about_me ||
+    hit.overview ||
+    (Array.isArray(hit.skills) ? hit.skills.slice(0, 3).join(", ") : "") ||
+    ""
+  )
+}
+
+function getHitMeta(hit: SearchHit): string {
+  if (hit.budget_range) return `Budget: ${hit.budget_range}`
+  if (hit.price_range) return `Price: ${hit.price_range}`
+  if (hit.hourly_rate) return `$${hit.hourly_rate}/hr`
+  if (hit.timeline) return hit.timeline
+  if (hit.location) return hit.location
+  return ""
+}
+
+const SearchResultCard = ({ hit }: { hit: SearchHit }) => {
+  return (
+    <article className="rounded-[8px] border bg-white border-gray-[#122A4B]/[.15] overflow-hidden shadow-[0px_2px_5px_0px_theme(colors.black/.04)]">
+      <div className="relative h-[140px] bg-gray-100">
+        {hit.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={hit.image}
+            alt={getHitTitle(hit)}
+            className="absolute inset-0 size-full object-cover"
+          />
+        ) : null}
+      </div>
+      <div className="p-5">
+        <h1 className="text-base leading-[18.75px] font-bold text-dark-blue-400 line-clamp-2">
+          {getHitTitle(hit)}
+        </h1>
+        <p className="text-sm mt-3 font-light text-[#667085] line-clamp-2">
+          {getHitSubtitle(hit)}
+        </p>
+        <div className="flex items-center justify-between mt-[19px]">
+          <p className="text-sm font-light text-[#667085]">{getHitMeta(hit)}</p>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+const SearchResultCardLandscape = ({ hit }: { hit: SearchHit }) => {
+  return (
+    <article className="rounded-[8px] border bg-white border-gray-[#122A4B]/[.15] overflow-hidden shadow-[0px_2px_5px_0px_theme(colors.black/.04)] p-5">
+      <h1 className="text-base leading-[18.75px] font-bold text-dark-blue-400">
+        {getHitTitle(hit)}
+      </h1>
+      <p className="text-sm mt-3 font-light text-[#667085]">
+        {getHitSubtitle(hit)}
+      </p>
+      <p className="text-sm mt-3 font-light text-[#667085]">
+        {getHitMeta(hit)}
+      </p>
+    </article>
+  )
+}
+
 export default function Search() {
   const [value, setValue] = useState([GRID_LAYOUT])
   const [isOpen, toggleIsOpen] = useToggle(false)
+
+  // Ensure the search page always loads scrolled to the very top, regardless
+  // of where the user was scrolled on the previous page.
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" })
+    }
+  }, [])
+
+  // Read search params so clicks from "Popular Searches" etc. reflect in the page.
+  const searchParams = useSearchParams()
+  const query = searchParams?.get("q") ?? "Swift Development"
+  const categorySlug = searchParams?.get("category") ?? ""
+  const categoryLabel = categorySlug
+    ? categorySlug
+        .split("-")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ")
+    : ""
+
+  // ── Phase 4: live results from backend search service ─────────────────
+  // Calls GET /search?q=...&category=... and renders the hits when the
+  // backend returns any. Falls back to mock SearchCard blocks on error or
+  // empty result so the design is always preserved.
+  const [searchHits, setSearchHits] = useState<SearchHit[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [totalHits, setTotalHits] = useState<number | null>(null)
+
+  // Map the top-nav listing-type category ("projects"/"services"/"teams"/"talent")
+  // onto the backend SearchCategory enum. Anything else falls through to "all".
+  const backendCategory: SearchCategoryType = useMemo(() => {
+    const known: SearchCategoryType[] = ["talent", "teams", "projects", "services"]
+    return (known.includes(categorySlug as SearchCategoryType)
+      ? categorySlug
+      : "all") as SearchCategoryType
+  }, [categorySlug])
+
+  useEffect(() => {
+    let cancelled = false
+    const skills = searchParams?.get("skill") ?? undefined
+    const location = searchParams?.get("location") ?? undefined
+    const industry = searchParams?.get("industry") ?? undefined
+
+    setIsLoading(true)
+    SearchAPI.search({
+      q: query,
+      category: backendCategory,
+      limit: 20,
+      page: 0,
+      skills,
+      location,
+      industry,
+    })
+      .then((res) => {
+        if (cancelled) return
+        const data: SearchResponse = res.data as SearchResponse
+        if (isGroupedResponse(data)) {
+          // Flatten grouped response into a single hit list for display
+          const merged: SearchHit[] = [
+            ...(data.talent?.hits ?? []),
+            ...(data.teams?.hits ?? []),
+            ...(data.projects?.hits ?? []),
+            ...(data.services?.hits ?? []),
+          ]
+          const total =
+            (data.talent?.nbHits ?? 0) +
+            (data.teams?.nbHits ?? 0) +
+            (data.projects?.nbHits ?? 0) +
+            (data.services?.nbHits ?? 0)
+          setSearchHits(merged)
+          setTotalHits(total)
+        } else {
+          setSearchHits(data.hits ?? [])
+          setTotalHits(data.nbHits ?? null)
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        // Silent fallback — the mock cards will render instead.
+        setSearchHits([])
+        setTotalHits(null)
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [query, backendCategory, searchParams])
+
+  const resultsCount = totalHits ?? 147
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
@@ -109,6 +291,10 @@ export default function Search() {
         </DialogContent>
       </Dialog>
 
+      {/* Top dark-blue promo banner — hidden (commented out) and replaced by
+          a contextual banner rendered directly above the results count.
+          Preserved here so it can be restored easily if needed. */}
+      {/*
       <div className="p-10 lg:py-5 flex items-center md:flex-row gap-y-10 flex-col justify-between lg:px-[250px] bg-dark-blue-800">
         <div className="flex xs:max-md:items-center lg:items-center lg:flex-row flex-col lg:gap-y-5 lg:gap-x-[37px]">
           <Logo4 className="shrink-0 xs:max-lg:w-[262.31px]" />
@@ -128,15 +314,32 @@ export default function Search() {
           <ChevronRight className="size-[15px]" />
         </Button>
       </div>
+      */}
 
       <div className="lg:p-[50px] lg:flex gap-x-[50px]">
         <Sidebar />
 
         <div className="flex-auto">
+          {/* Contextual search banner — appears directly above the results count. */}
+          <div className="mb-5 rounded-lg overflow-hidden">
+            <img
+              src="/search-banner-swift.png"
+              alt="Swift Development"
+              className="w-full h-auto block"
+            />
+          </div>
+
           <div className="hidden lg:inline-flex items-center gap-x-3">
             <h1 className="text-base leading-[19.36px] font-light text-dark-blue-400">
-              <span className="font-bold">147</span> Results for{" "}
-              <span className="font-bold">“Swift Development”</span>
+              <span className="font-bold">{resultsCount}</span> Results for{" "}
+              <span className="font-bold">“{query}”</span>
+              {categoryLabel && (
+                <>
+                  {" "}
+                  in{" "}
+                  <span className="font-bold">{categoryLabel}</span>
+                </>
+              )}
             </h1>
 
             <Button
@@ -215,8 +418,15 @@ export default function Search() {
 
             <div className="lg:contents mt-5 md:mt-6 xs:max-md:px-5 md:max-lg:px-6 flex justify-between items-end">
               <h1 className="text-xs leading-[19.36px] lg:hidden font-light text-dark-blue-400">
-                <span className="font-semibold">147</span> Results for{" "}
-                <span className="font-semibold">“Swift Development”</span>
+                <span className="font-semibold">{resultsCount}</span> Results for{" "}
+                <span className="font-semibold">“{query}”</span>
+                {categoryLabel && (
+                  <>
+                    {" "}
+                    in{" "}
+                    <span className="font-semibold">{categoryLabel}</span>
+                  </>
+                )}
               </h1>
 
               <div className="flex items-center gap-x-6 lg:p-[11.5px]">
@@ -311,22 +521,26 @@ export default function Search() {
           <div className="mt-5 xs:max-md:pb-5 md:max-lg:pb-6 lg:mt-8 xs:max-md:px-3.5 md:max-lg:px-6">
             {getFirstItem(value) === GRID_LAYOUT ? (
               <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-[15px] lg:gap-5">
-                <SearchCard />
-                <SearchCard />
-                <SearchCard />
-                <SearchCard />
-                <SearchCard />
-                <SearchCard />
-                <SearchCard />
-                <SearchCard />
+                {searchHits.length > 0
+                  ? searchHits.map((hit) => (
+                      <SearchResultCard key={hit.objectID} hit={hit} />
+                    ))
+                  : Array.from({ length: 8 }).map((_, i) => (
+                      <SearchCard key={i} />
+                    ))}
               </div>
             ) : (
               <div className="grid gap-y-[15px] lg:gap-y-5">
-                <SearchCardLandscape />
-                <SearchCardLandscape />
-                <SearchCardLandscape />
-                <SearchCardLandscape />
-                <SearchCardLandscape />
+                {searchHits.length > 0
+                  ? searchHits.map((hit) => (
+                      <SearchResultCardLandscape
+                        key={hit.objectID}
+                        hit={hit}
+                      />
+                    ))
+                  : Array.from({ length: 5 }).map((_, i) => (
+                      <SearchCardLandscape key={i} />
+                    ))}
               </div>
             )}
           </div>
