@@ -89,10 +89,6 @@ const GoogleLoginButtonInner = () => {
 }
 
 const GoogleLoginButton = () => {
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
-
-  if (!googleClientId) return null
-
   return <GoogleLoginButtonInner />
 }
 
