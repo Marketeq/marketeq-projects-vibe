@@ -52,4 +52,12 @@ export const AuthAPI = {
       withCredentials: true,
     })
   },
+
+  ForgotPassword: (data: { email: string; redirectUrl?: string }) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/forgot-password`, data)
+  },
+
+  ResetPassword: (data: { token: string; password: string }) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/reset-password`, data)
+  },
 }

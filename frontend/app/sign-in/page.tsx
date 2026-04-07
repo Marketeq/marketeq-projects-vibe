@@ -377,15 +377,17 @@ export default function SignIn() {
                   </Label>
                 </div>
 
-                <Button
-                  className="font-normal text-[#939DA7]"
-                  size="sm"
-                  variant="link"
-                  visual="gray"
-                  type="button"
-                >
-                  Forgot password
-                </Button>
+                <NextLink href="/forgot-password">
+                  <Button
+                    className="font-normal text-[#939DA7]"
+                    size="sm"
+                    variant="link"
+                    visual="gray"
+                    type="button"
+                  >
+                    Forgot password
+                  </Button>
+                </NextLink>
               </div>
 
               <Button
