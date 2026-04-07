@@ -5,6 +5,7 @@ import { useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import industriesMock from "@/public/mock/industries.json"
 import jobTitlesMock from "@/public/mock/job_titles.json"
 import rawSkillSuggestions from "@/public/mock/skills.json"
 import { AuthAPI } from "@/service/http/auth"
@@ -13,7 +14,9 @@ import {
   type AutocompleteTypeSuggestion,
 } from "@/service/http/autocomplete"
 import { ClientAPI } from "@/service/http/client"
+import { InvitationsAPI } from "@/service/http/invitations"
 import { UserAPI } from "@/service/http/user"
+import { generateUsernameSuggestions } from "@/utils/username"
 import { HOT_KEYS } from "@/utils/constants"
 import {
   cn,
@@ -114,29 +117,10 @@ import {
   useToast,
 } from "@/components/ui"
 
-const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/
-const USERNAME_RULE_MESSAGE =
-  "Username can only contain letters, numbers, and underscores"
-
 const getClientUsernameSuggestions = (email?: string | null) => {
   const localPart = (email ?? "").split("@")[0]?.trim().toLowerCase() ?? ""
-  const normalized = localPart.replace(/[^a-z0-9._-]/g, "")
-
-  if (!normalized) return []
-
-  const compact = normalized.replace(/[._-]+/g, "")
-  const suggestions = [
-    `@${normalized}`,
-    compact ? `@${compact}` : "",
-    compact ? `@${compact}.team` : "",
-    normalized.includes(".")
-      ? `@${normalized}er`
-      : compact
-        ? `@${compact}hq`
-        : "",
-  ]
-
-  return Array.from(new Set(suggestions.filter(Boolean)))
+  const normalized = localPart.replace(/[^a-z0-9_]/g, "")
+  return normalized ? [normalized] : []
 }
 
 const toNameCase = (value?: string | null) => {
@@ -187,38 +171,38 @@ const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value)
 const getClientPayloadValidationErrors = (data: CreateClientType) => {
   const errors: string[] = []
 
-  if (!isNonEmptyString(data.firstName)) errors.push("First name is required")
-  if (!isNonEmptyString(data.lastName)) errors.push("Last name is required")
-  if (!isNonEmptyString(data.username)) errors.push("Username is required")
-  if (!isNonEmptyString(data.teamName)) errors.push("Team name is required")
-  if (!isNonEmptyString(data.role)) errors.push("Role is required")
-  if (!isNonEmptyString(data.industry)) errors.push("Industry is required")
-  if (!isNonEmptyString(data.budget)) errors.push("Budget is required")
+  if (!isNonEmptyString(data.firstName)) errors.push("First name is required.")
+  if (!isNonEmptyString(data.lastName)) errors.push("Last name is required.")
+  if (!isNonEmptyString(data.username)) errors.push("Username must be at least 3 characters.")
+  if (!isNonEmptyString(data.teamName)) errors.push("Team/company name is required.")
+  if (!isNonEmptyString(data.role)) errors.push("Role/job title is required.")
+  if (!isNonEmptyString(data.industry)) errors.push("Industry is required.")
+  if (!isNonEmptyString(data.budget)) errors.push("Please select a budget range.")
 
   if (!data.businessTypes?.length) {
-    errors.push("At least 1 business type is required")
+    errors.push("Select at least one goal.")
   }
 
-  if (!data.teammateEmails || data.teammateEmails.length < 3) {
-    errors.push("At least 3 teammate emails are required")
-  } else if (data.teammateEmails.some((email) => !isValidEmail(email))) {
-    errors.push("All teammate emails must be valid email addresses")
+  if (data.teammateEmails && data.teammateEmails.length > 0) {
+    if (data.teammateEmails.some((email) => !isValidEmail(email))) {
+      errors.push("All teammate emails must be valid email addresses.")
+    }
   }
 
   if (!data.industries?.length) {
-    errors.push("At least 1 industry or vertical is required")
+    errors.push("Select at least one industry or vertical.")
   }
 
   if (!data.lookingToWorkWith?.length) {
-    errors.push("At least 1 collaborator type is required")
+    errors.push("Enter at least one desired role or one desired skill.")
   }
 
   if (!data.skills?.length) {
-    errors.push("At least 1 skill is required")
+    errors.push("Enter at least one desired role or one desired skill.")
   }
 
   if (!data.projectTypes?.length) {
-    errors.push("At least 1 project type is required")
+    errors.push("Select at least one project type.")
   }
 
   return errors
@@ -233,14 +217,14 @@ const getBudgetDefaultValue = (value?: string) => {
 }
 
 const describeYourTeamFormSchema = z.object({
-  teamName: z.string().min(1, "Please enter at least 1 character(s)"),
-  role: z.string().min(1, "Must enter at least 1 character(s)"),
-  industry: z.string().min(1, "Must enter at least 1 character(s)"),
+  teamName: z.string().min(1, "Team/company name is required."),
+  role: z.string().min(1, "Role/job title is required."),
+  industry: z.string().min(1, "Industry is required."),
 })
 
 type DescribeYourTeamFormValues = z.infer<typeof describeYourTeamFormSchema>
 
-const industryList = ["Technology", "Healthcard", "Retail"] as const
+const industryList = [...new Set(industriesMock.map((i) => i.label))]
 
 const DescribeYourTeam = ({
   sidebar,
@@ -372,14 +356,19 @@ const DescribeYourTeam = ({
 
               <DropdownPopover
                 selected={values?.industry}
-                onSelectedChange={(value) => setValue("industry", value || "")}
-                {...register("industry")}
+                onSelectedChange={(value) =>
+                  setValue("industry", value || "", {
+                    shouldDirty: true,
+                    shouldTouch: true,
+                    shouldValidate: true,
+                  })
+                }
               >
                 <DropdownPopoverTrigger>
                   {values?.industry ? (
                     values?.industry
                   ) : (
-                    <span className="text-gray-500">Select a industry</span>
+                    <span className="text-gray-500">Select an industry</span>
                   )}
                   <ChevronDown className="ml-auto h-5 w-5 text-gray-500" />
                 </DropdownPopoverTrigger>
@@ -399,17 +388,19 @@ const DescribeYourTeam = ({
                       No industry found.
                     </DropdownCommandEmpty>
 
-                    <DropdownCommandGroup>
-                      {industryList.map((industry) => (
-                        <DropdownCommandItem
-                          key={industry}
-                          itemValue={industry}
-                        >
-                          {industry}
-                          <Check1 className="ml-auto text-primary-500 opacity-0 group-data-[state=selected]:opacity-100" />
-                        </DropdownCommandItem>
-                      ))}
-                    </DropdownCommandGroup>
+                    <ScrollArea className="max-h-[200px] overflow-y-auto">
+                      <DropdownCommandGroup>
+                        {industryList.map((industry) => (
+                          <DropdownCommandItem
+                            key={industry}
+                            itemValue={industry}
+                          >
+                            {industry}
+                            <Check1 className="ml-auto text-primary-500 opacity-0 group-data-[state=selected]:opacity-100" />
+                          </DropdownCommandItem>
+                        ))}
+                      </DropdownCommandGroup>
+                    </ScrollArea>
                   </DropdownCommand>
                 </DropdownPopoverContent>
               </DropdownPopover>
@@ -506,7 +497,7 @@ const shareYourGoalsFormSchema = z
     )
   )
   .refine((data) => keys(data).some((value) => data[value]), {
-    message: "Please select at least 1 option(s)",
+    message: "Select at least one goal.",
     path: [defaultValue.label],
   })
 
@@ -683,16 +674,36 @@ const inviteYourTeamFormSchema = z
     emails: z
       .array(
         z.object({
-          email: z
-            .string()
-            .trim()
-            .min(1, "Please enter email")
-            .email("Please enter a valid email"),
+          email: z.string().trim(),
         })
       )
-      .min(3, "Please enter at least 3 teammate email(s)"),
   })
   .superRefine(({ emails }, ctx) => {
+    const populatedEmails = emails
+      .map(({ email }) => email.trim())
+      .filter((email) => email.length > 0)
+
+    if (populatedEmails.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Please enter at least 1 teammate email",
+        path: ["emails", 0, "email"],
+      })
+    }
+
+    emails.forEach(({ email }, index) => {
+      const normalizedEmail = email.trim()
+      if (!normalizedEmail) return
+
+      if (!z.string().email().safeParse(normalizedEmail).success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Please enter a valid email",
+          path: ["emails", index, "email"],
+        })
+      }
+    })
+
     const seenEmails = new Map<string, number[]>()
 
     emails.forEach(({ email }, index) => {
@@ -734,6 +745,11 @@ const InviteYourTeam = ({
       ? stepData?.teammateEmails?.map((value) => ({ email: value }))
       : [{ email: "" }, { email: "" }, { email: "" }],
   }
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const [inviteLink, setInviteLink] = React.useState("")
+  const [isInviteLinkLoading, setIsInviteLinkLoading] = React.useState(false)
+  const [hasInviteLinkError, setHasInviteLinkError] = React.useState(false)
 
   const {
     control,
@@ -758,11 +774,20 @@ const InviteYourTeam = ({
     control,
     name: "emails",
   })
+  const inviteBaseUrl = (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "")
+  ).replace(/\/$/, "")
+  const genericTeamName = stepData?.teamName?.trim() || "Client Team"
 
   const onSubmit: SubmitHandler<InviteYourTeamFormValues> = (values) => {
+    const teammateEmails = values.emails
+      .map(({ email }) => email.trim())
+      .filter(Boolean)
+
     setStepData({
       ...stepData,
-      teammateEmails: values?.emails?.map(({ email }) => email),
+      teammateEmails,
     })
     toggleValidation(true)
     setStep(currentStep + 1)
@@ -775,12 +800,114 @@ const InviteYourTeam = ({
   }
 
   const back = () => {
+    const teammateEmails = getValues("emails")
+      ?.map(({ email }) => email.trim())
+      .filter(Boolean)
+
     setStepData({
       ...stepData,
-      teammateEmails: getValues("emails")?.map(({ email }) => email),
+      teammateEmails,
     })
     prevStep()
   }
+
+  const generateInviteLink = async ({
+    copyToClipboard = false,
+    showErrorToast = false,
+  }: {
+    copyToClipboard?: boolean
+    showErrorToast?: boolean
+  }) => {
+    const teamId = (user as any)?.id || (user as any)?.sub
+    if (!teamId) {
+      if (showErrorToast) {
+        toast({
+          title: "Please sign in again to generate an invite link.",
+          variant: "destructive",
+        })
+      }
+      return false
+    }
+
+    try {
+      setIsInviteLinkLoading(true)
+      setHasInviteLinkError(false)
+
+      const response = await InvitationsAPI.createInvitationLink({
+        teamId,
+        teamName: genericTeamName,
+        role: "viewer",
+      })
+
+      const inviteUrl =
+        response?.data?.url ||
+        (response?.data?.token
+          ? `${inviteBaseUrl}/invite/accept?token=${response.data.token}`
+          : "")
+
+      if (!inviteUrl) {
+        throw new Error("We couldn't generate the invite link. Please try again.")
+      }
+
+      setInviteLink(inviteUrl)
+
+      if (copyToClipboard) {
+        await navigator.clipboard.writeText(inviteUrl)
+        toast({
+          title: "Invite link copied",
+          description: "A team invite link is now on your clipboard.",
+        })
+      }
+      return true
+    } catch (error: any) {
+      setHasInviteLinkError(true)
+      if (showErrorToast) {
+        toast({
+          title:
+            error?.response?.data?.message ||
+            error?.message ||
+            "Failed to generate invite link.",
+          variant: "destructive",
+        })
+      }
+      return false
+    } finally {
+      setIsInviteLinkLoading(false)
+    }
+  }
+
+  const handleCopyInviteLink = async () => {
+    if (inviteLink) {
+      await navigator.clipboard.writeText(inviteLink)
+      toast({
+        title: "Invite link copied",
+        description: "A team invite link is now on your clipboard.",
+      })
+      return
+    }
+
+    await generateInviteLink({
+      copyToClipboard: true,
+      showErrorToast: true,
+    })
+  }
+
+  useDebounce(
+    () => {
+      if (inviteLink || isInviteLinkLoading || hasInviteLinkError) return
+
+      void generateInviteLink({})
+    },
+    400,
+    [
+      genericTeamName,
+      inviteLink,
+      isInviteLinkLoading,
+      hasInviteLinkError,
+      user?.id,
+      (user as any)?.sub,
+    ]
+  )
 
   return (
     <div className="min-h-screen flex 2xl:pl-[480px]">
@@ -804,12 +931,11 @@ const InviteYourTeam = ({
           </div>
 
           <h1 className="text-2xl leading-[36px] mt-2 text-dark-blue-400 font-semibold">
-            What brings you here today?
+            Invite Your Team!
           </h1>
 
           <p className="text-base leading-[19.36px] text-dark-blue-400 mt-2 font-light">
-            Whether you&apos;re here to hire or get hired, let&apos;s get you
-            set up the right way.
+            Share an invite with your team so they can be part of the process.
           </p>
 
           <div className="mt-10 2xl:mt-[50px]">
@@ -884,29 +1010,39 @@ const InviteYourTeam = ({
               <span className="flex-auto inline-block h-px bg-[#E1E6EA]" />
             </div>
 
-            <ClipboardRoot
-              className="mt-[50px]"
-              value="https://projects.marketeqdigital.com/invite/209283"
-            >
-              <ClipboardLabel className="text-lg leading-9 font-semibold">
+            <div className="mt-[50px]">
+              <div className="text-lg leading-9 font-semibold">
                 Share an invite link with your team
-              </ClipboardLabel>
+              </div>
 
-              <ClipboardControl>
-                <ClipboardInput />
-                <ClipboardTrigger className="pr-3.5 w-auto">
-                  <ClipboardIndicator
-                    copied={
-                      <>
-                        <Check className="size-[15px]" /> Copied
-                      </>
-                    }
-                  >
-                    <Link01 className="size-[15px]" /> Copy Link
-                  </ClipboardIndicator>
-                </ClipboardTrigger>
-              </ClipboardControl>
-            </ClipboardRoot>
+              <div className="mt-3 flex h-11 w-full items-center gap-2 rounded-[5px] border border-gray-300 bg-white px-[14px] py-[10px]">
+                <div className="min-w-0 flex-auto truncate text-base text-gray-700 leading-6">
+                  {inviteLink ||
+                    (hasInviteLinkError
+                      ? "We couldn't generate the invite link. Please try again."
+                      : "Invite link will appear here")}
+                </div>
+
+                <Button
+                  className="shrink-0 gap-2"
+                  size="sm"
+                  variant="link"
+                  type="button"
+                  onClick={handleCopyInviteLink}
+                  disabled={isInviteLinkLoading}
+                >
+                  {isInviteLinkLoading ? (
+                    <>
+                      <Spinner className="size-4" /> Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Link01 className="size-[15px]" /> Copy Link
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -943,11 +1079,10 @@ const InviteYourTeam = ({
 }
 
 const createYourUsernameFormSchema = z.object({
-  username: z
-    .string()
-    .trim()
-    .min(3, "Please enter at least 3 character(s)")
-    .regex(USERNAME_PATTERN, USERNAME_RULE_MESSAGE),
+  username: z.string().trim()
+    .min(3, "Username must be at least 3 characters.")
+    .max(24, "Username must be at most 24 characters.")
+    .regex(/^[a-z][a-z0-9_]*$/, "Username must start with a letter and contain only lowercase letters, numbers, and underscores."),
 })
 
 type CreateYourUsernameFormValues = z.infer<typeof createYourUsernameFormSchema>
@@ -985,8 +1120,23 @@ const CreateYourUsername = ({
   const { username } = watch()
 
   const usernameSuggestions = useMemo(
-    () => getClientUsernameSuggestions(user?.email),
-    [user?.email]
+    () =>
+      getClientUsernameSuggestions({
+        email: user?.email,
+        firstName: user?.firstName ?? stepData?.firstName,
+        lastName: user?.lastName ?? stepData?.lastName,
+        teamName: stepData?.teamName,
+        role: stepData?.role,
+      }),
+    [
+      stepData?.firstName,
+      stepData?.lastName,
+      stepData?.role,
+      stepData?.teamName,
+      user?.email,
+      user?.firstName,
+      user?.lastName,
+    ]
   )
 
   const { toggleValidation } = useStepContext()
@@ -1030,7 +1180,7 @@ const CreateYourUsername = ({
   }
 
   const checkUsernameAvailability = () => {
-    if (username?.length > 2 && USERNAME_PATTERN.test(username)) {
+    if (username?.length > 2) {
       setIsUsernameLoading(true)
       clearErrors("username")
 
@@ -1125,7 +1275,7 @@ const CreateYourUsername = ({
                           size="sm"
                           className="flex flex-row items-center gap-0.5"
                         >
-                          <X width={20} height={20} /> Not Available
+                          <X width={20} height={20} /> That username is already taken.
                         </ErrorMessage>
                       )}
 
@@ -1151,12 +1301,11 @@ const CreateYourUsername = ({
               />
             </div>
 
-            {show ? (
+            {usernameSuggestions.length > 0 && (show ? (
               <div className="mt-6">
                 {usernameSuggestions.map((username, index) => (
-                  <>
+                  <React.Fragment key={username}>
                     <Button
-                      key={index}
                       className="text-primary-500/50 hover:text-primary-500"
                       size="lg"
                       visual="gray"
@@ -1170,14 +1319,14 @@ const CreateYourUsername = ({
                     {index !== usernameSuggestions.length - 1 && (
                       <span>, </span>
                     )}
-                  </>
+                  </React.Fragment>
                 ))}
               </div>
             ) : (
               <div className="mt-6">
                 <span className="block text-sm leading-[16.94px] text-gray-500">
                   {usernameSuggestions.slice(0, 3).map((username, index) => (
-                    <React.Fragment key={`${username}-${index}`}>
+                    <React.Fragment key={username}>
                       <Button
                         className="text-primary-500/50 hover:text-primary-500"
                         size="lg"
@@ -1208,7 +1357,7 @@ const CreateYourUsername = ({
                   More suggestions
                 </Button>
               </div>
-            )}
+            ))}
 
             <div className="mt-10 2xl:mt-[50px]">
               <Alert>
@@ -1884,25 +2033,25 @@ const outlineYourInterestsFormSchema = z
       )
     ),
     budget: z.enum(budget, {
-      required_error: "Please select at least 1 option(s)",
+      required_error: "Please select a budget range.",
     }),
     lookingToWorkWith: z
       .array(z.string())
-      .min(1, "Please select at least 1 option(s)"),
+      .min(1, "Enter at least one desired role or one desired skill."),
     skillsLookingFor: z
       .array(z.string())
-      .min(1, "Please select at least 1 option(s)"),
+      .min(1, "Enter at least one desired role or one desired skill."),
   })
   .refine(
     (data) =>
       industriesOrVerticals.some((item) => data.industriesOrVerticals[item]),
     {
-      message: "Please select at least 1 option(s)",
+      message: "Select at least one industry or vertical.",
       path: ["industriesOrVerticals"],
     }
   )
   .refine((data) => projects.some((item) => data.projects[item]), {
-    message: "Please select at least 1 option(s)",
+    message: "Select at least one project type.",
     path: ["projects"],
   })
 
@@ -2290,7 +2439,7 @@ const OutlineYourInterests = ({
                   render={({ field: { value, onChange } }) => (
                     <RadioGroup
                       className="grid grid-cols-2 gap-2.5"
-                      value={value}
+                      value={value ?? ""}
                       onValueChange={onChange}
                     >
                       {budget.map((item, index) => (
@@ -2378,7 +2527,7 @@ const DoNext = ({
           nextUser = {
             ...fallbackUser,
             onboardingDismissed: true,
-            role: fallbackUser.role ?? ROLE.CLIENT,
+            userType: "client",
           }
         }
       }
@@ -2409,7 +2558,7 @@ const DoNext = ({
     <div className="min-h-screen flex 2xl:pl-[480px]">
       {sidebar}
 
-      <div className="relative flex justify-between flex-col flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[150px]">
+      <div className="relative flex justify-between flex-col flex-auto px-5 md:px-10 py-10 lg:py-[100px] 2xl:px-[150px]">
         <div className="max-w-[688px] 2xl:max-w-[660px] w-full mx-auto">
           <h1 className="text-2xl leading-[36px] mt-2 text-dark-blue-400 font-semibold">
             What would you like to do next?
@@ -2482,7 +2631,7 @@ const DoNext = ({
           </div>
         </div>
 
-        <div className="mt-10 2xl:mt-[50px] max-w-[688px] 2xl:max-w-[660px] mx-auto w-full self-end flex justify-end">
+        <div className="mt-10 lg:mt-[50px] max-w-[688px] 2xl:max-w-[660px] mx-auto w-full self-end flex justify-end">
           <Button
             onClick={handleFinish}
             className="text-primary-500"
@@ -2615,11 +2764,11 @@ const steps: Steps[] = [
 const introduceYourselfFormSchema = z.object({
   avatar: z
     .array(z.union([z.instanceof(File), z.string()]), {
-      required_error: "Please select an avatar",
+      required_error: "Please select a profile photo.",
     })
-    .min(1, "Please select an avatar"),
-  firstName: z.string().min(1, "Please enter at least 1 character(s)"),
-  lastName: z.string().min(1, "Please enter at least 1 character(s)"),
+    .min(1, "Please select a profile photo."),
+  firstName: z.string().min(1, "First name is required."),
+  lastName: z.string().min(1, "Last name is required."),
 })
 type IntroduceYourselfFormValues = z.infer<typeof introduceYourselfFormSchema>
 
@@ -2825,7 +2974,7 @@ const IntroduceYourself = ({
             </div>
           </div>
         </div>
-        <div className="mx-auto max-w-[488px] 2xl:max-w-[560px] self-end w-full mt-10 2xl:mt-[50px]">
+        <div className="mx-auto max-w-[488px] lg:max-w-[560px] self-end w-full mt-10 lg:mt-[50px]">
           <div className="flex items-center justify-between">
             <Button
               size="md"

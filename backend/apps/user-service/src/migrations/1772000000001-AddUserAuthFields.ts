@@ -10,9 +10,6 @@ export class AddUserAuthFields1772000000001 implements MigrationInterface {
         await queryRunner.query(
             `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "hasPassword" boolean NOT NULL DEFAULT false`,
         );
-        await queryRunner.query(
-            `UPDATE "users" SET "hasPassword" = true WHERE "hasPassword" IS DISTINCT FROM true`,
-        );
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {

@@ -53,7 +53,7 @@ async function bootstrap() {
   });
 
   // ── Start listening ──────────────────────────────────────────────────
-  const port = process.env.PORT ?? 3027;
+  const port = process.env.PORT ?? 3018;
   await app.listen(port);
 
   logger.log(`Transaction Service running on port ${port}`);

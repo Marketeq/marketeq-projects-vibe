@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from '../entities/notification.entity';
@@ -21,6 +21,8 @@ export interface NotificationPayload {
 
 @Injectable()
 export class NotificationService {
+  private readonly logger = new Logger(NotificationService.name);
+
   constructor(
     @InjectRepository(Notification) private readonly notifRepo: Repository<Notification>,
     @InjectRepository(UserPreference) private readonly prefRepo: Repository<UserPreference>,
@@ -48,19 +50,38 @@ export class NotificationService {
     const categoryDisabled = prefs?.disabledCategories?.includes(payload.category);
 
     if (!categoryDisabled) {
+      let ablyDelivered = false;
+
       if (inApp) {
-        await this.ablyService.sendInApp(payload.recipientId, {
-          id: saved.id,
-          title: saved.title,
-          body: saved.body,
-          link: saved.link,
-          category: saved.category,
-        });
-        const unreadCount = await this.getUnreadCount(payload.recipientId);
-        await this.ablyService.updateBadgeCount(payload.recipientId, unreadCount);
+        if (this.ablyService.isEnabled()) {
+          try {
+            await this.ablyService.sendInApp(payload.recipientId, {
+              id: saved.id,
+              title: saved.title,
+              body: saved.body,
+              link: saved.link,
+              category: saved.category,
+            });
+            const unreadCount = await this.getUnreadCount(payload.recipientId);
+            await this.ablyService.updateBadgeCount(payload.recipientId, unreadCount);
+            ablyDelivered = true;
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            this.logger.warn(
+              `Ably delivery failed for user ${payload.recipientId}; falling back to SMTP. Error: ${errMsg}`,
+            );
+          }
+        } else {
+          this.logger.warn(
+            `Ably is not configured; falling back to SMTP for user ${payload.recipientId}.`,
+          );
+        }
       }
 
-      if (email && payload.recipientEmail) {
+      const fallbackToSmtp = inApp && !ablyDelivered;
+      const shouldSendEmail = (email || fallbackToSmtp) && !!payload.recipientEmail;
+
+      if (shouldSendEmail && payload.recipientEmail) {
         await this.sendgridService.sendNotificationEmail(
           payload.recipientEmail,
           payload.title,

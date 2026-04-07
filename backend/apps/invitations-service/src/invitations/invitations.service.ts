@@ -35,7 +35,7 @@ type AcceptInvitationResult = {
     reason:
       | 'existing_user_completed_onboarding'
       | 'existing_user_needs_onboarding';
-    suggestedPath: '/my-team' | '/onboarding';
+    suggestedPath: '/teams' | '/onboarding';
     teamId: string;
   };
 };
@@ -89,7 +89,7 @@ export class InvitationsService {
       postAccept: {
         nextStep: 'go_to_team',
         reason: 'existing_user_completed_onboarding',
-        suggestedPath: '/my-team',
+        suggestedPath: '/teams',
         teamId: invitation.teamId,
       },
     };

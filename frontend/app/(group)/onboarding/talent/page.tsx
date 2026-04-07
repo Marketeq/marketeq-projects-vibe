@@ -3328,7 +3328,7 @@ const DoNext = ({
           nextUser = {
             ...fallbackUser,
             onboardingDismissed: true,
-            role: fallbackUser.role ?? ROLE.TALENT,
+            userType: "talent",
           }
         }
       }

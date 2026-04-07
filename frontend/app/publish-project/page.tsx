@@ -3231,9 +3231,11 @@ const TaskDialog = ({
 const SaveExitDialog = ({
   onOpenChange,
   open,
+  onConfirm,
 }: {
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  onConfirm?: () => void
 }) => {
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
@@ -3256,9 +3258,7 @@ const SaveExitDialog = ({
                 Cancel
               </Button>
             </DialogClose>
-            <DialogClose asChild>
-              <Button>Save & Exit</Button>
-            </DialogClose>
+            <Button onClick={onConfirm}>Save & Exit</Button>
           </DialogFooter>
         </div>
       </DialogContent>
@@ -4972,6 +4972,7 @@ function PublishProject({
     [currentStep, hasNextStep, hasPreviousStep, totalSteps, stepsState]
   )
   const [isSaveExitDialogOpen, toggleIsSaveExitDialogOpen] = useToggle(false)
+  const router = useRouter()
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
     resolver: zodResolver(projectInfoSchema),
   })
@@ -5030,6 +5031,35 @@ function PublishProject({
     return projectInfoProgress + mediaProgress + projectScopeProgress
   }, [projectInfoProgress, mediaProgress, projectScopeProgress])
 
+  const handleSaveExit = React.useCallback(() => {
+    try {
+      const draft = {
+        projectInfo: projectInfoMethods.getValues(),
+        media: mediaMethods.getValues(),
+        projectScope: projectScopeMethods[0],
+        currentStep,
+        savedAt: new Date().toISOString(),
+      }
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          "publish-project-draft",
+          JSON.stringify(draft)
+        )
+      }
+    } catch (err) {
+      console.error("Failed to save draft", err)
+    }
+    toggleIsSaveExitDialogOpen(false)
+    router.push("/my-listings")
+  }, [
+    projectInfoMethods,
+    mediaMethods,
+    projectScopeMethods,
+    currentStep,
+    toggleIsSaveExitDialogOpen,
+    router,
+  ])
+
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">
       <div className="h-[70px] border-b border-gray-200 flex items-center pr-[17px] pl-8">
@@ -5052,6 +5082,7 @@ function PublishProject({
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}
                     onOpenChange={toggleIsSaveExitDialogOpen}
+                    onConfirm={handleSaveExit}
                   />
                   <StepControl className="contents">
                     {/*  Wrap steps to inject progress setter props */}

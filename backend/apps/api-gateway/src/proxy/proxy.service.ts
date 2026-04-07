@@ -17,7 +17,7 @@ export class ProxyService {
   ) {
     this.serviceMap = {
       auth: config.get('AUTH_SERVICE_URL') || 'http://localhost:3001',
-      users: config.get('USER_SERVICE_URL') || 'http://localhost:3003',
+      users: config.get('USER_SERVICE_URL') || 'http://localhost:3002',
       listings: config.get('LISTINGS_SERVICE_URL') || 'http://localhost:3004',
       checkout: config.get('CHECKOUT_SERVICE_URL') || 'http://localhost:3009',
       messages: config.get('MESSAGING_SERVICE_URL') || 'http://localhost:3005',

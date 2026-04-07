@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { lastValueFrom } from 'rxjs';
@@ -6,7 +6,8 @@ import { JobListing } from '../job-listing/entities/job-listing.entity';
 
 @Injectable()
 export class AlgoliaService {
-  private readonly baseUrl: string;
+  private readonly logger = new Logger(AlgoliaService.name);
+  private readonly baseUrl: string | null;
 
   constructor(
     private readonly http: HttpService,
@@ -14,11 +15,13 @@ export class AlgoliaService {
   ) {
     const url = this.config.get<string>('ALGOLIA_SERVICE_URL');
     if (!url) {
-      console.warn(
-        'ALGOLIA_SERVICE_URL is not set — Algolia indexing will be disabled',
+      this.logger.warn(
+        'ALGOLIA_SERVICE_URL is not set — Algolia indexing will be skipped',
       );
+      this.baseUrl = null;
+    } else {
+      this.baseUrl = url;
     }
-    this.baseUrl = url || '';
   }
 
   // Called by the moderation.approved consumer after status is set to published.

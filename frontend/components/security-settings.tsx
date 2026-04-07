@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
+import { useAuth } from "@/contexts/auth"
 import { AuthAPI } from "@/service/http/auth"
 import {
   cn,
@@ -76,6 +77,7 @@ type SecureYourAccountFormValues = z.infer<typeof secureYourAccountFormSchema>
 const Step1 = ({ formData, setFormData }: any) => {
   const { setStep, toggleStepValidation } = useStepperContext()
   const { toast } = useToast()
+  const { setUser } = useAuth()
   const {
     register,
     control,
@@ -109,6 +111,14 @@ const Step1 = ({ formData, setFormData }: any) => {
         response.status < 300
       if (isSuccess) {
         setFormData((prev: any) => ({ ...prev, password: data.password }))
+        setUser((prev) =>
+          prev
+            ? {
+                ...prev,
+                hasPassword: true,
+              }
+            : prev
+        )
         setStep(1)
         reset()
       } else {
