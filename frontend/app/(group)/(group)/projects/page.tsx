@@ -478,7 +478,7 @@ export default function Projects() {
                           </TooltipProvider>
 
                           <FavoriteRoot
-                            onPressedChange={async (pressed) => {
+                            onValueChange={async (pressed) => {
                               if (pressed) {
                                 // Add to favorites
                                 const result = await addFavorite({
