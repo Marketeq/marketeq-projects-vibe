@@ -18,6 +18,17 @@ import "@/styles/globals.css"
 import "@/styles/nprogress.css"
 import QueryProvider from "../src/features/shared/query-provider"
 
+const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
+
+function OptionalGoogleOAuth({ children }: { children: React.ReactNode }) {
+  if (!googleClientId) return <>{children}</>
+  return (
+    <GoogleOAuthProvider clientId={googleClientId}>
+      {children}
+    </GoogleOAuthProvider>
+  )
+}
+
 export const metadata: Metadata = {
   title: "Marketeq",
   description: "Welcome to Marketeq's marketing website.",

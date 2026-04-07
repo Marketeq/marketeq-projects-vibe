@@ -58,6 +58,7 @@ import {
 } from "react-hook-form"
 import { useDebounce, useIsomorphicLayoutEffect, useToggle } from "react-use"
 import { z } from "zod"
+import { useAutocomplete } from "@/libs/autocomplete"
 import { CreateClientType } from "@/types/client"
 import { ROLE, User } from "@/types/user"
 import { PictureEditor } from "@/components/ui/image-editor/image-editor"
@@ -251,6 +252,25 @@ const DescribeYourTeam = ({
   })
   const values = watch()
 
+  const [industryQuery, setIndustryQuery] = React.useState(
+    stepData?.industry || ""
+  )
+  const [showIndustrySuggestions, setShowIndustrySuggestions] =
+    React.useState(false)
+  const { suggestions: industrySuggestions } =
+    useAutocomplete("industries", industryQuery)
+  const industryRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (industryRef.current && !industryRef.current.contains(e.target as Node)) {
+        setShowIndustrySuggestions(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
   const { toggleValidation } = useStepContext()
   const { nextStep, setStep } = useStepperContext()
 
@@ -333,7 +353,7 @@ const DescribeYourTeam = ({
               <InputGroup>
                 <Input
                   id="your-role"
-                  placeholder="Enter your team or company name"
+                  placeholder="Enter your job title"
                   {...register("role")}
                   isInvalid={hookFormHasError({ errors, name: "role" })}
                 />
