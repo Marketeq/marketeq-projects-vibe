@@ -1,16 +1,16 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNumber, IsOptional, Min } from 'class-validator';
 
 export class UpdateRateDto {
-  @ApiProperty()
+  @ApiPropertyOptional({ example: 65 })
   @IsOptional()
   @IsNumber()
   @Min(0)
-  rate_min?: number;
+  rateMin?: number;
 
-  @ApiProperty()
+  @ApiPropertyOptional({ example: 85 })
   @IsOptional()
   @IsNumber()
   @Min(0)
-  rate_max?: number;
+  rateMax?: number;
 }

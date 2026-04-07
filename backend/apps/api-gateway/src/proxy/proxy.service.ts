@@ -18,7 +18,7 @@ export class ProxyService {
     this.serviceMap = {
       auth: config.get('AUTH_SERVICE_URL') || 'http://localhost:3001',
       users: config.get('USER_SERVICE_URL') || 'http://localhost:3002',
-      listings: config.get('LISTINGS_SERVICE_URL') || 'http://localhost:3003',
+      listings: config.get('LISTINGS_SERVICE_URL') || 'http://localhost:3004',
       checkout: config.get('CHECKOUT_SERVICE_URL') || 'http://localhost:3009',
       messages: config.get('MESSAGING_SERVICE_URL') || 'http://localhost:3005',
       notifications: config.get('NOTIFICATION_SERVICE_URL') || 'http://localhost:3006',
@@ -26,10 +26,10 @@ export class ProxyService {
       algolia: config.get('ALGOLIA_SERVICE_URL') || 'http://localhost:3008',
       favorites: config.get('FAVORITES_SERVICE_URL') || 'http://localhost:3012',
       portfolio: config.get('PORTFOLIO_SERVICE_URL') || 'http://localhost:3015',
-      invitations: config.get('INVITATIONS_SERVICE_URL') || 'http://localhost:3013',
+      invitations: config.get('INVITATIONS_SERVICE_URL') || 'http://localhost:3011',
       moderation: config.get('MODERATION_SERVICE_URL') || 'http://localhost:3014',
       autocomplete: config.get('AUTOCOMPLETE_SERVICE_URL') || 'http://localhost:3016',
-      suggestions: config.get('SUGGESTIONS_SERVICE_URL') || 'http://localhost:3017',
+      suggestions: config.get('SUGGESTIONS_SERVICE_URL') || 'http://localhost:3020',
       transactions: config.get('TRANSACTION_SERVICE_URL') || 'http://localhost:3018',
       contracts: config.get('CONTRACTS_SERVICE_URL') || 'http://localhost:3010',
       categories: config.get('CATEGORY_SERVICE_URL') || 'http://localhost:3023',
@@ -57,9 +57,15 @@ export class ProxyService {
       headers['x-user-id'] = user.userId
       headers['x-user-email'] = user.email
       if (user.role) headers['x-user-role'] = user.role
-      // Also forward Authorization header for services that validate JWT directly
-      if (req.headers.authorization) {
-        headers['authorization'] = req.headers.authorization as string
+      // Forward JWT for downstream services that validate JWT directly.
+      // If the client authenticated via cookie at the gateway, synthesize
+      // a Bearer header so downstream auth guards still work.
+      const authHeader = req.headers.authorization as string | undefined
+      const cookieToken = (req as any).cookies?.access_token as string | undefined
+      if (authHeader) {
+        headers['authorization'] = authHeader
+      } else if (cookieToken) {
+        headers['authorization'] = `Bearer ${cookieToken}`
       }
     }
 

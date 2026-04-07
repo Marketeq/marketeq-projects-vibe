@@ -1,29 +1,49 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { Notification } from './entities/notification.entity';
 import { UserPreference } from './entities/user-preference.entity';
 import { NotificationService } from './services/notification.service';
 import { NotificationController } from './controllers/notification.controller';
 import { AblyNotificationsService } from './ably/ably-notifications.service';
 import { SendgridService } from './sendgrid/sendgrid.service';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.DATABASE_URL,
-      schema: process.env.DATABASE_SCHEMA || 'notifications',
-      entities: [Notification, UserPreference],
-      synchronize: process.env.NODE_ENV !== 'production',
-      migrationsRun: true,
-      migrations: [__dirname + '/migrations/*{.ts,.js}'],
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['apps/notification-service/.env', '.env'],
+    }),
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres',
+        url: config.get<string>('DATABASE_URL'),
+        schema: config.get<string>('DATABASE_SCHEMA') || 'public',
+        entities: [Notification, UserPreference],
+        synchronize: config.get('NODE_ENV') !== 'production',
+        migrationsRun: true,
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
+        ssl:
+          config.get('NODE_ENV') === 'production'
+            ? { rejectUnauthorized: false }
+            : false,
+      }),
     }),
     TypeOrmModule.forFeature([Notification, UserPreference]),
   ],
   controllers: [NotificationController],
-  providers: [NotificationService, AblyNotificationsService, SendgridService],
+  providers: [
+    NotificationService,
+    AblyNotificationsService,
+    SendgridService,
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+  ],
 })
 export class NotificationServiceModule {}

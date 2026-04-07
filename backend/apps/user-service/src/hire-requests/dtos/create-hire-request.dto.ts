@@ -2,13 +2,17 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class CreateHireRequestDto {
-  @ApiProperty({
+  // `clientUserId` is derived from the JWT in the controller and ignored
+  // when supplied by the client. Kept here as an optional typed field only
+  // so the service receives a complete DTO shape after the controller
+  // spreads the overrides on top.
+  @ApiPropertyOptional({
     example: '123e4567-e89b-12d3-a456-426614174000',
-    description:
-      'Unique identifier of the client user sending the hire request',
+    description: 'Deprecated — derived from the authenticated caller',
   })
+  @IsOptional()
   @IsUUID()
-  clientUserId: string;
+  clientUserId?: string;
 
   @ApiProperty({
     example: '123e4567-e89b-12d3-a456-426614174000',

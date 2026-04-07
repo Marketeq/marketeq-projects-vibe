@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package owner_target;
+
+// Shared contract for favorites-service → user-service / listings-service
+// owner-target validation + metadata (sync RPC).
+service OwnerTargetService {
+  rpc ValidateTarget (ValidateTargetRequest) returns (ValidateTargetResponse);
+  rpc GetTargetMetadata (GetTargetMetadataRequest) returns (GetTargetMetadataResponse);
+}
+
+message ValidateTargetRequest {
+  string target_type = 1;
+  string target_id = 2;
+}
+
+message ValidateTargetResponse {
+  bool exists = 1;
+  string display_name = 2;
+  string status = 3;
+}
+
+message GetTargetMetadataRequest {
+  string target_type = 1;
+  string target_id = 2;
+}
+
+message GetTargetMetadataResponse {
+  string title = 1;
+  repeated string skills = 2;
+}

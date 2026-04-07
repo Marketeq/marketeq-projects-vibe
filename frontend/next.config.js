@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
+const path = require("path")
+
 const nextConfig = {
+  turbopack: {
+    root: path.join(__dirname),
+  },
   images: {
     remotePatterns: [
       {
@@ -30,7 +35,35 @@ const nextConfig = {
         protocol: "https",
         hostname: "images.unsplash.com",
       },
+      {
+        protocol: "https",
+        hostname: "picsum.photos",
+      },
+      {
+        protocol: "https",
+        hostname: "fastly.picsum.photos",
+      },
     ],
+  },
+  async rewrites() {
+    // Bare kind routes (`/projects`, `/services`, `/teams`, `/talent`) are
+    // real pages at `app/(group)/(group)/<kind>/page.tsx` — no rewrite.
+    //
+    // Kind-first subpaths still map onto the catch-all category page so
+    // drilling from /teams → /teams/development → /teams/development/web
+    // reuses the single source of truth.
+    //
+    //   /projects/:l1                    → /c/:l1/projects
+    //   /projects/:l1/:l2                → /c/:l1/:l2/projects
+    //   /projects/:l1/:l2/:l3            → /c/:l1/:l2/:l3/projects
+    const kinds = ["talent", "projects", "services", "teams"]
+    const rewrites = []
+    for (const kind of kinds) {
+      rewrites.push({ source: `/${kind}/:l1`, destination: `/c/:l1/${kind}` })
+      rewrites.push({ source: `/${kind}/:l1/:l2`, destination: `/c/:l1/:l2/${kind}` })
+      rewrites.push({ source: `/${kind}/:l1/:l2/:l3`, destination: `/c/:l1/:l2/:l3/${kind}` })
+    }
+    return rewrites
   },
 }
 

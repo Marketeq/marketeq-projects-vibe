@@ -28,7 +28,13 @@ type UpdateTaskPayload = Pick<
   CreateTaskPayload,
   "taskName" | "role" | "location" | "experience" | "duration"
 >
-const LISTINGS_BASE = process.env.NEXT_PUBLIC_AUTH_URL ?? "";
+// Prefer a dedicated listings URL if set; otherwise fall back to the general
+// API URL so existing Vercel deployments keep working without a new env var.
+const LISTINGS_BASE =
+  process.env.NEXT_PUBLIC_LISTINGS_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.NEXT_PUBLIC_AUTH_URL ||
+  ""
 
 export const ProjectAPI = {
   CreateProject: (data: CreateProjectType | FormData) => {
@@ -50,16 +56,28 @@ export const ProjectAPI = {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/phase`, data)
   },
   DuplicatePhase: (phaseId: string) => {
-    return AxiosRequest.post(`${LISTINGS_BASE}/publish/phase/${phaseId}/duplicate`, {})
+    return AxiosRequest.post(
+      `${LISTINGS_BASE}/publish/phase/${phaseId}/duplicate`,
+      {}
+    )
   },
   UpdatePhase: (phaseId: string, data: { name: string }) => {
-    return AxiosRequest.put(`${LISTINGS_BASE}/publish/phase/update/${phaseId}`, data)
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/phase/update/${phaseId}`,
+      data
+    )
   },
   DeletePhase: (phaseId: string) => {
     return AxiosRequest.del(`${LISTINGS_BASE}/publish/phase/delete/${phaseId}`)
   },
   CreateTask: (data: CreateTaskPayload) => {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/task`, data)
+  },
+  PublishProject: (projectId: string) => {
+    return AxiosRequest.post(
+      `${LISTINGS_BASE}/publish/project/${projectId}/publish`,
+      {}
+    )
   },
   UpdateTask: (id: string, data: UpdateTaskPayload) => {
     return AxiosRequest.put(`${LISTINGS_BASE}/publish/task/update/${id}`, data)

@@ -1,6 +1,8 @@
 "use client"
 
 import React, { useState } from "react"
+import { useAuth } from "@/contexts/auth"
+import { InvitationsAPI } from "@/service/http/invitations"
 import { callAll, cn, isNotEmpty } from "@/utils/functions"
 import {
   AlertCircle,
@@ -48,6 +50,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   inputVariants,
+  useToast,
 } from "./ui"
 
 interface Invitee {
@@ -281,6 +284,13 @@ export const InviteWindow = () => {
   const [isOpen, toggle] = useToggle(false)
   const [message, setMessage] = useState("")
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [copySuccess, setCopySuccess] = useState(false)
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const inviteBaseUrl = (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "")
+  ).replace(/\/$/, "")
 
   const filteredContacts = inputValue
     ? contacts.filter(
@@ -329,10 +339,67 @@ export const InviteWindow = () => {
     }
   }
 
-  const handleCopyLink = () => {
-    navigator.clipboard?.writeText(
-      `${window.location.origin}/invite/team`
-    )
+  const handleCopyLink = async () => {
+    try {
+      const teamId =
+        user?.id || (user as any)?.sub
+      if (!teamId) {
+        toast({
+          title: "Unable to copy link",
+          description:
+            "Could not determine your team. Please sign in and try again.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      try {
+        const teamResponse =
+          await (await import("@/service/http/teams")).TeamsAPI.getTeam(teamId)
+        const teamData = teamResponse?.data
+        const teamName =
+          teamData?.name || teamData?.teamName || (user as any)?.teamName || "Client Team"
+
+        const res = await InvitationsAPI.createInvitationLink({
+          teamId,
+          teamName,
+          role: "viewer",
+        })
+        const inviteLink =
+          res?.data?.url ||
+          (res?.data?.token
+            ? `${inviteBaseUrl}/invite/accept?token=${res.data.token}`
+            : "")
+
+        if (!inviteLink) {
+          throw new Error("We couldn't generate the invite link. Please try again.")
+        }
+
+        await navigator.clipboard.writeText(inviteLink)
+        setCopySuccess(true)
+        setTimeout(() => setCopySuccess(false), 2000)
+        toast({
+          title: "Link copied!",
+          description: "A team invite link was copied to your clipboard",
+        })
+      } catch (err) {
+        toast({
+          title: "Failed to copy",
+          description:
+            (err as any)?.response?.data?.message ||
+            (err as any)?.message ||
+            "We couldn't generate the invite link. Please try again.",
+          variant: "destructive",
+        })
+        return
+      }
+    } catch (err: any) {
+      toast({
+        title: "Failed to copy",
+        description: err?.message || "Something went wrong.",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleOpenChange = (nextOpen: boolean | undefined) => {

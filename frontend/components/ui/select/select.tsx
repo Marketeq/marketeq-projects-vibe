@@ -17,7 +17,7 @@ const SelectTrigger = React.forwardRef<
     invalid?: boolean
     indicator?: boolean
   }
->(({ className, children, indicator = true, ...props }, ref) => (
+>(({ className, children, indicator = true, invalid, ...props }, ref) => (
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(

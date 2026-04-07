@@ -13,13 +13,17 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['apps/api-gateway/.env', '.env'],
+    }),
     HttpModule.register({ timeout: 30000 }),
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const publicKey = config.get<string>('AUTH_JWT_PUBLIC_KEY');
+        const rawKey = config.get<string>('AUTH_JWT_PUBLIC_KEY');
+        const publicKey = rawKey?.replace(/\\n/g, '\n');
         if (publicKey) {
           return {
             publicKey,

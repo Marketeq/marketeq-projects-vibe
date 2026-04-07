@@ -18,7 +18,7 @@ async function bootstrap() {
   });
 
   await app.startAllMicroservices();
-  await app.listen(process.env.PORT || 3020);
-  console.log(`suggestions-service running on port ${process.env.PORT || 3020}`);
+  await app.listen(process.env.PORT || 3017);
+  console.log(`suggestions-service running on port ${process.env.PORT || 3017}`);
 }
 bootstrap();

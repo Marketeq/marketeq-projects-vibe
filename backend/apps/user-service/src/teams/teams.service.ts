@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TeamMember } from './teams.entity';
@@ -13,6 +13,21 @@ export class TeamsService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
   ) {}
+
+  /**
+   * Throws ForbiddenException unless `userId` is already a member of the
+   * team. Used as a light-weight authorization check for mutations until
+   * a proper team owner/role model is ported in.
+   */
+  async assertIsMember(teamId: string, userId: string): Promise<TeamMember> {
+    const membership = await this.teamMemberRepository.findOne({
+      where: { teamId, userId },
+    });
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this team');
+    }
+    return membership;
+  }
 
   async addMember(teamId: string, dto: AddTeamMemberDto) {
     // Check if member already exists
@@ -38,9 +53,6 @@ export class TeamsService {
       where: { teamId },
       order: { createdAt: 'ASC' },
     });
-
-    // DEBUG LOG: Print all team members for this team
-    console.log(`[getTeamMembers] teamId=${teamId} members=`, members);
 
     const userIds = Array.from(new Set(members.map((m) => m.userId)));
     const users = userIds.length

@@ -53,14 +53,26 @@ export class SkillsController {
 
   @ApiOperation({ summary: 'Update skills for the current user' })
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateSkillDto) {
-    return this.skillsService.update(id, dto);
+  update(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateSkillDto,
+  ) {
+    const userId = user?.sub ?? user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('Invalid user');
+    }
+    return this.skillsService.update(userId, id, dto);
   }
 
   @ApiOperation({ summary: 'Delete skills for the current user' })
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id') id: string) {
-    return this.skillsService.remove(id);
+  remove(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+    const userId = user?.sub ?? user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('Invalid user');
+    }
+    return this.skillsService.remove(userId, id);
   }
 }

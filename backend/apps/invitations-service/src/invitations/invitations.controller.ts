@@ -1,9 +1,8 @@
 import {
   Controller, Post, Get, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus, Req,
 } from '@nestjs/common';
-import { MessagePattern, Payload } from '@nestjs/microservices';
 import { InvitationsService } from './invitations.service';
-import { CreateInvitationsDto, ListInvitationsDto, AcceptInvitationDto } from '../dto/invitation.dto';
+import { CreateInvitationsDto, CreateInviteLinkDto, ListInvitationsDto, AcceptInvitationDto } from '../dto/invitation.dto';
 import { GatewayAuthGuard } from '../guards/gateway-auth.guard';
 
 @Controller('invitations')
@@ -15,6 +14,15 @@ export class InvitationsController {
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateInvitationsDto, @Req() req: any) {
     return this.svc.createInvites(dto, req.user);
+  }
+
+  @Post('link')
+  @HttpCode(HttpStatus.OK)
+  createLink(@Body() dto: CreateInviteLinkDto, @Req() req: any) {
+    const user = req.user as { sub?: string; id?: string; email?: string };
+    const userId = user?.sub ?? user?.id ?? '';
+    const team = { id: dto.teamId, name: dto.teamName || dto.teamId };
+    return this.svc.createInviteLink(dto, { id: userId, email: user?.email ?? '' }, team);
   }
 
   @Get()
@@ -40,11 +48,5 @@ export class InvitationsController {
   @Post('accept')
   accept(@Body() dto: AcceptInvitationDto, @Req() req: any) {
     return this.svc.accept(dto, req.user);
-  }
-
-  // RabbitMQ
-  @MessagePattern('invitations.create')
-  handleCreate(@Payload() data: { dto: CreateInvitationsDto; user: { id: string; email: string } }) {
-    return this.svc.createInvites(data.dto, data.user);
   }
 }

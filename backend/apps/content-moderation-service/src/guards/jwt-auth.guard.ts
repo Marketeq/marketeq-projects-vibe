@@ -8,7 +8,10 @@ export class JwtAuthGuard implements CanActivate {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) throw new UnauthorizedException('Missing auth token');
     try {
-      req.user = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET!);
+      const publicKey = process.env.AUTH_JWT_PUBLIC_KEY;
+      const secret = publicKey || process.env.JWT_SECRET!;
+      const algorithms = publicKey ? ['RS256'] as jwt.Algorithm[] : ['HS256'] as jwt.Algorithm[];
+      req.user = jwt.verify(authHeader.split(' ')[1], secret, { algorithms });
       return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired token');

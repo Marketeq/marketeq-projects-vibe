@@ -1,6 +1,11 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 
 @Injectable()
@@ -43,6 +48,49 @@ export class R2Service {
       : undefined;
 
     return { key, url };
+  }
+
+  /**
+   * Blur-aware signed-read helper for R2 objects.
+   *
+   *   - If `isBlurred` is true, returns the public CDN URL pointing at the
+   *     derived blurred copy at `${R2_CDN_BASE}/blurred/${key}`. The
+   *     blurred variant is assumed to be generated out-of-band.
+   *   - Otherwise, returns a short-lived presigned GET URL for the object.
+   *
+   * Callers that render private media (portfolio, avatars for blurred
+   * profiles, etc.) should go through this helper instead of building URLs
+   * by hand.
+   */
+  async getReadUrl(
+    key: string,
+    opts: { isBlurred?: boolean; expiresInSeconds?: number } = {},
+  ): Promise<string> {
+    const { isBlurred = false, expiresInSeconds = 900 } = opts;
+
+    if (isBlurred) {
+      const cdnBase = this.configService.get<string>('R2_CDN_BASE');
+      if (!cdnBase) {
+        throw new InternalServerErrorException(
+          'R2_CDN_BASE is required to serve blurred media',
+        );
+      }
+      return `${cdnBase.replace(/\/$/, '')}/blurred/${key}`;
+    }
+
+    const bucket = this.configService.get<string>('CLOUDFLARE_R2_BUCKET');
+    if (!bucket) {
+      throw new InternalServerErrorException(
+        'CLOUDFLARE_R2_BUCKET is required to presign GET URLs',
+      );
+    }
+
+    const client = this.getClient();
+    return getSignedUrl(
+      client,
+      new GetObjectCommand({ Bucket: bucket, Key: key }),
+      { expiresIn: expiresInSeconds },
+    );
   }
 
   private getClient(): S3Client {

@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import AxiosRequest from "../service/index"
+import Cookies from "js-cookie"
 
 export function TimezoneSync() {
   useEffect(() => {
@@ -9,30 +10,19 @@ export function TimezoneSync() {
 
     const sync = async () => {
       try {
+        const hasSession =
+          Boolean(Cookies.get("access_token")) ||
+          Boolean(Cookies.get("refresh_token"))
+        if (!hasSession) return
+
         const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
         if (!timeZone) return
-
-        // Get GPS coordinates from browser (server validates against IP region)
-        let lat: number | undefined
-        let lng: number | undefined
-        try {
-          const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              timeout: 5000,
-              maximumAge: 300000, // Cache for 5 min
-            })
-          )
-          lat = pos.coords.latitude
-          lng = pos.coords.longitude
-        } catch {
-          // Geolocation denied — server will use IP-only location
-        }
 
         if (!alive) return
 
         await AxiosRequest.patch(
           "/user/refresh-timezone",
-          { timeZone, ...(lat != null && lng != null ? { lat, lng } : {}) },
+          { clientTimeZone: timeZone },
           { withCredentials: true }
         )
       } catch {

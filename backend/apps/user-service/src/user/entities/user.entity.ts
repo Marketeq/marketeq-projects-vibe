@@ -59,6 +59,12 @@ export class User {
   @Column({ nullable: true })
   role?: string;
 
+  @Column({ default: 'EMAIL' })
+  provider: string;
+
+  @Column({ default: false })
+  hasPassword: boolean;
+
   @Column({ nullable: true })
   industry?: string;
 
@@ -83,14 +89,41 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   onboardedAt?: Date;
 
-  @Column({ type: 'int', nullable: true })
+  @Column({ type: 'numeric', nullable: true })
   rateMin?: number;
 
-  @Column({ type: 'int', nullable: true })
+  @Column({ type: 'numeric', nullable: true })
   rateMax?: number;
 
   @Column({ type: 'jsonb', nullable: true })
   jobTitles?: string[];
+
+  // Restored in migration 1773700000000 — previous "align entity with DB"
+  // pass (commit 371fd4f3) dropped these columns from the entity, which
+  // caused Talent onboarding / settings / custom-availability writes to
+  // silently no-op. Re-added here and re-asserted in the DB.
+  @Column({ type: 'varchar', nullable: true })
+  recentJobTitle?: string;
+
+  // These four columns are JSONB to tolerate the mixed shapes in callers
+  // (single string vs string[]). Type as `any` so both forms compile.
+  @Column({ type: 'jsonb', nullable: true })
+  industriesWorkedIn?: any;
+
+  @Column({ type: 'jsonb', nullable: true })
+  lookingToWorkWith?: any;
+
+  @Column({ type: 'jsonb', nullable: true })
+  projectTypes?: any;
+
+  @Column({ type: 'jsonb', nullable: true })
+  language?: any;
+
+  @Column({ type: 'jsonb', nullable: true })
+  customAvailability?: unknown;
+
+  @Column({ type: 'boolean', nullable: true, default: false })
+  isStudent?: boolean;
 
   @Column({ type: 'int', nullable: true })
   gettingStartedStep?: number;
