@@ -3,10 +3,12 @@
 Vibe Coding Marketeq Projects talent network platform.
 
 ## Install:
-### cd frontend:
-``` npm install --legacy-peer-deps```
+``` npm install --legacy-peer-deps ```
 
-## Backend:
+### frontend:
+```npm run dev ```
+
+### Backend:
 ### Ports:
 - Auth: 3001
 - Gateway: 4000
@@ -36,7 +38,7 @@ Vibe Coding Marketeq Projects talent network platform.
 ### Build:
 - npx nest build api-gateway
 - npx nest build autocomplete-service
-- npx nest build listings-service
+- npx nest build listings-service / npm run build -w apps/listings-service
 - npx nest build content-moderation-service
 
 ### Start Serices:
@@ -57,49 +59,6 @@ Vibe Coding Marketeq Projects talent network platform.
 
 ### Rabbitmq:
 ```docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management```
-
-
-## Publish Moderation Matrix (Deterministic)
-
-This repo includes a PowerShell script to run the full publish moderation matrix through the gateway:
-
-- bad title + good image
-- bad short/long description + good image
-- bad image + good content
-- good content + good image
-
-Script path:
-
-- backend/scripts/run-publish-moderation-matrix.ps1
-
-Run command:
-
-- powershell -ExecutionPolicy Bypass -File "./scripts/run-publish-moderation-matrix.ps1"
-
-### Deterministic bad-image fixture
-
-To keep results consistent across runs, use one fixed image file for the bad-image scenario (instead of generating a random temp image each run).
-
-Recommended fixture location:
-
-- backend/scripts/fixtures/bad-image-emoji.png
-
-How to use:
-
-1. Save the exact bad test image into backend/scripts/fixtures/bad-image-emoji.png
-2. In backend/scripts/run-publish-moderation-matrix.ps1, set $badImagePath to that fixture path
-3. Keep the same file unchanged for all runs to ensure deterministic behavior
-
-Example assignment in PowerShell script:
-
-- $badImagePath = Join-Path $PSScriptRoot 'fixtures/bad-image-emoji.png'
-
-Notes:
-
-- The script currently uses curl.exe for multipart upload because Windows PowerShell 5.1 does not support Invoke-WebRequest -Form.
-- Keep the good image path valid in the script (default: frontend/public/coding.jpg).
-
----
 
 ## Claude CLI Setup (API Key)
 
@@ -161,3 +120,20 @@ claude
 
 - Repo guidance for agents and workflows: `CLAUDE.md`
 - Shared agent memory files: `.claude/memory/`
+
+## Content moderation:
+
+### Publish Moderation Matrix (Deterministic)
+This repo includes a PowerShell script to run the full publish moderation matrix through the gateway:
+
+- bad title + good image
+- bad short/long description + good image
+- bad image + good content
+- good content + good image
+
+Script path:
+- backend/scripts/run-publish-moderation-matrix.ps1
+
+Run command:
+- powershell -ExecutionPolicy Bypass -File "./scripts/run-publish-moderation-matrix.ps1"
+
