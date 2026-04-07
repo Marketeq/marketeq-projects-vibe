@@ -29,6 +29,8 @@ function OptionalGoogleOAuth({ children }: { children: React.ReactNode }) {
   )
 }
 
+export const dynamic = "force-dynamic"
+
 export const metadata: Metadata = {
   title: "Marketeq",
   description: "Welcome to Marketeq's marketing website.",
