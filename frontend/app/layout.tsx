@@ -13,21 +13,10 @@ import "swiper/css/free-mode"
 import { InviteWindow } from "@/components/invite-window"
 import { TimezoneSync } from "@/components/timezone-sync"
 import { NProgressBar } from "@/components/n-progress-bar"
-import { Toaster } from "@/components/ui"
+import { Toaster } from "@/components/ui/toast/toaster"
 import "@/styles/globals.css"
 import "@/styles/nprogress.css"
 import QueryProvider from "../src/features/shared/query-provider"
-
-const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
-
-function OptionalGoogleOAuth({ children }: { children: React.ReactNode }) {
-  if (!googleClientId) return <>{children}</>
-  return (
-    <GoogleOAuthProvider clientId={googleClientId}>
-      {children}
-    </GoogleOAuthProvider>
-  )
-}
 
 export const dynamic = "force-dynamic"
 
@@ -48,29 +37,35 @@ export default function RootLayout({
 }) {
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
 
-  const appTree = (
-    <AuthProvider>
-      <QueryProvider>
-        <div className="min-h-screen flex flex-col bg-gray-50">{children}</div>
-        <Suspense fallback={null}>
-          <NProgressBar />
-        </Suspense>
-        <Toaster />
-        <TimezoneSync />
-        <InviteWindow />
-      </QueryProvider>
-    </AuthProvider>
-  )
-
   return (
     <html className={`scroll-smooth ${font.variable}`} lang="en">
       <body>
         {googleClientId ? (
           <GoogleOAuthProvider clientId={googleClientId}>
-            {appTree}
+            <AuthProvider>
+              <QueryProvider>
+                <div className="min-h-screen flex flex-col bg-gray-50">{children}</div>
+                <Suspense fallback={null}>
+                  <NProgressBar />
+                </Suspense>
+                <Toaster />
+                <TimezoneSync />
+                <InviteWindow />
+              </QueryProvider>
+            </AuthProvider>
           </GoogleOAuthProvider>
         ) : (
-          appTree
+          <AuthProvider>
+            <QueryProvider>
+              <div className="min-h-screen flex flex-col bg-gray-50">{children}</div>
+              <Suspense fallback={null}>
+                <NProgressBar />
+              </Suspense>
+              <Toaster />
+              <TimezoneSync />
+              <InviteWindow />
+            </QueryProvider>
+          </AuthProvider>
         )}
         <GoogleAnalytics gaId="G-265438626K" />
         <GoogleTagManager gtmId="GTM-MKB89M5M" />
