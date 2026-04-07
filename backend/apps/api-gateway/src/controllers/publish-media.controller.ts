@@ -33,7 +33,7 @@ export class PublishMediaController {
     private readonly config: ConfigService,
   ) {
     this.listingsServiceUrl = (
-      config.get('LISTINGS_SERVICE_URL') || 'http://localhost:3003'
+      config.get('LISTINGS_SERVICE_URL') || 'http://localhost:3004'
     ).replace(/\/$/, '')
   }
 

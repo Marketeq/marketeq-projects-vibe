@@ -1,7 +1,7 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
-import FormData from 'form-data';
+import FormData = require('form-data');
 
 type ModerationStatus = 'approved' | 'rejected' | 'pending_review';
 

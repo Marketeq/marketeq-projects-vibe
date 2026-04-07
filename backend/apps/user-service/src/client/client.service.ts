@@ -10,26 +10,41 @@ import { CreateClientDto } from './dto/create-client.dto';
 import { ClientProfile } from './client.entity';
 import { User } from '../user/entities/user.entity';
 import { UserRole } from '../user/enums/user-role.enum';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class ClientService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly userService: UserService,
+  ) {}
 
   async createClient(
-    userId: string,
+    userClaims: { id: string; email?: string },
     dto: CreateClientDto,
   ): Promise<ClientProfile> {
     return this.dataSource.transaction(async (manager) => {
       const userRepository = manager.getRepository(User);
       const clientRepository = manager.getRepository(ClientProfile);
 
-      const user = await userRepository.findOne({ where: { id: userId } });
+      let user = await userRepository.findOne({ where: { id: userClaims.id } });
+      if (!user && userClaims.email) {
+        user = await userRepository.findOne({ where: { email: userClaims.email } });
+      }
+      if (!user && userClaims.id && userClaims.email) {
+        await this.userService.syncFromAuth({
+          id: userClaims.id,
+          email: userClaims.email,
+        });
+        user = await userRepository.findOne({ where: { id: userClaims.id } });
+      }
+
       if (!user) {
         throw new NotFoundException('User not found');
       }
 
       const existingClient = await clientRepository.findOne({
-        where: { userId },
+        where: { userId: user.id },
       });
 
       if (existingClient) {
@@ -40,12 +55,12 @@ export class ClientService {
         where: { username: dto.username },
       });
 
-      if (existingUsername && existingUsername.id !== userId) {
+      if (existingUsername && existingUsername.id !== user.id) {
         throw new BadRequestException('Username already exists');
       }
 
       Object.assign(user, {
-        role: UserRole.CLIENT,
+        userType: 'client',
         username: dto.username,
         firstName: dto.firstName,
         lastName: dto.lastName,
@@ -57,7 +72,7 @@ export class ClientService {
       await userRepository.save(user);
 
       const created = clientRepository.create({
-        userId,
+        userId: user.id,
         teamName: dto.teamName,
         role: dto.role,
         industry: dto.industry,

@@ -16,6 +16,9 @@ export class ClientController {
   @Post()
   createClient(@CurrentUser() user: JwtUser, @Body() dto: CreateClientDto) {
     const userId = user.sub ?? user.id;
-    return this.clientService.createClient(userId, dto);
+    return this.clientService.createClient(
+      { id: userId, email: user.email },
+      dto,
+    );
   }
 }

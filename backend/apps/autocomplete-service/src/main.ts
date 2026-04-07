@@ -18,7 +18,7 @@ async function bootstrap() {
   });
 
   await app.startAllMicroservices();
-  await app.listen(process.env.PORT || 3019);
-  console.log(`autocomplete-service running on port ${process.env.PORT || 3019}`);
+  await app.listen(process.env.PORT || 3016);
+  console.log(`autocomplete-service running on port ${process.env.PORT || 3016}`);
 }
 bootstrap();

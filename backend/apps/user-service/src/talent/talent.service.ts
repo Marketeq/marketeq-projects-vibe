@@ -63,6 +63,7 @@ export class TalentService {
     }
 
     Object.assign(user, {
+      userType: 'talent',
       avatarUrl,
       ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
       ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
