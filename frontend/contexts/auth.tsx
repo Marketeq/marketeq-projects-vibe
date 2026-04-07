@@ -28,18 +28,20 @@ export const resolveDashboardRole = (
   const normalizedAccountType = user?.accountType?.toUpperCase?.()
   const normalizedRole = user?.role?.toUpperCase?.()
 
+  // `role` is the active session (account switcher toggles this) — check it first.
+  // `accountType` / `userType` are profile labels a user may own both of.
   if (
-    normalizedUserType === "talent" ||
+    normalizedRole === ROLE.TALENT ||
     normalizedAccountType === ROLE.TALENT ||
-    normalizedRole === ROLE.TALENT
+    normalizedUserType === "talent"
   ) {
     return ROLE.TALENT
   }
 
   if (
-    normalizedUserType === "client" ||
+    normalizedRole === ROLE.CLIENT ||
     normalizedAccountType === ROLE.CLIENT ||
-    normalizedRole === ROLE.CLIENT
+    normalizedUserType === "client"
   ) {
     return ROLE.CLIENT
   }
