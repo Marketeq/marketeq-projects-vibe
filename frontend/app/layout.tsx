@@ -70,9 +70,9 @@ export default function RootLayout({
         ) : (
           appTree
         )}
+        <GoogleAnalytics gaId="G-265438626K" />
+        <GoogleTagManager gtmId="GTM-MKB89M5M" />
       </body>
-      <GoogleAnalytics gaId="G-265438626K" />
-      <GoogleTagManager gtmId="GTM-MKB89M5M" />
     </html>
   )
 }
