@@ -161,12 +161,22 @@ export class PublishService {
         /media|image|animation|blur|policy violation|ai moderation/i.test(
           moderationReason,
         );
+      const isVideoViolation =
+        /video|unsafe frame|frame_moderation/i.test(moderationReason);
+      const isContentViolation =
+        /banned keyword|bad words|profanity|content failed validation|content moderation|community guidelines/i.test(
+          moderationReason,
+        );
       throw new BadRequestException(
         isImageViolation
-          ? `Project rejected: image violated moderation policy. ${moderationReason}`.trim()
-          : moderationResult.reason
-            ? `Project rejected by moderation: ${moderationResult.reason}`
-            : 'Project rejected by moderation',
+          ? `Project rejected: image violates moderation policy. ${moderationReason}`.trim()
+          : isVideoViolation
+            ? `Project rejected: video violates moderation policy. ${moderationReason}`.trim()
+            : isContentViolation
+              ? `Project rejected: content violates moderation policy (bad words/profanity). ${moderationReason}`.trim()
+              : moderationResult.reason
+                ? `Project rejected: content violates moderation policy. ${moderationResult.reason}`
+                : 'Project rejected: content violates moderation policy.',
       );
     }
 
@@ -205,6 +215,24 @@ export class PublishService {
         status: 'publish_blocked',
       });
     }
+  }
+
+  private normalizeOptionalVideoUrl(
+    rawValue?: string | null,
+  ): string | null {
+    const trimmed = (rawValue ?? '').trim();
+    if (!trimmed) return null;
+
+    if (/^(undefined|null|none|n\/a)$/i.test(trimmed)) {
+      return null;
+    }
+
+    const normalized = trimmed.replace(/^(https?:\/\/)+/i, 'https://');
+    if (!/^https?:\/\//i.test(normalized)) {
+      return null;
+    }
+
+    return normalized;
   }
 
   async createNewProject(
@@ -355,7 +383,10 @@ export class PublishService {
     try {
       await this.ensurePhaseOwnership(phaseId, userId);
       const data = await this.phaseRepository.update(phaseId, dto);
-      return data!;
+      if (!data) {
+        throw new NotFoundException('Phase not found');
+      }
+      return data;
     } catch (error) {
       console.log('err', error);
       this.throwIfHttpException(error);
@@ -440,7 +471,10 @@ export class PublishService {
     try {
       await this.ensureTaskOwnership(phaseId, userId);
       const data = await this.taskRepository.update(phaseId, dto);
-      return data!;
+      if (!data) {
+        throw new NotFoundException('Task not found');
+      }
+      return data;
     } catch (error) {
       console.log('err', error);
       this.throwIfHttpException(error);
@@ -457,6 +491,8 @@ export class PublishService {
     },
     dto: CreateMediaDto,
   ): Promise<Media> {
+    let moderationContext: 'image' | 'video' = 'image';
+
     try {
       await this.ensureProjectOwnership(dto.projectId, userId);
 
@@ -482,22 +518,20 @@ export class PublishService {
         }
 
         throw new BadRequestException(
-          `Featured image rejected by moderation. ${reason}`.trim(),
+          `Project rejected: image violates moderation policy. ${reason}`.trim(),
         );
       }
 
-      const resolvedVideoUrl = (
+      const resolvedVideoUrl = this.normalizeOptionalVideoUrl(
         dto.videoUrl ??
-        ((dto as CreateMediaDto & { featuredVideo?: string }).featuredVideo ??
-          '')
-      )
-        .trim()
-        .replace(/^(https?:\/\/)+/i, 'https://');
+          (dto as CreateMediaDto & { featuredVideo?: string }).featuredVideo,
+      );
 
       const uploadedFeaturedVideo = files.featuredVideo;
       let persistedVideoUrl: string | null = null;
 
       if (uploadedFeaturedVideo) {
+        moderationContext = 'video';
         const videoModeration =
           await this.projectModerationService.moderateUploadedVideo(
             dto.projectId,
@@ -512,7 +546,7 @@ export class PublishService {
             );
           }
           throw new BadRequestException(
-            `Featured video rejected by moderation. ${reason}`.trim(),
+            `Project rejected: video violates moderation policy. ${reason}`.trim(),
           );
         }
 
@@ -523,6 +557,7 @@ export class PublishService {
           );
         persistedVideoUrl = featuredVideoUpload.url;
       } else if (resolvedVideoUrl) {
+        moderationContext = 'video';
         const videoModeration =
           await this.projectModerationService.moderateVideoUrl(
             dto.projectId,
@@ -537,7 +572,7 @@ export class PublishService {
             );
           }
           throw new BadRequestException(
-            `Featured video rejected by moderation. ${reason}`.trim(),
+            `Project rejected: video violates moderation policy. ${reason}`.trim(),
           );
         }
 
@@ -569,7 +604,9 @@ export class PublishService {
       if (error instanceof ModerationUnavailableError) {
         throw new ServiceUnavailableException({
           message:
-            'Video moderation is currently unavailable. Please retry media upload.',
+            moderationContext === 'video'
+              ? 'Video moderation is currently unavailable. Please retry media upload.'
+              : 'Image moderation is currently unavailable. Please retry media upload.',
           projectId: dto.projectId,
           status: 'publish_blocked',
         });
@@ -577,7 +614,9 @@ export class PublishService {
       if (error instanceof ModerationInvalidResponseError) {
         throw new BadGatewayException({
           message:
-            'Video moderation returned an invalid response. Please retry media upload.',
+            moderationContext === 'video'
+              ? 'Video moderation returned an invalid response. Please retry media upload.'
+              : 'Image moderation returned an invalid response. Please retry media upload.',
           projectId: dto.projectId,
           status: 'publish_blocked',
         });

@@ -4,5 +4,5 @@
     "outDir": "../../dist/apps/listings-service"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+  "exclude": ["node_modules", "dist", "test", "**/*.spec.ts", "**/*.test.ts", "test/**/*.ts"]
 }

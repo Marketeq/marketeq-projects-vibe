@@ -1,4 +1,4 @@
-import { BadRequestException, Get, HttpCode, HttpStatus, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, Get, HttpCode, HttpStatus, UnprocessableEntityException, UseGuards } from '@nestjs/common';
 import { Controller, Post, Body, Param, UploadedFile, UseInterceptors, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -8,6 +8,8 @@ import { ContentModerationService } from './filters/content-moderation.service';
 import { BannedKeywordsService } from './filters/banned-keywords.service';
 import { FileValidationService } from './filters/file-validation.service';
 import { ProfanityFilterService } from './filters/profanity-filter.service';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AdminGuard } from './guards/admin.guard';
 import { Request } from 'express';
 import { Logger } from '@nestjs/common';
 import { promises as fsPromises } from 'fs';
@@ -15,6 +17,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 @Controller('api/moderate')
+@UseGuards(JwtAuthGuard)
 export class ContentModerationController {
   private readonly logger = new Logger(ContentModerationController.name);
 
@@ -28,7 +31,7 @@ export class ContentModerationController {
   ) {}
 
   @Post('content')
-  async moderateContent(@Body() contentDto: { contentId: string; content: string; title: string; category: string; subcategory: string; tags?: string[]; [key: string]: any }): Promise<any> {
+  async moderateContent(@Body() contentDto: { contentId: string; content: string; title: string; category: string; subcategory: string; tags?: string[]; categories?: string[] }): Promise<any> {
     const { contentId, content, title, category, subcategory } = contentDto;
     const combinedTextForKeywordChecks = [title, content]
       .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
@@ -37,15 +40,17 @@ export class ContentModerationController {
     // 1️⃣ Banned Keywords Check
     const bannedKeywordResult = await this.bannedKeywordsService.check(combinedTextForKeywordChecks);
     if (bannedKeywordResult.failed) {
-      await this.contentModerationService.rejectContent(contentId, 'Banned keyword detected');
-      return { status: 'rejected', reason: 'Banned keyword detected', contentId };
+      const reason = 'Content violates moderation policy: bad words detected';
+      await this.contentModerationService.rejectContent(contentId, reason);
+      return { status: 'rejected', reason, contentId };
     }
 
     // 2️⃣ Profanity Filter Check
     const profanityResult = await this.profanityFilterService.check(combinedTextForKeywordChecks);
     if (profanityResult.failed) {
-      await this.contentModerationService.rejectContent(contentId, 'Profanity detected');
-      return { status: 'rejected', reason: 'Profanity detected', contentId };
+      const reason = 'Content violates moderation policy: profanity detected';
+      await this.contentModerationService.rejectContent(contentId, reason);
+      return { status: 'rejected', reason, contentId };
     }
 
     // 3️⃣ Field-level Validation (Test Cases 11–13)
@@ -53,8 +58,8 @@ export class ContentModerationController {
       this.contentValidationService.validateProjectFields({
         title,
         description: content,
-        tags: contentDto['tags'] || [],
-        categories: contentDto['category'] ? [contentDto['category']] : []
+        tags: contentDto.tags ?? [],
+        categories: contentDto.categories ?? []
       });
     } catch (error) {
       await this.contentModerationService.rejectContent(contentId, error.message);
@@ -82,8 +87,9 @@ export class ContentModerationController {
     // 6️⃣ Further Content Validation
     const isContentValid = await this.contentValidationService.validateContent(content);
     if (!isContentValid) {
-      await this.contentModerationService.rejectContent(contentId, 'Content failed validation');
-      return { status: 'rejected', reason: 'Content failed validation' };
+      const reason = 'Content violates moderation policy: content failed validation';
+      await this.contentModerationService.rejectContent(contentId, reason);
+      return { status: 'rejected', reason };
     }
 
     // 7️⃣ Approve Content if All Checks Pass
@@ -181,10 +187,11 @@ export class ContentModerationController {
     contentId?: string;
     contentType?: string;
   }> {
-    console.log('Headers:', req.headers);
-    console.log('File:', file);
-    console.log('Body:', contentId);
-    
+    // Minimal diagnostic log — no headers, no body, no file contents.
+    this.logger.log(
+      `moderateFile ${req.method} ${req.url} content-length=${req.headers['content-length'] ?? 'n/a'}`,
+    );
+
     const contentType = req.headers['content-type'] || '';
     
     // Validate content-type
@@ -218,7 +225,7 @@ export class ContentModerationController {
       const result = await this.fileValidationService.validateFile(file);
 
       if (!result.valid) {
-        await this.contentModerationService.rejectContent(contentId, result.reason || 'File validation failed');
+        await this.contentModerationService.rejectContent(contentId, result.reason ?? 'File validation failed');
         throw new UnprocessableEntityException({
           status: 'rejected',
           reason: result.reason,
@@ -299,7 +306,9 @@ export class ContentModerationController {
     };
   }
 
+  // TODO(prod): back banned keywords with a DB table; currently per-instance ephemeral.
   @Post('admin/keywords')
+  @UseGuards(AdminGuard)
   async addBannedKeyword(@Body() body: { newKeyword?: string; keywords?: string[] }) {
     const keywords = Array.isArray(body.keywords)
       ? body.keywords
@@ -332,7 +341,9 @@ export class ContentModerationController {
     };
   }
 
+  // TODO(prod): profanity sensitivity is per-instance ephemeral; persist to DB.
   @Post('admin/profanity-sensitivity')
+  @UseGuards(AdminGuard)
   async setProfanitySensitivity(@Body() body: { sensitivity: string }) {
     this.profanityFilterService.adjustSensitivity(body.sensitivity);
     return { status: 'success', message: `Profanity sensitivity set to '${body.sensitivity}'.` };

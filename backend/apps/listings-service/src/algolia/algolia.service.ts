@@ -12,7 +12,13 @@ export class AlgoliaService {
     private readonly http: HttpService,
     private readonly config: ConfigService,
   ) {
-    this.baseUrl = this.config.get<string>('ALGOLIA_SERVICE_URL') || '';
+    const url = this.config.get<string>('ALGOLIA_SERVICE_URL');
+    if (!url) {
+      throw new Error(
+        'ALGOLIA_SERVICE_URL is not set — listings-service cannot reach algolia-service',
+      );
+    }
+    this.baseUrl = url;
   }
 
   // Called by the moderation.approved consumer after status is set to published.
@@ -87,23 +93,23 @@ export class AlgoliaService {
   }
 
   private extractLocations(listing: JobListing): string[] {
-    const locs = [
-      ...listing.teamMemberRows?.map(r => r.location).filter(Boolean) ?? [],
-      ...listing.phases?.flatMap(
-        p => p.tasks?.map(t => t.location).filter(Boolean) ?? [],
-      ) ?? [],
+    const locs: string[] = [
+      ...(listing.teamMemberRows?.map(r => r.location).filter((x): x is string => !!x) ?? []),
+      ...(listing.phases?.flatMap(
+        p => p.tasks?.map(t => t.location).filter((x): x is string => !!x) ?? [],
+      ) ?? []),
     ];
-    return [...new Set(locs)] as string[];
+    return [...new Set(locs)];
   }
 
   private extractExperienceLevels(listing: JobListing): string[] {
-    const levels = [
-      ...listing.teamMemberRows?.map(r => r.experienceLevel).filter(Boolean) ?? [],
-      ...listing.phases?.flatMap(
-        p => p.tasks?.map(t => t.experienceLevel).filter(Boolean) ?? [],
-      ) ?? [],
+    const levels: string[] = [
+      ...(listing.teamMemberRows?.map(r => r.experienceLevel).filter((x): x is string => !!x) ?? []),
+      ...(listing.phases?.flatMap(
+        p => p.tasks?.map(t => t.experienceLevel).filter((x): x is string => !!x) ?? [],
+      ) ?? []),
     ];
-    return [...new Set(levels)] as string[];
+    return [...new Set(levels)];
   }
 
   private extractWorkSchedules(listing: JobListing): string[] {

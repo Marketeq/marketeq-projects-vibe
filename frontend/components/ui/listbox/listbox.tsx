@@ -10,11 +10,10 @@ import { WithoutChildren } from "@/types/react"
 import { ScrollArea, ScrollBar } from ".."
 import { labelVariants } from "../label"
 
-interface ListboxProps<T>
-  extends Omit<
-    React.HTMLAttributes<HTMLDivElement>,
-    "defaultValue" | "children" | "onChange"
-  > {
+interface ListboxProps<T> extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "defaultValue" | "children" | "onChange"
+> {
   value?: T
   defaultValue?: T
   onChange?: (value: T) => void
@@ -33,19 +32,25 @@ interface ListboxProps<T>
 export const Listbox = <T,>({
   className,
   value,
+  defaultValue,
   onChange,
   ...props
 }: ListboxProps<T>) => {
   const [selected, setSelected] = useControllableState<T>({
     value,
+    defaultValue,
     onChange,
   })
+
+  const emptyMultipleValueRef = React.useRef<unknown[]>([])
+  const normalizedValue = (selected ??
+    (props.multiple ? emptyMultipleValueRef.current : null)) as T
 
   return (
     <ListboxPrimitive
       className={cn("relative w-full", className)}
       as="div"
-      value={selected}
+      value={normalizedValue}
       onChange={setSelected}
       {...props}
     />
@@ -53,7 +58,8 @@ export const Listbox = <T,>({
 }
 
 interface ListboxLabel
-  extends WithoutChildren<React.LabelHTMLAttributes<HTMLLabelElement>>,
+  extends
+    WithoutChildren<React.LabelHTMLAttributes<HTMLLabelElement>>,
     VariantProps<typeof labelVariants> {
   children?:
     | React.ReactNode
@@ -86,8 +92,9 @@ export const ListboxContent = React.forwardRef<
 
 ListboxContent.displayName = "ListboxContent"
 
-interface ListboxButtonProps<T = any>
-  extends WithoutChildren<React.ButtonHTMLAttributes<HTMLButtonElement>> {
+interface ListboxButtonProps<T = any> extends WithoutChildren<
+  React.ButtonHTMLAttributes<HTMLButtonElement>
+> {
   className?: string
   children?: ({
     value,
@@ -152,8 +159,9 @@ export const ListboxButton = ({
   )
 }
 
-interface ListboxOptions
-  extends WithoutChildren<React.HTMLAttributes<HTMLUListElement>> {
+interface ListboxOptions extends WithoutChildren<
+  React.HTMLAttributes<HTMLUListElement>
+> {
   children?:
     | React.ReactNode
     | ((bag: {
@@ -203,39 +211,48 @@ export const ListboxOptions = React.forwardRef<
 
 ListboxOptions.displayName = "ListboxOptions"
 
-interface ListboxOption<T = any>
-  extends Omit<React.LiHTMLAttributes<HTMLLIElement>, "value" | "children"> {
+interface ListboxOption<T = any> extends Omit<
+  React.LiHTMLAttributes<HTMLLIElement>,
+  "value" | "children"
+> {
   value: T
   children?: React.ReactNode
   iconClassName?: string
   indicator?: boolean
 }
 
-export const ListboxOption = ({
-  className,
-  value,
-  children,
-  iconClassName,
-  indicator = true,
-  ...props
-}: ListboxOption) => (
-  <ListboxPrimitive.Option
-    className={cn(
-      "flex cursor-pointer items-center gap-x-2 p-3 text-[13px] truncate leading-[13.25px] text-gray-500 ui-active:bg-gray-50 ui-active:text-gray-black",
-      className
-    )}
-    value={value}
-    {...props}
-  >
-    {({ selected }) => (
-      <>
-        {children}
-        {indicator && selected && (
-          <Check
-            className={cn("ml-auto h-4 w-4 text-primary-500", iconClassName)}
-          />
-        )}
-      </>
-    )}
-  </ListboxPrimitive.Option>
+export const ListboxOption = React.forwardRef<HTMLLIElement, ListboxOption>(
+  ({
+    className,
+    value,
+    children,
+    iconClassName,
+    indicator = true,
+    ...props
+  }: ListboxOption,
+  ref
+) => (
+    <ListboxPrimitive.Option
+      ref={ref}
+      className={cn(
+        "flex cursor-pointer items-center gap-x-2 p-3 text-[13px] truncate leading-[13.25px] text-gray-500 ui-active:bg-gray-50 ui-active:text-gray-black",
+        className
+      )}
+      value={value}
+      {...props}
+    >
+      {({ selected }) => (
+        <>
+          {children}
+          {indicator && selected && (
+            <Check
+              className={cn("ml-auto h-4 w-4 text-primary-500", iconClassName)}
+            />
+          )}
+        </>
+      )}
+    </ListboxPrimitive.Option>
+  )
 )
+
+ListboxOption.displayName = "ListboxOption"

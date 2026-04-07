@@ -43,14 +43,14 @@ export class ProjectModerationService {
   private get moderationBaseUrl(): string {
     return (
       process.env.CONTENT_MODERATION_SERVICE_URL?.trim() ||
-      'http://localhost:3007'
+      'http://localhost:3014'
     ).replace(/\/$/, '');
   }
 
   private get moderationTimeoutMs(): number {
-    const rawValue = Number(process.env.CONTENT_MODERATION_TIMEOUT_MS ?? 5000);
+    const rawValue = Number(process.env.CONTENT_MODERATION_TIMEOUT_MS ?? 30000);
     if (!Number.isFinite(rawValue) || rawValue <= 0) {
-      return 5000;
+      return 30000;
     }
     return rawValue;
   }

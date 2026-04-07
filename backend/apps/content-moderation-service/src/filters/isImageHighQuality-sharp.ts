@@ -1,4 +1,4 @@
-import sharp from 'sharp';
+import sharp = require('sharp');
 
 export const isImageHighQuality = async (filePath: string) => {
   try {
