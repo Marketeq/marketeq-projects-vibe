@@ -6,6 +6,7 @@ import { Invitation } from './entities/invitation.entity';
 import { InvitationsService } from './invitations/invitations.service';
 import { InvitationsController } from './invitations/invitations.controller';
 import { NotificationsClient } from './invitations/notifications.client';
+import { UserServiceClient } from './invitations/user-service.client';
 
 @Module({
   imports: [
@@ -30,6 +31,6 @@ import { NotificationsClient } from './invitations/notifications.client';
     TypeOrmModule.forFeature([Invitation]),
   ],
   controllers: [InvitationsController],
-  providers: [InvitationsService, NotificationsClient],
+  providers: [InvitationsService, NotificationsClient, UserServiceClient],
 })
 export class InvitationsServiceModule {}
