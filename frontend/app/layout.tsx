@@ -18,6 +18,17 @@ import "@/styles/globals.css"
 import "@/styles/nprogress.css"
 import QueryProvider from "../src/features/shared/query-provider"
 
+const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
+
+function OptionalGoogleOAuth({ children }: { children: React.ReactNode }) {
+  if (!googleClientId) return <>{children}</>
+  return (
+    <GoogleOAuthProvider clientId={googleClientId}>
+      {children}
+    </GoogleOAuthProvider>
+  )
+}
+
 export const metadata: Metadata = {
   title: "Marketeq",
   description: "Welcome to Marketeq's marketing website.",
@@ -36,7 +47,7 @@ export default function RootLayout({
   return (
     <html className={`scroll-smooth ${font.variable}`} lang="en">
       <body>
-        <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!}>
+        <OptionalGoogleOAuth>
           <AuthProvider>
             <QueryProvider>
               <div className="min-h-screen flex flex-col bg-gray-50">
@@ -50,7 +61,7 @@ export default function RootLayout({
               <InviteWindow />
             </QueryProvider>
           </AuthProvider>
-        </GoogleOAuthProvider>
+        </OptionalGoogleOAuth>
       </body>
       <GoogleAnalytics gaId="G-265438626K" />
       <GoogleTagManager gtmId="GTM-MKB89M5M" />

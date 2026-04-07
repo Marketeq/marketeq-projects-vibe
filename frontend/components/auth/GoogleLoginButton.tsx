@@ -12,15 +12,13 @@ import { Spinner } from "../ui/spinner/spinner"
 import { UserAPI } from "@/service/http/user"
 import { ROLE } from "@/types/user"
 
-const GoogleLoginButton = () => {
+const GoogleLoginButtonInner = () => {
   const router = useRouter()
 
   const { setUser } = useAuth()
   const { toast } = useToast()
 
   const [isLoading, setIsLoading] = useState(false)
-
-  // No safety check needed as the client ID is hardcoded in layout.tsx
 
   const handleLoginWithGoogle = useGoogleLogin({
   scope: "openid email profile",
@@ -95,6 +93,12 @@ const GoogleLoginButton = () => {
       )}
     </Button>
   )
+}
+
+const GoogleLoginButton = () => {
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
+  if (!googleClientId) return null
+  return <GoogleLoginButtonInner />
 }
 
 export default GoogleLoginButton

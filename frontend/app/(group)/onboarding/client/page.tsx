@@ -55,6 +55,7 @@ import {
 } from "react-hook-form"
 import { useDebounce, useIsomorphicLayoutEffect, useToggle } from "react-use"
 import { z } from "zod"
+import { useAutocomplete } from "@/libs/autocomplete"
 import { CreateClientType } from "@/types/client"
 import { ROLE, User } from "@/types/user"
 import { PictureEditor } from "@/components/ui/image-editor/image-editor"
@@ -240,8 +241,6 @@ const describeYourTeamFormSchema = z.object({
 
 type DescribeYourTeamFormValues = z.infer<typeof describeYourTeamFormSchema>
 
-const industryList = ["Technology", "Healthcard", "Retail"] as const
-
 const DescribeYourTeam = ({
   sidebar,
   stepData,
@@ -266,6 +265,25 @@ const DescribeYourTeam = ({
     },
   })
   const values = watch()
+
+  const [industryQuery, setIndustryQuery] = React.useState(
+    stepData?.industry || ""
+  )
+  const [showIndustrySuggestions, setShowIndustrySuggestions] =
+    React.useState(false)
+  const { suggestions: industrySuggestions } =
+    useAutocomplete("industries", industryQuery)
+  const industryRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (industryRef.current && !industryRef.current.contains(e.target as Node)) {
+        setShowIndustrySuggestions(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   const { toggleValidation } = useStepContext()
   const { nextStep, setStep } = useStepperContext()
@@ -349,7 +367,7 @@ const DescribeYourTeam = ({
               <InputGroup>
                 <Input
                   id="your-role"
-                  placeholder="Enter your team or company name"
+                  placeholder="Enter your job title"
                   {...register("role")}
                   isInvalid={hookFormHasError({ errors, name: "role" })}
                 />
@@ -370,49 +388,53 @@ const DescribeYourTeam = ({
                 What’s your industry?
               </Label>
 
-              <DropdownPopover
-                selected={values?.industry}
-                onSelectedChange={(value) => setValue("industry", value || "")}
-                {...register("industry")}
-              >
-                <DropdownPopoverTrigger>
-                  {values?.industry ? (
-                    values?.industry
-                  ) : (
-                    <span className="text-gray-500">Select a industry</span>
-                  )}
-                  <ChevronDown className="ml-auto h-5 w-5 text-gray-500" />
-                </DropdownPopoverTrigger>
-                <DropdownPopoverContent>
-                  <DropdownCommand className="overflow-hidden">
-                    <InputGroup>
-                      <InputLeftElement className="w-8">
-                        <SearchMd className="h-[15] w-[15] text-gray-500" />
-                      </InputLeftElement>
-                      <DropdownCommandInput
-                        placeholder="Search..."
-                        className="pl-8"
-                      />
-                    </InputGroup>
+              <div ref={industryRef} className="relative">
+                <Input
+                  id="your-industry"
+                  placeholder="Enter your industry (e.g. Technology, Healthcare, Retail)"
+                  value={industryQuery}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setIndustryQuery(val)
+                    setValue("industry", val, { shouldValidate: true })
+                    setShowIndustrySuggestions(true)
+                  }}
+                  onFocus={() => setShowIndustrySuggestions(true)}
+                  isInvalid={hookFormHasError({ errors, name: "industry" })}
+                  autoComplete="off"
+                />
 
-                    <DropdownCommandEmpty className="text-sm text-gray-900">
-                      No industry found.
-                    </DropdownCommandEmpty>
-
-                    <DropdownCommandGroup>
-                      {industryList.map((industry) => (
-                        <DropdownCommandItem
-                          key={industry}
-                          itemValue={industry}
+                {showIndustrySuggestions && industrySuggestions.length > 0 && (
+                  <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg max-h-[200px] overflow-y-auto">
+                    {industrySuggestions.map(
+                      (item: { label: string }, idx: number) => (
+                        <button
+                          key={item.label ?? idx}
+                          type="button"
+                          className={cn(
+                            "flex w-full items-center px-3 py-2 text-sm text-gray-900 hover:bg-gray-50 transition-colors",
+                            values?.industry === item.label &&
+                              "bg-primary-50 text-primary-700"
+                          )}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            setIndustryQuery(item.label)
+                            setValue("industry", item.label, {
+                              shouldValidate: true,
+                            })
+                            setShowIndustrySuggestions(false)
+                          }}
                         >
-                          {industry}
-                          <Check1 className="ml-auto text-primary-500 opacity-0 group-data-[state=selected]:opacity-100" />
-                        </DropdownCommandItem>
-                      ))}
-                    </DropdownCommandGroup>
-                  </DropdownCommand>
-                </DropdownPopoverContent>
-              </DropdownPopover>
+                          {item.label}
+                          {values?.industry === item.label && (
+                            <Check1 className="ml-auto h-4 w-4 text-primary-500" />
+                          )}
+                        </button>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
 
               <HookFormErrorMessage
                 errors={errors}
