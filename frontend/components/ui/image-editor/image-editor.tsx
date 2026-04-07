@@ -22,6 +22,8 @@ import {
   Button,
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogTitle,
   ErrorMessage,
   Slider,
 } from "@/components/ui"
@@ -252,9 +254,12 @@ export const PictureEditor = ({
 
       <Dialog open={state === "removing"}>
         <DialogContent className="max-w-[467px] bg-white p-6 shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03),0px_20px_24px_-4px_rgba(16,24,40,.08)]">
-          <h1 className="text-lg leading-7 text-center font-semibold text-dark-blue-400">
+          <DialogTitle className="text-lg leading-7 text-center font-semibold text-dark-blue-400">
             {dataUrl ? "Change Profile Image" : "Add Profile Image"}
-          </h1>
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Manage your profile image.
+          </DialogDescription>
 
           <button
             className="size-9 text-gray-700/50 hover:text-gray-700 hover:bg-gray-100 shrink-0 absolute right-2.5 top-2.5 inline-flex items-center justify-center focus-visible:outline-none rounded-full"
@@ -316,14 +321,17 @@ export const PictureEditor = ({
 
       <Dialog open={state === "editing"}>
         <DialogContent className="max-w-[486px] p-0 bg-white shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03),0px_20px_24px_-4px_rgba(16,24,40,.08)]">
+          <DialogDescription className="sr-only">
+            Adjust the crop and scale of your profile image.
+          </DialogDescription>
           <div className="p-5 flex items-center justify-between">
             <Button size="md" variant="link" onClick={() => send("REMOVE")}>
               <ArrowLeft className="size-4" /> Back
             </Button>
 
-            <h1 className="text-lg leading-7 font-semibold text-dark-blue-400">
+            <DialogTitle className="text-lg leading-7 font-semibold text-dark-blue-400">
               Edit Profile Image
-            </h1>
+            </DialogTitle>
 
             <button
               className="size-[38px] shrink-0 inline-flex items-center justify-center focus-visible:outline-none text-gray-500/50 hover:text-gray-500 hover:bg-gray-100 rounded-full"
@@ -610,9 +618,12 @@ export const ImageEditor = ({
         })}
 
         <DialogContent className="max-w-[467px] bg-white p-6 shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03),0px_20px_24px_-4px_rgba(16,24,40,.08)]">
-          <h1 className="text-lg leading-7 text-center font-semibold text-dark-blue-400">
+          <DialogTitle className="text-lg leading-7 text-center font-semibold text-dark-blue-400">
             Change Profile Image
-          </h1>
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Upload a new profile image.
+          </DialogDescription>
 
           <button
             className="size-9 text-gray-700/50 hover:text-gray-700 hover:bg-gray-100 shrink-0 absolute right-2.5 top-2.5 inline-flex items-center justify-center focus-visible:outline-none rounded-full"
@@ -664,9 +675,12 @@ export const ImageEditor = ({
 
       <Dialog open={state === "removing"}>
         <DialogContent className="max-w-[467px] bg-white p-6 shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03),0px_20px_24px_-4px_rgba(16,24,40,.08)]">
-          <h1 className="text-lg leading-7 text-center font-semibold text-dark-blue-400">
+          <DialogTitle className="text-lg leading-7 text-center font-semibold text-dark-blue-400">
             {dataUrl ? "Change Profile Image" : "Add Profile Image"}
-          </h1>
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Manage your profile image.
+          </DialogDescription>
 
           <button
             className="size-9 text-gray-700/50 hover:text-gray-700 hover:bg-gray-100 shrink-0 absolute right-2.5 top-2.5 inline-flex items-center justify-center focus-visible:outline-none rounded-full"
@@ -728,14 +742,17 @@ export const ImageEditor = ({
 
       <Dialog open={state === "editing"}>
         <DialogContent className="max-w-[486px] p-0 bg-white shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03),0px_20px_24px_-4px_rgba(16,24,40,.08)]">
+          <DialogDescription className="sr-only">
+            Adjust the crop and scale of your profile image.
+          </DialogDescription>
           <div className="p-5 flex items-center justify-between">
             <Button size="md" variant="link" onClick={() => send("REMOVE")}>
               <ArrowLeft className="size-4" /> Back
             </Button>
 
-            <h1 className="text-lg leading-7 font-semibold text-dark-blue-400">
+            <DialogTitle className="text-lg leading-7 font-semibold text-dark-blue-400">
               Edit Profile Image
-            </h1>
+            </DialogTitle>
 
             <button
               className="size-[38px] shrink-0 inline-flex items-center justify-center focus-visible:outline-none text-gray-500/50 hover:text-gray-500 hover:bg-gray-100 rounded-full"

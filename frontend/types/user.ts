@@ -17,11 +17,8 @@ export type User = {
   firstName?: string | null
   lastName?: string | null
   avatarUrl?: string | null
-  /** Job title from backend (e.g. "Creative Art Director") */
-  role: ROLE | string
-  /** Backend account type field: "talent" or "client" */
+  role: ROLE
   userType?: string | null
-  /** Derived from userType by auth context: ROLE.TALENT or ROLE.CLIENT */
   accountType?: ROLE
   provider: AUTH_PROVIDERS
   hasPassword?: boolean

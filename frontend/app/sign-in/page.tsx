@@ -44,6 +44,7 @@ type SignInFormValues = z.infer<typeof signInSchema>
 
 export default function SignIn() {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const { setUser } = useAuth()
   const { toast } = useToast()
@@ -51,6 +52,11 @@ export default function SignIn() {
   const [isVisible, toggleIsVisible] = useToggle(false)
 
   const [isLoading, setIsLoading] = useState(false)
+  const redirectTarget = searchParams.get("redirect")
+  const nextRoute =
+    redirectTarget && redirectTarget.startsWith("/") && !redirectTarget.startsWith("//")
+      ? redirectTarget
+      : "/"
 
   const {
     register,
@@ -72,10 +78,7 @@ export default function SignIn() {
     AuthAPI.LoginWithEmail({ email, password })
       .then(async (response) => {
         if (response?.status === 200 && response?.data?.access_token) {
-          Cookies.set("access_token", response?.data?.access_token, { path: "/" })
-          if (response?.data?.refresh_token) {
-            Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
-          }
+          Cookies.set("access_token", response?.data?.access_token)
 
           let nextUser = response?.data?.user
           if (!nextUser) {
@@ -96,15 +99,7 @@ export default function SignIn() {
             setUser(nextUser)
           }
 
-          // Route based on user type — new users go to onboarding
-          const destination = nextUser?.userType === "talent"
-            ? "/talent-dashboard"
-            : nextUser?.userType === "client"
-              ? "/client-dashboard"
-              : nextUser?.userType
-                ? "/"
-                : "/onboarding"
-          router.push(destination)
+          router.push(nextRoute)
           reset()
         }
       })
@@ -120,36 +115,6 @@ export default function SignIn() {
         setIsLoading(false)
       })
   }
-
-  // const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password }) => {
-  //   setIsLoading(true)
-
-  //   AuthAPI.LoginWithEmail({ email, password })
-  //     .then((response) => {
-  //       if (
-  //         response?.status === 200 &&
-  //         response?.data?.access_token &&
-  //         response?.data?.user
-  //       ) {
-  //         Cookies.set("access_token", response?.data?.access_token)
-  //         setUser(response?.data?.user)
-
-  //         router.push("/")
-  //         reset()
-  //       }
-  //     })
-  //     .catch((error) => {
-  //       if (error?.response?.data?.errors?.message) {
-  //         toast({
-  //           title: error?.response?.data?.errors?.message,
-  //           variant: "destructive",
-  //         })
-  //       }
-  //     })
-  //     .finally(() => {
-  //       setIsLoading(false)
-  //     })
-  // }
 
   return (
     <UnauthenticatedRoute>
@@ -172,14 +137,6 @@ export default function SignIn() {
           <MarketeqIcon1 className="absolute -bottom-[36.41px] left-[41.11px]" />
 
           <div className="flex items-start gap-y-5 flex-col relative">
-            {/* <Button
-              className="text-white"
-              visual="gray"
-              variant="outline"
-              size="md"
-            >
-              Already have an account?
-            </Button> */}
             <p className="text-white text-sm font-medium">
               Already have an account?
             </p>
@@ -219,64 +176,7 @@ export default function SignIn() {
               Login to your account below
             </p>
 
-            {process.env.NEXT_PUBLIC_ENV === "development" && (
-              <div className="mt-10 md:mt-[50px] grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const res = await AuthAPI.DevLogin("olivia.brooks@example.com")
-                      if (res?.data?.access_token) {
-                        Cookies.set("access_token", res.data.access_token, { path: "/" })
-                        if (res.data.refresh_token) {
-                          Cookies.set("refresh_token", res.data.refresh_token, { path: "/" })
-                        }
-                        const meRes = await UserAPI.me()
-                        const u = meRes?.data?.user ?? meRes?.data
-                        if (u?.id) {
-                          setUser(u)
-                          router.push(u.userType === "talent" ? "/talent-dashboard" : "/client-dashboard")
-                          return
-                        }
-                      }
-                    } catch (err: any) {
-                      toast({ title: err?.response?.data?.message || "Dev login failed", variant: "destructive" })
-                    }
-                  }}
-                  className="h-10 rounded-md border border-dashed border-gray-400 text-sm text-gray-600 hover:bg-gray-50"
-                >
-                  Dev: Client Login
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const res = await AuthAPI.DevLogin("maya.johnson@example.com")
-                      if (res?.data?.access_token) {
-                        Cookies.set("access_token", res.data.access_token, { path: "/" })
-                        if (res.data.refresh_token) {
-                          Cookies.set("refresh_token", res.data.refresh_token, { path: "/" })
-                        }
-                        const meRes = await UserAPI.me()
-                        const u = meRes?.data?.user ?? meRes?.data
-                        if (u?.id) {
-                          setUser(u)
-                          router.push(u.userType === "talent" ? "/talent-dashboard" : "/client-dashboard")
-                          return
-                        }
-                      }
-                    } catch (err: any) {
-                      toast({ title: err?.response?.data?.message || "Dev login failed", variant: "destructive" })
-                    }
-                  }}
-                  className="h-10 rounded-md border border-dashed border-gray-400 text-sm text-gray-600 hover:bg-gray-50"
-                >
-                  Dev: Talent Login
-                </button>
-              </div>
-            )}
-
-            <div className="grid md:grid-cols-2 mt-4 gap-3 items-center">
+            <div className="grid md:grid-cols-2 mt-10 md:mt-[50px] gap-3 items-center">
               <GoogleLoginButton />
 
               <LinkedInLoginButton />
@@ -409,7 +309,7 @@ export default function SignIn() {
 
               <div className="flex gap-x-1 mt-10 md:mt-[50px] items-center">
                 <span className="text-sm leading-6 text-[#68707B]">
-                  Don’t have an account?
+                  Don't have an account?
                 </span>
                 <NextLink
                   href="/sign-up"
@@ -425,4 +325,3 @@ export default function SignIn() {
     </UnauthenticatedRoute>
   )
 }
-

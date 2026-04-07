@@ -9,7 +9,10 @@ import { NotificationsClient } from './invitations/notifications.client';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['apps/invitations-service/.env', '.env'],
+    }),
     HttpModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],

@@ -19,6 +19,18 @@ export class CreateInvitationsDto {
   note?: string;
 }
 
+export class CreateInviteLinkDto {
+  @IsUUID()
+  teamId: string;
+
+  @IsString()
+  @IsOptional()
+  teamName?: string;
+
+  @IsEnum(InvitationRole)
+  role: InvitationRole;
+}
+
 export class ListInvitationsDto {
   @IsUUID()
   @IsOptional()
