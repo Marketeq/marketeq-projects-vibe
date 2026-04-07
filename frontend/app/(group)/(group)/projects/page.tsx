@@ -152,7 +152,7 @@ export default function Projects() {
 
     setDisplayedProjects(sorted);
   }, [activeTab, allProjects]);
-  const categorySlugPath = pageData?.breadcrumbs.map(b => b.slug) || ["creative"]
+  const categorySlugPath = pageData?.breadcrumbs.map((b: any) => b.slug) || ["creative"]
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <div className="py-[50px]">
