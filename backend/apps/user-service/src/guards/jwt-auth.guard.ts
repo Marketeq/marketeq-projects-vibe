@@ -37,19 +37,7 @@ export class JwtAuthGuard implements CanActivate {
 			context.getClass(),
 		]);
 
-  onModuleInit(): void {
-    const rawKey = process.env.AUTH_JWT_PUBLIC_KEY;
-    if (!rawKey) {
-      // Fatal — we refuse to start with a weak (HS256) fallback because the
-      // auth-service now issues RS256 tokens. Missing key = misconfigured
-      // deployment; fail loudly instead of silently trusting every request.
-      this.logger.fatal(
-        'AUTH_JWT_PUBLIC_KEY is not set. Refusing to start user-service with no public key (HS256 fallback removed).',
-      );
-      throw new Error('AUTH_JWT_PUBLIC_KEY is required');
-    }
-    this.publicKey = rawKey.replace(/\\n/g, '\n');
-  }
+		if (isPublic) return true;
 
 		const request = context.switchToHttp().getRequest();
 		const authHeader = request.headers?.authorization;
