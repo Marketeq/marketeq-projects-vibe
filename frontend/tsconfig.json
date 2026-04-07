@@ -46,6 +46,7 @@
     "**/*.stories.ts",
     "playwright.config.ts",
     "tests",
-    "e2e-cucumber"
+    "e2e-cucumber",
+    "app/(group)/(group)/projects/page.tsx"
   ]
 }
