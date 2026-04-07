@@ -145,7 +145,7 @@ export class ListingAdapterReal extends ListingAdapter {
   private getSortField(order: string): string {
     switch (order) {
       case 'top_rated':
-        return 'createdAt';
+        return 'rating';
       case 'curated':
         return 'featuredOrder';
       case 'trending':

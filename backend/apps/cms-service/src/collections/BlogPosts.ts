@@ -1,5 +1,5 @@
 import { CollectionConfig } from 'payload/types';
-import { isAdmin, isAuthorOfDocument, isContentEditorOrAbove } from '../access/roles';
+import { isAdmin, isAuthorOfDocument, isContentEditorOrAbove, isPublished } from '../access/roles';
 
 export const BlogPosts: CollectionConfig = {
   slug: 'blog-posts',
@@ -8,7 +8,7 @@ export const BlogPosts: CollectionConfig = {
     defaultColumns: ['title', 'author', 'status', 'publishedAt'],
   },
   access: {
-    read: isAuthorOfDocument,
+    read: isPublished,
     create: isContentEditorOrAbove,
     update: isAuthorOfDocument,
     delete: isAdmin,

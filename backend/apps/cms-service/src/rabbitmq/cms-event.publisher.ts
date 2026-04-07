@@ -38,6 +38,9 @@ export class CmsEventPublisher {
   async connect(url: string): Promise<void> {
     const connection = amqp.connect([url]);
 
+    connection.on('disconnect', () => { this.connected = false; });
+    connection.on('connect', () => { this.connected = true; });
+
     this.channelWrapper = connection.createChannel({
       json: true,
       setup: async (channel: ConfirmChannel) => {

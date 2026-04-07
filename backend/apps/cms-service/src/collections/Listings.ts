@@ -85,6 +85,24 @@ export const Listings: CollectionConfig = {
       relationTo: 'media',
     },
     {
+      name: 'rating',
+      type: 'number',
+      min: 0,
+      max: 5,
+      defaultValue: 0,
+      admin: { description: 'Average rating (0-5), synced from reviews' },
+    },
+    {
+      name: 'reviewCount',
+      type: 'number',
+      defaultValue: 0,
+    },
+    {
+      name: 'price',
+      type: 'number',
+      defaultValue: 0,
+    },
+    {
       name: 'status',
       type: 'select',
       defaultValue: 'draft',
