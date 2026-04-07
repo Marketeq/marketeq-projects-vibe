@@ -402,7 +402,7 @@ export default function Projects() {
                           </NextLink>
 
                           {/* Only show rating if reviews exist */}
-                          {project.rating && project.reviewCount > 0 && (
+                          {project.rating && (project.reviewCount ?? 0) > 0 && (
                             <div className="inline-flex items-center gap-x-1">
                               <Star className="size-[15px] text-primary-500 fill-primary-500" />
                               <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
