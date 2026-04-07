@@ -58,6 +58,26 @@ export class UserService {
     return user;
   }
 
+  async getInternalSummary(id: string): Promise<{
+    id: string;
+    email: string;
+    role: string;
+    onboardingDismissed: boolean;
+    hasCompletedOnboarding: boolean;
+    isActive: boolean;
+  }> {
+    const user = await this.getUserById(id);
+
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role ?? 'client',
+      onboardingDismissed: user.onboardingDismissed,
+      hasCompletedOnboarding: user.onboardingDismissed,
+      isActive: user.isActive,
+    };
+  }
+
   async getUserByClaims(claims: { sub?: string; id?: string; email?: string }): Promise<User> {
     const candidateId = claims.sub ?? claims.id;
     if (candidateId) {
