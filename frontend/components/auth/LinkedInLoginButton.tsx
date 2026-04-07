@@ -9,7 +9,6 @@ import { LinkedInDefault } from "@blend-metrics/icons/social"
 import Cookies from "js-cookie"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
-import { ROLE } from "@/types/user"
 
 const LinkedInLogin = () => {
   const hasLoggedInRef = useRef(false)
@@ -69,24 +68,15 @@ const LinkedInLogin = () => {
               response?.data?.access_token &&
               response?.data?.user
             ) {
-              Cookies.set("access_token", response?.data?.access_token, { path: "/" })
-              if (response?.data?.refresh_token) {
-                Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
-              }
+              Cookies.set("access_token", response?.data?.access_token)
               UserAPI.me().then((me) => {
                 if (me?.status === 200) {
                   const user = me.data?.user ?? me.data
-                  // Derive accountType from userType (don't overwrite role — it's the job title)
-                  if (user?.userType) {
-                    const typeMap: Record<string, ROLE> = { talent: ROLE.TALENT, client: ROLE.CLIENT }
-                    user.accountType = typeMap[user.userType]
-                  }
-                  setUser(user)
-                  if (user?.userType) {
-                    router.push(user.userType === "talent" ? "/talent-dashboard" : "/client-dashboard")
+                  if (user?.role) {
+                    setUser(user)
+                    router.push("/")
                   } else {
-                    // New user — send to onboarding to pick role
-                    router.push("/onboarding")
+                    console.warn("User missing role", me.data)
                   }
                 }
               })

@@ -120,5 +120,16 @@ module.exports = {
       restart_delay: 2000,
       env: { PORT: 3017, NODE_ENV: 'development' },
     },
+    {
+      name: 'invitations-service',
+      script: 'npx',
+      args: 'nest start invitations-service',
+      cwd: __dirname,
+      autorestart: true,
+      watch: false,
+      max_restarts: 10,
+      restart_delay: 2000,
+      env: { PORT: 3011, NODE_ENV: 'development' },
+    },
   ],
 };

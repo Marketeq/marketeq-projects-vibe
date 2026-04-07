@@ -4,7 +4,8 @@ import { Repository, DataSource, LessThan } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { Invitation, InvitationStatus, InvitationRole } from '../entities/invitation.entity';
-import { CreateInvitationsDto, ListInvitationsDto, AcceptInvitationDto } from '../dto/invitation.dto';
+import { CreateInvitationsDto, CreateInviteLinkDto, ListInvitationsDto, AcceptInvitationDto } from '../dto/invitation.dto';
+import { generateInviteLinkToken, verifyInviteLinkToken } from '../auth/token.util';
 import { NotificationsClient } from './notifications.client';
 
 @Injectable()
@@ -22,6 +23,33 @@ export class InvitationsService {
   ) {
     this.expDays = parseInt(config.get('INVITE_EXP_DAYS') ?? '7', 10);
     this.appBaseUrl = config.get('APP_BASE_URL') ?? 'http://localhost:3000';
+  }
+
+  createInviteLink(
+    dto: CreateInviteLinkDto,
+    creator: { id: string; email: string },
+    team: { id: string; name: string },
+  ) {
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + this.expDays);
+
+    const token = generateInviteLinkToken({
+      teamId: dto.teamId,
+      role: dto.role,
+      teamName: team.name,
+      invitedBy: creator.id,
+      exp: expiresAt.getTime(),
+    });
+
+    return {
+      teamId: dto.teamId,
+      teamName: team.name,
+      role: dto.role,
+      status: 'pending' as const,
+      token,
+      expiresAt,
+      url: `${this.appBaseUrl}/invite/accept?token=${encodeURIComponent(token)}`,
+    };
   }
 
   async createInvites(dto: CreateInvitationsDto, inviter: { id: string; email: string }) {
@@ -120,9 +148,42 @@ export class InvitationsService {
     return this.repo.save(inv);
   }
 
-  async accept(dto: AcceptInvitationDto, invitee: { id: string; email: string }): Promise<Invitation> {
+  async accept(dto: AcceptInvitationDto, invitee: { id: string; email: string }): Promise<Invitation | Record<string, any>> {
     const inv = await this.repo.findOne({ where: { token: dto.token } });
-    if (!inv) throw new NotFoundException('Invalid invitation token');
+    if (!inv) {
+      // Fallback: try to verify as a generic invite link token (HMAC-signed)
+      const linkPayload = verifyInviteLinkToken(dto.token);
+      if (!linkPayload) {
+        throw new NotFoundException('Invalid invitation token');
+      }
+
+      // Link-based accept — add to team_members directly
+      await this.dataSource.query(
+        `INSERT INTO team_members (team_id, user_id, role, created_at)
+         VALUES ($1, $2, $3, now())
+         ON CONFLICT (team_id, user_id) DO NOTHING`,
+        [linkPayload.teamId, invitee.id, linkPayload.role],
+      ).catch(() => null);
+
+      return {
+        id: null,
+        teamId: linkPayload.teamId,
+        teamName: linkPayload.teamName,
+        invitedEmail: invitee.email,
+        role: linkPayload.role,
+        status: 'accepted',
+        acceptedAt: new Date(),
+        postAccept: {
+          nextStep: 'go_to_team',
+          teamId: linkPayload.teamId,
+        },
+        acceptedUser: {
+          id: invitee.id,
+          email: invitee.email,
+          hasCompletedOnboarding: true,
+        },
+      };
+    }
     if (inv.status !== InvitationStatus.PENDING) throw new BadRequestException('Invitation is no longer pending');
     if (inv.expiresAt < new Date()) {
       inv.status = InvitationStatus.EXPIRED;

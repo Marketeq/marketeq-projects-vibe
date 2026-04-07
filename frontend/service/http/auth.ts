@@ -9,6 +9,7 @@ import {
 import AxiosRequest from ".."
 
 const AUTH_BASE = process.env.NEXT_PUBLIC_AUTH_URL ?? ""
+
 export const AuthAPI = {
   SignUpWithEmail: (data: SignUpParams) => {
     // email-only signup
@@ -35,16 +36,6 @@ export const AuthAPI = {
 
   CreatePassword: (data: CreatePasswordParams) => {
     return AxiosRequest.patch(`${AUTH_BASE}/auth/set-password`, data)
-  },
-
-  Refresh: (refreshToken: string) => {
-    return AxiosRequest.post(`${AUTH_BASE}/auth/refresh`, {
-      refresh_token: refreshToken,
-    })
-  },
-
-  DevLogin: (email: string) => {
-    return AxiosRequest.post(`${AUTH_BASE}/auth/dev-login`, { email })
   },
 
   Logout: () => {
