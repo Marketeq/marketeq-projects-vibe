@@ -1,10 +1,10 @@
-"use client"
-
 /**
  * /find-jobs — temporary placeholder. Final design is pending; this is
  * just a minimal scaffold so the "Find Jobs" dropdown item routes
  * somewhere coherent instead of 404-ing.
  */
+
+export const dynamic = "force-dynamic"
 
 import { SearchMd } from "@blend-metrics/icons"
 

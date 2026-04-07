@@ -41,7 +41,7 @@ const mergeUserAuthFields = (prev: User | null, next: User | null): User | null 
     hasPassword: next.hasPassword ?? prev?.hasPassword,
     socialId: next.socialId ?? prev?.socialId,
     emailVerified: next.emailVerified ?? prev?.emailVerified,
-    deletedAt: next.deletedAt ?? prev?.deletedAt,
+    deletedAt: next.deletedAt ?? prev?.deletedAt ?? null,
   }
 }
 
