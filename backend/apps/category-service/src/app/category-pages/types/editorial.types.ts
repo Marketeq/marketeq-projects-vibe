@@ -6,7 +6,7 @@
 
 export interface EditorialContent {
     /**
-     * SEO overrides from Strapi (optional)
+     * SEO overrides from CMS (optional)
      * Takes precedence over category's default SEO
      */
     seoOverride?: {

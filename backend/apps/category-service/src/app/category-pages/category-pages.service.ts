@@ -194,7 +194,7 @@ private async buildBlocks(
       `pageKind: ${pageKind}, rows: ${limit}`  // Changed log message
     );
 
-    // Fetch Taxonomy Groups from Strapi
+    // Fetch Taxonomy Groups from CMS
     const taxonomyGroups = await this.cmsAdapter.getTaxonomyGroups(categoryUuid);
 
     if (taxonomyGroups.length === 0) {

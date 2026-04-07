@@ -92,6 +92,7 @@ export class CmsEventPublisher {
             `[CmsEventPublisher] Publish failed after ${RETRY_DELAYS.length + 1} attempts`,
             err,
           );
+          throw err;
         }
       }
     }

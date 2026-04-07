@@ -7,7 +7,6 @@ import { PaginatedResponse, PaginatedQueryParams } from '../types/taxonomy.types
 /**
  * REAL implementation of ListingAdapter
  * Fetches projects, services, and teams from CMS service (Payload CMS REST API).
- * Falls back to Strapi if CMS_SERVICE_URL is not set.
  */
 @Injectable()
 export class ListingAdapterReal extends ListingAdapter {
@@ -19,10 +18,9 @@ export class ListingAdapterReal extends ListingAdapter {
     super();
     this.cmsUrl = (
       process.env.CMS_SERVICE_URL ||
-      process.env.STRAPI_URL ||
       'http://localhost:3020'
     ).replace(/\/+$/, '');
-    this.apiKey = process.env.CMS_API_KEY || process.env.STRAPI_TOKEN || '';
+    this.apiKey = process.env.CMS_API_KEY || '';
 
     if (!this.apiKey) {
       this.logger.warn('CMS_API_KEY not configured — API requests may fail!');
@@ -33,10 +31,7 @@ export class ListingAdapterReal extends ListingAdapter {
 
   private authHeaders() {
     if (!this.apiKey) return { 'Content-Type': 'application/json' };
-    if (process.env.CMS_API_KEY) {
-      return { Authorization: `API-Key ${this.apiKey}`, 'Content-Type': 'application/json' };
-    }
-    return { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' };
+    return { Authorization: `API-Key ${this.apiKey}`, 'Content-Type': 'application/json' };
   }
 
   /**

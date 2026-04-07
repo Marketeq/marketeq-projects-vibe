@@ -18,7 +18,14 @@ app.get('/ready', async (_req, res) => {
   const checks: Record<string, boolean> = { database: false, rabbitmq: false };
 
   try {
-    checks.database = !!payload.db;
+    // Verify actual DB connectivity, not just adapter existence
+    const pool = (payload.db as any).pool;
+    if (pool) {
+      const client = await pool.connect();
+      await client.query('SELECT 1');
+      client.release();
+      checks.database = true;
+    }
   } catch {
     checks.database = false;
   }
@@ -33,10 +40,15 @@ app.get('/ready', async (_req, res) => {
 });
 
 async function start() {
+  const payloadSecret = process.env.PAYLOAD_SECRET;
+  if (!payloadSecret) {
+    throw new Error('PAYLOAD_SECRET environment variable is required');
+  }
+
   // Initialize Payload CMS
   // REST API is always mounted. Admin panel requires `payload build` first.
   await payload.init({
-    secret: process.env.PAYLOAD_SECRET || 'CHANGE_ME_IN_PRODUCTION',
+    secret: payloadSecret,
     express: app,
     onInit: async () => {
       payload.logger.info('Payload CMS initialized');

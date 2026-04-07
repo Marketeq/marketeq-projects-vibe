@@ -31,7 +31,7 @@ export class CategoryPagesController {
       throw new BadRequestException('Invalid CMS webhook payload');
     }
 
-    // Support both Strapi-style (model + entry) and Payload-style (collection + doc)
+    // Support both legacy (model + entry) and Payload-style (collection + doc)
     const model = body.model
       || body.collection
       || (body.uid && body.uid.split('::')[1]?.split('.')[0]);

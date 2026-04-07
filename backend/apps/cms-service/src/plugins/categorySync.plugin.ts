@@ -16,8 +16,12 @@ export const categorySyncPlugin: Plugin = (incomingConfig) => {
       method: 'post',
       handler: async (req: any, res: any) => {
         try {
+          const configuredKey = process.env.CMS_API_KEY;
+          if (!configuredKey) {
+            return res.status(500).json({ error: 'CMS_API_KEY not configured' });
+          }
           const apiKey = req.headers['authorization']?.replace('API-Key ', '');
-          if (apiKey !== process.env.CMS_API_KEY) {
+          if (!apiKey || apiKey !== configuredKey) {
             return res.status(401).json({ error: 'Unauthorized' });
           }
 
@@ -30,34 +34,47 @@ export const categorySyncPlugin: Plugin = (incomingConfig) => {
           }
 
           const { payload } = req;
-          const categories = await payload.find({
-            collection: 'categories',
-            limit: 10000,
-            depth: 1,
-          });
-
+          let page = 1;
           let published = 0;
-          for (const cat of categories.docs) {
-            const parentId = typeof cat.parent === 'object'
-              ? (cat.parent as any)?.id
-              : cat.parent;
+          let totalDocs = 0;
+          let hasNextPage = true;
+          const PAGE_SIZE = 100;
 
-            await publisher.publishCategorySaved({
-              id: String(cat.id),
-              name: cat.name as string,
-              slug: cat.slug as string,
-              status: (cat.status as 'active' | 'inactive') || 'active',
-              parent: parentId ? String(parentId) : null,
-              listingTypes: (cat.listingTypes as string[]) || [],
-              sortOrder: cat.sortOrder as number | undefined,
-              algoliaFacetOrder: cat.algoliaFacetOrder as number | undefined,
+          while (hasNextPage) {
+            const categories = await payload.find({
+              collection: 'categories',
+              limit: PAGE_SIZE,
+              page,
+              depth: 1,
             });
-            published++;
+
+            totalDocs = categories.totalDocs;
+
+            for (const cat of categories.docs) {
+              const parentId = typeof cat.parent === 'object'
+                ? (cat.parent as any)?.id
+                : cat.parent;
+
+              await publisher.publishCategorySaved({
+                id: String(cat.id),
+                name: cat.name as string,
+                slug: cat.slug as string,
+                status: (cat.status as 'active' | 'inactive') || 'active',
+                parent: parentId ? String(parentId) : null,
+                listingTypes: (cat.listingTypes as string[]) || [],
+                sortOrder: cat.sortOrder as number | undefined,
+                algoliaFacetOrder: cat.algoliaFacetOrder as number | undefined,
+              });
+              published++;
+            }
+
+            hasNextPage = categories.hasNextPage;
+            page++;
           }
 
           return res.json({
             status: 'ok',
-            totalCategories: categories.totalDocs,
+            totalCategories: totalDocs,
             published,
           });
         } catch (err: any) {
