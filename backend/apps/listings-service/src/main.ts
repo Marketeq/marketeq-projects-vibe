@@ -1,9 +1,28 @@
 import 'reflect-metadata'; // <-- must be first
+import { existsSync } from 'fs';
+import { join } from 'path';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { Transport } from '@nestjs/microservices';
-import { resolveOwnerTargetProtoPath } from '@libs/owner-target-grpc';
 import { AppModule } from './app.module';
+
+// Inlined from libs/owner-target-grpc to avoid cross-project rootDir issues.
+function resolveOwnerTargetProtoPath(): string {
+  const fromEnv = process.env.OWNER_TARGET_PROTO_PATH;
+  if (fromEnv && existsSync(fromEnv)) return fromEnv;
+  const cwd = process.cwd();
+  const candidates = [
+    join(cwd, 'libs/owner-target-grpc/proto/owner_target.proto'),
+    join(cwd, '..', 'libs/owner-target-grpc/proto/owner_target.proto'),
+    join(cwd, '..', '..', 'libs/owner-target-grpc/proto/owner_target.proto'),
+    join(__dirname, '../../../../libs/owner-target-grpc/proto/owner_target.proto'),
+    join(__dirname, '../../../../../libs/owner-target-grpc/proto/owner_target.proto'),
+  ];
+  for (const p of candidates) if (existsSync(p)) return p;
+  throw new Error(
+    `owner_target.proto not found. Set OWNER_TARGET_PROTO_PATH. cwd=${cwd} __dirname=${__dirname}`,
+  );
+}
 
 async function bootstrap() {
   const logger = new Logger('ListingsService');
