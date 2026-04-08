@@ -60,9 +60,20 @@ export const categorySyncPlugin: Plugin = (incomingConfig) => {
             totalDocs = categories.totalDocs;
 
             for (const cat of categories.docs) {
-              const parentUuid = typeof cat.parent === 'object'
-                ? (cat.parent as any)?.uuid
-                : null;
+              let parentUuid: string | null = null;
+              if (cat.parent) {
+                if (typeof cat.parent === 'object') {
+                  parentUuid = (cat.parent as any)?.uuid || null;
+                } else {
+                  // parent is a Payload ID — look up the uuid
+                  try {
+                    const parentDoc = await payload.findByID({
+                      collection: 'categories', id: cat.parent as any, depth: 0,
+                    });
+                    parentUuid = (parentDoc as any)?.uuid || null;
+                  } catch { /* parent may have been deleted */ }
+                }
+              }
 
               await publisher.publishCategorySaved({
                 id: (cat as any).uuid || String(cat.id),

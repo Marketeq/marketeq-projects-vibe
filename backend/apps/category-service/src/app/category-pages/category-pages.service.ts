@@ -271,7 +271,7 @@ private async buildBlocks(
           };
           return block;
         } catch (error) {
-          this.logger.error(`Rule execution failed: ${error.message}`);
+          this.logger.error(`Rule execution failed: ${(error as any)?.message ?? error}`);
           return null;
         }
       })
@@ -298,13 +298,13 @@ private async buildBlocks(
         });
         this.logger.log('--- END HEALTH CHECK ---');
       } catch (error) {
-        this.logger.error('Health check error:', error.message);
+        this.logger.error('Health check error:', (error as any)?.message ?? error);
       }
     }
 
     return validBlocks;
   } catch (error) {
-    this.logger.error(`Failed to build blocks: ${error.message}`);
+    this.logger.error(`Failed to build blocks: ${(error as any)?.message ?? error}`);
     return [];
   }
   
@@ -599,7 +599,7 @@ private getBlockDescription(rule: Rule): string {
 
       return related;
     } catch (error) {
-      this.logger.warn(`Could not fetch related categories: ${error.message}`);
+      this.logger.warn(`Could not fetch related categories: ${(error as any)?.message ?? error}`);
       return [];
     }
   }
