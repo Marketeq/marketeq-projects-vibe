@@ -836,7 +836,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private getUserSyncEndpoint(): { url: string; token: string } {
     const baseUrl =
       this.configService.get<string>('USER_SERVICE_URL') ??
-      'http://localhost:3000';
+      'http://localhost:3002';
     const token = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
 
     if (!token) {
