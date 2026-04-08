@@ -3,6 +3,7 @@
 import React, { useCallback, useMemo, useState } from "react"
 import { useEffect } from "react"
 import { ensureEncryptionKeysExist, importPrivateKey } from "@/src/crypto/keys"
+import { getAccessToken } from "@/utils/auth"
 import { useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
@@ -99,7 +100,7 @@ export default function InboxRoot() {
 
   const [token, setToken] = useState("")
   useEffect(() => {
-    setToken(localStorage.getItem("token") || "")
+    setToken(getAccessToken() || "")
   }, [])
 
   useEffect(() => {

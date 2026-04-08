@@ -1,4 +1,5 @@
 import { apiFetch } from "../../src/lib/api"
+import { getAccessToken } from "../../utils/auth"
 
 export async function generateKeyPair() {
   return await window.crypto.subtle.generateKey(
@@ -89,9 +90,9 @@ export async function loadPublicKey(): Promise<CryptoKey | null> {
 
 // Ensures keypair exists, device is registered, and public key is pushed to messaging-service
 export async function ensureEncryptionKeysExist() {
-  const token = localStorage.getItem("token")
+  const token = getAccessToken()
   if (!token) {
-    console.error("No JWT token in localStorage, cannot register device")
+    console.error("No access token found, cannot register device")
     return
   }
 

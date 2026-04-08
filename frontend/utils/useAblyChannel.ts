@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
 import { apiFetch } from "@/src/lib/api"
-import { getCurrentUser } from "@/utils/auth"
+import { getCurrentUser, getAccessToken } from "@/utils/auth"
 import * as Ably from "ably"
 
 export function useAblyChannel(
@@ -27,7 +27,7 @@ export function useAblyChannel(
 
       authCallback: async (_tokenParams, callback) => {
         try {
-          const token = localStorage.getItem("token")
+          const token = getAccessToken()
           // your Nest endpoint returns the full Ably tokenDetails JSON
           const tokenDetails = await apiFetch<any>(
             `/v1/threads/ably-token?threadId=${threadId}`,
