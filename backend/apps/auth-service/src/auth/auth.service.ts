@@ -257,7 +257,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     current.hasPassword = true;
     await this.userRepository.save(current);
 
-    await this.syncUserProfile(current);
+    try {
+      await this.syncUserProfile(current);
+    } catch (error) {
+      this.logger.warn(
+        `setPassword: user profile sync failed for ${current.email}; continuing with auth user. reason=${(error as Error)?.message}`,
+      );
+    }
 
     return {
       user: this.serializeUser(current),
