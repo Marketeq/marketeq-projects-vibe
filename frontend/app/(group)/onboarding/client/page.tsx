@@ -5,7 +5,6 @@ import { useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
-import industriesMock from "@/public/mock/industries.json"
 import jobTitlesMock from "@/public/mock/job_titles.json"
 import rawSkillSuggestions from "@/public/mock/skills.json"
 import { AuthAPI } from "@/service/http/auth"
@@ -30,8 +29,6 @@ import {
   AlertCircle,
   Briefcase02,
   Check,
-  Check1,
-  ChevronDown,
   ChevronRight,
   Home03,
   Info,
@@ -39,7 +36,6 @@ import {
   Mail,
   Plus,
   Plus1,
-  SearchMd,
   Trash03,
   User02,
   Users03,
@@ -88,14 +84,6 @@ import {
   ComboboxOption,
   ComboboxOptions,
   ComboboxTrigger,
-  DropdownCommand,
-  DropdownCommandEmpty,
-  DropdownCommandGroup,
-  DropdownCommandInput,
-  DropdownCommandItem,
-  DropdownPopover,
-  DropdownPopoverContent,
-  DropdownPopoverTrigger,
   ErrorMessage,
   IconButton,
   Input,
@@ -249,7 +237,6 @@ const describeYourTeamFormSchema = z.object({
 
 type DescribeYourTeamFormValues = z.infer<typeof describeYourTeamFormSchema>
 
-const industryList = [...new Set(industriesMock.map((i) => i.label))]
 
 const DescribeYourTeam = ({
   sidebar,
@@ -281,13 +268,18 @@ const DescribeYourTeam = ({
   )
   const [showIndustrySuggestions, setShowIndustrySuggestions] =
     React.useState(false)
-  const { suggestions: industrySuggestions } =
-    useAutocomplete("industries", industryQuery)
+  const { suggestions: industrySuggestions } = useAutocomplete(
+    "industries",
+    industryQuery
+  )
   const industryRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (industryRef.current && !industryRef.current.contains(e.target as Node)) {
+      if (
+        industryRef.current &&
+        !industryRef.current.contains(e.target as Node)
+      ) {
         setShowIndustrySuggestions(false)
       }
     }
@@ -398,56 +390,50 @@ const DescribeYourTeam = ({
                 What’s your industry?
               </Label>
 
-              <DropdownPopover
-                selected={values?.industry}
-                onSelectedChange={(value) =>
-                  setValue("industry", value || "", {
-                    shouldDirty: true,
-                    shouldTouch: true,
-                    shouldValidate: true,
-                  })
-                }
-              >
-                <DropdownPopoverTrigger>
-                  {values?.industry ? (
-                    values?.industry
-                  ) : (
-                    <span className="text-gray-500">Select an industry</span>
-                  )}
-                  <ChevronDown className="ml-auto h-5 w-5 text-gray-500" />
-                </DropdownPopoverTrigger>
-                <DropdownPopoverContent>
-                  <DropdownCommand className="overflow-hidden">
-                    <InputGroup>
-                      <InputLeftElement className="w-8">
-                        <SearchMd className="h-[15] w-[15] text-gray-500" />
-                      </InputLeftElement>
-                      <DropdownCommandInput
-                        placeholder="Search..."
-                        className="pl-8"
-                      />
-                    </InputGroup>
-
-                    <DropdownCommandEmpty className="text-sm text-gray-900">
-                      No industry found.
-                    </DropdownCommandEmpty>
-
-                    <ScrollArea className="max-h-[200px] overflow-y-auto">
-                      <DropdownCommandGroup>
-                        {industryList.map((industry) => (
-                          <DropdownCommandItem
-                            key={industry}
-                            itemValue={industry}
-                          >
-                            {industry}
-                            <Check1 className="ml-auto text-primary-500 opacity-0 group-data-[state=selected]:opacity-100" />
-                          </DropdownCommandItem>
-                        ))}
-                      </DropdownCommandGroup>
-                    </ScrollArea>
-                  </DropdownCommand>
-                </DropdownPopoverContent>
-              </DropdownPopover>
+              <div ref={industryRef} className="relative">
+                <Input
+                  id="your-industry"
+                  placeholder="Enter your industry (e.g. Technology, Healthcare, Retail)"
+                  value={industryQuery}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setIndustryQuery(val)
+                    setValue("industry", val, {
+                      shouldDirty: true,
+                      shouldTouch: true,
+                      shouldValidate: true,
+                    })
+                    setShowIndustrySuggestions(true)
+                  }}
+                  onFocus={() => setShowIndustrySuggestions(true)}
+                  isInvalid={hookFormHasError({ errors, name: "industry" })}
+                  autoComplete="off"
+                />
+                {showIndustrySuggestions && industrySuggestions.length > 0 && (
+                  <ul className="absolute z-50 mt-1 w-full max-h-[200px] overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
+                    {industrySuggestions.map(
+                      (item: { label: string }, index: number) => (
+                        <li
+                          key={index}
+                          className="cursor-pointer px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          onMouseDown={() => {
+                            const label = item.label
+                            setIndustryQuery(label)
+                            setValue("industry", label, {
+                              shouldDirty: true,
+                              shouldTouch: true,
+                              shouldValidate: true,
+                            })
+                            setShowIndustrySuggestions(false)
+                          }}
+                        >
+                          {item.label}
+                        </li>
+                      )
+                    )}
+                  </ul>
+                )}
+              </div>
 
               <HookFormErrorMessage
                 errors={errors}
