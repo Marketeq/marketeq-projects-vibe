@@ -2,28 +2,46 @@ import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/commo
 import { Request, Response, NextFunction } from 'express'
 import { JwtService } from '@nestjs/jwt'
 
-const PUBLIC_ROUTES = [
-  '/health', '/ready',
-  '/auth/login', '/auth/signup', '/auth/register', '/auth/register-email',
-  '/auth/refresh', '/auth/check-username',
-  '/auth/google', '/auth/linkedin', '/auth/magic-link', '/auth/verify', '/auth/dev-login',
-  '/auth/forgot-password', '/auth/reset-password',
-  '/search', '/autocomplete', '/suggestions',
-  '/talent/users',     // public talent profiles
+const PUBLIC_EXACT_ROUTES = new Set([
+  '/health',
+  '/ready',
+  '/auth/login',
+  '/auth/signup',
+  '/auth/register',
+  '/auth/register-email',
+  '/auth/refresh',
+  '/auth/check-username',
+  '/auth/google',
+  '/auth/linkedin',
+  '/auth/magic-link',
+  '/auth/verify',
+  '/auth/dev-login',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/search',
+  '/autocomplete',
+  '/suggestions',
+  '/talent/users',
   '/v1/users/username',
   '/v1/users/health',
   '/v1/projects',
   '/v1/services',
-  '/v1/users',
-]
+])
 
-// Routes that need special pattern matching (e.g. /v1/users/:uuid for public profiles)
+// Only explicitly allowed dynamic routes are public.
 const PUBLIC_PATTERNS = [
+  /^\/search(?:\/.*)?$/,
+  /^\/autocomplete(?:\/.*)?$/,
+  /^\/suggestions(?:\/.*)?$/,
+  /^\/talent\/users\/[^/]+$/,
+  /^\/v1\/users\/username\/[^/]+$/,
+  /^\/v1\/projects(?:\/.*)?$/,
+  /^\/v1\/services(?:\/.*)?$/,
   /^\/v1\/users\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
 ]
 
 function isPublic(path: string): boolean {
-  if (PUBLIC_ROUTES.some((r) => path === r || path.startsWith(r + '/') || path.startsWith(r + '?'))) return true
+  if (PUBLIC_EXACT_ROUTES.has(path)) return true
   return PUBLIC_PATTERNS.some((re) => re.test(path))
 }
 

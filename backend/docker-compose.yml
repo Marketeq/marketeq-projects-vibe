@@ -25,6 +25,10 @@ services:
       PORT: 3000
       RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
       JWT_SECRET: ${JWT_SECRET}
+      AUTH_JWT_PUBLIC_KEY: ${AUTH_JWT_PUBLIC_KEY}
+      AUTH_SERVICE_URL: http://auth-service:3001
+      USER_SERVICE_URL: http://user-service:3002
+      LISTINGS_SERVICE_URL: http://listings-service:3003
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -41,6 +45,13 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_SCHEMA: auth
       JWT_SECRET: ${JWT_SECRET}
+      AUTH_JWT_PUBLIC_KEY: ${AUTH_JWT_PUBLIC_KEY}
+      AUTH_JWT_PRIVATE_KEY: ${AUTH_JWT_PRIVATE_KEY}
+      AUTH_REFRESH_SECRET: ${AUTH_REFRESH_SECRET}
+      AUTH_JWT_TOKEN_EXPIRES_IN: ${AUTH_JWT_TOKEN_EXPIRES_IN:-7d}
+      AUTH_REFRESH_TOKEN_EXPIRES_IN: ${AUTH_REFRESH_TOKEN_EXPIRES_IN:-30d}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      USER_SERVICE_URL: http://user-service:3002
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -56,6 +67,9 @@ services:
       RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_SCHEMA: users
+      AUTH_JWT_PUBLIC_KEY: ${AUTH_JWT_PUBLIC_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
     depends_on:
       rabbitmq:
         condition: service_healthy
