@@ -180,7 +180,7 @@ function ProjectListingCard({
     <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
       <NextLink
         href={computedHref}
-        className="block focus-visible:outline-none"
+        className="block focus-visible:outline-none group/card"
       >
         <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
           {mediaUrl ? (
@@ -197,67 +197,64 @@ function ProjectListingCard({
             </div>
           )}
         </div>
-      </NextLink>
 
-      <div className="mt-3 flex items-start gap-x-3">
-        <NextLink
-          href={computedHref}
-          className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-        >
-          {title}
-        </NextLink>
-
-        {mode === "owned" && status && status !== "Active" && (
-          <span
-            className={cn(
-              "shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
-              status === "In Review"
-                ? "bg-amber-100 text-amber-700"
-                : status === "Needs Update"
-                  ? "bg-red-100 text-red-700"
-                  : "bg-gray-100 text-gray-600"
-            )}
-          >
-            {status}
+        <div className="mt-3 flex items-start gap-x-3">
+          <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 group-hover/card:underline">
+            {title}
           </span>
-        )}
 
-        {typeof rating === "number" && (
-          <div className="inline-flex items-center gap-x-1">
-            <Star className="size-[15px] text-primary-500 fill-primary-500" />
-            <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-              {rating.toFixed(1)}{" "}
-              {typeof reviewCount === "number" && (
-                <span className="font-extralight">({reviewCount})</span>
+          {mode === "owned" && status && status !== "Active" && (
+            <span
+              className={cn(
+                "shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                status === "In Review"
+                  ? "bg-amber-100 text-amber-700"
+                  : status === "Needs Update"
+                    ? "bg-red-100 text-red-700"
+                    : "bg-gray-100 text-gray-600"
               )}
+            >
+              {status}
             </span>
-          </div>
-        )}
-      </div>
+          )}
 
-      {description && (
-        <p className="mt-3 text-sm leading-[1.4] font-extralight text-dark-blue-400 line-clamp-2">
-          {description}
-        </p>
-      )}
-
-      <div className="mt-[14.5px] flex flex-col gap-y-3">
-        {duration && (
-          <div className="flex items-center gap-x-[6.4px]">
-            <Clock className="size-[18px] shrink-0 text-primary-500" />
-            <span className="font-medium text-sm leading-none text-dark-blue-400">
-              {duration}
-            </span>
-          </div>
-        )}
-
-        <div className="flex items-center gap-x-[6.4px]">
-          <Money className="size-[18px] shrink-0 text-primary-500" />
-          <span className="font-medium text-sm leading-none text-dark-blue-400">
-            {budget}
-          </span>
+          {typeof rating === "number" && (
+            <div className="inline-flex items-center gap-x-1">
+              <Star className="size-[15px] text-primary-500 fill-primary-500" />
+              <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                {rating.toFixed(1)}{" "}
+                {typeof reviewCount === "number" && (
+                  <span className="font-extralight">({reviewCount})</span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
-      </div>
+
+        {description && (
+          <p className="mt-3 text-sm leading-[1.4] font-extralight text-dark-blue-400 line-clamp-2">
+            {description}
+          </p>
+        )}
+
+        <div className="mt-[14.5px] flex flex-col gap-y-3">
+          {duration && (
+            <div className="flex items-center gap-x-[6.4px]">
+              <Clock className="size-[18px] shrink-0 text-primary-500" />
+              <span className="font-medium text-sm leading-none text-dark-blue-400">
+                {duration}
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-x-[6.4px]">
+            <Money className="size-[18px] shrink-0 text-primary-500" />
+            <span className="font-medium text-sm leading-none text-dark-blue-400">
+              {budget}
+            </span>
+          </div>
+        </div>
+      </NextLink>
 
       <div className="mt-5 flex items-end justify-between">
         {avatarsSlot ?? (
