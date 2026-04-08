@@ -357,6 +357,102 @@ const Hero = () => {
   )
 }
 
+// ── Themed image + copy pools ───────────────────────────────────────────────
+// Per-section pools of placeholder titles + descriptions + on-theme imagery,
+// so every card on the homepage looks like a different real project instead
+// of all sharing the same /dashboard.png. Photo IDs reuse the vetted Unsplash
+// pool already used by the L1 category page banners
+// (frontend/app/(group)/(group)/c/[[...category]]/page.tsx).
+const u = (id: string, w = 800) =>
+  `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=80`
+
+interface SeedProject {
+  title: string
+  description: string
+  image: string
+}
+
+const SECTION_POOLS = {
+  favorites: [
+    { title: "Modern Brand Identity System", description: "Logo, type, color, and visual guidelines for a SaaS launch.", image: u("1558655146-9f40138edfeb") },
+    { title: "AI Analytics Dashboard", description: "Real-time BI with predictive insights and forecasting.", image: u("1551288049-bebda4e38f71") },
+    { title: "Cybersecurity Audit Platform", description: "Continuous threat detection and SOC 2 compliance.", image: u("1518770660439-4636190af475") },
+    { title: "Cross-Platform Mobile Banking", description: "Native iOS and Android with biometric authentication.", image: u("1542831371-29b0f74f9713") },
+    { title: "Headless E-commerce Storefront", description: "Next.js storefront with Shopify backend, sub-second loads.", image: u("1461749280684-dccba630e2f6") },
+    { title: "Series A Pitch Deck", description: "Investor-ready narrative with custom illustrations.", image: u("1454165804606-c3d57bc86b40") },
+    { title: "RAG Knowledge Assistant", description: "LLM search over 50k internal documents with citations.", image: u("1517180102446-f3ece451e9d8") },
+    { title: "Marketing Site Rebuild", description: "Conversion-optimized landing pages and CMS migration.", image: u("1455390582262-044cdead277a") },
+  ],
+  newest: [
+    { title: "Voice AI Customer Onboarding", description: "Conversational onboarding flow powered by GPT-4o.", image: u("1581091226825-a6a2a5aee158") },
+    { title: "Sustainable Brand Refresh", description: "Eco-conscious visual identity for a DTC clothing brand.", image: u("1455390582262-044cdead277a") },
+    { title: "Real-Time Sports Analytics", description: "Live data pipelines and dashboards for team performance.", image: u("1518186285589-2f7649de83e0") },
+    { title: "Event Ticketing iOS App", description: "Apple Wallet integration with QR check-in.", image: u("1542831371-29b0f74f9713") },
+    { title: "Telehealth Patient Portal", description: "HIPAA-compliant scheduling and video consultations.", image: u("1576086213369-97a306d36557") },
+    { title: "Web3 Wallet UX Audit", description: "Heuristic review and redesign of a multi-chain wallet.", image: u("1558655146-9f40138edfeb") },
+  ],
+  popular: [
+    { title: "Shopify Plus Migration", description: "Replatforming from Magento with zero downtime.", image: u("1557838923-2985c318be48") },
+    { title: "FinTech Onboarding Flow", description: "KYC + AML compliant signup with Plaid integration.", image: u("1486406146926-c627a92ad1ab") },
+    { title: "DevOps Pipeline Overhaul", description: "GitOps with ArgoCD, Terraform, and progressive delivery.", image: u("1517245386807-bb43f82c33c4") },
+    { title: "Computer Vision QA System", description: "Defect detection on a manufacturing line at 60 fps.", image: u("1581094794329-c8112a89af12") },
+    { title: "Content Strategy Refresh", description: "Editorial calendar and topic clusters for organic growth.", image: u("1486312338219-ce68d2c6f44d") },
+    { title: "Salesforce Implementation", description: "End-to-end CRM rollout with custom Lightning components.", image: u("1542744173-8e7e53415bb0") },
+  ],
+  funnels: [
+    { title: "High-Converting SaaS Landing Page", description: "Above-the-fold rebuild with A/B test infrastructure.", image: u("1557838923-2985c318be48") },
+    { title: "Webinar Funnel Build", description: "Registration, replay, and follow-up sequence end-to-end.", image: u("1432888622747-4eb9a8efeb07") },
+    { title: "Lead Magnet Quiz Funnel", description: "Interactive quiz with personalized result pages.", image: u("1533750516457-a7f992034fec") },
+    { title: "Tripwire Sales Funnel", description: "Low-ticket front-end with one-click upsell flow.", image: u("1460925895917-afdab827c52f") },
+    { title: "B2B Demo Request Funnel", description: "Enterprise lead capture with calendar integration.", image: u("1551288049-bebda4e38f71") },
+    { title: "Membership Site Funnel", description: "Free trial onboarding with retention automations.", image: u("1454165804606-c3d57bc86b40") },
+    { title: "Affiliate Sales Funnel", description: "Partner-driven evergreen funnel with tracking.", image: u("1486406146926-c627a92ad1ab") },
+    { title: "Cart Recovery Sequence", description: "Email + SMS abandonment recovery for Shopify.", image: u("1504868584819-f8e8b4b6d7e3") },
+  ],
+  service: [
+    { title: "AI Helpdesk Chatbot", description: "Intercom integration with custom knowledge base.", image: u("1517180102446-f3ece451e9d8") },
+    { title: "Zendesk Macro Optimization", description: "Triage workflows and SLA reporting overhaul.", image: u("1454165804606-c3d57bc86b40") },
+    { title: "24/7 Live Chat Implementation", description: "Multilingual support with sentiment routing.", image: u("1486406146926-c627a92ad1ab") },
+    { title: "Voice Support IVR Build", description: "Twilio-powered IVR with natural-language routing.", image: u("1532094349884-543bc11b234d") },
+    { title: "Customer Portal Redesign", description: "Self-service knowledge base and ticket tracking.", image: u("1558655146-9f40138edfeb") },
+    { title: "Slack Support Integration", description: "Internal escalations from customer chat to engineering.", image: u("1542744173-8e7e53415bb0") },
+    { title: "NPS + CSAT Analytics", description: "Closed-loop feedback dashboards for ops teams.", image: u("1551288049-bebda4e38f71") },
+    { title: "Knowledge Base Authoring", description: "100+ SEO-optimized help articles with screenshots.", image: u("1455390582262-044cdead277a") },
+  ],
+  automation: [
+    { title: "HubSpot Workflow Build", description: "Lifecycle stages, lead scoring, and rotation rules.", image: u("1432888622747-4eb9a8efeb07") },
+    { title: "Email Drip Automation", description: "Behavioral triggers across a 12-step nurture sequence.", image: u("1533750516457-a7f992034fec") },
+    { title: "SMS Marketing Automation", description: "Compliance-first SMS flows with opt-in management.", image: u("1460925895917-afdab827c52f") },
+    { title: "CRM Sync Pipeline", description: "Two-way sync between Salesforce and Marketo.", image: u("1542744173-8e7e53415bb0") },
+    { title: "Lifecycle Email Strategy", description: "Welcome, onboarding, churn-save, and winback flows.", image: u("1557838923-2985c318be48") },
+    { title: "Zapier Ops Automation", description: "150+ Zaps connecting sales, finance, and ops tools.", image: u("1551836022-d5d88e9218df") },
+    { title: "Marketing Attribution Setup", description: "Multi-touch attribution with HubSpot and GA4.", image: u("1518186285589-2f7649de83e0") },
+    { title: "Customer.io Migration", description: "From Mailchimp to event-driven lifecycle messaging.", image: u("1486312338219-ce68d2c6f44d") },
+  ],
+  cloud: [
+    { title: "Multi-Tenant SaaS Platform", description: "Kubernetes-based with row-level security and SSO.", image: u("1517180102446-f3ece451e9d8") },
+    { title: "Internal Tools Suite", description: "Retool dashboards replacing 20+ ops spreadsheets.", image: u("1461749280684-dccba630e2f6") },
+    { title: "AWS Migration & Cost Audit", description: "Lift-and-shift to AWS with a 40% cost reduction.", image: u("1555066931-4365d14bab8c") },
+    { title: "Workflow Automation SaaS", description: "Visual builder with 80+ pre-built integrations.", image: u("1542831371-29b0f74f9713") },
+    { title: "Real-Time Collaboration App", description: "CRDT-based multi-user editing with presence.", image: u("1504868584819-f8e8b4b6d7e3") },
+    { title: "Vector Search Infrastructure", description: "Pinecone-backed semantic search across 10M docs.", image: u("1518770660439-4636190af475") },
+    { title: "Event-Driven Microservices", description: "Kafka pipelines with idempotent consumers.", image: u("1614064641938-3bbee52942c7") },
+    { title: "Headless CMS Implementation", description: "Sanity + Next.js with preview environments.", image: u("1581091226825-a6a2a5aee158") },
+  ],
+  mobile: [
+    { title: "Fitness Tracking iOS App", description: "HealthKit integration with custom workout plans.", image: u("1542831371-29b0f74f9713") },
+    { title: "Food Delivery Android App", description: "Real-time order tracking and driver dispatch.", image: u("1517180102446-f3ece451e9d8") },
+    { title: "Meditation App Redesign", description: "Calm-style guided sessions with offline downloads.", image: u("1558655146-9f40138edfeb") },
+    { title: "Social Audio Platform", description: "Live rooms with low-latency audio streaming.", image: u("1581091226825-a6a2a5aee158") },
+    { title: "Crypto Portfolio Tracker", description: "Multi-exchange tracking with on-device price alerts.", image: u("1551288049-bebda4e38f71") },
+    { title: "AR Furniture Preview App", description: "ARKit-powered room visualization for retail.", image: u("1555066931-4365d14bab8c") },
+    { title: "Travel Booking Super-App", description: "Flights, hotels, and activities in one experience.", image: u("1454165804606-c3d57bc86b40") },
+    { title: "Telemedicine Companion App", description: "Symptom tracking and medication reminders.", image: u("1576086213369-97a306d36557") },
+  ],
+} satisfies Record<string, SeedProject[]>
+
+type SectionKey = keyof typeof SECTION_POOLS
+
 // ── Section header (title + description + nav controls) ─────────────────────
 const SectionHeader = ({
   title,
@@ -390,24 +486,43 @@ interface CarouselSectionProps {
   title: string
   description?: string
   count?: number
+  sectionKey: SectionKey
 }
 
 const CarouselSection = ({
   title,
   description,
   count = 8,
+  sectionKey,
 }: CarouselSectionProps) => {
   // Shared module-level fetch — every carousel/grid section on the
   // homepage reuses the same /v1/projects response.
   const { projects: allProjects } = useFeaturedProjects()
   const projects = allProjects.slice(0, count)
+  const pool = SECTION_POOLS[sectionKey]
 
-  const slides: Array<
-    | { kind: "real"; project: FeaturedProject }
-    | { kind: "placeholder"; key: number }
-  > = projects.length > 0
-    ? projects.map((p) => ({ kind: "real" as const, project: p }))
-    : fromLength(count).map((key) => ({ kind: "placeholder" as const, key }))
+  // Each card pulls a deterministic seed from the section pool, used both
+  // when there's a real project (to back-fill missing media/copy) and when
+  // we need pure placeholders. This guarantees no two adjacent cards repeat.
+  const slides: Array<{
+    kind: "real" | "placeholder"
+    project: FeaturedProject | null
+    seed: SeedProject
+    key: string
+  }> =
+    projects.length > 0
+      ? projects.map((p, i) => ({
+          kind: "real" as const,
+          project: p,
+          seed: pool[i % pool.length],
+          key: `project-${p.id}`,
+        }))
+      : pool.slice(0, count).map((seed, i) => ({
+          kind: "placeholder" as const,
+          project: null,
+          seed,
+          key: `placeholder-${sectionKey}-${i}`,
+        }))
 
   return (
     <div>
@@ -443,28 +558,22 @@ const CarouselSection = ({
           <div className="gap-5 flex items-center">
             <SwiperContent slidesPerView="auto" spaceBetween={20}>
                 {slides.map((slide) => {
-                  const isReal = slide.kind === "real"
-                  const p = isReal ? slide.project : null
-                  const slideKey = isReal
-                    ? `project-${p!.id}`
-                    : `placeholder-${(slide as { key: number }).key}`
+                  const p = slide.project
                   return (
-                  <SwiperSlide className="w-[355px]" key={slideKey}>
+                  <SwiperSlide className="w-[355px]" key={slide.key}>
                     <ListingCard
                       kind="project"
-                      id={p?.id ?? `homepage-placeholder-${slideKey}`}
+                      id={p?.id ?? `homepage-${slide.key}`}
                       href={
                         p
                           ? projectDetailsUrl(p.slug, p.id)
                           : projectDetailsUrl("modern-brand-identity-design")
                       }
-                      title={p?.title ?? "The Ultimate Mobile App Experience"}
+                      title={p?.title ?? slide.seed.title}
                       description={
-                        p?.summary ??
-                        p?.description ??
-                        "Brief description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
+                        p?.summary ?? p?.description ?? slide.seed.description
                       }
-                      mediaUrl={p?.mediaUrls?.[0] ?? "/dashboard.png"}
+                      mediaUrl={p?.mediaUrls?.[0] ?? slide.seed.image}
                       budget="$50,000 budget"
                       duration="Starting from 12 weeks"
                       rating={4.9}
@@ -517,6 +626,7 @@ const RecentlyViewedSection = ({
   tabs,
   count = 6,
   offset = 0,
+  sectionKey,
 }: {
   title: string
   description?: string
@@ -525,45 +635,42 @@ const RecentlyViewedSection = ({
   /** Skip the first N projects — lets two sections on the same page show
    *  different slices of the same fetched list. */
   offset?: number
+  sectionKey: SectionKey
 }) => {
   const { projects: allProjects } = useFeaturedProjects()
   const projects = allProjects.slice(offset, offset + count)
+  const pool = SECTION_POOLS[sectionKey]
 
-  const items: Array<
-    | { kind: "real"; project: FeaturedProject }
-    | { kind: "placeholder"; key: number }
-  > = projects.length > 0
-    ? projects.map((p) => ({ kind: "real" as const, project: p }))
-    : fromLength(count).map((key) => ({ kind: "placeholder" as const, key }))
+  const items: Array<{
+    project: FeaturedProject | null
+    seed: SeedProject
+    key: string
+  }> =
+    projects.length > 0
+      ? projects.map((p, i) => ({
+          project: p,
+          seed: pool[i % pool.length],
+          key: `project-${p.id}`,
+        }))
+      : pool.slice(0, count).map((seed, i) => ({
+          project: null,
+          seed,
+          key: `placeholder-${sectionKey}-${i}`,
+        }))
 
   const grid = (
     <div className="mt-[29px] grid grid-cols-3 gap-x-[42px] gap-y-10">
       {items.map((item) => {
-        if (item.kind === "real") {
-          const p = item.project
-          return (
-            <ListingCardCompact
-              key={`project-${p.id}`}
-              kind="project"
-              id={p.id}
-              slug={p.slug}
-              title={p.title}
-              description={p.summary ?? p.description}
-              mediaUrl={p.mediaUrls?.[0] ?? "/dashboard.png"}
-              budget="Starting at $25,000"
-              duration="2 weeks"
-            />
-          )
-        }
+        const p = item.project
         return (
           <ListingCardCompact
-            key={`placeholder-${item.key}`}
+            key={item.key}
             kind="project"
-            id={`recently-viewed-placeholder-${item.key}`}
-            slug="modern-brand-identity-design"
-            title="BI Sales Forecasting & Inventory Management"
-            description="Tempor nam commodo sapien lobortis pellentesque non. Elementum adipiscing sit senectus faucibus mauris amet. Elementum vitae semper lorem ornare congue."
-            mediaUrl="/dashboard.png"
+            id={p?.id ?? `recently-viewed-${item.key}`}
+            slug={p?.slug ?? "modern-brand-identity-design"}
+            title={p?.title ?? item.seed.title}
+            description={p?.summary ?? p?.description ?? item.seed.description}
+            mediaUrl={p?.mediaUrls?.[0] ?? item.seed.image}
             budget="Starting at $25,000"
             duration="2 weeks"
           />
@@ -745,11 +852,12 @@ export default function Marketplace() {
       <div className="py-[50px]">
         <div className="max-w-[1440px] mx-auto px-[50px] space-y-[50px]">
           <Hero />
-          <CarouselSection title="Our Favorite Projects" />
-          <RecentlyViewedSection title="Newest Additions" />
+          <CarouselSection title="Our Favorite Projects" sectionKey="favorites" />
+          <RecentlyViewedSection title="Newest Additions" sectionKey="newest" />
           <RecentlyViewedSection
             title="Most Popular Projects"
             offset={6}
+            sectionKey="popular"
             tabs={[
               "View All",
               "Top Web Projects",
@@ -760,22 +868,27 @@ export default function Marketplace() {
           />
           <CarouselSection
             title="Online Sales Funnels"
+            sectionKey="funnels"
             description="High-converting funnels, landing pages, and lead capture systems built by proven growth experts."
           />
           <CarouselSection
             title="Customer Service Solutions"
+            sectionKey="service"
             description="Help desks, chatbots, and support workflows designed to scale your customer experience."
           />
           <CarouselSection
             title="Marketing Automation Campaigns"
+            sectionKey="automation"
             description="End-to-end automation workflows across email, SMS, and CRM that turn prospects into customers."
           />
           <CarouselSection
             title="Cloud Software Applications"
+            sectionKey="cloud"
             description="Custom SaaS builds, internal tools, and cloud-native applications shipped by senior engineering teams."
           />
           <CarouselSection
             title="Mobile Applications"
+            sectionKey="mobile"
             description="Native and cross-platform iOS and Android apps designed and developed by expert mobile teams."
           />
           <MoreCategories />
