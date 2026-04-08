@@ -70,6 +70,7 @@ export interface Config {
     users: User;
     media: Media;
     projects: Project;
+    'category-pages': CategoryPage;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
     'payload-locked-documents': PayloadLockedDocument;
@@ -81,6 +82,7 @@ export interface Config {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     projects: ProjectsSelect<false> | ProjectsSelect<true>;
+    'category-pages': CategoryPagesSelect<false> | CategoryPagesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -432,6 +434,198 @@ export interface Project {
   _status?: ('draft' | 'published') | null;
 }
 /**
+ * Editorial content for category landing pages (L1, L2, L3). One row per category node.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "category-pages".
+ */
+export interface CategoryPage {
+  id: number;
+  /**
+   * Drives which conditional sections appear below. Must match the depth of the linked category-service node.
+   */
+  level: 'l1' | 'l2' | 'l3';
+  /**
+   * Internal label shown in the admin list. Usually the category name plus level (e.g. "Web Development (L1)"). Public hero title goes in the Hero tab.
+   */
+  displayTitle: string;
+  /**
+   * Full breadcrumb path used for URL routing and slug-based lookup. Must match the linked category-service node.
+   */
+  path: string;
+  categoryRef: {
+    /**
+     * The canonical category-service ID this page decorates. One CategoryPages row per category node.
+     */
+    categoryId: string;
+    /**
+     * Leaf slug (e.g. "wordpress").
+     */
+    slug: string;
+    /**
+     * Human-readable category name.
+     */
+    name: string;
+    /**
+     * Ordered breadcrumb from L1 down to this node. Mirrored from category-service for SEO/markup convenience.
+     */
+    breadcrumb?:
+      | {
+          label: string;
+          slug: string;
+          id?: string | null;
+        }[]
+      | null;
+  };
+  /**
+   * Top banner. Same blue overlay/animation as the home page hero.
+   */
+  heroBanner: {
+    /**
+     * Banner background image. Stored in Cloudflare R2.
+     */
+    image: number | Media;
+    /**
+     * Optional override for the hero title. Falls back to categoryRef.name if blank.
+     */
+    titleOverride?: string | null;
+    /**
+     * Optional override for the hero description. Falls back to the auto-generated category copy.
+     */
+    descriptionOverride?: string | null;
+    /**
+     * Optional CTA button label (e.g. "Browse Projects").
+     */
+    ctaLabel?: string | null;
+    /**
+     * Optional CTA button href.
+     */
+    ctaHref?: string | null;
+  };
+  /**
+   * Intro paragraph(s) shown above the listings grid. SEO-critical copy.
+   */
+  intro?: {
+    root: {
+      type: string;
+      children: {
+        type: any;
+        version: number;
+        [k: string]: unknown;
+      }[];
+      direction: ('ltr' | 'rtl') | null;
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+      indent: number;
+      version: number;
+    };
+    [k: string]: unknown;
+  } | null;
+  /**
+   * Hand-picked listings to highlight at the top of the page. Will become a polymorphic relationship as Services/Teams/Talent/Jobs collections come online.
+   */
+  featuredListings?:
+    | {
+        project: number | Project;
+        /**
+         * Optional badge text (e.g. "Editor’s pick").
+         */
+        pinnedLabel?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Question/answer pairs rendered at the bottom of the page. Boosts long-tail SEO.
+   */
+  faq?:
+    | {
+        question: string;
+        answer: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Internal links to blog posts, guides, or sibling category pages.
+   */
+  relatedReads?:
+    | {
+        title: string;
+        href: string;
+        id?: string | null;
+      }[]
+    | null;
+  featuredSubcategories?:
+    | {
+        /**
+         * L2 slug to feature (must exist in category-service).
+         */
+        subcategorySlug: string;
+        /**
+         * Optional override label. Falls back to the category name.
+         */
+        displayLabel?: string | null;
+        /**
+         * Optional tile image. Falls back to the auto-resolved subcategory icon.
+         */
+        image?: (number | null) | Media;
+        blurb?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  promotedChildren?:
+    | {
+        childSlug: string;
+        displayLabel?: string | null;
+        image?: (number | null) | Media;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Side-by-side comparison rendered as a table on L3 pages.
+   */
+  comparisonTable?:
+    | {
+        label: string;
+        pros?: string | null;
+        cons?: string | null;
+        priceFrom?: number | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Long-form niche copy targeted at this L3 audience.
+   */
+  useCaseCopy?: {
+    root: {
+      type: string;
+      children: {
+        type: any;
+        version: number;
+        [k: string]: unknown;
+      }[];
+      direction: ('ltr' | 'rtl') | null;
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+      indent: number;
+      version: number;
+    };
+    [k: string]: unknown;
+  } | null;
+  /**
+   * Highlight this category page in nav menus or homepage modules.
+   */
+  featured?: boolean | null;
+  meta?: {
+    title?: string | null;
+    description?: string | null;
+    /**
+     * Maximum upload file size: 12MB. Recommended file size for images is <500KB.
+     */
+    image?: (number | null) | Media;
+  };
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
@@ -558,6 +752,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'projects';
         value: number | Project;
+      } | null)
+    | ({
+        relationTo: 'category-pages';
+        value: number | CategoryPage;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -793,6 +991,98 @@ export interface ProjectsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "category-pages_select".
+ */
+export interface CategoryPagesSelect<T extends boolean = true> {
+  level?: T;
+  displayTitle?: T;
+  path?: T;
+  categoryRef?:
+    | T
+    | {
+        categoryId?: T;
+        slug?: T;
+        name?: T;
+        breadcrumb?:
+          | T
+          | {
+              label?: T;
+              slug?: T;
+              id?: T;
+            };
+      };
+  heroBanner?:
+    | T
+    | {
+        image?: T;
+        titleOverride?: T;
+        descriptionOverride?: T;
+        ctaLabel?: T;
+        ctaHref?: T;
+      };
+  intro?: T;
+  featuredListings?:
+    | T
+    | {
+        project?: T;
+        pinnedLabel?: T;
+        id?: T;
+      };
+  faq?:
+    | T
+    | {
+        question?: T;
+        answer?: T;
+        id?: T;
+      };
+  relatedReads?:
+    | T
+    | {
+        title?: T;
+        href?: T;
+        id?: T;
+      };
+  featuredSubcategories?:
+    | T
+    | {
+        subcategorySlug?: T;
+        displayLabel?: T;
+        image?: T;
+        blurb?: T;
+        id?: T;
+      };
+  promotedChildren?:
+    | T
+    | {
+        childSlug?: T;
+        displayLabel?: T;
+        image?: T;
+        id?: T;
+      };
+  comparisonTable?:
+    | T
+    | {
+        label?: T;
+        pros?: T;
+        cons?: T;
+        priceFrom?: T;
+        id?: T;
+      };
+  useCaseCopy?: T;
+  featured?: T;
+  meta?:
+    | T
+    | {
+        title?: T;
+        description?: T;
+        image?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv_select".
  */
 export interface PayloadKvSelect<T extends boolean = true> {
@@ -880,10 +1170,15 @@ export interface TaskSchedulePublish {
   input: {
     type?: ('publish' | 'unpublish') | null;
     locale?: string | null;
-    doc?: {
-      relationTo: 'projects';
-      value: number | Project;
-    } | null;
+    doc?:
+      | ({
+          relationTo: 'projects';
+          value: number | Project;
+        } | null)
+      | ({
+          relationTo: 'category-pages';
+          value: number | CategoryPage;
+        } | null);
     global?: string | null;
     user?: (number | null) | User;
   };

@@ -22,6 +22,7 @@ import { seoPlugin } from '@payloadcms/plugin-seo'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
 import { Projects } from './collections/Projects'
+import { CategoryPages } from './collections/CategoryPages'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -53,7 +54,7 @@ export default buildConfig({
   // Per-listing-type schemas (Projects, Services, Teams, Talent, Jobs) are
   // added in their respective build tasks. Each gets its OWN dedicated
   // collection — there is no shared "Listings" collection with a discriminator.
-  collections: [Users, Media, Projects],
+  collections: [Users, Media, Projects, CategoryPages],
 
   // ── Globals ───────────────────────────────────────────────────────────────
   globals: [],
@@ -63,7 +64,7 @@ export default buildConfig({
     // SEO plugin — exposes seoTitle/seoDescription/seoImage on content
     // collections that opt in. We'll enable per-collection as we add them.
     seoPlugin({
-      collections: ['projects'],
+      collections: ['projects', 'category-pages'],
       uploadsCollection: 'media',
       generateTitle: ({ doc }) =>
         typeof doc?.title === 'string' ? `${doc.title} | Marketeq` : 'Marketeq',
