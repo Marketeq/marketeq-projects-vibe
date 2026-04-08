@@ -3,9 +3,16 @@ import {
   HomepageHero,
   CategoryRef,
   TalentNetworkCta,
+  FooterNavColumn,
+  HomepageSeo,
 } from './homepage.types';
 
-// ── Static configuration — will be replaced by CMS (Payload) later ─────────
+// ── Static configuration ────────────────────────────────────────────────────
+// These defaults are used when the CMS service is unavailable or not yet
+// configured. When Payload CMS is integrated, the HomepageService will
+// fetch hero, sections, banner, footer, and SEO from the CMS and fall
+// back to these values on error.
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const HOMEPAGE_HERO: HomepageHero = {
   headline: 'Expert Tech Teams on Demand',
@@ -16,12 +23,6 @@ export const HOMEPAGE_HERO: HomepageHero = {
   ctaUrl: '/c/development',
 };
 
-/**
- * Each entry defines one section on the homepage.
- * Order here = display order.
- * CMS placeholder: when Payload is integrated these will come from the
- * `homepages` collection instead.
- */
 export const HOMEPAGE_SECTIONS: SectionConfig[] = [
   {
     key: 'our-favorites',
@@ -124,4 +125,50 @@ export const HOMEPAGE_TALENT_CTA: TalentNetworkCta = {
     'Apply to join our network of pre-vetted experts and start getting matched with high-quality projects.',
   ctaLabel: 'Apply as Talent',
   ctaUrl: '/sign-up?role=talent',
+};
+
+export const HOMEPAGE_FOOTER_NAV: FooterNavColumn[] = [
+  {
+    heading: 'For Clients',
+    links: [
+      { label: 'Browse Projects', url: '/c/development' },
+      { label: 'Browse Services', url: '/c/design' },
+      { label: 'How It Works', url: '/how-it-works' },
+      { label: 'Enterprise', url: '/enterprise' },
+    ],
+  },
+  {
+    heading: 'For Talent',
+    links: [
+      { label: 'Apply as Talent', url: '/sign-up?role=talent' },
+      { label: 'Talent Dashboard', url: '/talent-dashboard' },
+      { label: 'Resources', url: '/resources' },
+    ],
+  },
+  {
+    heading: 'Company',
+    links: [
+      { label: 'About', url: '/about' },
+      { label: 'Blog', url: '/blog' },
+      { label: 'Careers', url: '/careers' },
+      { label: 'Contact', url: '/contact' },
+    ],
+  },
+  {
+    heading: 'Legal',
+    links: [
+      { label: 'Terms of Service', url: '/terms' },
+      { label: 'Privacy Policy', url: '/privacy' },
+      { label: 'Cookie Policy', url: '/cookies' },
+    ],
+  },
+];
+
+export const HOMEPAGE_SEO: HomepageSeo = {
+  metaTitle: 'Marketeq — Expert Tech Teams on Demand',
+  metaDescription:
+    'Hire pre-vetted expert teams for your next project. Browse projects, services, and talent across development, design, marketing, and more.',
+  canonical: 'https://marketeq.com',
+  ogImage: null,
+  noindex: false,
 };

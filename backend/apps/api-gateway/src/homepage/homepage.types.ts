@@ -7,7 +7,7 @@ export interface ProjectCard {
   slug: string | null;
   description: string;
   shortDescription: string | null;
-  thumbnail: string | null;     // first mediaUrl or null
+  thumbnail: string | null;
   budget: number | null;
   duration: string | null;
   categories: string[];
@@ -33,12 +33,21 @@ export interface ServiceCard {
   createdAt: string;
 }
 
+/** Pagination metadata for a block */
+export interface BlockPagination {
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
 /** A single content block inside a section */
 export interface HomepageBlock {
   key: string;
   type: 'grid' | 'carousel';
   entity: 'projects' | 'services';
   items: (ProjectCard | ServiceCard)[];
+  pagination?: BlockPagination;
 }
 
 /** A homepage section containing one or more blocks */
@@ -60,11 +69,36 @@ export interface HomepageHero {
   ctaUrl: string;
 }
 
+/** Promotional banner — sourced from CMS HomepageBanner global */
+export interface HomepageBanner {
+  enabled: boolean;
+  message: string | null;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+  expiresAt: string | null;
+  bannerType: 'info' | 'promo' | 'warning';
+}
+
+/** SEO metadata */
+export interface HomepageSeo {
+  metaTitle: string;
+  metaDescription: string;
+  canonical: string | null;
+  ogImage: string | null;
+  noindex: boolean;
+}
+
 /** Category reference for "More Categories" */
 export interface CategoryRef {
   name: string;
   slug: string;
   iconUrl: string | null;
+}
+
+/** Footer navigation column */
+export interface FooterNavColumn {
+  heading: string;
+  links: { label: string; url: string }[];
 }
 
 /** Talent Network CTA */
@@ -78,12 +112,14 @@ export interface TalentNetworkCta {
 /** Full homepage API response */
 export interface HomepagePayload {
   hero: HomepageHero;
+  /** Promotional banner — null when disabled or expired */
+  banner: HomepageBanner | null;
   sections: HomepageSection[];
-  /** Tabs shown above the "Most Popular" section */
   popularTabs: CategoryRef[];
-  /** "More Categories" tile grid */
   moreCategoriesList: CategoryRef[];
   talentNetworkCta: TalentNetworkCta;
+  footerNav: FooterNavColumn[];
+  seo: HomepageSeo;
   generatedAt: string;
 }
 
@@ -98,11 +134,8 @@ export interface SectionConfig {
   blocks: {
     entity: 'projects' | 'services';
     type: 'grid' | 'carousel';
-    /** Max items to include */
     limit: number;
-    /** How to sort the data */
     sort: 'newest' | 'random';
-    /** Optional category filter */
     categoryFilter?: string;
   }[];
 }

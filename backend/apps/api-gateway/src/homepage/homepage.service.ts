@@ -6,6 +6,7 @@ import {
   HomepagePayload,
   HomepageSection,
   HomepageBlock,
+  HomepageBanner,
   ProjectCard,
   ServiceCard,
   SectionConfig,
@@ -16,12 +17,15 @@ import {
   HOMEPAGE_POPULAR_TABS,
   HOMEPAGE_MORE_CATEGORIES,
   HOMEPAGE_TALENT_CTA,
+  HOMEPAGE_FOOTER_NAV,
+  HOMEPAGE_SEO,
 } from './homepage.config';
 
 @Injectable()
 export class HomepageService {
   private readonly logger = new Logger(HomepageService.name);
   private readonly listingsUrl: string;
+  private readonly cmsUrl: string | null;
 
   constructor(
     private readonly http: HttpService,
@@ -29,21 +33,22 @@ export class HomepageService {
   ) {
     this.listingsUrl =
       config.get<string>('LISTINGS_SERVICE_URL') || 'http://localhost:3004';
+    this.cmsUrl = config.get<string>('CMS_SERVICE_URL') || null;
   }
 
   /**
    * Assemble the full homepage payload.
    *
-   * Currently fetches directly from listings-service via HTTP.
-   * CMS placeholder: section configuration is static (homepage.config.ts).
-   * When Payload CMS is integrated, replace HOMEPAGE_SECTIONS/HERO/etc. with
-   * CMS-fetched config and keep the assembly logic below.
+   * Fetches listings from listings-service and banner from CMS service.
+   * Section configuration comes from static config (homepage.config.ts)
+   * until CMS homepage collection is implemented — at which point,
+   * replace the HOMEPAGE_* imports with CMS-fetched config here.
    */
   async getHomepage(): Promise<HomepagePayload> {
-    // Fetch all projects and services in parallel from listings-service
-    const [allProjects, allServices] = await Promise.all([
+    const [allProjects, allServices, banner] = await Promise.all([
       this.fetchProjects(),
       this.fetchServices(),
+      this.fetchBanner(),
     ]);
 
     // Deduplicate: track used IDs across sections
@@ -60,7 +65,6 @@ export class HomepageService {
         usedProjectIds,
         usedServiceIds,
       );
-      // Suppress empty sections
       if (section.blocks.some((b) => b.items.length > 0)) {
         sections.push(section);
       }
@@ -68,10 +72,13 @@ export class HomepageService {
 
     return {
       hero: HOMEPAGE_HERO,
+      banner,
       sections,
       popularTabs: HOMEPAGE_POPULAR_TABS,
       moreCategoriesList: HOMEPAGE_MORE_CATEGORIES,
       talentNetworkCta: HOMEPAGE_TALENT_CTA,
+      footerNav: HOMEPAGE_FOOTER_NAV,
+      seo: HOMEPAGE_SEO,
       generatedAt: new Date().toISOString(),
     };
   }
@@ -116,6 +123,41 @@ export class HomepageService {
       ctaUrl: cfg.ctaUrl ?? null,
       blocks,
     };
+  }
+
+  /**
+   * Fetch the promotional banner from the CMS HomepageBanner global.
+   * Returns null if CMS is unavailable, banner is disabled, or expired.
+   */
+  private async fetchBanner(): Promise<HomepageBanner | null> {
+    if (!this.cmsUrl) return null;
+
+    try {
+      const { data } = await firstValueFrom(
+        this.http.get(`${this.cmsUrl}/api/globals/homepage-banner`, {
+          timeout: 3000,
+        }),
+      );
+
+      if (!data?.enabled) return null;
+
+      // Check expiration
+      if (data.expiresAt && new Date(data.expiresAt) < new Date()) {
+        return null;
+      }
+
+      return {
+        enabled: true,
+        message: data.message ?? null,
+        ctaLabel: data.ctaLabel ?? null,
+        ctaUrl: data.ctaUrl ?? null,
+        expiresAt: data.expiresAt ?? null,
+        bannerType: data.bannerType ?? 'info',
+      };
+    } catch (err: any) {
+      this.logger.warn(`Failed to fetch homepage banner from CMS: ${err.message}`);
+      return null;
+    }
   }
 
   private async fetchProjects(): Promise<ProjectCard[]> {
