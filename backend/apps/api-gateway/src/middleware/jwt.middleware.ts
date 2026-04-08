@@ -1,4 +1,4 @@
-import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/common'
+import { Injectable, Logger, NestMiddleware, UnauthorizedException } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
 import { JwtService } from '@nestjs/jwt'
 
@@ -47,6 +47,8 @@ function isPublic(path: string): boolean {
 
 @Injectable()
 export class JwtMiddleware implements NestMiddleware {
+  private readonly logger = new Logger(JwtMiddleware.name)
+
   constructor(private readonly jwt: JwtService) {}
 
   use(req: Request, _res: Response, next: NextFunction) {
@@ -63,6 +65,11 @@ export class JwtMiddleware implements NestMiddleware {
     if (!token) {
       // Public routes can proceed without auth
       if (pub) return next()
+
+      this.logger.warn(
+        `401 missing-token method=${req.method} path=${reqPath} source=${authHeader ? 'malformed_auth_header' : cookieToken ? 'malformed_cookie_token' : 'none'}`,
+      )
+
       throw new UnauthorizedException({
         code: 'UNAUTHORIZED',
         message: 'Your session has expired. Please log in again to continue.',
@@ -73,9 +80,15 @@ export class JwtMiddleware implements NestMiddleware {
       const payload = this.jwt.verify<{ sub: string; email: string; role?: string }>(token)
       ;(req as any).user = { userId: payload.sub, email: payload.email, role: payload.role }
       next()
-    } catch {
+    } catch (err: any) {
       // Public routes can proceed even with an invalid token
       if (pub) return next()
+
+      const reason = err?.name || 'TokenVerificationFailed'
+      this.logger.warn(
+        `401 invalid-token method=${req.method} path=${reqPath} reason=${reason}`,
+      )
+
       throw new UnauthorizedException({
         code: 'UNAUTHORIZED',
         message: 'Your session has expired. Please log in again to continue.',

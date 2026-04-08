@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "../../dist/apps/listings-service",
-    "rootDir": "./src",
+    "rootDir": "../..",
     "incremental": false
   },
   "include": ["src/**/*"],

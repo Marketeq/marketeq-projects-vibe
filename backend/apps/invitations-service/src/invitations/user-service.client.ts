@@ -5,15 +5,35 @@ import { lastValueFrom } from "rxjs";
 export type InternalUserSummary = {
   id: string;
   email: string;
+  firstName?: string;
+  lastName?: string;
+  avatarUrl?: string;
   role: string;
   onboardingDismissed: boolean;
   hasCompletedOnboarding: boolean;
   isActive: boolean;
 };
 
+type SyncUserPayload = {
+  id: string;
+  email: string;
+};
+
 @Injectable()
 export class UserServiceClient {
   constructor(private readonly http: HttpService) {}
+
+  async syncUserProfile(payload: SyncUserPayload): Promise<void> {
+    const url = `${process.env.USER_SERVICE_URL}/internal/users`;
+
+    await lastValueFrom(
+      this.http.post(url, payload, {
+        headers: {
+          'x-internal-token': process.env.INTERNAL_SERVICE_TOKEN || '',
+        },
+      }),
+    );
+  }
 
   async addTeamMember(params: {
     teamId: string;
@@ -62,6 +82,29 @@ export class UserServiceClient {
     }
   }
 
+  async getUserSummaryByEmail(email: string): Promise<InternalUserSummary> {
+    const url = `${process.env.USER_SERVICE_URL}/internal/users/summary-by-email`;
+
+    try {
+      const response = await lastValueFrom(
+        this.http.get(url, {
+          params: { email },
+          headers: {
+            'x-internal-token': process.env.INTERNAL_SERVICE_TOKEN || '',
+          },
+        }),
+      );
+
+      return response.data as InternalUserSummary;
+    } catch (error) {
+      console.error(
+        'Failed to fetch user summary by email via user-service:',
+        error.response?.data || error.message,
+      );
+      throw error;
+    }
+  }
+
   async dismissOnboarding(userId: string): Promise<InternalUserSummary> {
     const url = `${process.env.USER_SERVICE_URL}/internal/users/${userId}/onboarding-dismissed`;
 
@@ -87,10 +130,6 @@ export class UserServiceClient {
         hasCompletedOnboarding: Boolean(data.onboardingDismissed),
       };
     } catch (error) {
-      console.error(
-        'Failed to dismiss onboarding via user-service:',
-        error.response?.data || error.message,
-      );
       throw error;
     }
   }

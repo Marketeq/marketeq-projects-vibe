@@ -52,6 +52,17 @@ export class UserService {
     return user;
   }
 
+  async listUsers(limit = 50, offset = 0): Promise<User[]> {
+    const safeLimit = Math.min(Math.max(limit, 1), 100);
+    const safeOffset = Math.max(offset, 0);
+
+    return this.userRepository.find({
+      order: { createdAt: 'DESC' },
+      take: safeLimit,
+      skip: safeOffset,
+    });
+  }
+
   async getUserByEmail(email: string): Promise<User> {
     const user = await this.userRepository.findOne({ where: { email } });
     if (!user) throw new NotFoundException('User not found');
@@ -61,6 +72,9 @@ export class UserService {
   async getInternalSummary(id: string): Promise<{
     id: string;
     email: string;
+    firstName?: string;
+    lastName?: string;
+    avatarUrl?: string;
     role: string;
     onboardingDismissed: boolean;
     hasCompletedOnboarding: boolean;
@@ -71,6 +85,35 @@ export class UserService {
     return {
       id: user.id,
       email: user.email,
+      firstName: user.firstName ?? undefined,
+      lastName: user.lastName ?? undefined,
+      avatarUrl: user.avatarUrl ?? undefined,
+      role: user.role ?? 'client',
+      onboardingDismissed: user.onboardingDismissed,
+      hasCompletedOnboarding: user.onboardingDismissed,
+      isActive: user.isActive,
+    };
+  }
+
+  async getInternalSummaryByEmail(email: string): Promise<{
+    id: string;
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    avatarUrl?: string;
+    role: string;
+    onboardingDismissed: boolean;
+    hasCompletedOnboarding: boolean;
+    isActive: boolean;
+  }> {
+    const user = await this.getUserByEmail(email);
+
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName ?? undefined,
+      lastName: user.lastName ?? undefined,
+      avatarUrl: user.avatarUrl ?? undefined,
       role: user.role ?? 'client',
       onboardingDismissed: user.onboardingDismissed,
       hasCompletedOnboarding: user.onboardingDismissed,

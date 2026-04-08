@@ -272,6 +272,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
+    if (!user.hasPassword || !user.password) {
+      throw new UnauthorizedException(
+        'Password login is not enabled for this account. Please set a password first or use dev-login in local development.',
+      );
+    }
+
     const isMatch = await bcrypt.compare(dto.password, user.password);
     if (!isMatch) throw new UnauthorizedException('Invalid credentials');
 
@@ -853,11 +859,22 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private async postUserProfileSync(payload: SyncUserProfilePayload) {
     const { url, token } = this.getUserSyncEndpoint();
-    await axios.post(url, payload, {
-      headers: {
-        'x-internal-token': token,
-      },
-    });
+    try {
+      await axios.post(url, payload, {
+        headers: {
+          'x-internal-token': token,
+        },
+      });
+    } catch (error) {
+      // user-service may return 409 when profile already exists; treat this as idempotent success.
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        this.logger.warn(
+          `[sync] user profile already exists in user-service; treating as success for user=${payload.id} email=${payload.email}`,
+        );
+        return;
+      }
+      throw error;
+    }
   }
 
   private getRetryKey(payload: SyncUserProfilePayload): string {

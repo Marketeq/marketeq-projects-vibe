@@ -36,6 +36,10 @@ export class ListInvitationsDto {
   @IsOptional()
   teamId?: string;
 
+  @IsEmail()
+  @IsOptional()
+  invitedEmail?: string;
+
   @IsEnum(InvitationStatus)
   @IsOptional()
   status?: InvitationStatus;
