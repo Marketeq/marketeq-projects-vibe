@@ -891,35 +891,37 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/talent-profile")}>
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/talent-profile") }}>
                 <User className="size-4" />
                 My Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard")}>
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>
                 <LayoutGrid02 className="size-4" />
                 My Dashboard
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/my-listings")}>
-                <List className="size-4" />
-                My Listings
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/my-contracts")}>
+              {user?.accountType === "TALENT" && (
+                <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-listings") }}>
+                  <List className="size-4" />
+                  My Listings
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-contracts") }}>
                 <FileCheck02 className="size-4" />
                 My Contracts
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/my-team")}>
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-team") }}>
                 <Users className="size-4" />
                 My Team
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/favorites")}>
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/favorites") }}>
                 <Star className="size-4" />
                 My Favorites
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setMenuOpen(false); router.push("/billing") }}>
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/billing") }}>
                 <CoinStack className="size-4" />
                 Billing
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setMenuOpen(false); router.push("/settings") }}>
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/settings") }}>
                 <Settings className="size-4" />
                 Settings
               </DropdownMenuItem>

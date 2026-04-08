@@ -163,14 +163,14 @@ export const LeftSidebar = () => {
         <div className="flex flex-col gap-y-1">
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/"
+            href="/talent-dashboard"
           >
             <Home03 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Home
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/search"
+            href="/find-jobs"
           >
             <Search className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Find Jobs
@@ -180,7 +180,7 @@ export const LeftSidebar = () => {
             href="/my-listings"
           >
             <Briefcase className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            My Listings
+            My Projects
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
@@ -191,7 +191,7 @@ export const LeftSidebar = () => {
           </NextLink>
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/"
+            href="/stats"
           >
             <BarChartSquare02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Stats & Trends

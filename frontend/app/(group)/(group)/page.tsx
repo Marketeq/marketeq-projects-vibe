@@ -116,25 +116,11 @@ const CarouselSection = ({
 }: CarouselSectionProps) => {
   return (
     <div>
-      <Tabs defaultValue="Projects">
-        <SectionHeader title={title} description={description} />
-        <SwiperRoot>
-          <div className="mt-6 flex justify-between items-center">
-            <TabsList className="flex items-center gap-x-3">
-              {["Projects", "Services", "Teams", "Talent"].map((tab) => (
-                <Badge
-                  key={tab}
-                  variant="circular"
-                  visual="gray"
-                  size="lg"
-                  className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                  asChild
-                >
-                  <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                </Badge>
-              ))}
-            </TabsList>
-
+      <SwiperRoot>
+        <SectionHeader
+          title={title}
+          description={description}
+          rightSlot={
             <div className="flex items-center gap-x-3">
               <SwiperPrevTrigger asChild>
                 <IconButton
@@ -155,14 +141,12 @@ const CarouselSection = ({
                 </IconButton>
               </SwiperNextTrigger>
             </div>
-          </div>
+          }
+        />
 
-          <div className="mt-6">
-            <TabsContent
-              className="gap-5 flex items-center"
-              value="Projects"
-            >
-              <SwiperContent slidesPerView="auto" spaceBetween={20}>
+        <div className="mt-6">
+          <div className="gap-5 flex items-center">
+            <SwiperContent slidesPerView="auto" spaceBetween={20}>
                 {fromLength(count).map((key) => (
                   <SwiperSlide className="w-[355px]" key={key}>
                     <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
@@ -255,11 +239,10 @@ const CarouselSection = ({
                     </article>
                   </SwiperSlide>
                 ))}
-              </SwiperContent>
-            </TabsContent>
+            </SwiperContent>
           </div>
-        </SwiperRoot>
-      </Tabs>
+        </div>
+      </SwiperRoot>
     </div>
   )
 }
@@ -271,48 +254,14 @@ const CarouselSection = ({
 const RecentlyViewedSection = ({
   title,
   description,
+  tabs,
 }: {
   title: string
   description?: string
+  tabs?: string[]
 }) => {
-  return (
-    <div>
-      <Tabs defaultValue="Projects">
-        <div className="flex items-start justify-between gap-x-6">
-          <div className="space-y-2">
-            <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
-              {title}
-            </h1>
-            {description && (
-              <p className="text-base leading-[19.36px] font-light text-gray-500 max-w-[800px]">
-                {description}
-              </p>
-            )}
-          </div>
-          <Button variant="link" visual="gray">
-            View All
-          </Button>
-        </div>
-
-        <div className="mt-6">
-          <TabsList className="flex items-center gap-x-3">
-            {["Projects", "Services", "Teams", "Talent"].map((tab) => (
-              <Badge
-                key={tab}
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                asChild
-              >
-                <TabsTrigger value={tab}>{tab}</TabsTrigger>
-              </Badge>
-            ))}
-          </TabsList>
-        </div>
-
-        <TabsContent value="Projects">
-          <div className="mt-[29px] grid grid-cols-3 gap-x-[42px] gap-y-10">
+  const grid = (
+    <div className="mt-[29px] grid grid-cols-3 gap-x-[42px] gap-y-10">
             {fromLength(6).map((key) => (
               <article key={key} className="flex items-start gap-x-6">
                 <div className="relative size-[100px] overflow-hidden rounded-lg shrink-0">
@@ -346,11 +295,56 @@ const RecentlyViewedSection = ({
                     </span>
                   </div>
                 </div>
-              </article>
-            ))}
+      </article>
+      ))}
+    </div>
+  )
+
+  return (
+    <div>
+      <div className="flex items-start justify-between gap-x-6">
+        <div className="space-y-2">
+          <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
+            {title}
+          </h1>
+          {description && (
+            <p className="text-base leading-[19.36px] font-light text-gray-500 max-w-[800px]">
+              {description}
+            </p>
+          )}
+        </div>
+        <Button variant="link" visual="gray">
+          {tabs && tabs.length > 0 ? "View More" : "View All"}
+        </Button>
+      </div>
+
+      {tabs && tabs.length > 0 ? (
+        <Tabs defaultValue={tabs[0]}>
+          <div className="mt-6">
+            <TabsList className="flex items-center gap-x-3 flex-wrap">
+              {tabs.map((tab) => (
+                <Badge
+                  key={tab}
+                  variant="circular"
+                  visual="gray"
+                  size="lg"
+                  className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                  asChild
+                >
+                  <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                </Badge>
+              ))}
+            </TabsList>
           </div>
-        </TabsContent>
-      </Tabs>
+          {tabs.map((tab) => (
+            <TabsContent key={tab} value={tab}>
+              {grid}
+            </TabsContent>
+          ))}
+        </Tabs>
+      ) : (
+        grid
+      )}
     </div>
   )
 }
@@ -479,17 +473,17 @@ export default function Marketplace() {
       <div className="py-[50px]">
         <div className="max-w-[1440px] mx-auto px-[50px] space-y-[50px]">
           <Hero />
-          <CarouselSection
-            title="Our Favorite Projects"
-            description="Hand-picked projects from our top-rated experts across every category — see what teams are building right now."
-          />
-          <RecentlyViewedSection
-            title="Newest Additions"
-            description="The latest projects, services, teams, and talent added to the Marketeq marketplace this week."
-          />
+          <CarouselSection title="Our Favorite Projects" />
+          <RecentlyViewedSection title="Newest Additions" />
           <RecentlyViewedSection
             title="Most Popular Projects"
-            description="The projects, services, teams, and talent generating the most interest from clients across the platform."
+            tabs={[
+              "View All",
+              "Top Web Projects",
+              "Top Mobile Projects",
+              "Top Cloud Projects",
+              "Top Digital Marketing Projects",
+            ]}
           />
           <CarouselSection
             title="Online Sales Funnels"
