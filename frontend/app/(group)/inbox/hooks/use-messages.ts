@@ -21,34 +21,24 @@ export function useMessages(convId: string, token: string) {
     if (!convId || !token) return
     ;(async () => {
       try {
-        // 1) fetch messages
+        // 1) load the raw AES key from localStorage
+        const key = loadKey(convId)
+
+        // 2) fetch the encrypted messages via apiFetch (handles base URL, JSON, errors)
         const data = await apiFetch<Message[]>(
-          `/v1/messages/thread/${convId}`,
+          `/api/messaging/conversations/${convId}/messages`,
           {
             method: "GET",
             headers: { Authorization: `Bearer ${token}` },
           }
         )
 
-        // 2) try to decrypt, fall back to plaintext content if no key/ciphertext
-        let key: Uint8Array | null = null
-        try {
-          key = loadKey(convId)
-        } catch {
-          // no AES key cached yet — will use plaintext content as fallback
-        }
-
+        // 3) Decrypt each one and preserve its metadata
         const decrypted = await Promise.all(
-          data.map(async (m) => {
-            if (key && m.ciphertext) {
-              try {
-                return { ...m, content: await decryptAES(m.ciphertext, key) }
-              } catch {
-                return m
-              }
-            }
-            return m
-          })
+          data.map(async (m) => ({
+            ...m,
+            content: await decryptAES(m.ciphertext, key),
+          }))
         )
 
         setMessages(decrypted)

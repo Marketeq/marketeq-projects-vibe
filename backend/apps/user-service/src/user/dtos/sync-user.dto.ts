@@ -37,12 +37,4 @@ export class SyncUserDto {
   @IsOptional()
   @IsBoolean()
   hasPassword?: boolean;
-
-  @IsOptional()
-  @IsString()
-  firstName?: string;
-
-  @IsOptional()
-  @IsString()
-  lastName?: string;
 }

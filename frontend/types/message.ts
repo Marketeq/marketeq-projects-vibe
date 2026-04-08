@@ -3,19 +3,12 @@ export interface Message {
   content: string // encrypted by default
   ciphertext: string // encrypted payload
   senderId: string
-  threadId: string
-  conversationId?: string // legacy alias for threadId
-  isRead?: boolean
-  createdAt: string
+  conversationId: string
+  isRead: boolean
+  createdAt: string // it's Date on the backend, but usually comes as an ISO string to the frontend
   updatedAt: string
-  pinned?: boolean
-  isPinned?: boolean // legacy alias for pinned
-  deleted?: boolean
-  isDeleted?: boolean // legacy alias for deleted
-  status?: string
-  messageType?: string
-  edited?: boolean
-  starred?: boolean
+  isPinned?: boolean
+  isDeleted?: boolean
 }
 
 // Extended Message type to include file attachments

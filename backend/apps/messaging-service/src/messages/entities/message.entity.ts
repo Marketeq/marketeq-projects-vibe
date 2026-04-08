@@ -23,9 +23,6 @@ export class Message {
   @Column('text', { nullable: true })
   content: string;
 
-  @Column('text', { nullable: true })
-  ciphertext: string;
-
   @Column({ nullable: true })
   replyToMessageId: string;
 

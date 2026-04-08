@@ -31,26 +31,16 @@ export class MessagesService {
     const message = this.messageRepo.create({ ...dto, status: 'sent' });
     const saved = await this.messageRepo.save(message);
 
-    // Strip plaintext from Ably payload when ciphertext is present
-    if (saved.ciphertext) {
-      const { content: _plaintext, ...ciphertextOnly } = saved;
-      await this.ablyService.publishMessageNew(dto.threadId, ciphertextOnly);
-    } else {
-      await this.ablyService.publishMessageNew(dto.threadId, saved);
-    }
+    await this.ablyService.publishMessageNew(dto.threadId, saved);
     return saved;
   }
 
-  async edit(id: string, content: string, userId: string, ciphertext?: string) {
+  async edit(id: string, content: string, userId: string) {
     const message = await this.messageRepo.findOne({ where: { id } });
     if (!message) throw new NotFoundException('Message not found');
     if (message.senderId !== userId) throw new ForbiddenException('Cannot edit others messages');
 
-    if (ciphertext) {
-      await this.messageRepo.update(id, { ciphertext, content: null as any, edited: true });
-    } else {
-      await this.messageRepo.update(id, { content, edited: true });
-    }
+    await this.messageRepo.update(id, { content, edited: true });
     const updated = await this.messageRepo.findOne({ where: { id } });
     await this.ablyService.publishMessageEdit(message.threadId, updated);
     return updated;
@@ -66,16 +56,11 @@ export class MessagesService {
   }
 
   async markRead(messageId: string, userId: string) {
-    const message = await this.messageRepo.findOne({ where: { id: messageId } });
-    if (!message) throw new NotFoundException('Message not found');
-
-    const thread = await this.threadRepo.findOne({ where: { id: message.threadId } });
-    if (!thread || !thread.participantIds.includes(userId)) {
-      throw new ForbiddenException('Not a participant of this thread');
-    }
-
     await this.messageRepo.update(messageId, { status: 'read' });
-    await this.ablyService.publishMessageRead(message.senderId, messageId);
+    const message = await this.messageRepo.findOne({ where: { id: messageId } });
+    if (message) {
+      await this.ablyService.publishMessageRead(message.senderId, messageId);
+    }
   }
 
   async forward(messageId: string, toUserIds: string[], senderId: string) {
@@ -85,25 +70,17 @@ export class MessagesService {
 
     const results = [];
     for (const userId of toUserIds) {
-      // Find existing 1:1 thread between sender and recipient
-      let thread = await this.threadRepo
-        .createQueryBuilder('t')
-        .where('t.isGroup = false')
-        .andWhere(':senderId = ANY(t.participantIds)', { senderId })
-        .andWhere(':userId = ANY(t.participantIds)', { userId })
-        .getOne();
-
-      if (!thread) {
-        thread = await this.threadRepo.save(
-          this.threadRepo.create({ participantIds: [senderId, userId], isGroup: false }),
-        );
-      }
-
+      let thread = await this.threadRepo.findOne({
+        where: { isGroup: false },
+      });
+      // Find or create thread between sender and recipient
+      thread = await this.threadRepo.save(
+        this.threadRepo.create({ participantIds: [senderId, userId], isGroup: false }),
+      );
       const msg = await this.send({
         threadId: thread.id,
         senderId,
         content: original.content,
-        ciphertext: original.ciphertext,
         messageType: original.messageType,
         forwardedFromId: messageId,
       });
@@ -114,12 +91,10 @@ export class MessagesService {
 
   async pin(messageId: string) {
     await this.messageRepo.update(messageId, { pinned: true });
-    return { success: true };
   }
 
   async unpin(messageId: string) {
     await this.messageRepo.update(messageId, { pinned: false });
-    return { success: true };
   }
 
   async star(messageId: string) {

@@ -122,10 +122,7 @@ export function Chats({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [isUploading, setIsUploading] = useState(false)
 
-  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getCurrentUser>>(null)
-  useEffect(() => {
-    setCurrentUser(getCurrentUser())
-  }, [])
+  const currentUser = getCurrentUser()
 
   const handleEmojiSelect = (emoji: DataEmoji) => {
     const emojiChar = String.fromCodePoint(
@@ -215,7 +212,7 @@ export function Chats({
   }, [fetchedMsgs])
 
   const displayedMessages =
-    selectedTab === "Messages" ? localMsgs : pinnedMsgs
+    selectedTab === "Messages" ? localMsgs : localMsgs.filter((m) => m.isPinned)
 
   // 3) subscribe to Ably for real-time incoming
   // subscribe to Ably for real-time updates
@@ -228,24 +225,18 @@ export function Chats({
       id: string
       ciphertext: string
       senderId: string
-      threadId: string
+      conversationId: string
       createdAt: string
       updatedAt: string
-      pinned?: boolean
-      deleted?: boolean
+      isPinned?: boolean
+      isDeleted?: boolean
     }) => {
       // Skip if the message is from current user
       if (incoming.senderId === currentUser?.id) return
 
-      const convId = incoming.threadId
-      let key: Uint8Array | null = null
-      try {
-        key = loadKey(convId)
-      } catch {
-        // no cached key
-      }
+      const key = loadKey(incoming.conversationId)
       if (!key) {
-        console.error("No AES key for", convId)
+        console.error("No AES key for", incoming.conversationId)
         return
       }
       let plain: string
@@ -261,12 +252,12 @@ export function Chats({
           ...incoming,
           content: plain,
           isRead: false,
-          isPinned: incoming.pinned ?? false,
-          isDeleted: incoming.deleted ?? false,
+          isPinned: incoming.isPinned ?? false,
+          isDeleted: incoming.isDeleted ?? false,
         },
       ])
     },
-    [setLocalMsgs, currentUser?.id]
+    [setLocalMsgs, currentUser?.id] // only changes if setLocalMsgs ever changes (it won’t)
   )
 
   //pin/unpin,  delete, undo delete
@@ -311,14 +302,13 @@ export function Chats({
       console.error("No logged-in user found")
       return
     }
-    const otherId = selectedConversation.participantIds?.find(
-      (id) => id !== currentUser.id
-    )
+    const otherId = selectedConversation.participants.find(
+      (p) => p.userId !== currentUser.id
+    )?.userId
     if (!otherId) return
 
-    apiFetch<User>(`/users/${otherId}`, {
+    apiFetch<User>(`/api/messaging/users/${otherId}`, {
       method: "GET",
-      headers: { Authorization: `Bearer ${jwtToken}` },
     })
       .then(setReceiverUser)
       .catch(console.error)
@@ -331,24 +321,17 @@ export function Chats({
     try {
       const saved = await send(selectedConversation.id, textareaValue.trim())
 
-      // Backend returns message directly or wrapped in { data }
-      const msg = (saved as any).data ?? saved
+      // Optimistically append to local state
+      // 2)decrypt the returned ciphertext so you display plaintext
+      const key = loadKey(selectedConversation.id)
+      const plain = await decryptAES(saved.data.ciphertext, key)
 
-      let displayContent = msg.content
-      try {
-        const key = loadKey(selectedConversation.id)
-        if (key && msg.ciphertext) {
-          displayContent = await decryptAES(msg.ciphertext, key)
-        }
-      } catch {
-        // no key cached, content is already plaintext
-      }
-
+      // 3) append to local state
       setLocalMsgs((prev) => [
         ...prev,
         {
-          ...msg,
-          content: displayContent,
+          ...saved.data,
+          content: plain,
         },
       ])
 
@@ -446,26 +429,13 @@ export function Chats({
     if (tab === "Pinned") {
       try {
         if (!selectedConversation) return
-        const allMsgs = await apiFetch<Message[]>(
-          `/v1/messages/thread/${selectedConversation.id}`,
+        const pinned = await apiFetch<Message[]>(
+          `/api/messaging/conversations/${selectedConversation.id}/pinned`,
           {
             headers: { Authorization: `Bearer ${jwtToken}` },
           }
         )
-        const pinned = allMsgs.filter((m) => m.pinned || m.isPinned)
-
-        // Decrypt pinned messages
-        let key: Uint8Array | null = null
-        try { key = loadKey(selectedConversation.id) } catch { /* no key */ }
-        const decrypted = await Promise.all(
-          pinned.map(async (m) => {
-            if (key && m.ciphertext) {
-              try { return { ...m, content: await decryptAES(m.ciphertext, key) } } catch { return m }
-            }
-            return m
-          })
-        )
-        setPinnedMsgs(decrypted)
+        setPinnedMsgs(pinned)
       } catch (err) {
         console.error("Failed to fetch pinned messages", err)
       }
@@ -611,7 +581,7 @@ export function Chats({
             onValueChange={(details: { value: string[] }) => {
               const val = details.value?.[0]
               if (val === "Messages" || val === "Pinned") {
-                handleToggleChange(val)
+                setSelectedTab(val)
               }
             }}
           >

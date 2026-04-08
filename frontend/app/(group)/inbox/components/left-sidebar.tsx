@@ -12,7 +12,7 @@ import {
   savePublicKey,
 } from "@/src/crypto/keys"
 import { apiFetch } from "@/src/lib/api"
-import { getCurrentUser, getAccessToken } from "@/utils/auth"
+import { getCurrentUser } from "@/utils/auth"
 import { noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
 import { useAblyChannel } from "@/utils/useAblyChannel"
@@ -86,7 +86,7 @@ function getOtherParticipantId(
   conv: Conversation,
   me: string
 ): string | undefined {
-  return conv.participantIds?.find((id) => id !== me)
+  return conv.participants.find((p) => p.userId !== me)?.userId
 }
 
 interface LeftSidebarProps {
@@ -101,7 +101,7 @@ const LeftSidebar = ({
   messagesByConversation,
 }: LeftSidebarProps) => {
   const token =
-    typeof window !== "undefined" ? getAccessToken() : null
+    typeof window !== "undefined" ? localStorage.getItem("token") : null
   const { pinnedChats, toggleShowPinnedIcon, showPinnedIcon, checkedChats } =
     useChatsContext()
 
@@ -112,12 +112,12 @@ const LeftSidebar = ({
   const [conversations, setConversations] = useState<Conversation[]>([])
 
   useEffect(() => {
-    const token = getAccessToken()
+    const token = localStorage.getItem("token")
 
     const fetchConversations = async () => {
       try {
         const data = await apiFetch<Conversation[]>(
-          "/v1/threads",
+          "/api/messaging/conversations",
           {
             method: "GET",
             headers: { Authorization: `Bearer ${token}` },
@@ -130,7 +130,7 @@ const LeftSidebar = ({
             if (conv.isGroup) {
               try {
                 const group = await apiFetch<{ name: string }>(
-                  `/v1/threads/${conv.id}`,
+                  `/api/messaging/groups/${conv.id}`,
                   {
                     method: "GET",
                     headers: { Authorization: `Bearer ${token}` },
@@ -154,14 +154,14 @@ const LeftSidebar = ({
             }
 
             // INDIVIDUAL conversation
-            const otherId = conv.participantIds?.find(
-              (id) => id !== currentUserId
-            )
+            const otherId = conv.participants.find(
+              (p) => p.userId !== currentUserId
+            )?.userId
 
             if (!otherId) {
               console.warn(
                 `[LeftSidebar] couldn’t find “other” participant for conv ${conv.id}`,
-                { currentUserId, participantIds: conv.participantIds }
+                { currentUserId, participants: conv.participants }
               )
               return {
                 ...conv,
@@ -171,7 +171,7 @@ const LeftSidebar = ({
 
             try {
               const user = await apiFetch<{ username: string }>(
-                `/users/${otherId}`,
+                `/api/messaging/users/${otherId}`,
                 { method: "GET", headers: { Authorization: `Bearer ${token}` } }
               )
 

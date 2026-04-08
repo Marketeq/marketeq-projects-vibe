@@ -78,10 +78,7 @@ export default function SignIn() {
     AuthAPI.LoginWithEmail({ email, password })
       .then(async (response) => {
         if (response?.status === 200 && response?.data?.access_token) {
-          Cookies.set("access_token", response?.data?.access_token, { path: "/" })
-          if (response?.data?.refresh_token) {
-            Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
-          }
+          Cookies.set("access_token", response?.data?.access_token)
 
           let nextUser = response?.data?.user
           try {

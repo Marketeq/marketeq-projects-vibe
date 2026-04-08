@@ -43,11 +43,8 @@ const meta: Meta = {
 
 export default meta
 
-const getJwtToken = () => {
-  if (typeof window === "undefined") return null
-  const Cookies = require("js-cookie")
-  return Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("token") || null
-}
+const getJwtToken = () =>
+  typeof window !== "undefined" ? localStorage.getItem("token") : null
 
 const formatConversationDate = (isoDateStr: string) => {
   const date = parseISO(isoDateStr)
@@ -72,7 +69,7 @@ const handlePinMessage = async (messageId: string) => {
   const jwtToken = getJwtToken()
   try {
     await apiFetch<{ message: string }>(
-      `/v1/messages/${messageId}/pin`,
+      `/api/messaging/messages/${messageId}/pin`,
       {
         method: "POST",
         headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
@@ -149,7 +146,7 @@ export const Bubble = ({
       setIsPinned((prev) => !prev)
 
       await apiFetch<{ message: string }>(
-        `/v1/messages/${message.id}/pin`,
+        `/api/messaging/messages/${message.id}/pin`,
         {
           method: "POST",
           headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
@@ -166,7 +163,7 @@ export const Bubble = ({
     try {
       setIsDeleted(true) // Optimistic UI
       setDeletedAt(Date.now())
-      await apiFetch(`/v1/messages/${message.id}`, {
+      await apiFetch(`/api/messaging/messages/${message.id}/delete`, {
         method: "PATCH",
         headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
       })
@@ -180,7 +177,7 @@ export const Bubble = ({
     const jwtToken = getJwtToken()
     try {
       setIsDeleted(false) // Optimistic UI
-      await apiFetch(`/v1/messages/${message.id}`, {
+      await apiFetch(`/api/messaging/messages/${message.id}/undo-delete`, {
         method: "PATCH",
         headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
       })
@@ -314,7 +311,7 @@ export const YourBubble = ({
       setIsPinned((prev) => !prev)
 
       await apiFetch<{ message: string }>(
-        `/v1/messages/${message.id}/pin`,
+        `/api/messaging/messages/${message.id}/pin`,
         {
           method: "POST",
           headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},

@@ -103,13 +103,17 @@ const RightSidebar = () => {
 
         <div className="mt-5 flex items-center gap-x-2 justify-center">
           <div className="flex items-center">
-            <button className="inline-flex items-center gap-x-1 border border-gray-300 rounded-l-[5px] h-9 xs:max-lg:h-[25.5px] px-3 shadow-xs cursor-pointer hover:bg-gray-50 text-gray-800">
+            <Button
+              className="border-r-0 xs:max-lg:gap-x-[5.1px] xs:max-lg:leading-[12.75px] xs:max-lg:text-[8.93px] xs:max-lg:h-[25.75px] rounded-r-none"
+              variant="outlined"
+              visual="gray"
+            >
               <Favorite
                 starClassName="size-[12.75px] lg:size-5"
                 className="size-[12.75px] lg:size-5"
               />
-              <span className="xs:max-lg:text-[8.93px] xs:max-lg:leading-[12.75px] text-sm">Save</span>
-            </button>
+              Save
+            </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
