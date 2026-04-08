@@ -26,7 +26,7 @@ export const syncCategoryToService: CollectionAfterChangeHook = async ({
         // parent is a Payload ID (number) — look up the uuid
         try {
           const parentDoc = await req.payload.findByID({
-            collection: 'categories', id: doc.parent, depth: 0,
+            collection: 'categories' as any, id: doc.parent, depth: 0,
           });
           parentUuid = (parentDoc as any)?.uuid || null;
         } catch { /* parent may have been deleted concurrently */ }
