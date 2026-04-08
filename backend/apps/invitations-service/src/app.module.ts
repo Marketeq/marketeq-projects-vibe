@@ -6,6 +6,7 @@ import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { InvitationsModule } from "./invitations/invitations.module";
 
 import { AuthModule } from "./auth/auth.module";
+import { AuthModule as JwtAuthModule } from '@libs/auth';
 import { HealthController } from "./health/health.controller";
 
 @Module({
@@ -29,6 +30,7 @@ import { HealthController } from "./health/health.controller";
       logging: false,
     }),
     AuthModule,
+    JwtAuthModule,
     InvitationsModule
   ],
   controllers: [HealthController],

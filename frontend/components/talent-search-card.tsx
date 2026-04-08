@@ -322,9 +322,12 @@ export const TalentSearchCard = ({
             {skill}
           </span>
         ))}
-        <span className="text-xs leading-5 font-bold text-gray-500/60 hover:text-gray-500 cursor-pointer whitespace-nowrap">
+        <NextLink
+          href={profileHref ? `${profileHref}#skills` : "#"}
+          className="text-xs leading-5 font-bold text-gray-500/60 hover:text-gray-500 hover:underline cursor-pointer whitespace-nowrap"
+        >
           More...
-        </span>
+        </NextLink>
       </div>
     </article>
   )

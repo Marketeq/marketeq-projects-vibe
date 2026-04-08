@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useMemo, useState } from "react"
+import React, { Suspense, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import {
   SearchAPI,
@@ -156,7 +156,15 @@ const SearchResultCardLandscape = ({ hit }: { hit: SearchHit }) => {
   )
 }
 
-export default function Search() {
+export default function SearchPage() {
+  return (
+    <Suspense fallback={null}>
+      <Search />
+    </Suspense>
+  )
+}
+
+function Search() {
   const [value, setValue] = useState([GRID_LAYOUT])
   const [isOpen, toggleIsOpen] = useToggle(false)
 

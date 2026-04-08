@@ -9,6 +9,7 @@ import { RelationalProjectPersistenceModule } from './publish/infrastructure/per
 import { PublishModule } from './publish/publish.module';
 import { OwnerTargetGrpcModule } from './owner-target/owner-target.module';
 import { JobListingModule } from './job-listing/job-listing.module';
+import { StrapiProjectsController } from './strapi-projects/strapi-projects.controller';
 
 @Module({
   imports: [
@@ -32,7 +33,7 @@ import { JobListingModule } from './job-listing/job-listing.module';
     // ClientsModule (RABBITMQ_CLIENT) is registered inside JobListingModule.
     JobListingModule,
   ],
-  controllers: [AppController, ListingsController],
+  controllers: [AppController, ListingsController, StrapiProjectsController],
   providers: [ProjectService],
 })
 export class AppModule {}

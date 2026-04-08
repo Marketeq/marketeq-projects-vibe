@@ -764,7 +764,10 @@ function Default() {
                     </h1>
                     <div className="flex items-center gap-x-1 mt-1">
                       <h2 className="text-[22px] leading-[27px] text-dark-blue-400 font-medium">
-                        {profile?.role || "Unknown"}
+                        {((profile as any)?.jobTitles?.find((j: any) => j.isDefault)?.jobTitle) ||
+                          (profile as any)?.jobTitles?.[0]?.jobTitle ||
+                          profile?.role ||
+                          "Unknown"}
                       </h2>
                       {isEditMode && isOwnProfile && (
                         <IconButton
@@ -1080,7 +1083,10 @@ function Default() {
                         </span>
                       </span>
                       <span className="text-sm leading-none font-medium text-dark-blue-400">
-                        {profile?.role ?? ""}
+                        {((profile as any)?.jobTitles?.find((j: any) => j.isDefault)?.jobTitle) ||
+                          (profile as any)?.jobTitles?.[0]?.jobTitle ||
+                          profile?.role ||
+                          ""}
                       </span>
                     </div>
                   </div>

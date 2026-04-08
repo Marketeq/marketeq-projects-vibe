@@ -11,16 +11,19 @@ import { UserAPI } from "@/service/http/user"
 import { motion } from "framer-motion"
 import { cn, getFirstItem } from "@/utils/functions"
 import {
+  Briefcase,
   ChevronDown,
   Edit03,
   Link01,
   MessageSquare,
+  Monitor,
   MoreHorizontal,
   Plus,
   SearchMd,
   Share07,
   Star,
   Trash2,
+  Users,
 } from "@blend-metrics/icons"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Grid, List, SortAs } from "@/components/icons"
@@ -772,6 +775,33 @@ const SortDropdown = ({ value, onChange }: { value: GroupSortOption; onChange: (
   )
 }
 
+/* ─── Empty State ─── */
+
+function EmptyState({
+  icon: Icon = Star,
+  title,
+  description,
+  action,
+}: {
+  icon?: React.ComponentType<{ className?: string }>
+  title: string
+  description: string
+  action?: React.ReactNode
+}) {
+  return (
+    <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-white py-16 px-6 flex flex-col items-center justify-center text-center">
+      <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center">
+        <Icon className="size-6 text-gray-400" />
+      </div>
+      <h3 className="mt-4 text-base font-semibold text-dark-blue-400">
+        {title}
+      </h3>
+      <p className="mt-1 max-w-md text-sm text-gray-500">{description}</p>
+      {action && <div className="mt-5">{action}</div>}
+    </div>
+  )
+}
+
 /* ─── Main Page ─── */
 
 export default function FavoritesPage() {
@@ -973,7 +1003,18 @@ export default function FavoritesPage() {
         {/* Talent Network Tab */}
         <TabsContent value="Talent Network">
           <div className="pt-[14px] lg:pt-6">
-            {getFirstItem(value) === GRID_LAYOUT ? (
+            {sortedSampleGroups.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="No favorite talent yet"
+                description="Build your talent network by saving professionals you&rsquo;d love to work with. Group them by project, specialty, or team for quick access."
+                action={
+                  <NextLink href="/talent">
+                    <Button>Browse Talent</Button>
+                  </NextLink>
+                }
+              />
+            ) : getFirstItem(value) === GRID_LAYOUT ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-6">
                 {sortedSampleGroups.map((group) => (
                   <TalentCard
@@ -1015,14 +1056,16 @@ export default function FavoritesPage() {
               ))}
             </div>
           ) : projectGroups.length === 0 ? (
-            <div className="text-center py-20">
-              <Star className="size-10 text-gray-300 mx-auto" />
-              <p className="text-dark-blue-400 mb-2 mt-4 font-medium">No saved projects</p>
-              <p className="text-sm text-gray-500 mb-4">Browse projects and click the star icon to save them</p>
-              <NextLink href="/c/research">
-                <Button>Browse Projects</Button>
-              </NextLink>
-            </div>
+            <EmptyState
+              icon={Briefcase}
+              title="No saved projects yet"
+              description="Browse projects and tap the star icon to save them here. Organize what you love into groups for easy access later."
+              action={
+                <NextLink href="/c/research">
+                  <Button>Browse Projects</Button>
+                </NextLink>
+              }
+            />
           ) : getFirstItem(value) === GRID_LAYOUT ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
               {sortedProjectGroups.map((group) => (
@@ -1047,14 +1090,16 @@ export default function FavoritesPage() {
               ))}
             </div>
           ) : serviceGroups.length === 0 ? (
-            <div className="text-center py-20">
-              <Star className="size-10 text-gray-300 mx-auto" />
-              <p className="text-dark-blue-400 mb-2 mt-4 font-medium">No saved services</p>
-              <p className="text-sm text-gray-500 mb-4">Browse services and click the star icon to save them</p>
-              <NextLink href="/c/research">
-                <Button>Browse Services</Button>
-              </NextLink>
-            </div>
+            <EmptyState
+              icon={Monitor}
+              title="No saved services yet"
+              description="Discover services from top talent and save the ones you&rsquo;re interested in. You can organize them into groups for easy comparison."
+              action={
+                <NextLink href="/c/research">
+                  <Button>Browse Services</Button>
+                </NextLink>
+              }
+            />
           ) : getFirstItem(value) === GRID_LAYOUT ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
               {sortedServiceGroups.map((group) => (

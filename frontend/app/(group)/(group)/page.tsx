@@ -2,6 +2,12 @@
 
 import React from "react"
 import { fromLength, cn } from "@/utils/functions"
+import { projectDetailsUrl } from "@/src/lib/listing-urls"
+import {
+  useFeaturedProjects,
+  type FeaturedProject,
+} from "@/src/lib/api/featured-projects"
+import { ListingCardCompact } from "@/components/listing-card-compact"
 import {
   ChevronLeft,
   ChevronRight,
@@ -16,6 +22,7 @@ import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import { Blocks1 } from "@/components/blocks-1"
+import { ListingCard } from "@/components/listing-card"
 import {
   SwiperContent,
   SwiperNextTrigger,
@@ -114,27 +121,25 @@ const CarouselSection = ({
   description,
   count = 8,
 }: CarouselSectionProps) => {
+  // Shared module-level fetch — every carousel/grid section on the
+  // homepage reuses the same /v1/projects response.
+  const { projects: allProjects } = useFeaturedProjects()
+  const projects = allProjects.slice(0, count)
+
+  const slides: Array<
+    | { kind: "real"; project: FeaturedProject }
+    | { kind: "placeholder"; key: number }
+  > = projects.length > 0
+    ? projects.map((p) => ({ kind: "real" as const, project: p }))
+    : fromLength(count).map((key) => ({ kind: "placeholder" as const, key }))
+
   return (
     <div>
-      <Tabs defaultValue="Projects">
-        <SectionHeader title={title} description={description} />
-        <SwiperRoot>
-          <div className="mt-6 flex justify-between items-center">
-            <TabsList className="flex items-center gap-x-3">
-              {["Projects", "Services", "Teams", "Talent"].map((tab) => (
-                <Badge
-                  key={tab}
-                  variant="circular"
-                  visual="gray"
-                  size="lg"
-                  className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                  asChild
-                >
-                  <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                </Badge>
-              ))}
-            </TabsList>
-
+      <SwiperRoot>
+        <SectionHeader
+          title={title}
+          description={description}
+          rightSlot={
             <div className="flex items-center gap-x-3">
               <SwiperPrevTrigger asChild>
                 <IconButton
@@ -155,79 +160,41 @@ const CarouselSection = ({
                 </IconButton>
               </SwiperNextTrigger>
             </div>
-          </div>
+          }
+        />
 
-          <div className="mt-6">
-            <TabsContent
-              className="gap-5 flex items-center"
-              value="Projects"
-            >
-              <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                {fromLength(count).map((key) => (
-                  <SwiperSlide className="w-[355px]" key={key}>
-                    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                      <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border cursor-pointer border-black/15">
-                        <NextImage
-                          className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                          src="/dashboard.png"
-                          alt="Project"
-                          fill
-                          sizes="33vw"
-                        />
-                      </div>
-
-                      <div className="mt-3 flex items-start gap-x-3">
-                        <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
-                          The Ultimate Mobile App Experience
-                        </span>
-                        <div className="inline-flex items-center gap-x-1">
-                          <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                          <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                            4.9 <span className="font-extralight">(5)</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">
-                        Brief description of the project. Lorem ipsum dolor sit
-                        amet, consectetur adipiscing elit, sed do eiusmod tempor
-                        incididunt.
-                      </p>
-
-                      <div className="mt-[14.5px] flex flex-col gap-y-3">
-                        <div className="flex items-center gap-x-[6.4px]">
-                          <Clock className="size-[18px] shrink-0 text-primary-500" />
-                          <span className="font-medium text-sm leading-none text-dark-blue-400">
-                            Starting from 12 weeks
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-x-[6.4px]">
-                          <Money className="size-[18px] shrink-0 text-primary-500" />
-                          <span className="font-medium text-sm leading-none text-dark-blue-400">
-                            $50,000 budget
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 flex items-end justify-between">
-                        <AvatarGroup
-                          max={5}
-                          size="sm"
-                          excess
-                          excessClassName="border-gray-300 text-gray-500"
-                        >
-                          {fromLength(6).map((k) => (
-                            <Avatar
-                              key={k}
-                              size="sm"
-                              className="border-2 border-white hover:ring-0 active:ring-0"
-                            >
-                              <AvatarImage src="/woman.jpg" alt="Woman" />
-                              <AvatarFallback>W</AvatarFallback>
-                            </Avatar>
-                          ))}
-                        </AvatarGroup>
-
+        <div className="mt-6">
+          <div className="gap-5 flex items-center">
+            <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                {slides.map((slide) => {
+                  const isReal = slide.kind === "real"
+                  const p = isReal ? slide.project : null
+                  const slideKey = isReal
+                    ? `project-${p!.id}`
+                    : `placeholder-${(slide as { key: number }).key}`
+                  return (
+                  <SwiperSlide className="w-[355px]" key={slideKey}>
+                    <ListingCard
+                      kind="project"
+                      id={p?.id ?? `homepage-placeholder-${slideKey}`}
+                      href={
+                        p
+                          ? projectDetailsUrl(p.slug, p.id)
+                          : projectDetailsUrl("modern-brand-identity-design")
+                      }
+                      title={p?.title ?? "The Ultimate Mobile App Experience"}
+                      description={
+                        p?.summary ??
+                        p?.description ??
+                        "Brief description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
+                      }
+                      mediaUrl={p?.mediaUrls?.[0] ?? "/dashboard.png"}
+                      budget="$50,000 budget"
+                      duration="Starting from 12 weeks"
+                      rating={4.9}
+                      reviewCount={5}
+                      collaborators={fromLength(6).map(() => "/woman.jpg")}
+                      favoriteSlot={
                         <FavoriteRoot>
                           {({ pressed }) => (
                             <TooltipProvider delayDuration={75}>
@@ -251,15 +218,15 @@ const CarouselSection = ({
                             </TooltipProvider>
                           )}
                         </FavoriteRoot>
-                      </div>
-                    </article>
+                      }
+                    />
                   </SwiperSlide>
-                ))}
-              </SwiperContent>
-            </TabsContent>
+                  )
+                })}
+            </SwiperContent>
           </div>
-        </SwiperRoot>
-      </Tabs>
+        </div>
+      </SwiperRoot>
     </div>
   )
 }
@@ -271,86 +238,109 @@ const CarouselSection = ({
 const RecentlyViewedSection = ({
   title,
   description,
+  tabs,
+  count = 6,
+  offset = 0,
 }: {
   title: string
   description?: string
+  tabs?: string[]
+  count?: number
+  /** Skip the first N projects — lets two sections on the same page show
+   *  different slices of the same fetched list. */
+  offset?: number
 }) => {
+  const { projects: allProjects } = useFeaturedProjects()
+  const projects = allProjects.slice(offset, offset + count)
+
+  const items: Array<
+    | { kind: "real"; project: FeaturedProject }
+    | { kind: "placeholder"; key: number }
+  > = projects.length > 0
+    ? projects.map((p) => ({ kind: "real" as const, project: p }))
+    : fromLength(count).map((key) => ({ kind: "placeholder" as const, key }))
+
+  const grid = (
+    <div className="mt-[29px] grid grid-cols-3 gap-x-[42px] gap-y-10">
+      {items.map((item) => {
+        if (item.kind === "real") {
+          const p = item.project
+          return (
+            <ListingCardCompact
+              key={`project-${p.id}`}
+              kind="project"
+              id={p.id}
+              slug={p.slug}
+              title={p.title}
+              description={p.summary ?? p.description}
+              mediaUrl={p.mediaUrls?.[0] ?? "/dashboard.png"}
+              budget="Starting at $25,000"
+              duration="2 weeks"
+            />
+          )
+        }
+        return (
+          <ListingCardCompact
+            key={`placeholder-${item.key}`}
+            kind="project"
+            id={`recently-viewed-placeholder-${item.key}`}
+            slug="modern-brand-identity-design"
+            title="BI Sales Forecasting & Inventory Management"
+            description="Tempor nam commodo sapien lobortis pellentesque non. Elementum adipiscing sit senectus faucibus mauris amet. Elementum vitae semper lorem ornare congue."
+            mediaUrl="/dashboard.png"
+            budget="Starting at $25,000"
+            duration="2 weeks"
+          />
+        )
+      })}
+    </div>
+  )
+
   return (
     <div>
-      <Tabs defaultValue="Projects">
-        <div className="flex items-start justify-between gap-x-6">
-          <div className="space-y-2">
-            <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
-              {title}
-            </h1>
-            {description && (
-              <p className="text-base leading-[19.36px] font-light text-gray-500 max-w-[800px]">
-                {description}
-              </p>
-            )}
-          </div>
-          <Button variant="link" visual="gray">
-            View All
-          </Button>
+      <div className="flex items-start justify-between gap-x-6">
+        <div className="space-y-2">
+          <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
+            {title}
+          </h1>
+          {description && (
+            <p className="text-base leading-[19.36px] font-light text-gray-500 max-w-[800px]">
+              {description}
+            </p>
+          )}
         </div>
+        <Button variant="link" visual="gray">
+          {tabs && tabs.length > 0 ? "View More" : "View All"}
+        </Button>
+      </div>
 
-        <div className="mt-6">
-          <TabsList className="flex items-center gap-x-3">
-            {["Projects", "Services", "Teams", "Talent"].map((tab) => (
-              <Badge
-                key={tab}
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                asChild
-              >
-                <TabsTrigger value={tab}>{tab}</TabsTrigger>
-              </Badge>
-            ))}
-          </TabsList>
-        </div>
-
-        <TabsContent value="Projects">
-          <div className="mt-[29px] grid grid-cols-3 gap-x-[42px] gap-y-10">
-            {fromLength(6).map((key) => (
-              <article key={key} className="flex items-start gap-x-6">
-                <div className="relative size-[100px] overflow-hidden rounded-lg shrink-0">
-                  <NextImage
-                    className="object-cover"
-                    src="/dashboard.png"
-                    alt="Dashboard"
-                    sizes="25vw"
-                    fill
-                  />
-                </div>
-
-                <div className="pr-[45.54px]">
-                  <h1 className="cursor-pointer hover:underline transition duration-300 text-base font-bold leading-none line-clamp-2 text-dark-blue-400">
-                    BI Sales Forecasting & Inventory Management
-                  </h1>
-
-                  <p className="mt-2 text-sm font-light text-dark-blue-400 line-clamp-2">
-                    Tempor nam commodo sapien lobortis pellentesque non.
-                    Elementum adipiscing sit senectus faucibus mauris amet.
-                    Elementum vitae semper lorem ornare congue.
-                  </p>
-
-                  <div className="mt-3 flex items-center gap-x-3">
-                    <span className="text-sm font-medium leading-none text-dark-blue-400">
-                      Starting at $25,000
-                    </span>
-                    <span className="inline-block shrink-0 rounded-full size-1 bg-gray-300" />
-                    <span className="text-sm font-medium leading-none text-dark-blue-400">
-                      2 weeks
-                    </span>
-                  </div>
-                </div>
-              </article>
-            ))}
+      {tabs && tabs.length > 0 ? (
+        <Tabs defaultValue={tabs[0]}>
+          <div className="mt-6">
+            <TabsList className="flex items-center gap-x-3 flex-wrap">
+              {tabs.map((tab) => (
+                <Badge
+                  key={tab}
+                  variant="circular"
+                  visual="gray"
+                  size="lg"
+                  className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                  asChild
+                >
+                  <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                </Badge>
+              ))}
+            </TabsList>
           </div>
-        </TabsContent>
-      </Tabs>
+          {tabs.map((tab) => (
+            <TabsContent key={tab} value={tab}>
+              {grid}
+            </TabsContent>
+          ))}
+        </Tabs>
+      ) : (
+        grid
+      )}
     </div>
   )
 }
@@ -479,17 +469,18 @@ export default function Marketplace() {
       <div className="py-[50px]">
         <div className="max-w-[1440px] mx-auto px-[50px] space-y-[50px]">
           <Hero />
-          <CarouselSection
-            title="Our Favorite Projects"
-            description="Hand-picked projects from our top-rated experts across every category — see what teams are building right now."
-          />
-          <RecentlyViewedSection
-            title="Newest Additions"
-            description="The latest projects, services, teams, and talent added to the Marketeq marketplace this week."
-          />
+          <CarouselSection title="Our Favorite Projects" />
+          <RecentlyViewedSection title="Newest Additions" />
           <RecentlyViewedSection
             title="Most Popular Projects"
-            description="The projects, services, teams, and talent generating the most interest from clients across the platform."
+            offset={6}
+            tabs={[
+              "View All",
+              "Top Web Projects",
+              "Top Mobile Projects",
+              "Top Cloud Projects",
+              "Top Digital Marketing Projects",
+            ]}
           />
           <CarouselSection
             title="Online Sales Funnels"

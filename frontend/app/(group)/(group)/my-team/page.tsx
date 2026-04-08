@@ -79,63 +79,7 @@ interface AccountMember {
   status: "active" | "pending"
 }
 
-const ACCOUNT_MEMBERS: AccountMember[] = [
-  {
-    name: "Alicia Hebert",
-    email: "jfriedl@me.com",
-    role: "General Manager",
-    avatarSrc: "https://randomuser.me/api/portraits/women/44.jpg",
-    company: "Alliance Corp.",
-    status: "active",
-  },
-  {
-    name: "Kevin Zavala",
-    email: "raines@live.com",
-    role: "Legal Adviser",
-    avatarSrc: "https://randomuser.me/api/portraits/men/32.jpg",
-    company: "Alliance Corp.",
-    status: "pending",
-  },
-  {
-    name: "Paul Cannon",
-    email: "rande@gmail.com",
-    role: "Graphic Designer",
-    avatarSrc: "https://randomuser.me/api/portraits/men/75.jpg",
-    company: "Alliance Corp.",
-    status: "active",
-  },
-  {
-    name: "Elliot Spencer",
-    email: "leviathan@yahoo.com",
-    role: "Marketing Manager",
-    avatarSrc: "https://randomuser.me/api/portraits/men/22.jpg",
-    company: "Alliance Corp.",
-    status: "active",
-  },
-  {
-    name: "",
-    email: "oevans@icloud.com",
-    role: "",
-    company: "",
-    status: "pending",
-  },
-  {
-    name: "Jenny Gill",
-    email: "hmbrand@me.com",
-    role: "Project Manager",
-    avatarSrc: "https://randomuser.me/api/portraits/women/68.jpg",
-    company: "Alliance Corp.",
-    status: "active",
-  },
-  {
-    name: "Andrew Roddick",
-    email: "john.jacob@gmail.com",
-    role: "Systems Analyst",
-    avatarSrc: "https://randomuser.me/api/portraits/men/86.jpg",
-    company: "Alliance Corp.",
-    status: "active",
-  },
-]
+const ACCOUNT_MEMBERS: AccountMember[] = []
 
 interface TalentMember {
   id: string
@@ -690,6 +634,31 @@ function mapUserToTalent(u: any, index: number): TalentMember {
   }
 }
 
+function EmptyState({
+  icon: Icon = User01,
+  title,
+  description,
+  action,
+}: {
+  icon?: React.ComponentType<{ className?: string }>
+  title: string
+  description: string
+  action?: React.ReactNode
+}) {
+  return (
+    <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-white py-16 px-6 flex flex-col items-center justify-center text-center">
+      <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center">
+        <Icon className="size-6 text-gray-400" />
+      </div>
+      <h3 className="mt-4 text-base font-semibold text-dark-blue-400">
+        {title}
+      </h3>
+      <p className="mt-1 max-w-md text-sm text-gray-500">{description}</p>
+      {action && <div className="mt-5">{action}</div>}
+    </div>
+  )
+}
+
 export default function MyTeam() {
   const [value, setValue] = useState([GRID_LAYOUT])
   const isGrid = getFirstItem(value) === GRID_LAYOUT
@@ -865,6 +834,20 @@ export default function MyTeam() {
                 </div>
               </div>
             )
+          ) : talentMembers.length === 0 ? (
+            <EmptyState
+              icon={User01}
+              title="Your talent network is empty"
+              description="Discover and favorite talent to build your network. Saved talent will appear here for easy access on future projects."
+              action={
+                <NextLink href="/talent">
+                  <Button variant="outlined" visual="gray">
+                    <SearchMd className="size-[15px]" />
+                    Browse Talent
+                  </Button>
+                </NextLink>
+              }
+            />
           ) : isGrid ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6">
               {talentMembers.map((member) => (
@@ -908,7 +891,21 @@ export default function MyTeam() {
 
         {/* External Team Tab */}
         <TabsContent value="External Team">
-          {isGrid ? (
+          {ACCOUNT_MEMBERS.length === 0 ? (
+            <EmptyState
+              icon={User01}
+              title="No external team members yet"
+              description="Invite colleagues, collaborators, or clients to join your external team. They'll get access to shared projects and workspaces."
+              action={
+                <InviteWindowTrigger asChild>
+                  <Button variant="outlined" visual="gray">
+                    <Plus className="size-[15px]" />
+                    Invite a Member
+                  </Button>
+                </InviteWindowTrigger>
+              }
+            />
+          ) : isGrid ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6">
               {ACCOUNT_MEMBERS.map((member) => (
                 <ExternalTeamCard key={member.email} {...member} />

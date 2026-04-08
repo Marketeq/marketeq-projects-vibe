@@ -4987,6 +4987,89 @@ function PublishProject({
   const [submissionOutcome, setSubmissionOutcome] =
     useState<SubmissionOutcome | null>(null)
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
+
+  // Autosave: persist draft to localStorage on every change so new/edited
+  // projects appear on /my-listings even if the user never clicks Save.
+  const draftIdRef = useRef<string>("")
+  if (!draftIdRef.current && typeof window !== "undefined") {
+    const urlParams = new URLSearchParams(window.location.search)
+    const existing = urlParams.get("draftId")
+    draftIdRef.current =
+      existing ||
+      `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  }
+
+  // Load existing draft on mount (if ?draftId= is in URL)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const urlParams = new URLSearchParams(window.location.search)
+    const id = urlParams.get("draftId")
+    if (!id) return
+    try {
+      const raw = window.localStorage.getItem("marketeq-project-drafts")
+      const drafts = raw ? JSON.parse(raw) : {}
+      const draft = drafts[id]
+      if (!draft) return
+      if (draft.projectInfo) projectInfoMethods.reset(draft.projectInfo)
+      if (draft.media) mediaMethods.reset(draft.media)
+      if (draft.projectScope) projectScopeMethods[1](draft.projectScope)
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    // Derive draft lifecycle status. Draft → In Review → Published (after
+    // content moderation passes) or Needs Update (rejected).
+    const draftStatus: "draft" | "in_review" | "published" | "needs_update" =
+      !isProjectSubmitted
+        ? "draft"
+        : submissionOutcome?.status === "published"
+          ? "published"
+          : submissionOutcome?.status === "needs_update"
+            ? "needs_update"
+            : "in_review"
+
+    const saveDraft = () => {
+      try {
+        const info = projectInfoMethods.getValues()
+        const mediaVals = mediaMethods.getValues()
+        const scope = projectScopeMethods[0]
+        const key = "marketeq-project-drafts"
+        const raw = window.localStorage.getItem(key)
+        const drafts = raw ? JSON.parse(raw) : {}
+        drafts[draftIdRef.current] = {
+          id: draftIdRef.current,
+          projectInfo: info,
+          media: {
+            // Strip non-serializable File objects from media
+            featuredVideo: mediaVals?.featuredVideo ?? "",
+          },
+          projectScope: scope,
+          currentStep,
+          status: draftStatus,
+          savedAt: new Date().toISOString(),
+        }
+        window.localStorage.setItem(key, JSON.stringify(drafts))
+      } catch {
+        /* ignore serialization errors */
+      }
+    }
+    saveDraft()
+    if (isProjectSubmitted) return
+    const interval = setInterval(saveDraft, 2000)
+    return () => clearInterval(interval)
+  }, [
+    projectInfoMethods,
+    mediaMethods,
+    projectScopeMethods,
+    currentStep,
+    isProjectSubmitted,
+    submissionOutcome,
+  ])
+
   const projectScopeValue = useMemo(
     () => ({
       projectScopeMethods,

@@ -44,8 +44,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
+import { ListingCard } from "@/components/listing-card"
+import { useTalentUsers, talentToCardProps } from "@/src/lib/api/talent-users"
 
 export default function Talent() {
+  const { talents } = useTalentUsers()
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <div className="py-[50px]">
@@ -264,149 +267,13 @@ export default function Talent() {
                   value="Featured"
                 >
                   <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                  {Array(8)
-                    .fill(0)
-                    .map((_, index) => (
-                      <SwiperSlide className="w-[355px]" key={index}>
-                      <article
-                        className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
-                      >
-                        <div className="p-5">
-                          <div className="relative">
-                            <div className="relative h-[140px] overflow-hidden rounded-[6px]">
-                              <NextImage
-                                src="/man.jpg"
-                                sizes="25vw"
-                                fill
-                                className="object-cover"
-                              />
-                            </div>
-                            <div className="flex items-center absolute px-2.5 pt-2.5 justify-between top-0 inset-x-0">
-                              <div className="font-bold rounded-[5px] py-0.5 px-1.5 bg-black/[.57] inline-flex items-center gap-x-1 text-white text-[10px]">
-                                <Star02 /> All Stars
-                              </div>
-
-                              <Star01 className="size-5 text-white" />
-                            </div>
-
-                            <div className="absolute grid rounded-full shrink-0 border-[2.53px] bg-white size-[29.53px] -left-[7px] -bottom-1 border-white">
-                              <div className="bg-success-500 flex items-center justify-center rounded-full text-white">
-                                <Check className="size-[13.97px]" />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="mt-3">
-                            <h1 className="text-sm font-bold leading-none textd-dark-blue-400">
-                              $85 - $120
-                              <span className="text-[10px] leading-none font-light">
-                                /hr
-                              </span>
-                            </h1>
-
-                            <h1 className="text-sm mt-3 font-bold leading-none text-dark-blue-400">
-                              Ngozi{" "}
-                              <span className="text-[12px] text-gray-500 leading-none font-light">
-                                @BlueberryBelle
-                              </span>
-                            </h1>
-                            <h2 className="text-[12px] text-dark-blue-400 leading-none font-medium mt-0.5">
-                              Marketing Technologist
-                            </h2>
-                            <p className="text-[11px] text-dark-blue-400 leading-none font-light mt-2">
-                              5 years of experience
-                            </p>
-                            <div className="flex items-center text-gray-500 gap-x-1 mt-3.5">
-                              <MarkerPin02 className="size-3" />
-                              <p className="text-[10px] leading-5 font-semibold">
-                                Australia{" "}
-                                <span className="font-light">
-                                  (7:30pm local time)
-                                </span>
-                              </p>
-                            </div>
-
-                            <div className="mt-3.5 flex items-center gap-x-2">
-                              <div className="flex items-center gap-x-2">
-                                <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
-                                  <div className="flex items-center gap-x-[3px]">
-                                    <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
-                                    <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
-                                    <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
-                                    <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
-                                    <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
-                                  </div>
-                                </div>
-                                <span className="text-xs font-semibold leading-none text-dark-blue-400">
-                                  4.7
-                                </span>
-                              </div>
-                              <span className="text-xs font-semibold leading-none text-dark-blue-400">
-                                2 Projects
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="relative p-3 flex flex-wrap gap-2 border-t border-gray-200 bg-[#122A4B]/[.02]">
-                          <div className="absolute right-3 bottom-3">
-                            <Button variant="link" visual="gray">
-                              More...
-                            </Button>
-                          </div>
-                          <Button
-                            className="text-gray-500/60 hover:text-gray-500"
-                            variant="link"
-                            visual="gray"
-                          >
-                            AR/VR Design
-                          </Button>
-                          <Button
-                            className="text-gray-500/60 hover:text-gray-500"
-                            variant="link"
-                            visual="gray"
-                          >
-                            AR/VR Design
-                          </Button>
-                          <Button
-                            className="text-gray-500/60 hover:text-gray-500"
-                            variant="link"
-                            visual="gray"
-                          >
-                            AR/VR Design
-                          </Button>
-                          <Button
-                            className="text-gray-500/60 hover:text-gray-500"
-                            variant="link"
-                            visual="gray"
-                          >
-                            AR/VR Design
-                          </Button>
-                          <Button
-                            className="text-gray-500/60 hover:text-gray-500"
-                            variant="link"
-                            visual="gray"
-                          >
-                            AR/VR Design
-                          </Button>
-                          <Button
-                            className="text-gray-500/60 hover:text-gray-500"
-                            variant="link"
-                            visual="gray"
-                          >
-                            AR/VR Design
-                          </Button>
-                          <Button
-                            className="text-gray-500/60 hover:text-gray-500"
-                            variant="link"
-                            visual="gray"
-                          >
-                            AR/VR Design
-                          </Button>
-                        </div>
-                      </article>
+                  {talents.length > 0 ? (
+                    talents.slice(0, 8).map((u, idx) => (
+                      <SwiperSlide className="w-[355px]" key={u.id}>
+                        <ListingCard kind="talent" {...talentToCardProps(u, idx)} />
                       </SwiperSlide>
-                    ))}
+                    ))
+                  ) : null}
                   </SwiperContent>
                 </TabsContent>
               </div>
