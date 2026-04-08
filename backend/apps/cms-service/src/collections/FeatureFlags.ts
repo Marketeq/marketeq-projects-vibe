@@ -35,7 +35,7 @@ export const FeatureFlags: CollectionConfig = {
       type: 'number',
       min: 0,
       max: 100,
-      defaultValue: 100,
+      defaultValue: 0,
     },
   ],
 };

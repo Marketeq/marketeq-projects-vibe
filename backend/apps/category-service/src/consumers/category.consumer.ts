@@ -1,4 +1,4 @@
-import { Controller, Logger } from '@nestjs/common';
+import { Controller, Logger, NotFoundException } from '@nestjs/common';
 import { EventPattern, Payload, Ctx, RmqContext } from '@nestjs/microservices';
 import { CategoryService } from '../app/category.service';
 
@@ -50,7 +50,8 @@ export class CategoryConsumer {
       channel.ack(message);
     } catch (err) {
       this.logger.error(`Failed to process category.saved for ${event.slug}`, err);
-      channel.nack(message, false, false);
+      // Requeue on transient errors so the message can be retried
+      channel.nack(message, false, true);
     }
   }
 
@@ -67,12 +68,13 @@ export class CategoryConsumer {
       await this.categoryService.deleteCategory(event.id);
       channel.ack(message);
     } catch (err: any) {
-      if (err?.message?.includes('not found')) {
+      if (err instanceof NotFoundException) {
         this.logger.warn(`Category already deleted: ${event.slug}`);
         channel.ack(message);
       } else {
         this.logger.error(`Failed to process category.deleted for ${event.slug}`, err);
-        channel.nack(message, false, false);
+        // Requeue on transient errors
+        channel.nack(message, false, true);
       }
     }
   }

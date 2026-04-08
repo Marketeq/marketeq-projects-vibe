@@ -25,6 +25,7 @@ export const Listings: CollectionConfig = {
     {
       name: 'listingType',
       type: 'select',
+      required: true,
       options: [
         { label: 'Project', value: 'project' },
         { label: 'Service', value: 'service' },

@@ -290,14 +290,13 @@ private async buildBlocks(
       try {
         const healthResult = await this.healthService.assess({ blocks: validBlocks });
         
-        this.logger.log('='.repeat(50));
-        this.logger.log('🏥 PAGE HEALTH CHECK:');
-        this.logger.log(`Overall: ${healthResult.pass ? ' PASS' : ' FAIL'}`);
+        this.logger.log('--- PAGE HEALTH CHECK ---');
+        this.logger.log(`Overall: ${healthResult.pass ? 'PASS' : 'FAIL'}`);
         healthResult.checks.forEach(check => {
-          const icon = check.pass ? '✅' : '❌';
-          this.logger.log(`  ${icon} ${check.entity}: ${check.reason}`);
+          const status = check.pass ? '[PASS]' : '[FAIL]';
+          this.logger.log(`  ${status} ${check.entity}: ${check.reason}`);
         });
-        this.logger.log('='.repeat(50));
+        this.logger.log('--- END HEALTH CHECK ---');
       } catch (error) {
         this.logger.error('Health check error:', error.message);
       }

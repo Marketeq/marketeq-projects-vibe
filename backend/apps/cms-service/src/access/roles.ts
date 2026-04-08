@@ -74,3 +74,31 @@ export const isAdminOrDeveloperField: FieldAccess = ({ req: { user } }) => {
   const role = (user as UserDoc)?.role;
   return role === 'admin' || role === 'developer';
 };
+
+/**
+ * Editor or above — content_editor, developer, admin.
+ * Used for collections where editors should be able to create/update.
+ */
+export const isEditor: Access = ({ req: { user } }) => {
+  const role = (user as UserDoc)?.role;
+  return role === 'admin' || role === 'developer' || role === 'content_editor';
+};
+
+/**
+ * Public read for published content; CMS users (any role) see all statuses.
+ * Falls back to a where-clause for unauthenticated / non-CMS visitors.
+ */
+export const readPublishedOrCmsUser: Access = ({ req: { user } }) => {
+  const u = user as UserDoc;
+  const role = u?.role;
+
+  if (role === 'admin' || role === 'developer' || role === 'content_editor' || role === 'author') {
+    return true;
+  }
+
+  return {
+    _status: {
+      equals: 'published',
+    },
+  };
+};

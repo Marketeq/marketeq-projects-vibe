@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { timingSafeEqual } from 'crypto';
 
 @Injectable()
 export class ServiceAuthGuard implements CanActivate {
@@ -16,7 +17,11 @@ export class ServiceAuthGuard implements CanActivate {
     if (!expectedToken) {
       throw new UnauthorizedException('INTERNAL_SERVICE_TOKEN not configured');
     }
-    if (!token || token !== expectedToken) {
+    if (
+      !token ||
+      token.length !== expectedToken.length ||
+      !timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken))
+    ) {
       throw new UnauthorizedException('Invalid service token');
     }
     return true;

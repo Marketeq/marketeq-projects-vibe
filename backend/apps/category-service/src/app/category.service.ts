@@ -81,12 +81,17 @@ export class CategoryService {
     // 3) Assign basic fields
     cat.name = dto.name;
     cat.slug = dto.slug;
-    cat.seo_meta_title = dto.seo_meta_title ?? undefined;
-    cat.seo_meta_description = dto.seo_meta_description ?? undefined;
+    if (dto.seo_meta_title !== undefined) cat.seo_meta_title = dto.seo_meta_title;
+    if (dto.seo_meta_description !== undefined) cat.seo_meta_description = dto.seo_meta_description;
     cat.approved = !!dto.approved;
     cat.published_in_marketplace = !!dto.published_in_marketplace;
 
-    // 4) Resolve parent by uuid — WITH PROTECTION against clearing existing values
+    // 4) Validate parent BEFORE assignment to prevent race conditions
+    if (dto.parent) {
+      await this.validateParent(dto.uuid, dto.parent);
+    }
+
+    // 5) Resolve parent by uuid — WITH PROTECTION against clearing existing values
     if (dto.parent) {
       const parent = await this.catRepo.findOne({ where: { uuid: dto.parent } });
       if (parent) {
@@ -120,18 +125,10 @@ export class CategoryService {
       }
     }
 
-    // 5) Attach tags
+    // 6) Attach tags
     cat.tags = tagEntities;
 
-    // 5b) Circular parent check
-    if (dto.parent) {
-      const parentRow = await this.catRepo.findOne({ where: { uuid: dto.parent } });
-      if (parentRow) {
-        await this.validateParent(dto.uuid, dto.parent);
-      }
-    }
-
-    // 6) Save
+    // 7) Save
     await this.catRepo.save(cat);
     this.logger.log(`Category synced locally: ${cat.uuid} (${cat.slug})`);
   }
@@ -148,7 +145,7 @@ export class CategoryService {
 
     while (hasNextPage) {
       const url = `${base}/api/categories?depth=2&limit=${PAGE_SIZE}&page=${page}`;
-      const res = await this.http.axiosRef.get(url, { headers: this.authHeader() });
+      const res = await this.http.axiosRef.get(url, { headers: this.authHeader(), timeout: 30000 });
 
       const list = Array.isArray(res.data?.docs) ? res.data.docs : [];
 
@@ -161,7 +158,10 @@ export class CategoryService {
       hasNextPage = res.data?.hasNextPage ?? false;
       page++;
 
-      if (page > 500) break; // safety limit
+      if (page > 500) {
+        this.logger.warn('Fallback sync hit 500-page safety limit — some categories may not be synced');
+        break;
+      }
     }
 
     this.logger.log(`Fallback pulled ${total} categories from CMS`);

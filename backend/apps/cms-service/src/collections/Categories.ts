@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { CollectionConfig } from 'payload/types';
 import { isAdmin, isAdminOrDeveloper } from '../access/roles';
 import { syncCategoryToService, deleteCategoryFromService } from '../hooks/afterChange/syncCategories';
@@ -29,7 +30,7 @@ export const Categories: CollectionConfig = {
         beforeValidate: [
           ({ value, operation }) => {
             if (operation === 'create' && !value) {
-              return require('crypto').randomUUID();
+              return randomUUID();
             }
             return value;
           },
