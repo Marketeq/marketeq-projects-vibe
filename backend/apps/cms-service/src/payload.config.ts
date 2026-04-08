@@ -9,6 +9,7 @@ import { Listings } from './collections/Listings';
 import { Users } from './collections/Users';
 import { Orders } from './collections/Orders';
 import { Categories } from './collections/Categories';
+import { TalentProfiles } from './collections/TalentProfiles';
 import { BlogPosts } from './collections/BlogPosts';
 import { HelpArticles } from './collections/HelpArticles';
 import { Announcements } from './collections/Announcements';
@@ -24,6 +25,7 @@ import { AdminConfig } from './globals/AdminConfig';
 
 // Plugins
 import { categorySyncPlugin } from './plugins/categorySync.plugin';
+import { talentProfileSyncPlugin } from './plugins/talentProfileSync.plugin';
 
 export default buildConfig({
   serverURL: process.env.CMS_SERVER_URL || 'http://localhost:3020',
@@ -69,10 +71,6 @@ export default buildConfig({
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL,
-      max: 10,
-      min: 2,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
     },
     schemaName: 'cms',
   }),
@@ -82,6 +80,7 @@ export default buildConfig({
     Users,
     Orders,
     Categories,
+    TalentProfiles,
     BlogPosts,
     HelpArticles,
     Announcements,
@@ -99,6 +98,7 @@ export default buildConfig({
 
   plugins: [
     categorySyncPlugin,
+    talentProfileSyncPlugin,
     seoPlugin({
       uploadsCollection: 'media',
       generateTitle: ({ doc }: any) => `${doc?.title || 'Marketeq'} | Marketeq`,
