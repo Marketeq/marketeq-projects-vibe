@@ -13,10 +13,14 @@ Vibe Coding Marketeq Projects talent network platform.
 - Auth: 3001
 - Gateway: 4000
 - User: 3002
-- Listings: 3004
+- Listings: 3003
+- Messaging: 3005
+- Checkout: 3009
+- Notification: 3006
+- Favorites: 3012
+- Contracts: 3010
 - Autocomplete: 3019
 - Content moderation: 3014
-- Notification: 3006
 - Invitations: 3013
 - Python moderation API: 8000
 
@@ -114,6 +118,52 @@ to confirm authentication is using your API key.
 ```bash
 unset ANTHROPIC_API_KEY
 claude
+```
+
+## E2E Encryption Setup (Messaging)
+
+The messaging service uses end-to-end encryption. Additional setup required:
+
+### 1) Add `E2EE_SERVER_SECRET` to `backend/.env`
+```bash
+# Generate a random secret
+openssl rand -hex 32
+# Add to .env
+E2EE_SERVER_SECRET=<paste_generated_value>
+```
+The messaging-service **will not start** without this variable.
+
+### 2) Create user-keys tables
+The user-service has `synchronize: false`, so encryption tables must be created manually:
+```bash
+cd backend
+node -e "
+const { DataSource } = require('typeorm');
+require('dotenv').config();
+const ds = new DataSource({ type: 'postgres', url: process.env.DATABASE_URL, schema: 'user_service' });
+ds.initialize().then(async () => {
+  await ds.query('CREATE TABLE IF NOT EXISTS user_service.user_keys (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), \"userId\" UUID NOT NULL, \"publicKey\" TEXT NOT NULL, \"encryptedPrivateKey\" TEXT, \"createdAt\" TIMESTAMP NOT NULL DEFAULT now(), \"updatedAt\" TIMESTAMP NOT NULL DEFAULT now())');
+  await ds.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_user_keys_userId ON user_service.user_keys (\"userId\")');
+  await ds.query('CREATE TABLE IF NOT EXISTS user_service.user_devices (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), \"userId\" UUID NOT NULL, \"publicKey\" TEXT NOT NULL, \"deviceName\" VARCHAR, \"createdAt\" TIMESTAMP NOT NULL DEFAULT now(), \"updatedAt\" TIMESTAMP NOT NULL DEFAULT now())');
+  await ds.query('CREATE INDEX IF NOT EXISTS idx_user_devices_userId ON user_service.user_devices (\"userId\")');
+  console.log('Tables created');
+  await ds.destroy();
+}).catch(e => { console.error(e.message); process.exit(1); });
+"
+```
+
+### 3) Gateway route mappings
+Ensure `backend/apps/api-gateway/src/proxy/proxy.controller.ts` has these in `SERVICE_PREFIX_MAP`:
+```ts
+messaging: 'messages',
+'user-keys': 'users',
+devices: 'users',
+```
+And the v1 routing block includes:
+```ts
+} else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {
+  prefix = 'messages'
+}
 ```
 
 ## Project Notes
