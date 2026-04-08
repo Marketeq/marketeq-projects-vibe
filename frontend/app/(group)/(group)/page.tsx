@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import { fromLength, cn } from "@/utils/functions"
 import { projectDetailsUrl } from "@/src/lib/listing-urls"
 import {
@@ -49,34 +49,308 @@ import {
 // Contained banner (matches L1 category page hero pattern), 350px tall, content
 // hugged with 75px padding all around. NOT edge-to-edge — sits inside the
 // shared content container with rounded corners.
-const Hero = () => {
-  return (
-    <div className="relative rounded-lg overflow-hidden h-[350px]">
-      <NextImage
-        className="object-cover"
-        src="/sending-emails.png"
-        alt="UX / UI Experts on Demand"
-        fill
-        sizes="100vw"
-        priority
-      />
-      <div className="absolute inset-0 bg-black/55" />
+//
+// Multi-slide rotating hero with cross-fade, Ken Burns zoom, staggered text
+// reveal, and bottom-left slide navigator with filling progress bars. Draws
+// from best-in-class patterns (Framer/Linear/Apple/Stripe/Vercel) without any
+// new dependencies — pure React state + CSS transitions.
+interface HeroSlide {
+  eyebrow: string
+  title: string
+  description: string
+  ctaLabel: string
+  href: string
+  image: string
+  // Tailwind gradient fragment applied over the image — gives each slide a
+  // distinct accent tint beneath the dark overlay.
+  accent: string
+}
 
+const HERO_SLIDES: HeroSlide[] = [
+  {
+    eyebrow: "Design",
+    title: "UX / UI Experts on Demand",
+    description:
+      "Ship pixel-perfect product experiences with senior designers who embed with your team in days, not months.",
+    ctaLabel: "Browse UX / UI experts",
+    href: "/c/design",
+    image: "/sending-emails.png",
+    accent:
+      "from-[#1661F6]/40 via-transparent to-[#0B1C3A]/60",
+  },
+  {
+    eyebrow: "AI & Data",
+    title: "AI Specialists Who Ship",
+    description:
+      "From RAG pipelines to production ML — hire AI engineers who turn your data into revenue, not research papers.",
+    ctaLabel: "Explore AI talent",
+    href: "/c/artificial-intelligence",
+    image: "/artificial-intelligence.jpeg",
+    accent:
+      "from-[#6E3DF6]/45 via-transparent to-[#0B1C3A]/65",
+  },
+  {
+    eyebrow: "Cloud",
+    title: "Cloud & DevOps, Done Right",
+    description:
+      "Scale confidently with certified cloud architects — AWS, GCP, Azure, Kubernetes, and CI/CD built to last.",
+    ctaLabel: "Find cloud engineers",
+    href: "/c/cloud",
+    image: "/clouds.png",
+    accent:
+      "from-[#0EA5E9]/40 via-transparent to-[#0B1C3A]/65",
+  },
+  {
+    eyebrow: "Mobile",
+    title: "Mobile Teams That Launch",
+    description:
+      "Native iOS, Android, and cross-platform apps built by teams with App Store and Play Store hits on their resume.",
+    ctaLabel: "Meet mobile teams",
+    href: "/c/mobile",
+    image: "/design-screens.png",
+    accent:
+      "from-[#F6953D]/35 via-transparent to-[#0B1C3A]/65",
+  },
+]
+
+const HERO_INTERVAL_MS = 7000
+
+const Hero = () => {
+  const [active, setActive] = useState(0)
+  const [paused, setPaused] = useState(false)
+  // Incrementing key forces the content stagger animation to replay whenever
+  // the active slide changes (including on manual clicks).
+  const [tick, setTick] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const goTo = useCallback((index: number) => {
+    setActive((prev) => {
+      const next = (index + HERO_SLIDES.length) % HERO_SLIDES.length
+      if (next !== prev) setTick((t) => t + 1)
+      return next
+    })
+  }, [])
+
+  // Auto-advance with pause-on-hover. Re-schedules on every slide change so
+  // manual navigation resets the timer (feels less janky than a fixed tick).
+  useEffect(() => {
+    if (paused) return
+    timerRef.current = setTimeout(() => {
+      setActive((prev) => (prev + 1) % HERO_SLIDES.length)
+      setTick((t) => t + 1)
+    }, HERO_INTERVAL_MS)
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [active, paused])
+
+  const current = HERO_SLIDES[active]
+
+  return (
+    <div
+      className="group/hero relative rounded-lg overflow-hidden h-[350px] isolate"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      {/* Layered slide images — each absolutely positioned, cross-fading via
+          opacity. The active slide slowly zooms (Ken Burns) while visible. */}
+      {HERO_SLIDES.map((slide, i) => {
+        const isActive = i === active
+        return (
+          <div
+            key={slide.image}
+            className={cn(
+              "absolute inset-0 transition-opacity ease-out",
+              isActive ? "opacity-100" : "opacity-0"
+            )}
+            style={{ transitionDuration: "1200ms" }}
+            aria-hidden={!isActive}
+          >
+            <div
+              className={cn(
+                "absolute inset-0 will-change-transform",
+                isActive ? "hero-kenburns" : ""
+              )}
+            >
+              <NextImage
+                className="object-cover"
+                src={slide.image}
+                alt={slide.title}
+                fill
+                sizes="100vw"
+                priority={i === 0}
+              />
+            </div>
+            {/* Per-slide accent gradient — gives each slide its own tint */}
+            <div
+              className={cn(
+                "absolute inset-0 bg-gradient-to-br mix-blend-multiply",
+                slide.accent
+              )}
+            />
+          </div>
+        )
+      })}
+
+      {/* Sophisticated multi-stop overlay (not flat black). Darker on the
+          right where the text sits, fading to a subtle tint on the left where
+          the navigator lives so the imagery stays visible. */}
+      <div className="absolute inset-0 bg-[linear-gradient(100deg,rgba(11,28,58,0.35)_0%,rgba(11,28,58,0.55)_45%,rgba(11,28,58,0.78)_100%)]" />
+      {/* Soft vignette to anchor the edges */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_55%,rgba(0,0,0,0.35)_100%)] pointer-events-none" />
+
+      {/* Content — staggered reveal keyed on `tick` so each slide change
+          replays the entry animation. */}
       <div className="absolute inset-0 flex">
-        <div className="ml-auto p-[75px] max-w-[643px] flex flex-col justify-center">
-          <h1 className="text-[36px] leading-[43.57px] font-bold text-white">
-            UX / UI Experts on Demand
+        <div
+          key={tick}
+          className="ml-auto p-[75px] max-w-[643px] flex flex-col justify-center"
+        >
+          <span className="hero-reveal hero-reveal-eyebrow inline-flex items-center gap-x-2 text-[11px] leading-none font-semibold uppercase tracking-[0.18em] text-white/80">
+            <span className="inline-block h-px w-6 bg-white/60" />
+            {current.eyebrow}
+          </span>
+          <h1 className="hero-reveal hero-reveal-title text-[36px] leading-[43.57px] font-bold text-white mt-3">
+            {current.title}
           </h1>
-          <p className="text-lg leading-[21.78px] mt-[7px] text-white font-light">
-            Get your ux / ui done right with one of our product design experts,
-            fully customizable done for you services.
+          <p className="hero-reveal hero-reveal-desc text-lg leading-[21.78px] mt-[7px] text-white/90 font-light">
+            {current.description}
           </p>
 
-          <button className="self-start focus-visible:outline-none whitespace-nowrap shrink-0 mt-[38px] border-2 h-10 border-white px-3.5 rounded-[5px] flex items-center justify-center text-[13px] leading-6 font-semibold text-white">
-            browse UX / UI experts
-          </button>
+          <NextLink
+            href={current.href}
+            className="hero-reveal hero-reveal-cta group/cta self-start focus-visible:outline-none whitespace-nowrap shrink-0 mt-[38px] border-2 h-10 border-white px-4 rounded-[5px] inline-flex items-center justify-center gap-x-2 text-[13px] leading-6 font-semibold text-white backdrop-blur-[2px] hover:bg-white hover:text-dark-blue-400 transition-colors duration-300"
+          >
+            {current.ctaLabel}
+            <ChevronRight className="size-4 transition-transform duration-300 group-hover/cta:translate-x-0.5" />
+          </NextLink>
         </div>
       </div>
+
+      {/* Bottom-left navigator — slide number + filling progress bars */}
+      <div className="absolute left-[50px] bottom-[38px] flex flex-col gap-y-4 text-white select-none">
+        <div className="flex items-end gap-x-2 leading-none tabular-nums">
+          <span
+            key={`num-${active}`}
+            className="hero-reveal hero-reveal-num text-[44px] font-bold tracking-tight"
+          >
+            {String(active + 1).padStart(2, "0")}
+          </span>
+          <span className="text-[15px] font-light text-white/60 pb-1.5">
+            / {String(HERO_SLIDES.length).padStart(2, "0")}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-x-2">
+          {HERO_SLIDES.map((slide, i) => {
+            const isActive = i === active
+            const isPast = i < active
+            return (
+              <button
+                key={slide.image}
+                type="button"
+                aria-label={`Go to slide ${i + 1}: ${slide.title}`}
+                onClick={() => goTo(i)}
+                className="group/dot relative h-[3px] w-10 overflow-hidden rounded-full bg-white/25 hover:bg-white/40 transition-colors"
+              >
+                <span
+                  className={cn(
+                    "absolute inset-y-0 left-0 bg-white rounded-full",
+                    isActive && !paused && "hero-progress",
+                    isActive && paused && "w-full",
+                    isPast && "w-full",
+                    !isActive && !isPast && "w-0"
+                  )}
+                  style={
+                    isActive && !paused
+                      ? { animationDuration: `${HERO_INTERVAL_MS}ms` }
+                      : undefined
+                  }
+                />
+              </button>
+            )
+          })}
+        </div>
+
+        <div
+          key={`label-${active}`}
+          className="hero-reveal hero-reveal-label text-[11px] font-medium uppercase tracking-[0.14em] text-white/70"
+        >
+          {current.eyebrow} · Featured
+        </div>
+      </div>
+
+      {/* Scoped styles for the banner. Co-located so the hero is
+          self-contained and easy to tweak without hunting through globals. */}
+      <style jsx>{`
+        @keyframes hero-kenburns {
+          0% {
+            transform: scale(1) translate3d(0, 0, 0);
+          }
+          100% {
+            transform: scale(1.08) translate3d(-1%, -1%, 0);
+          }
+        }
+        :global(.hero-kenburns) {
+          animation: hero-kenburns ${HERO_INTERVAL_MS + 1500}ms
+            cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+        }
+
+        @keyframes hero-reveal-up {
+          0% {
+            opacity: 0;
+            transform: translate3d(0, 14px, 0);
+            filter: blur(4px);
+          }
+          100% {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+            filter: blur(0);
+          }
+        }
+        :global(.hero-reveal) {
+          animation: hero-reveal-up 900ms cubic-bezier(0.22, 0.61, 0.36, 1)
+            both;
+        }
+        :global(.hero-reveal-eyebrow) {
+          animation-delay: 80ms;
+        }
+        :global(.hero-reveal-title) {
+          animation-delay: 160ms;
+        }
+        :global(.hero-reveal-desc) {
+          animation-delay: 260ms;
+        }
+        :global(.hero-reveal-cta) {
+          animation-delay: 380ms;
+        }
+        :global(.hero-reveal-num) {
+          animation-delay: 120ms;
+        }
+        :global(.hero-reveal-label) {
+          animation-delay: 300ms;
+        }
+
+        @keyframes hero-progress {
+          0% {
+            width: 0%;
+          }
+          100% {
+            width: 100%;
+          }
+        }
+        :global(.hero-progress) {
+          animation: hero-progress linear forwards;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          :global(.hero-kenburns),
+          :global(.hero-reveal),
+          :global(.hero-progress) {
+            animation: none !important;
+          }
+        }
+      `}</style>
     </div>
   )
 }
