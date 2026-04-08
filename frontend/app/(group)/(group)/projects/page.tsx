@@ -22,6 +22,7 @@ import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
+import { ListingCard } from "@/components/listing-card"
 import {
   Avatar,
   AvatarFallback,
@@ -378,148 +379,79 @@ export default function Projects() {
                   ) : displayedProjects.length > 0 ? (
                     displayedProjects.slice(0, 8).map((project) => (
                       <SwiperSlide className="w-[355px]" key={project.id}>
-                      <article
-                        className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] flex flex-col"
-                      >
-                        {/* Image */}
-                        <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                          <NextImage
-                            className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                            src={project.coverImage || project.thumbnail || "/dashboard.png"}
-                            alt={project.title || "Project"}
-                            fill
-                            sizes="33vw"
-                          />
-                        </div>
-
-                        {/* Title and Rating */}
-                        <div className="mt-3 flex items-start gap-x-3">
-                          <NextLink
-                            href={buildProjectUrl(categorySlugPath, project.slug, project.id)}
-                            className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                          >
-                            {project.title}
-                          </NextLink>
-
-                          {/* Only show rating if reviews exist */}
-                          {project.rating && (project.reviewCount ?? 0) > 0 && (
-                            <div className="inline-flex items-center gap-x-1">
-                              <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                              <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                {project.rating} <span className="font-extralight">({project.reviewCount})</span>
-                              </span>
-                            </div>
+                        <ListingCard
+                          kind="project"
+                          id={project.id}
+                          title={project.title ?? ""}
+                          description={
+                            project.summary ||
+                            project.description ||
+                            "No description available"
+                          }
+                          mediaUrl={
+                            project.coverImage ||
+                            project.thumbnail ||
+                            "/dashboard.png"
+                          }
+                          budget={`$${project.scopeTotal?.budget || project.price || "50,000"} budget`}
+                          duration={`Starting from ${project.scopeTotal?.timeline || "12 weeks"}`}
+                          rating={
+                            project.rating && (project.reviewCount ?? 0) > 0
+                              ? project.rating
+                              : undefined
+                          }
+                          reviewCount={
+                            project.rating && (project.reviewCount ?? 0) > 0
+                              ? project.reviewCount
+                              : undefined
+                          }
+                          href={buildProjectUrl(
+                            categorySlugPath,
+                            project.slug,
+                            project.id
                           )}
-                        </div>
-
-                        {/* Description - 3 lines truncated */}
-                        <p className="mt-3 text-sm leading-[1.4] font-extralight text-dark-blue-400 line-clamp-3">
-                          {project.summary || project.description || "No description available"}
-                        </p>
-
-                        {/* Timeline and Budget from scopeTotal */}
-                        <div className="mt-[14.5px] flex flex-col gap-y-3">
-                          <div className="flex items-center gap-x-[6.4px]">
-                            <Clock className="size-[18px] shrink-0 text-primary-500" />
-                            <span className="font-medium text-sm leading-none text-dark-blue-400">
-                              Starting from {project.scopeTotal?.timeline || '12 weeks'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-x-[6.4px]">
-                            <Money className="size-[18px] shrink-0 text-primary-500" />
-                            <span className="font-medium text-sm leading-none text-dark-blue-400">
-                              ${project.scopeTotal?.budget || project.price || '50,000'} budget
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Pinned to bottom with mt-auto */}
-                        <div className="mt-auto pt-5 flex items-end justify-between">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
-                                  {Array(3).fill(0).map((_, i) => (
-                                    <Avatar key={i} size="sm" className="border-2 border-white hover:ring-0 active:ring-0">
-                                      <AvatarImage src="/woman.jpg" alt="Team member" />
-                                      <AvatarFallback>U</AvatarFallback>
-                                    </Avatar>
-                                  ))}
-                                </AvatarGroup>
-                              </TooltipTrigger>
-                              <TooltipContent className="p-0 max-w-[262px]" size="md">
-                                <ScrollArea className="h-[192px] p-3" scrollBar={<ScrollBar className="w-4 p-1" thumbClassName="bg-white/20" />}>
-                                  <div className="space-y-3 pr-5">
-                                    {Array(4).fill(0).map((_, i) => (
-                                      <div key={i} className="flex items-center gap-x-[18px]">
-                                        <div className="flex items-center gap-x-2 flex-auto">
-                                          <Avatar>
-                                            <AvatarImage src="/woman.jpg" alt="Team member" />
-                                            <AvatarFallback>U</AvatarFallback>
-                                          </Avatar>
-                                          <div className="flex flex-col flex-auto">
-                                            <div className="flex items-center gap-x-0.5">
-                                              <span className="text-xs leading-5 font-semibold text-white">Sevil</span>
-                                              <span className="text-[10px] leading-none font-light text-white">@designsuperstar23</span>
-                                            </div>
-                                            <span className="text-[10px] font-light text-white">Full-stack Developer</span>
-                                          </div>
-                                        </div>
-                                        <span className="text-sm font-semibold text-white leading-5">
-                                          $75 <span className="text-[10px] font-light leading-5">/hr</span>
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </ScrollArea>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-
-                          <FavoriteRoot
-                            onValueChange={async (pressed) => {
-                              if (pressed) {
-                                // Add to favorites
-                                const result = await addFavorite({
-                                  type: 'project',
-                                  itemId: project.id,
-                                });
-                                console.log('Added to favorites:', result);
-                              } else {
-                                // Remove from favorites
-                                const favorite = await findFavoriteByItemId(project.id);
-                                if (favorite) {
-                                  const success = await removeFavorite(favorite.id);
-                                  console.log('Removed from favorites:', success);
+                          favoriteSlot={
+                            <FavoriteRoot
+                              onValueChange={async (pressed) => {
+                                if (pressed) {
+                                  await addFavorite({
+                                    type: "project",
+                                    itemId: project.id,
+                                  })
+                                } else {
+                                  const favorite = await findFavoriteByItemId(
+                                    project.id
+                                  )
+                                  if (favorite) {
+                                    await removeFavorite(favorite.id)
+                                  }
                                 }
-                              }
-                            }}
-                          >
-                            {({ pressed }) => (
-                              <TooltipProvider delayDuration={75}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-block">
-                                      <Favorite />
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {pressed ? (
-                                      <span className="inline-flex items-center gap-x-1">
-                                        <Check className="size-[15px] shrink-0 text-green-500" />
-                                        Saved
+                              }}
+                            >
+                              {({ pressed }) => (
+                                <TooltipProvider delayDuration={75}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="inline-block">
+                                        <Favorite />
                                       </span>
-                                    ) : (
-                                      "Save to favorites"
-                                    )}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </FavoriteRoot>
-                        </div>
-                      </article>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {pressed ? (
+                                        <span className="inline-flex items-center gap-x-1">
+                                          <Check className="size-[15px] shrink-0 text-green-500" />
+                                          Saved
+                                        </span>
+                                      ) : (
+                                        "Save to favorites"
+                                      )}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </FavoriteRoot>
+                          }
+                        />
                       </SwiperSlide>
                     ))
                   ) : (
@@ -893,287 +825,43 @@ export default function Projects() {
                     .fill(0)
                     .map((_, index) => (
                       <SwiperSlide className="w-[355px]" key={index}>
-                      <article
-                        className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] flex flex-col"
-                      >
-                        <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                          <NextImage
-                            className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                            src="/dashboard.png"
-                            alt="Dashboard"
-                            fill
-                            sizes="33vw"
-                          />
-                        </div>
-
-                        <div className="mt-3 flex items-start gap-x-3">
-                          <NextLink
-                            href="#"
-                            className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                          >
-                            The Ultimate Mobile App Experience
-                          </NextLink>
-
-                          <div className="inline-flex items-center gap-x-1">
-                            <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                            <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                              4.9 <span className="font-extralight">(5)</span>
-                            </span>
-                          </div>
-                        </div>
-
-                        <p className="mt-3 text-sm leading-[1.4] font-extralight text-dark-blue-400 line-clamp-3">
-                          Brief Description of the project. Lorem ipsum dolor
-                          sit amet, consectetur adipiscing elit, sed do eiusmod
-                          tempor incididunt.
-                        </p>
-
-                        <div className="mt-[14.5px] flex flex-col gap-y-3">
-                          <div className="flex items-center gap-x-[6.4px]">
-                            <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                            <span className="font-medium text-sm leading-none text-dark-blue-400">
-                              Starting from 12 weeks
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-x-[6.4px]">
-                            <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                            <span className="font-medium text-sm leading-none text-dark-blue-400">
-                              $50,000 budget
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="mt-auto pt-5 flex items-end justify-between">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <AvatarGroup
-                                  max={5}
-                                  size="sm"
-                                  excess
-                                  excessClassName="border-gray-300 text-gray-500"
-                                >
-                                  <Avatar
-                                    size="sm"
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                  >
-                                    <AvatarImage src="/woman.jpg" alt="Woman" />
-                                    <AvatarFallback>W</AvatarFallback>
-                                  </Avatar>
-                                  <Avatar
-                                    size="sm"
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                  >
-                                    <AvatarImage src="/woman.jpg" alt="Woman" />
-                                    <AvatarFallback>W</AvatarFallback>
-                                  </Avatar>
-                                  <Avatar
-                                    size="sm"
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                  >
-                                    <AvatarImage src="/woman.jpg" alt="Woman" />
-                                    <AvatarFallback>W</AvatarFallback>
-                                  </Avatar>
-                                  <Avatar
-                                    size="sm"
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                  >
-                                    <AvatarImage src="/woman.jpg" alt="Woman" />
-                                    <AvatarFallback>W</AvatarFallback>
-                                  </Avatar>
-                                  <Avatar
-                                    size="sm"
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                  >
-                                    <AvatarImage src="/woman.jpg" alt="Woman" />
-                                    <AvatarFallback>W</AvatarFallback>
-                                  </Avatar>
-                                  <Avatar
-                                    size="sm"
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                  >
-                                    <AvatarImage src="/woman.jpg" alt="Woman" />
-                                    <AvatarFallback>W</AvatarFallback>
-                                  </Avatar>
-                                </AvatarGroup>
-                              </TooltipTrigger>
-
-                              <TooltipContent
-                                className="p-0 max-w-[262px]"
-                                size="md"
-                              >
-                                <ScrollArea
-                                  className="h-[192px] p-3"
-                                  scrollBar={
-                                    <ScrollBar
-                                      className="w-4 p-1"
-                                      thumbClassName="bg-white/20"
-                                    />
-                                  }
-                                >
-                                  <div className="space-y-3 pr-5">
-                                    <div className="flex items-center gap-x-[18px]">
-                                      <div className="flex items-center gap-x-2 flex-auto">
-                                        <Avatar>
-                                          <AvatarImage
-                                            src="/woman.jpg"
-                                            alt="Woman"
-                                          />
-                                          <AvatarFallback>W</AvatarFallback>
-                                        </Avatar>
-
-                                        <div className="flex flex-col flex-auto">
-                                          <div className="flex items-center gap-x-0.5">
-                                            <span className="text-xs leading-5 font-semibold text-white">
-                                              Sevil
-                                            </span>
-                                            <span className="text-[10px] leading-none font-light text-white">
-                                              @designsuperstar23
-                                            </span>
-                                          </div>
-                                          <span className="text-[10px] font-light text-white">
-                                            Full-stack Developer
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      <span className="text-sm font-semibold text-white leading-5">
-                                        $75{" "}
-                                        <span className="text-[10px] font-light leading-5">
-                                          /hr
+                        <ListingCard
+                          kind="project"
+                          id={`placeholder-${index}`}
+                          title="The Ultimate Mobile App Experience"
+                          description="Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
+                          mediaUrl="/dashboard.png"
+                          budget="$50,000 budget"
+                          duration="Starting from 12 weeks"
+                          rating={4.9}
+                          reviewCount={5}
+                          href="#"
+                          favoriteSlot={
+                            <FavoriteRoot>
+                              {({ pressed }) => (
+                                <TooltipProvider delayDuration={75}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="inline-block">
+                                        <Favorite />
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {pressed ? (
+                                        <span className="inline-flex items-center gap-x-1">
+                                          <Check className="size-[15px] shrink-0 text-green-500" />
+                                          Saved
                                         </span>
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-x-[18px]">
-                                      <div className="flex items-center gap-x-2 flex-auto">
-                                        <Avatar>
-                                          <AvatarImage
-                                            src="/woman.jpg"
-                                            alt="Woman"
-                                          />
-                                          <AvatarFallback>W</AvatarFallback>
-                                        </Avatar>
-
-                                        <div className="flex flex-col flex-auto">
-                                          <div className="flex items-center gap-x-0.5">
-                                            <span className="text-xs leading-5 font-semibold text-white">
-                                              Sevil
-                                            </span>
-                                            <span className="text-[10px] leading-none font-light text-white">
-                                              @designsuperstar23
-                                            </span>
-                                          </div>
-                                          <span className="text-[10px] font-light text-white">
-                                            Full-stack Developer
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      <span className="text-sm font-semibold text-white leading-5">
-                                        $75{" "}
-                                        <span className="text-[10px] font-light leading-5">
-                                          /hr
-                                        </span>
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-x-[18px]">
-                                      <div className="flex items-center gap-x-2 flex-auto">
-                                        <Avatar>
-                                          <AvatarImage
-                                            src="/woman.jpg"
-                                            alt="Woman"
-                                          />
-                                          <AvatarFallback>W</AvatarFallback>
-                                        </Avatar>
-
-                                        <div className="flex flex-col flex-auto">
-                                          <div className="flex items-center gap-x-0.5">
-                                            <span className="text-xs leading-5 font-semibold text-white">
-                                              Sevil
-                                            </span>
-                                            <span className="text-[10px] leading-none font-light text-white">
-                                              @designsuperstar23
-                                            </span>
-                                          </div>
-                                          <span className="text-[10px] font-light text-white">
-                                            Full-stack Developer
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      <span className="text-sm font-semibold text-white leading-5">
-                                        $75{" "}
-                                        <span className="text-[10px] font-light leading-5">
-                                          /hr
-                                        </span>
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-x-[18px]">
-                                      <div className="flex items-center gap-x-2 flex-auto">
-                                        <Avatar>
-                                          <AvatarImage
-                                            src="/woman.jpg"
-                                            alt="Woman"
-                                          />
-                                          <AvatarFallback>W</AvatarFallback>
-                                        </Avatar>
-
-                                        <div className="flex flex-col flex-auto">
-                                          <div className="flex items-center gap-x-0.5">
-                                            <span className="text-xs leading-5 font-semibold text-white">
-                                              Sevil
-                                            </span>
-                                            <span className="text-[10px] leading-none font-light text-white">
-                                              @designsuperstar23
-                                            </span>
-                                          </div>
-                                          <span className="text-[10px] font-light text-white">
-                                            Full-stack Developer
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      <span className="text-sm font-semibold text-white leading-5">
-                                        $75{" "}
-                                        <span className="text-[10px] font-light leading-5">
-                                          /hr
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-                                </ScrollArea>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-
-                          <FavoriteRoot>
-                            {({ pressed }) => (
-                              <TooltipProvider delayDuration={75}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-block">
-                                      <Favorite />
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {pressed ? (
-                                      <span className="inline-flex items-center gap-x-1">
-                                        <Check className="size-[15px] shrink-0 text-green-500" />
-                                        Saved
-                                      </span>
-                                    ) : (
-                                      "Save to favorites"
-                                    )}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </FavoriteRoot>
-                        </div>
-                      </article>
+                                      ) : (
+                                        "Save to favorites"
+                                      )}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </FavoriteRoot>
+                          }
+                        />
                       </SwiperSlide>
                     ))}
                   </SwiperContent>
