@@ -162,14 +162,37 @@ export class TalentService {
     const user = await this.userRepository.findOne({ where: { username } });
     if (!user) throw new NotFoundException('User not found');
 
-    // Load related skills and experiences
-    const [skills, experiences] = await Promise.all([
-      this.skillRepository.find({ where: { userId: user.id } }),
-      this.experienceRepository.find({
+    // Load related skills and experiences. Both tables have historically
+    // drifted from the entity definitions in this schema (missing
+    // createdAt/updatedAt columns on skills; experiences table not yet
+    // migrated), so tolerate those failures and return what we have
+    // instead of 500-ing the entire profile fetch.
+    const skills = await this.skillRepository
+      .find({
+        where: { userId: user.id },
+        select: { id: true, name: true, proficiency: true, userId: true } as any,
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `skills fetch failed for user ${user.id}: ${
+            err instanceof Error ? err.message : 'unknown'
+          }`,
+        );
+        return [] as any[];
+      });
+    const experiences = await this.experienceRepository
+      .find({
         where: { userId: user.id },
         order: { startDate: 'ASC' },
-      }),
-    ]);
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `experiences fetch failed for user ${user.id}: ${
+            err instanceof Error ? err.message : 'unknown'
+          }`,
+        );
+        return [] as any[];
+      });
 
     // Flatten skills to simple string names for the frontend card
     const skillNames = skills
