@@ -1,8 +1,11 @@
 // apps/content-moderation-service/src/admin.controller.ts
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { AutocompleteService } from './autocomplete.service';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AdminGuard } from './guards/admin.guard';
 
 @Controller('api/admin')
+@UseGuards(JwtAuthGuard, AdminGuard)
 export class AdminController {
   constructor(private autocompleteService: AutocompleteService) {}
 

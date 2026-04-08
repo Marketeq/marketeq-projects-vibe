@@ -20,11 +20,11 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   suggestions: 'suggestions',
   'v1': 'transactions', // transaction-service uses /v1/transactions and /v1/invoices
   contracts: 'contracts',
+  client: 'users',              // client onboarding profile lives in user-service
   talent: 'users',              // talent profiles live in user-service
   publish: 'listings',          // project publish workflow lives in listings-service
   teams: 'users',               // team management lives in user-service
   'affiliated-teams': 'users',  // affiliated teams lives in user-service
-  client: 'users',              // client onboarding profile lives in user-service
   categories: 'categories',      // category taxonomy service
   tags: 'categories',            // tags managed by category-service
   'category-pages': 'categories', // category page assembly
@@ -46,7 +46,10 @@ export class ProxyController {
 
   @All('*')
   async catchAll(@Req() req: Request, @Res() res: Response) {
-    const segments = req.path.replace(/^\//, '').split('/')
+    // Strip a leading "/api" so /api/auth/login and /auth/login both route
+    // to the same downstream service. Frontend uses both forms.
+    const normalizedPath = req.path.replace(/^\/api(?=\/|$)/, '') || '/'
+    const segments = normalizedPath.replace(/^\//, '').split('/')
     let prefix = segments[0]
 
     // /v1/users/* → user-service
@@ -65,8 +68,10 @@ export class ProxyController {
       return
     }
 
-    // Build downstream path — strip /v1/ prefix when gateway resolved it to a service
-    let downstreamPath = req.path
+    // Build downstream path from the normalized (api-stripped) path so
+    // downstream services receive /auth/login, not /api/auth/login.
+    // Also strip /v1/ when gateway resolved it to user-service or listings-service.
+    let downstreamPath = normalizedPath
     if (segments[0] === 'v1' && (segments[1] === 'users' || segments[1] === 'projects' || segments[1] === 'services')) {
       downstreamPath = '/' + segments.slice(1).join('/')
     }

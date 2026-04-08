@@ -22,6 +22,9 @@ export const AppDataSource = new DataSource({
   username: process.env.DATABASE_USERNAME,
   password: process.env.DATABASE_PASSWORD,
   database: process.env.DATABASE_NAME,
+  // Match runtime TypeORM in app.module.ts. Without this, CLI migration
+  // runs default to `public` and diverge from the live service schema.
+  schema: 'user_service',
   // Keep migration state deterministic across environments.
   synchronize: false,
   logging: process.env.NODE_ENV !== 'production',

@@ -30,10 +30,10 @@ export class ModerationLog {
   @Column({ type: 'enum', enum: ModerationAction })
   action: ModerationAction;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   reason: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   moderatorId: string | null;
 
   @Column({ type: 'jsonb', nullable: true })

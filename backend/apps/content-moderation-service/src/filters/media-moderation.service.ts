@@ -1,17 +1,17 @@
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import axios from 'axios';
-import FormData from 'form-data';
+import FormData = require('form-data');
 import * as fs from 'fs';
 import { promises as fsPromises } from 'fs';
 import { isImageHighQuality as isImageHighQualitySharp } from './isImageHighQuality-sharp';
-import imageSize from 'image-size';
-import path from 'path';
-import os from 'os';
+import * as path from 'path';
+import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 import { spawn } from 'child_process';
 
 import { runPythonScript } from './python-runner.util';
+import { assertPublicHttpUrl } from './url-safety';
 
 type MediaModerationDebug = {
   step: string;
@@ -28,26 +28,25 @@ export type MediaModerationResult = {
   debug: MediaModerationDebug;
 };
 
-
-// Utility: image-size with timeout fallback
-const getImageSizeWithTimeout = (buffer: Buffer, timeoutMs = 3000) => {
-  return Promise.race([
-    new Promise((resolve, reject) => {
-      try {
-        const dimensions = imageSize(buffer);
-        resolve(dimensions);
-      } catch (err) {
-        reject(err);
-      }
-    }),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Image size timeout")), timeoutMs)
-    )
-  ]);
-};
-
 @Injectable()
 export class MediaModerationService {
+  private readonly logger = new Logger(MediaModerationService.name);
+  // FastAPI moderation endpoint (CLIP model sidecar). In production set
+  // FASTAPI_MODERATION_URL explicitly to the deployed model service.
+  private readonly fastApiModerationUrl =
+    process.env.FASTAPI_MODERATION_URL || 'http://localhost:8000/moderate';
+
+  constructor() {
+    if (
+      !process.env.FASTAPI_MODERATION_URL &&
+      process.env.NODE_ENV === 'production'
+    ) {
+      this.logger.warn(
+        'FASTAPI_MODERATION_URL is not set in production; falling back to http://localhost:8000/moderate — AI moderation will likely be unavailable.',
+      );
+    }
+  }
+
   // Supported formats
   private readonly allowedImageFormats = ['.jpg', '.jpeg', '.png'];
   private readonly allowedVideoFormats = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
@@ -89,16 +88,7 @@ export class MediaModerationService {
     try {
       return await isImageHighQualitySharp(imagePath);
     } catch (err) {
-      console.error('[isImageHighQuality] sharp failed, falling back to image-size:', err);
-    }
-    // Fallback: image-size with timeout
-    try {
-      const buffer = await fsPromises.readFile(imagePath);
-      const dimensions = (await getImageSizeWithTimeout(buffer, 3000)) as { width: number; height: number };
-      console.log('[isImageHighQuality] (fallback) Image dimensions:', dimensions);
-      return dimensions.width > 200 && dimensions.height > 200;
-    } catch (err) {
-      console.error('[isImageHighQuality] Fallback image-size failed:', err);
+      console.error('[isImageHighQuality] sharp failed:', err);
       return false;
     }
   }
@@ -115,6 +105,28 @@ export class MediaModerationService {
     // If imagePath is a remote URL, download it to a temp file
     if (/^https?:\/\//i.test(imagePath)) {
       console.log('[Moderation] Step 2: Detected remote image URL. Attempting download...');
+      try {
+        // SSRF guard — reject private/loopback/link-local destinations before
+        // any network I/O (catches DNS rebinding as well).
+        await assertPublicHttpUrl(imagePath);
+      } catch (err) {
+        const reason =
+          err instanceof BadRequestException
+            ? (err.getResponse() as any)?.message || 'Unsafe remote image URL'
+            : 'Unsafe remote image URL';
+        this.logger.warn(`[Moderation] Blocked SSRF attempt: ${reason}`);
+        return {
+          isSafe: false,
+          status: 'rejected',
+          reason,
+          debug: {
+            step: 'download_remote_image',
+            rejectCode: 'REMOTE_IMAGE_UNSAFE_URL',
+            detail: reason,
+            source,
+          },
+        };
+      }
       try {
         const response = await axios.get(imagePath, { responseType: 'arraybuffer', timeout: 10000, validateStatus: () => true });
         if (response.status !== 200) {
@@ -156,11 +168,20 @@ export class MediaModerationService {
     }
     try {
       console.log('[Moderation] Step 3: Checking supported format...');
-      // TEMPORARY: Commented out early returns to force FastAPI moderation call for debugging
       if (!this.isSupportedFormat(localPath)) {
         const reason = 'Unsupported image format';
         console.warn('[Moderation]', reason, localPath);
-        // return { isSafe: false, status: 'rejected', reason };
+        return {
+          isSafe: false,
+          status: 'rejected',
+          reason,
+          debug: {
+            step: 'format_check',
+            rejectCode: 'UNSUPPORTED_FORMAT',
+            detail: reason,
+            source,
+          },
+        };
       }
       console.log('[Moderation] Step 4: Checking file size...');
       const sizeOK = await this.isFileSizeAcceptable(localPath);
@@ -254,11 +275,11 @@ export class MediaModerationService {
         const form = new FormData();
         form.append('file', fs.createReadStream(localPath));
         console.log('[Moderation] FastAPI request details:', {
-          url: 'http://localhost:8000/moderate',
+          url: this.fastApiModerationUrl,
           headers: form.getHeaders(),
           filePath: localPath
         });
-        const response = await axios.post('http://localhost:8000/moderate', form, {
+        const response = await axios.post(this.fastApiModerationUrl, form, {
           headers: form.getHeaders(),
           timeout: 10000,
         });
@@ -514,6 +535,30 @@ export class MediaModerationService {
     | { ok: true; path: string }
     | { ok: false; result: MediaModerationResult }
   > {
+    // SSRF guard — refuse to download from any private/internal destination.
+    try {
+      await assertPublicHttpUrl(videoUrl);
+    } catch (err) {
+      const reason =
+        err instanceof BadRequestException
+          ? (err.getResponse() as any)?.message || 'Unsafe remote video URL'
+          : 'Unsafe remote video URL';
+      this.logger.warn(`[Video Moderation] Blocked SSRF attempt: ${reason}`);
+      return {
+        ok: false,
+        result: {
+          isSafe: false,
+          status: 'rejected',
+          reason,
+          debug: {
+            step: 'download_remote_video',
+            rejectCode: 'REMOTE_VIDEO_UNSAFE_URL',
+            detail: reason,
+            source: 'remote_url',
+          },
+        },
+      };
+    }
     try {
       const response = await axios.get(videoUrl, {
         responseType: 'arraybuffer',

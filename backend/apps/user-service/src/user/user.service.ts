@@ -28,9 +28,15 @@ export class UserService {
   ) {}
 
   async createUser(dto: CreateUserDto): Promise<User> {
-    const existing = await this.userRepository.findOne({
-      where: [{ email: dto.email }, { username: dto.username }],
-    });
+    // Build OR predicate without `{ username: undefined }`; otherwise TypeORM
+    // matches every row where username IS NULL and the first username-less
+    // user blocks all subsequent creates.
+    const where: Array<Record<string, string>> = [{ email: dto.email }];
+    if (dto.username) {
+      where.push({ username: dto.username });
+    }
+
+    const existing = await this.userRepository.findOne({ where });
 
     if (existing) {
       throw new ConflictException('User already exists');
@@ -52,6 +58,26 @@ export class UserService {
     return user;
   }
 
+  async getInternalSummary(id: string): Promise<{
+    id: string;
+    email: string;
+    role: string;
+    onboardingDismissed: boolean;
+    hasCompletedOnboarding: boolean;
+    isActive: boolean;
+  }> {
+    const user = await this.getUserById(id);
+
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role ?? 'client',
+      onboardingDismissed: user.onboardingDismissed,
+      hasCompletedOnboarding: user.onboardingDismissed,
+      isActive: user.isActive,
+    };
+  }
+
   async getUserByClaims(claims: { sub?: string; id?: string; email?: string }): Promise<User> {
     const candidateId = claims.sub ?? claims.id;
     if (candidateId) {
@@ -66,6 +92,13 @@ export class UserService {
       if (byEmail) {
         return byEmail;
       }
+    }
+
+    if (candidateId && claims.email) {
+      return this.syncFromAuth({
+        id: candidateId,
+        email: claims.email,
+      });
     }
 
     throw new NotFoundException('User not found');
@@ -127,18 +160,44 @@ export class UserService {
     return this.updateUser(id, { bio });
   }
 
-  async updateRate(id: string, dto: { rate_min?: number; rate_max?: number }) {
+  async updateRate(id: string, dto: { rateMin?: number; rateMax?: number }) {
     return this.updateUser(id, {
-      rate_min: dto.rate_min,
-      rate_max: dto.rate_max,
+      rateMin: dto.rateMin,
+      rateMax: dto.rateMax,
     });
   }
 
   async dismissOnboarding(id: string, role?: UserRole): Promise<User> {
+    const userType =
+      role === UserRole.TALENT
+        ? 'talent'
+        : role === UserRole.CLIENT
+          ? 'client'
+          : undefined;
+
     return this.updateUser(id, {
       onboardingDismissed: true,
-      ...(role ? { role } : {}),
+      ...(userType ? { userType } : {}),
     });
+  }
+
+  async getInternalSummary(id: string): Promise<{
+    id: string;
+    email: string;
+    role: string;
+    onboardingDismissed: boolean;
+    hasCompletedOnboarding: boolean;
+    isActive: boolean;
+  }> {
+    const user = await this.getUserById(id);
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role ?? '',
+      onboardingDismissed: user.onboardingDismissed,
+      hasCompletedOnboarding: user.onboardingDismissed,
+      isActive: user.isActive,
+    };
   }
 
   async deactivateUser(id: string): Promise<void> {
@@ -159,6 +218,8 @@ export class UserService {
     if (normalizedIncomingUsername === '') normalizedIncomingUsername = undefined;
     const fallbackUsername = `user_${dto.id.replace(/-/g, '').slice(0, 12)}`;
     const resolvedRole = dto.role ?? UserRole.CLIENT;
+    const resolvedProvider = dto.provider ?? 'EMAIL';
+    const resolvedHasPassword = dto.hasPassword ?? false;
 
     const existingById = await this.userRepository.findOne({
       where: { id: dto.id },
@@ -168,6 +229,8 @@ export class UserService {
       Object.assign(existingById, {
         email: dto.email ?? existingById.email,
         role: resolvedRole ?? existingById.role,
+        provider: dto.provider ?? existingById.provider ?? resolvedProvider,
+        hasPassword: dto.hasPassword ?? existingById.hasPassword ?? resolvedHasPassword,
       });
       if (normalizedIncomingUsername) {
         existingById.username = normalizedIncomingUsername;
@@ -185,6 +248,8 @@ export class UserService {
       }
       Object.assign(existingByEmail, {
         role: resolvedRole ?? existingByEmail.role,
+        provider: dto.provider ?? existingByEmail.provider ?? resolvedProvider,
+        hasPassword: dto.hasPassword ?? existingByEmail.hasPassword ?? resolvedHasPassword,
       });
       if (normalizedIncomingUsername) {
         existingByEmail.username = normalizedIncomingUsername;
@@ -197,6 +262,8 @@ export class UserService {
       email: dto.email,
       username: normalizedIncomingUsername ?? fallbackUsername,
       role: resolvedRole,
+      provider: resolvedProvider,
+      hasPassword: resolvedHasPassword,
     });
 
     return this.userRepository.save(user);

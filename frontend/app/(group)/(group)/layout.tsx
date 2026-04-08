@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
@@ -398,10 +398,24 @@ export default function MarketPlaceLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
+  const pathname = usePathname()
   const { user } = useAuth()
   const [showSecondaryNav, setShowSecondaryNav] = useState(true)
   const lastScrollY = useRef(0)
   const secondaryNavRef = useRef<HTMLDivElement>(null)
+
+  // Scroll to the very top on every route change. Next's default scroll
+  // restoration can land a few pixels below zero when the new page's layout
+  // height isn't fully settled on first paint — we force (0, 0) here, and
+  // re-run on next frame to beat any async layout shift. Also reset the
+  // secondary-nav visibility so it's always showing on fresh navigation.
+  useEffect(() => {
+    window.scrollTo(0, 0)
+    setShowSecondaryNav(true)
+    lastScrollY.current = 0
+    const raf = requestAnimationFrame(() => window.scrollTo(0, 0))
+    return () => cancelAnimationFrame(raf)
+  }, [pathname])
 
   useEffect(() => {
     const handleScroll = () => {

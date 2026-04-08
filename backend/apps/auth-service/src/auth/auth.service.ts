@@ -16,6 +16,8 @@ import * as bcrypt from 'bcryptjs';
 import axios from 'axios';
 import type { StringValue } from 'ms';
 
+import { BrevoService } from '../brevo/brevo.service';
+
 import { User } from '../user/entities/user.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -34,6 +36,16 @@ type SyncUserProfilePayload = {
   id: string;
   email: string;
   username?: string;
+  provider?: string;
+  hasPassword?: boolean;
+  firstName?: string;
+  lastName?: string;
+};
+
+type AuthUserPayload = {
+  id: string;
+  username: string;
+  email: string;
   provider?: string;
   hasPassword?: boolean;
   firstName?: string;
@@ -68,6 +80,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     private readonly userRepository: Repository<User>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly brevoService: BrevoService,
   ) {}
 
   onModuleInit() {
@@ -81,6 +94,20 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       clearInterval(this.retryTimer);
       this.retryTimer = null;
     }
+  }
+
+  private serializeUser(
+    user: Pick<User, 'id' | 'username' | 'email' | 'provider' | 'hasPassword'>,
+    extra?: Pick<AuthUserPayload, 'firstName' | 'lastName'>,
+  ): AuthUserPayload {
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      provider: user.provider,
+      hasPassword: user.hasPassword,
+      ...(extra ?? {}),
+    };
   }
 
   async register(dto: RegisterDto) {
@@ -119,7 +146,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     return {
       ...tokens,
-      user: { id: user.id, username: user.username, email: user.email },
+      user: this.serializeUser(user),
     };
   }
 
@@ -161,7 +188,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     return {
       ...tokens,
-      user: { id: user.id, username: user.username, email: user.email },
+      user: this.serializeUser(user),
     };
   }
 
@@ -207,11 +234,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     await this.syncUserProfile(current);
 
     return {
-      user: {
-        id: current.id,
-        username: current.username,
-        email: current.email,
-      },
+      user: this.serializeUser(current),
     };
   }
 
@@ -237,15 +260,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     await this.syncUserProfile(current);
 
     return {
-      user: {
-        id: current.id,
-        username: current.username,
-        email: current.email,
-      },
+      user: this.serializeUser(current),
     };
   }
 
-  async login(dto: LoginDto): Promise<JwtPair> {
+  async login(dto: LoginDto): Promise<JwtPair & { user: AuthUserPayload }> {
     const user = await this.userRepository.findOne({
       where: { email: dto.email },
       select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword'],
@@ -258,7 +277,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     await this.syncUserProfile(user);
 
-    return this.issueTokens({ sub: user.id, email: user.email });
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email });
+
+    return {
+      ...tokens,
+      user: this.serializeUser(user),
+    };
   }
 
   /**
@@ -266,14 +290,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
    * Disabled in production. Behaves identically to real login (same token format,
    * same gateway verification) so local dev matches cloud behavior exactly.
    */
-  async devLogin(email: string): Promise<JwtPair & { user: { id: string; username: string; email: string } }> {
+  async devLogin(email: string): Promise<JwtPair & { user: AuthUserPayload }> {
     if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DEV_LOGIN !== 'true') {
       throw new UnauthorizedException('Dev login is not available in production');
     }
 
     let user = await this.userRepository.findOne({
       where: { email },
-      select: ['id', 'email', 'username'],
+      select: ['id', 'email', 'username', 'provider', 'hasPassword'],
     });
 
     // Auto-create auth entry for seed users that only exist in user-service
@@ -302,14 +326,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     return {
       ...tokens,
-      user: { id: user.id, username: user.username, email: user.email },
+      user: this.serializeUser(user),
     };
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
     const user = await this.userRepository.findOne({
       where: { email: dto.email },
-      select: ['id', 'email'],
+      select: ['id', 'email', 'username'],
     });
 
     const message =
@@ -320,10 +344,31 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const resetToken = await this.issuePasswordResetToken(user);
+
+    const fallbackBase =
+      this.configService.get<string>('PASSWORD_RESET_URL') ??
+      (this.configService.get<string>('FRONTEND_URL')
+        ? `${this.configService.get<string>('FRONTEND_URL')!.replace(/\/$/, '')}/reset-password`
+        : undefined);
+
+    const base = dto.redirectUrl ?? fallbackBase;
     const resetUrl =
-      dto.redirectUrl && resetToken
-        ? `${dto.redirectUrl}${dto.redirectUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(resetToken)}`
+      base && resetToken
+        ? `${base}${base.includes('?') ? '&' : '?'}token=${encodeURIComponent(resetToken)}`
         : undefined;
+
+    if (resetUrl) {
+      try {
+        await this.brevoService.sendPasswordResetEmail(user.email, {
+          firstName: user.username,
+          resetUrl,
+        });
+      } catch (error) {
+        this.logger.error(
+          `forgotPassword: Brevo password reset email failed for ${user.email}: ${(error as Error)?.message}`,
+        );
+      }
+    }
 
     return {
       message,
@@ -572,7 +617,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     return {
       ...tokens,
-      user: { id: user.id, username: user.username, email: user.email, firstName, lastName },
+      user: this.serializeUser(user, { firstName, lastName }),
     };
   }
 
@@ -684,7 +729,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     return {
       ...tokens,
-      user: { id: user.id, username: user.username, email: user.email, firstName, lastName },
+      user: this.serializeUser(user, { firstName, lastName }),
     };
   }
 

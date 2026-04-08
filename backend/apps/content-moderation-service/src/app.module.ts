@@ -22,9 +22,7 @@ import { AutocompleteValidationService } from './filters/autocomplete-validation
 import { ImageModerationService } from './filters/image-moderation.service';
 import { ImageModerationController } from './filters/image-moderation.controller';
 
-import { ConfigModule } from '@nestjs/config'; 
-
-console.log('DATABASE_PASSWORD:', process.env.DATABASE_PASSWORD);
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [

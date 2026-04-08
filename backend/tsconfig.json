@@ -18,7 +18,11 @@
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@shared/*": ["./shared/*"]
+      "@shared/*": ["./shared/*"],
+      "@libs/auth": ["./libs/auth/src"],
+      "@libs/auth/*": ["./libs/auth/src/*"],
+      "@libs/owner-target-grpc": ["./libs/owner-target-grpc/src"],
+      "@libs/owner-target-grpc/*": ["./libs/owner-target-grpc/src/*"]
     }
   }
 }

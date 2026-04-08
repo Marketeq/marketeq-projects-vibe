@@ -13,10 +13,12 @@ import "swiper/css/free-mode"
 import { InviteWindow } from "@/components/invite-window"
 import { TimezoneSync } from "@/components/timezone-sync"
 import { NProgressBar } from "@/components/n-progress-bar"
-import { Toaster } from "@/components/ui"
+import { Toaster } from "@/components/ui/toast/toaster"
 import "@/styles/globals.css"
 import "@/styles/nprogress.css"
 import QueryProvider from "../src/features/shared/query-provider"
+
+export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
   title: "Marketeq",
@@ -33,15 +35,15 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? ""
+
   return (
     <html className={`scroll-smooth ${font.variable}`} lang="en">
       <body>
-        <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!}>
+        <GoogleOAuthProvider clientId={googleClientId}>
           <AuthProvider>
             <QueryProvider>
-              <div className="min-h-screen flex flex-col bg-gray-50">
-                {children}
-              </div>
+              <div className="min-h-screen flex flex-col bg-gray-50">{children}</div>
               <Suspense fallback={null}>
                 <NProgressBar />
               </Suspense>
@@ -51,9 +53,9 @@ export default function RootLayout({
             </QueryProvider>
           </AuthProvider>
         </GoogleOAuthProvider>
+        <GoogleAnalytics gaId="G-265438626K" />
+        <GoogleTagManager gtmId="GTM-MKB89M5M" />
       </body>
-      <GoogleAnalytics gaId="G-265438626K" />
-      <GoogleTagManager gtmId="GTM-MKB89M5M" />
     </html>
   )
 }

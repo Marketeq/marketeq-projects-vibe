@@ -2,7 +2,10 @@ import {
   Body,
   Controller,
   ForbiddenException,
+  Get,
   Headers,
+  Param,
+  Patch,
   Post,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -20,17 +23,40 @@ export class UserSyncController {
     private readonly configService: ConfigService,
   ) {}
 
+  private validateInternalToken(token: string | undefined) {
+    const expected = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+    if (!expected || token !== expected) {
+      throw new ForbiddenException('Invalid internal token');
+    }
+  }
+
   @ApiOperation({ summary: 'Sync user' })
   @Post()
   syncUser(
     @Headers('x-internal-token') token: string | undefined,
     @Body() dto: SyncUserDto,
   ) {
-    const expected = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
-    if (!expected || token !== expected) {
-      throw new ForbiddenException('Invalid internal token');
-    }
-
+    this.validateInternalToken(token);
     return this.userService.syncFromAuth(dto);
+  }
+
+  @ApiOperation({ summary: 'Get internal user summary' })
+  @Get(':id/summary')
+  getUserSummary(
+    @Headers('x-internal-token') token: string | undefined,
+    @Param('id') id: string,
+  ) {
+    this.validateInternalToken(token);
+    return this.userService.getInternalSummary(id);
+  }
+
+  @ApiOperation({ summary: 'Dismiss onboarding for a user (internal)' })
+  @Patch(':id/onboarding-dismissed')
+  dismissOnboarding(
+    @Headers('x-internal-token') token: string | undefined,
+    @Param('id') id: string,
+  ) {
+    this.validateInternalToken(token);
+    return this.userService.dismissOnboarding(id);
   }
 }

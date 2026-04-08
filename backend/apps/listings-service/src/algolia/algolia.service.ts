@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { lastValueFrom } from 'rxjs';
@@ -6,17 +6,27 @@ import { JobListing } from '../job-listing/entities/job-listing.entity';
 
 @Injectable()
 export class AlgoliaService {
-  private readonly baseUrl: string;
+  private readonly logger = new Logger(AlgoliaService.name);
+  private readonly baseUrl: string | null;
 
   constructor(
     private readonly http: HttpService,
     private readonly config: ConfigService,
   ) {
-    this.baseUrl = this.config.get<string>('ALGOLIA_SERVICE_URL') || '';
+    const url = this.config.get<string>('ALGOLIA_SERVICE_URL');
+    if (!url) {
+      this.logger.warn(
+        'ALGOLIA_SERVICE_URL is not set — Algolia indexing will be skipped',
+      );
+      this.baseUrl = null;
+    } else {
+      this.baseUrl = url;
+    }
   }
 
   // Called by the moderation.approved consumer after status is set to published.
   async indexJobListing(listing: JobListing): Promise<void> {
+    if (!this.baseUrl) return;
     const record = this.buildIndexRecord(listing);
     await lastValueFrom(
       this.http.post(
@@ -28,6 +38,7 @@ export class AlgoliaService {
 
   // Called when any text or structural field changes on a published listing.
   async updateJobListingIndex(listing: JobListing): Promise<void> {
+    if (!this.baseUrl) return;
     const record = this.buildIndexRecord(listing);
     await lastValueFrom(
       this.http.put(
@@ -39,6 +50,7 @@ export class AlgoliaService {
 
   // Called on closed, deleted, or reverted-to-draft.
   async removeJobListingIndex(listingId: string): Promise<void> {
+    if (!this.baseUrl) return;
     await lastValueFrom(
       this.http.delete(
         `${this.baseUrl}/v1/index/job-listings/${listingId}`,
@@ -87,23 +99,23 @@ export class AlgoliaService {
   }
 
   private extractLocations(listing: JobListing): string[] {
-    const locs = [
-      ...listing.teamMemberRows?.map(r => r.location).filter(Boolean) ?? [],
-      ...listing.phases?.flatMap(
-        p => p.tasks?.map(t => t.location).filter(Boolean) ?? [],
-      ) ?? [],
+    const locs: string[] = [
+      ...(listing.teamMemberRows?.map(r => r.location).filter((x): x is string => !!x) ?? []),
+      ...(listing.phases?.flatMap(
+        p => p.tasks?.map(t => t.location).filter((x): x is string => !!x) ?? [],
+      ) ?? []),
     ];
-    return [...new Set(locs)] as string[];
+    return [...new Set(locs)];
   }
 
   private extractExperienceLevels(listing: JobListing): string[] {
-    const levels = [
-      ...listing.teamMemberRows?.map(r => r.experienceLevel).filter(Boolean) ?? [],
-      ...listing.phases?.flatMap(
-        p => p.tasks?.map(t => t.experienceLevel).filter(Boolean) ?? [],
-      ) ?? [],
+    const levels: string[] = [
+      ...(listing.teamMemberRows?.map(r => r.experienceLevel).filter((x): x is string => !!x) ?? []),
+      ...(listing.phases?.flatMap(
+        p => p.tasks?.map(t => t.experienceLevel).filter((x): x is string => !!x) ?? [],
+      ) ?? []),
     ];
-    return [...new Set(levels)] as string[];
+    return [...new Set(levels)];
   }
 
   private extractWorkSchedules(listing: JobListing): string[] {

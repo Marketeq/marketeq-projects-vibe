@@ -27,6 +27,9 @@ export class HireRequestsService {
   ) {}
 
   async create(dto: CreateHireRequestDto) {
+    if (!dto.clientUserId) {
+      throw new BadRequestException('clientUserId is required');
+    }
     const clientUser = await this.userRepository.findOne({
       where: { id: dto.clientUserId },
     });

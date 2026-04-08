@@ -18,7 +18,7 @@ describe('ProjectModerationService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env.CONTENT_MODERATION_SERVICE_URL = 'http://localhost:3007';
+    process.env.CONTENT_MODERATION_SERVICE_URL = 'http://localhost:3014';
     service = new ProjectModerationService(httpService);
   });
 
@@ -46,7 +46,7 @@ describe('ProjectModerationService', () => {
     });
     expect(post).toHaveBeenCalledTimes(1);
     expect(post.mock.calls[0][0]).toBe(
-      'http://localhost:3007/api/moderate/content',
+      'http://localhost:3014/api/moderate/content',
     );
   });
 
