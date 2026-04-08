@@ -1,7 +1,8 @@
 "use client"
 
-import React from "react"
+import React, { useEffect, useState } from "react"
 import { fromLength, cn } from "@/utils/functions"
+import { buildProjectUrl } from "@/src/lib/listing-urls"
 import {
   ChevronLeft,
   ChevronRight,
@@ -115,6 +116,30 @@ const CarouselSection = ({
   description,
   count = 8,
 }: CarouselSectionProps) => {
+  // Fetch one real project so the placeholder cards can link to an actual
+  // details page. If the API is unreachable or returns nothing, fall back
+  // to the /projects browse page which always exists.
+  const [sampleHref, setSampleHref] = useState<string>("/projects")
+  useEffect(() => {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`${apiBase}/v1/projects`)
+        if (!res.ok) return
+        const projects = await res.json()
+        const first = Array.isArray(projects) && projects[0]
+        if (cancelled || !first?.id || !first?.slug) return
+        setSampleHref(buildProjectUrl(first.category ?? "", first.slug, first.id))
+      } catch {
+        // keep fallback
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   return (
     <div>
       <SwiperRoot>
@@ -153,6 +178,7 @@ const CarouselSection = ({
                     <ListingCard
                       kind="project"
                       id={`homepage-placeholder-${key}`}
+                      href={sampleHref}
                       title="The Ultimate Mobile App Experience"
                       description="Brief description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
                       mediaUrl="/dashboard.png"
