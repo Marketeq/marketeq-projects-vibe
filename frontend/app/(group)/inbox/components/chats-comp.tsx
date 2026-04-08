@@ -453,7 +453,19 @@ export function Chats({
           }
         )
         const pinned = allMsgs.filter((m) => m.pinned || m.isPinned)
-        setPinnedMsgs(pinned)
+
+        // Decrypt pinned messages
+        let key: Uint8Array | null = null
+        try { key = loadKey(selectedConversation.id) } catch { /* no key */ }
+        const decrypted = await Promise.all(
+          pinned.map(async (m) => {
+            if (key && m.ciphertext) {
+              try { return { ...m, content: await decryptAES(m.ciphertext, key) } } catch { return m }
+            }
+            return m
+          })
+        )
+        setPinnedMsgs(decrypted)
       } catch (err) {
         console.error("Failed to fetch pinned messages", err)
       }
