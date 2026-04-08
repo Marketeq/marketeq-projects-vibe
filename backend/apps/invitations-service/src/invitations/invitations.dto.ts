@@ -30,15 +30,6 @@ export class CreateInvitationsDto {
   emails!: string[];
 
   @ApiPropertyOptional({ 
-    description: 'Optional note to include in invitation',
-    example: 'Welcome to our team!'
-  })
-  @IsOptional()
-  @IsString()
-  @MinLength(0)
-  note?: string;
-
-  @ApiPropertyOptional({ 
     description: 'User ID (for header/body auth)',
     example: '123e4567-e89b-12d3-a456-426614174000'
   })

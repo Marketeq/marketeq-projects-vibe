@@ -142,4 +142,28 @@ export class NotificationService {
     await this.prefRepo.upsert({ userId, ...dto }, ['userId']);
     return this.prefRepo.findOne({ where: { userId } });
   }
+
+  async sendTeamInvitationEmail(payload: {
+    to: string;
+    teamName: string;
+    role: string;
+    acceptUrl: string;
+    inviterEmail?: string;
+    note?: string;
+  }) {
+    const title = `You're invited to join ${payload.teamName}`;
+    const inviterLine = payload.inviterEmail ? ` by ${payload.inviterEmail}` : '';
+    const note = payload.note?.trim();
+    const noteLine = note ? `\n\nNote from inviter: ${note}` : '';
+    const body = `You were invited${inviterLine} as ${payload.role}.${noteLine}`;
+
+    await this.sendgridService.sendNotificationEmail(
+      payload.to,
+      title,
+      body,
+      payload.acceptUrl,
+    );
+
+    return { sent: true };
+  }
 }

@@ -17,47 +17,54 @@ export enum InvitationRole {
 @Index(['teamId', 'invitedEmail', 'status'], { unique: false })
 export class Invitation {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Index()
-  @Column('uuid')
-  teamId: string;
+  @Column({ name: 'team_id', type: 'uuid' })
+  teamId!: string;
+
+  @Column({ name: 'team_name', nullable: true })
+  teamName?: string;
 
   @Index()
-  @Column('text')
-  invitedEmail: string;
+  @Column({ name: 'invited_email', type: 'text' })
+  invitedEmail!: string;
 
   @Column({ type: 'text' })
-  role: InvitationRole;
-
-  @Column({ type: 'text', default: InvitationStatus.PENDING })
-  status: InvitationStatus;
-
-  @Index()
-  @Column('text')
-  token: string;
-
-  @Column('timestamptz')
-  expiresAt: Date;
-
-  @Column('uuid')
-  createdByUserId: string;
+  role!: InvitationRole;
 
   @Column({ type: 'text', nullable: true })
-  note: string | null;
+  note?: string;
 
-  @Column({ type: 'int', default: 0 })
-  resentCount: number;
+  @Column({ type: 'enum', enumName: 'invitation_status', enum: ['pending', 'accepted', 'canceled', 'expired'], default: 'pending' })
+  status!: InvitationStatus;
 
-  @Column({ type: 'timestamptz', nullable: true })
-  acceptedAt: Date | null;
+  @Index()
+  @Column({ type: 'text' })
+  token!: string;
 
-  @Column({ type: 'timestamptz', nullable: true })
-  canceledAt: Date | null;
+  @Column({ name: 'expires_at', type: 'timestamptz' })
+  expiresAt!: Date;
 
-  @CreateDateColumn()
-  createdAt: Date;
+  @Column({ name: 'created_by_user_id', type: 'uuid' })
+  createdByUserId!: string;
 
-  @UpdateDateColumn()
-  updatedAt: Date;
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt!: Date;
+
+  @Column({ name: 'accepted_at', type: 'timestamptz', nullable: true })
+  acceptedAt?: Date;
+
+  @Column({ name: 'canceled_at', type: 'timestamptz', nullable: true })
+  canceledAt?: Date;
+
+  @Column({ name: 'resent_count', type: 'int', default: 0 })
+  resentCount!: number;
+
+  /** User ID of the person who accepted this invitation (stored on accept). */
+  @Column({ name: 'invitee_user_id', type: 'uuid', nullable: true })
+  inviteeUserId?: string;
 }

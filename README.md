@@ -35,6 +35,7 @@ Vibe Coding Marketeq Projects talent network platform.
 - py -m pip install fastapi uvicorn transformers torch pillow
 - py -m pip install python-multipart
 - py --version
+- npm install -w apps/notification-service nodemailer @types/nodemailer --legacy-peer-deps
 
 ### Fast API:
 ```py -m uvicorn clip_moderation_api:app --host 0.0.0.0 --port 8000 --app-dir apps/content-moderation-service/src/filters/python```
@@ -44,6 +45,8 @@ Vibe Coding Marketeq Projects talent network platform.
 - npx nest build autocomplete-service
 - npx nest build listings-service / npm run build -w apps/listings-service
 - npx nest build content-moderation-service
+- npx nest build invitations-service
+- npx nest build notification-service
 
 ### Start Serices:
 - npx nest start auth-service --watch
@@ -54,12 +57,14 @@ Vibe Coding Marketeq Projects talent network platform.
 - npx nest start content-moderation-service
 - npx nest start notification-service
 - npx nest start invitations-service
+- npx nest start favorites-service
 
 ### Using npm:
 ```npm exec nest -- start listings-service --watch```
 
 ### Run Migration:
 ```npx typeorm-ts-node-commonjs -d apps/user-service/src/data-source.ts migration:run```
+```npx typeorm-ts-node-commonjs -d apps/invitations-service/src/data-source.ts migration:run```
 
 ### Rabbitmq:
 ```docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management```
@@ -187,3 +192,13 @@ Script path:
 Run command:
 - powershell -ExecutionPolicy Bypass -File "./scripts/run-publish-moderation-matrix.ps1"
 
+### Invitation Email Delivery (notification-service)
+- Invitation accept URL (UI): `http://localhost:3000/invite/accept?token=YOUR_TOKEN`
+- POST http://localhost:4000/invitations/accept
+   {"token":"<token>"}
+- Open this URL in browser while signed in with the invited email account.
+- If you are signed in with a different account, click **Sign In With Invited Email** on the accept page.
+- Primary transport: SendGrid (`SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`)
+- Fallback transport: SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`)
+- If SendGrid key is missing/invalid, service automatically attempts SMTP.
+- Restart `notification-service` after changing env values.

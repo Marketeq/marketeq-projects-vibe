@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Public } from '../decorators/public.decorator';
@@ -48,6 +49,16 @@ export class UserSyncController {
   ) {
     this.validateInternalToken(token);
     return this.userService.getInternalSummary(id);
+  }
+
+  @ApiOperation({ summary: 'Get internal user summary by email' })
+  @Get('summary-by-email')
+  getUserSummaryByEmail(
+    @Headers('x-internal-token') token: string | undefined,
+    @Query('email') email: string,
+  ) {
+    this.validateInternalToken(token);
+    return this.userService.getInternalSummaryByEmail(email);
   }
 
   @ApiOperation({ summary: 'Dismiss onboarding for a user (internal)' })
