@@ -1,4 +1,10 @@
 import { Plugin } from 'payload/config';
+import { timingSafeEqual } from 'crypto';
+
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 /**
  * TalentProfileSync plugin — adds a reconciliation endpoint.
@@ -19,8 +25,10 @@ export const talentProfileSyncPlugin: Plugin = (incomingConfig) => {
           if (!configuredKey) {
             return res.status(500).json({ error: 'CMS_API_KEY not configured' });
           }
-          const apiKey = req.headers['authorization']?.replace('API-Key ', '');
-          if (!apiKey || apiKey !== configuredKey) {
+          const match = (req.headers['authorization'] ?? '').match(/^API-Key\s+(.+)$/);
+          const apiKey = match?.[1];
+          if (!apiKey || !safeCompare(apiKey, configuredKey)) {
+            req.payload?.logger?.warn('Unauthorized reconcile-talent-profiles attempt');
             return res.status(401).json({ error: 'Unauthorized' });
           }
 
@@ -39,8 +47,9 @@ export const talentProfileSyncPlugin: Plugin = (incomingConfig) => {
           let totalDocs = 0;
           let hasNextPage = true;
           const PAGE_SIZE = 100;
+          const MAX_PAGES = 500;
 
-          while (hasNextPage) {
+          while (hasNextPage && page <= MAX_PAGES) {
             const profiles = await payload.find({
               collection: 'talent-profiles',
               limit: PAGE_SIZE,
@@ -69,7 +78,8 @@ export const talentProfileSyncPlugin: Plugin = (incomingConfig) => {
 
           return res.json({ status: 'ok', totalProfiles: totalDocs, published, failed });
         } catch (err: any) {
-          return res.status(500).json({ error: err.message });
+          req.payload?.logger?.error({ err }, 'Reconcile talent profiles failed');
+          return res.status(500).json({ error: 'Internal server error' });
         }
       },
     },

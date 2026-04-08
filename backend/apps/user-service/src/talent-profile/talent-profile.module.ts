@@ -7,8 +7,8 @@ import { TalentProfileController } from './talent-profile.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([TalentProfile])],
-  controllers: [TalentProfileController, TalentProfileSyncConsumer],
-  providers: [TalentProfileSyncService],
+  controllers: [TalentProfileController],
+  providers: [TalentProfileSyncService, TalentProfileSyncConsumer],
   exports: [TalentProfileSyncService],
 })
 export class TalentProfileModule {}

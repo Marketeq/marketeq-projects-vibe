@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { CollectionConfig } from 'payload/types';
 import { isAdmin, isAdminOrDeveloper } from '../access/roles';
 import {
@@ -34,7 +35,7 @@ export const TalentProfiles: CollectionConfig = {
         beforeValidate: [
           ({ value, operation }) => {
             if (operation === 'create' && !value) {
-              return require('crypto').randomUUID();
+              return randomUUID();
             }
             return value;
           },
@@ -63,10 +64,12 @@ export const TalentProfiles: CollectionConfig = {
           hooks: {
             beforeValidate: [
               ({ value }) => {
-                if (typeof value === 'string') {
-                  return value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                if (typeof value !== 'string') return value;
+                const sanitized = value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                if (sanitized.length < 3) {
+                  throw new Error('Username must contain at least 3 valid characters (a-z, 0-9, _, -)');
                 }
-                return value;
+                return sanitized;
               },
             ],
           },
@@ -119,8 +122,24 @@ export const TalentProfiles: CollectionConfig = {
     {
       type: 'row',
       fields: [
-        { name: 'rateMin', type: 'number', admin: { description: 'Min hourly rate (USD)' } },
-        { name: 'rateMax', type: 'number', admin: { description: 'Max hourly rate (USD)' } },
+        {
+          name: 'rateMin',
+          type: 'number',
+          min: 0,
+          admin: { description: 'Min hourly rate (USD)' },
+        },
+        {
+          name: 'rateMax',
+          type: 'number',
+          min: 0,
+          admin: { description: 'Max hourly rate (USD)' },
+          validate: (val: any, { siblingData }: any) => {
+            if (val != null && siblingData?.rateMin != null && val < siblingData.rateMin) {
+              return 'Max rate must be >= min rate';
+            }
+            return true;
+          },
+        },
       ],
     },
 

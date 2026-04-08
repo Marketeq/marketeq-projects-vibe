@@ -31,7 +31,7 @@ export class TalentProfileSyncConsumer {
         `Failed to process talent-profile.saved for "${event.username}"`,
         err,
       );
-      channel.nack(message, false, false);
+      channel.nack(message, false, true);
     }
   }
 
@@ -48,20 +48,14 @@ export class TalentProfileSyncConsumer {
         `Received talent-profile.deleted for "${event.username}"`,
       );
       await this.syncService.delete(event.id);
+      // delete() is idempotent — always ack (logs warning if not found)
       channel.ack(message);
-    } catch (err: any) {
-      if (err?.message?.includes('not found')) {
-        this.logger.warn(
-          `Talent profile already deleted: "${event.username}"`,
-        );
-        channel.ack(message);
-      } else {
-        this.logger.error(
-          `Failed to process talent-profile.deleted for "${event.username}"`,
-          err,
-        );
-        channel.nack(message, false, false);
-      }
+    } catch (err) {
+      this.logger.error(
+        `Failed to process talent-profile.deleted for "${event.username}"`,
+        err,
+      );
+      channel.nack(message, false, true);
     }
   }
 }

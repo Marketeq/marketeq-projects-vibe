@@ -3,11 +3,19 @@
  * Single source of truth — used by both afterChange hook and reconcile plugin.
  */
 export function mapProfileToEvent(doc: any) {
+  const id = doc.uuid || String(doc.id);
+  const username = doc.username;
+  const name = doc.name;
+
+  if (!id || id === 'undefined' || !username || !name) {
+    throw new Error(`Profile missing required fields: id=${id}, username=${username}, name=${name}`);
+  }
+
   return {
-    id: doc.uuid || String(doc.id),
+    id,
     sourceId: doc.sourceId || null,
-    username: doc.username,
-    name: doc.name,
+    username,
+    name,
     headline: doc.headline || null,
     availability: doc.availability || null,
     isAvailable: doc.isAvailable ?? true,
@@ -43,7 +51,7 @@ export function mapProfileToEvent(doc: any) {
     portfolio: (doc.portfolio || []).map((p: any) => ({
       title: p.title,
       url: p.url,
-      thumbnailId: typeof p.thumbnail === 'object' ? p.thumbnail?.id : p.thumbnail,
+      thumbnailId: typeof p.thumbnail === 'object' && p.thumbnail ? p.thumbnail.id : null,
       description: p.description,
     })),
     status: doc.status || 'active',

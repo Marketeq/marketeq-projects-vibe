@@ -50,30 +50,30 @@ export class TalentProfile {
   @Column({ type: 'jsonb', nullable: true })
   overview: Record<string, any> | null;
 
-  @Column({ type: 'jsonb', nullable: true, default: '[]' })
+  @Column({ type: 'jsonb', nullable: true, default: () => "'[]'" })
   skills: string[];
 
-  @Column({ type: 'jsonb', nullable: true, default: '[]' })
+  @Column({ type: 'jsonb', nullable: true, default: () => "'[]'" })
   industryExpertise: string[];
 
-  @Column({ type: 'jsonb', nullable: true, default: '[]' })
+  @Column({ type: 'jsonb', nullable: true, default: () => "'[]'" })
   languages: { language: string; fluency: string }[];
 
-  @Column({ type: 'jsonb', nullable: true, default: '[]' })
+  @Column({ type: 'jsonb', nullable: true, default: () => "'[]'" })
   certifications: {
     title: string;
     organization: string;
     dateAwarded: string | null;
   }[];
 
-  @Column({ type: 'jsonb', nullable: true, default: '[]' })
+  @Column({ type: 'jsonb', nullable: true, default: () => "'[]'" })
   education: {
     institution: string;
     degree: string;
     graduationYear: number | null;
   }[];
 
-  @Column({ type: 'jsonb', nullable: true, default: '[]' })
+  @Column({ type: 'jsonb', nullable: true, default: () => "'[]'" })
   workExperience: {
     role: string;
     company: string;
@@ -82,7 +82,7 @@ export class TalentProfile {
     description: string | null;
   }[];
 
-  @Column({ type: 'jsonb', nullable: true, default: '[]' })
+  @Column({ type: 'jsonb', nullable: true, default: () => "'[]'" })
   portfolio: {
     title: string;
     url: string | null;

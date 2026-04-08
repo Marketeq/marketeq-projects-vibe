@@ -20,34 +20,35 @@ export class TalentProfileSyncService {
 
     const data: Partial<TalentProfile> = {
       externalId: event.id,
-      sourceId: event.sourceId,
+      sourceId: event.sourceId ?? null,
       username: event.username,
       name: event.name,
-      headline: event.headline,
-      availability: event.availability,
-      isAvailable: event.isAvailable,
-      location: event.location,
-      country: event.country,
-      timezone: event.timezone,
-      rateMin: event.rateMin,
-      rateMax: event.rateMax,
-      overview: event.overview,
-      skills: event.skills,
-      industryExpertise: event.industryExpertise,
-      languages: event.languages,
-      certifications: event.certifications,
-      education: event.education,
-      workExperience: event.workExperience,
-      portfolio: event.portfolio,
-      status: event.status,
+      headline: event.headline ?? null,
+      availability: event.availability ?? null,
+      isAvailable: event.isAvailable ?? true,
+      location: event.location ?? null,
+      country: event.country ?? null,
+      timezone: event.timezone ?? null,
+      rateMin: event.rateMin ?? null,
+      rateMax: event.rateMax ?? null,
+      overview: event.overview ?? null,
+      skills: event.skills ?? [],
+      industryExpertise: event.industryExpertise ?? [],
+      languages: event.languages ?? [],
+      certifications: event.certifications ?? [],
+      education: event.education ?? [],
+      workExperience: event.workExperience ?? [],
+      portfolio: event.portfolio ?? [],
+      status: event.status ?? 'active',
     };
 
     if (existing) {
-      await this.repo.update({ id: existing.id }, data);
+      Object.assign(existing, data);
+      const saved = await this.repo.save(existing);
       this.logger.log(
         `Updated talent profile "${event.username}" (externalId=${event.id})`,
       );
-      return this.repo.findOneOrFail({ where: { externalId: event.id } });
+      return saved;
     }
 
     const profile = this.repo.create(data);
