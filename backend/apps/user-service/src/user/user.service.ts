@@ -181,25 +181,6 @@ export class UserService {
     });
   }
 
-  async getInternalSummary(id: string): Promise<{
-    id: string;
-    email: string;
-    role: string;
-    onboardingDismissed: boolean;
-    hasCompletedOnboarding: boolean;
-    isActive: boolean;
-  }> {
-    const user = await this.getUserById(id);
-    return {
-      id: user.id,
-      email: user.email,
-      role: user.role ?? '',
-      onboardingDismissed: user.onboardingDismissed,
-      hasCompletedOnboarding: user.onboardingDismissed,
-      isActive: user.isActive,
-    };
-  }
-
   async deactivateUser(id: string): Promise<void> {
     const user = await this.getUserById(id);
     user.isActive = false;
