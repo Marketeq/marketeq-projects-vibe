@@ -1,8 +1,13 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React from "react"
 import { fromLength, cn } from "@/utils/functions"
 import { projectDetailsUrl } from "@/src/lib/listing-urls"
+import {
+  useFeaturedProjects,
+  type FeaturedProject,
+} from "@/src/lib/api/featured-projects"
+import { ListingCardCompact } from "@/components/listing-card-compact"
 import {
   ChevronLeft,
   ChevronRight,
@@ -111,45 +116,15 @@ interface CarouselSectionProps {
   count?: number
 }
 
-interface FeaturedProject {
-  id: string
-  slug: string
-  title: string
-  summary?: string
-  description?: string
-  role?: string
-  category?: string
-  mediaUrls?: string[]
-}
-
 const CarouselSection = ({
   title,
   description,
   count = 8,
 }: CarouselSectionProps) => {
-  // Fetch real projects from the CMS-backed /v1/projects endpoint so each
-  // card in the carousel is a distinct real project that links to its own
-  // details page. Falls back to an empty list if the fetch fails — the
-  // carousel will still render with placeholder cards in that case.
-  const [projects, setProjects] = useState<FeaturedProject[]>([])
-  useEffect(() => {
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
-    let cancelled = false
-    ;(async () => {
-      try {
-        const res = await fetch(`${apiBase}/v1/projects`)
-        if (!res.ok) return
-        const data = await res.json()
-        if (cancelled || !Array.isArray(data)) return
-        setProjects(data.slice(0, count))
-      } catch {
-        // keep empty list — UI falls back to placeholders
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [count])
+  // Shared module-level fetch — every carousel/grid section on the
+  // homepage reuses the same /v1/projects response.
+  const { projects: allProjects } = useFeaturedProjects()
+  const projects = allProjects.slice(0, count)
 
   const slides: Array<
     | { kind: "real"; project: FeaturedProject }
@@ -264,48 +239,60 @@ const RecentlyViewedSection = ({
   title,
   description,
   tabs,
+  count = 6,
+  offset = 0,
 }: {
   title: string
   description?: string
   tabs?: string[]
+  count?: number
+  /** Skip the first N projects — lets two sections on the same page show
+   *  different slices of the same fetched list. */
+  offset?: number
 }) => {
+  const { projects: allProjects } = useFeaturedProjects()
+  const projects = allProjects.slice(offset, offset + count)
+
+  const items: Array<
+    | { kind: "real"; project: FeaturedProject }
+    | { kind: "placeholder"; key: number }
+  > = projects.length > 0
+    ? projects.map((p) => ({ kind: "real" as const, project: p }))
+    : fromLength(count).map((key) => ({ kind: "placeholder" as const, key }))
+
   const grid = (
     <div className="mt-[29px] grid grid-cols-3 gap-x-[42px] gap-y-10">
-            {fromLength(6).map((key) => (
-              <article key={key} className="flex items-start gap-x-6">
-                <div className="relative size-[100px] overflow-hidden rounded-lg shrink-0">
-                  <NextImage
-                    className="object-cover"
-                    src="/dashboard.png"
-                    alt="Dashboard"
-                    sizes="25vw"
-                    fill
-                  />
-                </div>
-
-                <div className="pr-[45.54px]">
-                  <h1 className="cursor-pointer hover:underline transition duration-300 text-base font-bold leading-none line-clamp-2 text-dark-blue-400">
-                    BI Sales Forecasting & Inventory Management
-                  </h1>
-
-                  <p className="mt-2 text-sm font-light text-dark-blue-400 line-clamp-2">
-                    Tempor nam commodo sapien lobortis pellentesque non.
-                    Elementum adipiscing sit senectus faucibus mauris amet.
-                    Elementum vitae semper lorem ornare congue.
-                  </p>
-
-                  <div className="mt-3 flex items-center gap-x-3">
-                    <span className="text-sm font-medium leading-none text-dark-blue-400">
-                      Starting at $25,000
-                    </span>
-                    <span className="inline-block shrink-0 rounded-full size-1 bg-gray-300" />
-                    <span className="text-sm font-medium leading-none text-dark-blue-400">
-                      2 weeks
-                    </span>
-                  </div>
-                </div>
-      </article>
-      ))}
+      {items.map((item) => {
+        if (item.kind === "real") {
+          const p = item.project
+          return (
+            <ListingCardCompact
+              key={`project-${p.id}`}
+              kind="project"
+              id={p.id}
+              slug={p.slug}
+              title={p.title}
+              description={p.summary ?? p.description}
+              mediaUrl={p.mediaUrls?.[0] ?? "/dashboard.png"}
+              budget="Starting at $25,000"
+              duration="2 weeks"
+            />
+          )
+        }
+        return (
+          <ListingCardCompact
+            key={`placeholder-${item.key}`}
+            kind="project"
+            id={`recently-viewed-placeholder-${item.key}`}
+            slug="modern-brand-identity-design"
+            title="BI Sales Forecasting & Inventory Management"
+            description="Tempor nam commodo sapien lobortis pellentesque non. Elementum adipiscing sit senectus faucibus mauris amet. Elementum vitae semper lorem ornare congue."
+            mediaUrl="/dashboard.png"
+            budget="Starting at $25,000"
+            duration="2 weeks"
+          />
+        )
+      })}
     </div>
   )
 
@@ -486,6 +473,7 @@ export default function Marketplace() {
           <RecentlyViewedSection title="Newest Additions" />
           <RecentlyViewedSection
             title="Most Popular Projects"
+            offset={6}
             tabs={[
               "View All",
               "Top Web Projects",
