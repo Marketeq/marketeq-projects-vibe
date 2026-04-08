@@ -49,6 +49,21 @@ function launchService(svc, env, isGateway = false) {
   const distMain = path.join(__dirname, 'dist', svc.dir, 'main.js');
   const svcEnv = env || { ...process.env, PORT: svc.port };
 
+  if (svc.name === 'listings-service' && !require('fs').existsSync(distMain)) {
+    console.log(`[boot:debug] ${distMain} missing — listing dist/apps/listings-service contents:`);
+    try {
+      const walk = (dir, depth = 0) => {
+        if (depth > 4) return;
+        for (const entry of require('fs').readdirSync(dir, { withFileTypes: true })) {
+          const p = path.join(dir, entry.name);
+          console.log(`[boot:debug] ${' '.repeat(depth * 2)}${entry.isDirectory() ? '[D]' : '[F]'} ${p}`);
+          if (entry.isDirectory()) walk(p, depth + 1);
+        }
+      };
+      walk(path.join(__dirname, 'dist', 'apps', 'listings-service'));
+    } catch (e) { console.log('[boot:debug] readdir error:', e.message); }
+  }
+
   console.log(`[boot] Starting ${svc.name} on port ${svcEnv.PORT}...`);
 
   const child = spawn('node', [distMain], {
