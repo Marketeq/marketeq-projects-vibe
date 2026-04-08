@@ -89,6 +89,21 @@ const GoogleLoginButtonInner = () => {
 }
 
 const GoogleLoginButton = () => {
+  if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
+    return (
+      <Button
+        className="xs:max-md:text-sm xs:max-md:py-2 xs:max-md:px-[14px] xs:max-md:h-9"
+        variant="outlined"
+        visual="gray"
+        size="lg"
+        disabled
+        title="Google sign-in is not configured"
+      >
+        <GoogleDefault className="size-5 md:size-6" /> Sign in with Google
+      </Button>
+    )
+  }
+
   return <GoogleLoginButtonInner />
 }
 
