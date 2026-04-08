@@ -1,14 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useAuth } from "@/contexts/auth"
+import { UserAPI, UserProfilePayload } from "@/service/http/user"
+import SecuritySettingsStepper from "@/components/security-settings"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   Bell,
-  ChevronRight,
-  Globe,
   Lock,
-  Mail01,
   Settings,
   UserCircle,
 } from "@blend-metrics/icons"
@@ -24,6 +23,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  useToast,
 } from "@/components/ui"
 
 const settingsSections = [
@@ -34,8 +34,86 @@ const settingsSections = [
 ]
 
 export default function SettingsPage() {
-  const { user } = useAuth()
+  const { user, setUser } = useAuth()
+  const { toast } = useToast()
   const [activeTab, setActiveTab] = useState("profile")
+
+  const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [profileForm, setProfileForm] = useState({
+    firstName: "",
+    lastName: "",
+    username: "",
+  })
+
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+
+  useEffect(() => {
+    if (user) {
+      setProfileForm({
+        firstName: user.firstName ?? "",
+        lastName: user.lastName ?? "",
+        username: user.username ?? "",
+      })
+    }
+  }, [user])
+
+  const handleProfileChange = (field: string, value: string) => {
+    setProfileForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleProfileSave = async () => {
+    if (!user?.id) return
+
+    setIsSaving(true)
+    try {
+      const payload: UserProfilePayload = {
+        firstName: profileForm.firstName,
+        lastName: profileForm.lastName,
+        username: profileForm.username,
+      }
+      const response = await UserAPI.updateProfile(user.id, payload)
+      const isSuccess =
+        typeof response?.status === "number" &&
+        response.status >= 200 &&
+        response.status < 300
+
+      if (isSuccess) {
+        setUser((prev) =>
+          prev
+            ? {
+                ...prev,
+                firstName: profileForm.firstName,
+                lastName: profileForm.lastName,
+                username: profileForm.username,
+              }
+            : prev
+        )
+        setIsEditing(false)
+        toast({ title: "Profile updated successfully" })
+      } else {
+        throw new Error("Failed to update profile")
+      }
+    } catch (error: any) {
+      const errorMessage =
+        error?.response?.data?.errors?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Something went wrong"
+      toast({ title: errorMessage, variant: "destructive" })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleProfileCancel = () => {
+    setProfileForm({
+      firstName: user?.firstName ?? "",
+      lastName: user?.lastName ?? "",
+      username: user?.username ?? "",
+    })
+    setIsEditing(false)
+  }
 
   return (
     <AuthenticatedRoute>
@@ -58,10 +136,20 @@ export default function SettingsPage() {
               ))}
             </TabsList>
 
+            {/* ── Profile Tab ── */}
             <TabsContent value="profile" className="mt-6">
               <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-dark-blue-400">Profile Information</h2>
-                <p className="text-sm text-gray-500 mt-1">Update your personal details</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-dark-blue-400">Profile Information</h2>
+                    <p className="text-sm text-gray-500 mt-1">Update your personal details</p>
+                  </div>
+                  {!isEditing && (
+                    <Button variant="outlined" visual="gray" size="sm" onClick={() => setIsEditing(true)}>
+                      Edit Profile
+                    </Button>
+                  )}
+                </div>
 
                 <div className="mt-6 flex items-center gap-x-4">
                   <Avatar className="size-16">
@@ -77,24 +165,51 @@ export default function SettingsPage() {
                 <div className="mt-6 grid grid-cols-2 gap-6">
                   <div className="space-y-1.5">
                     <Label size="sm">First Name</Label>
-                    <Input defaultValue={user?.firstName ?? ""} readOnly />
+                    <Input
+                      value={profileForm.firstName}
+                      onChange={(e) => handleProfileChange("firstName", e.target.value)}
+                      readOnly={!isEditing}
+                      className={!isEditing ? "bg-gray-50" : ""}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label size="sm">Last Name</Label>
-                    <Input defaultValue={user?.lastName ?? ""} readOnly />
+                    <Input
+                      value={profileForm.lastName}
+                      onChange={(e) => handleProfileChange("lastName", e.target.value)}
+                      readOnly={!isEditing}
+                      className={!isEditing ? "bg-gray-50" : ""}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label size="sm">Email</Label>
-                    <Input defaultValue={user?.email ?? ""} readOnly />
+                    <Input value={user?.email ?? ""} readOnly className="bg-gray-50" />
                   </div>
                   <div className="space-y-1.5">
                     <Label size="sm">Username</Label>
-                    <Input defaultValue={user?.username ?? ""} readOnly />
+                    <Input
+                      value={profileForm.username}
+                      onChange={(e) => handleProfileChange("username", e.target.value)}
+                      readOnly={!isEditing}
+                      className={!isEditing ? "bg-gray-50" : ""}
+                    />
                   </div>
                 </div>
+
+                {isEditing && (
+                  <div className="mt-6 flex justify-end gap-x-3">
+                    <Button variant="outlined" visual="gray" size="sm" onClick={handleProfileCancel}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleProfileSave} disabled={isSaving}>
+                      {isSaving ? "Saving..." : "Save Changes"}
+                    </Button>
+                  </div>
+                )}
               </div>
             </TabsContent>
 
+            {/* ── Account Tab ── */}
             <TabsContent value="account" className="mt-6">
               <div className="bg-white rounded-xl border border-gray-200 p-6">
                 <h2 className="text-lg font-semibold text-dark-blue-400">Account Settings</h2>
@@ -126,6 +241,7 @@ export default function SettingsPage() {
               </div>
             </TabsContent>
 
+            {/* ── Notifications Tab ── */}
             <TabsContent value="notifications" className="mt-6">
               <div className="bg-white rounded-xl border border-gray-200 p-6">
                 <h2 className="text-lg font-semibold text-dark-blue-400">Notification Preferences</h2>
@@ -164,6 +280,7 @@ export default function SettingsPage() {
               </div>
             </TabsContent>
 
+            {/* ── Security Tab ── */}
             <TabsContent value="security" className="mt-6">
               <div className="bg-white rounded-xl border border-gray-200 p-6">
                 <h2 className="text-lg font-semibold text-dark-blue-400">Security</h2>
@@ -173,9 +290,18 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between py-3 border-b border-gray-100">
                     <div>
                       <p className="text-sm font-medium text-dark-blue-400">Password</p>
-                      <p className="text-xs text-gray-500">Last changed: Unknown</p>
+                      <p className="text-xs text-gray-500">
+                        {user?.hasPassword ? "Password is set" : "No password set — secure your account"}
+                      </p>
                     </div>
-                    <Button variant="outlined" visual="gray" size="sm">Change Password</Button>
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      onClick={() => setShowPasswordModal(true)}
+                    >
+                      {user?.hasPassword ? "Change Password" : "Set Password"}
+                    </Button>
                   </div>
                   <div className="flex items-center justify-between py-3 border-b border-gray-100">
                     <div>
@@ -197,6 +323,10 @@ export default function SettingsPage() {
           </Tabs>
         </div>
       </div>
+
+      {showPasswordModal && (
+        <SecuritySettingsStepper onCloseModal={() => setShowPasswordModal(false)} />
+      )}
     </AuthenticatedRoute>
   )
 }
