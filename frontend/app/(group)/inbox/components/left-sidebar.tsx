@@ -12,7 +12,7 @@ import {
   savePublicKey,
 } from "@/src/crypto/keys"
 import { apiFetch } from "@/src/lib/api"
-import { getCurrentUser } from "@/utils/auth"
+import { getCurrentUser, getAccessToken } from "@/utils/auth"
 import { noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
 import { useAblyChannel } from "@/utils/useAblyChannel"
@@ -101,7 +101,7 @@ const LeftSidebar = ({
   messagesByConversation,
 }: LeftSidebarProps) => {
   const token =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null
+    typeof window !== "undefined" ? getAccessToken() : null
   const { pinnedChats, toggleShowPinnedIcon, showPinnedIcon, checkedChats } =
     useChatsContext()
 
@@ -112,7 +112,7 @@ const LeftSidebar = ({
   const [conversations, setConversations] = useState<Conversation[]>([])
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
+    const token = getAccessToken()
 
     const fetchConversations = async () => {
       try {
