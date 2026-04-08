@@ -37,6 +37,13 @@ export class TalentController {
     return this.talentService.createTalent(userId, dto, avatar);
   }
 
+  @ApiOperation({ summary: 'Public list of talent users for browse pages' })
+  @Public()
+  @Get('users')
+  listTalentUsers() {
+    return this.talentService.listTalentUsers();
+  }
+
   @ApiOperation({ summary: 'Get user by username' })
   @Public()
   @Get('users/:username')

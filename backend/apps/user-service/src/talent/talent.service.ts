@@ -112,6 +112,52 @@ export class TalentService {
     return { user: updated };
   }
 
+  /**
+   * Public listing of talent users for browse pages (homepage, /talent,
+   * /c/<category>). Returns the minimal projection the talent card needs:
+   * basic profile + first skills (so the card can render its skill row
+   * without N+1 queries from the frontend). Excludes users with no avatar
+   * so cards never fall back to the placeholder.
+   */
+  async listTalentUsers(limit = 24): Promise<any[]> {
+    const users = await this.userRepository.find({
+      where: { userType: 'talent' },
+      take: limit,
+      order: { onboardedAt: 'DESC' },
+    });
+
+    if (users.length === 0) return [];
+
+    const ids = users.map((u) => u.id);
+    const allSkills = await this.skillRepository.find({
+      where: ids.map((id) => ({ userId: id })),
+      select: { id: true, name: true, userId: true } as any,
+    });
+
+    const skillsByUser = new Map<string, string[]>();
+    for (const s of allSkills) {
+      if (!s.name) continue;
+      const list = skillsByUser.get(s.userId) ?? [];
+      list.push(s.name);
+      skillsByUser.set(s.userId, list);
+    }
+
+    return users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      avatarUrl: u.avatarUrl,
+      userType: u.userType,
+      location: u.location,
+      rateMin: u.rateMin,
+      rateMax: u.rateMax,
+      jobTitles: u.jobTitles,
+      recentJobTitle: u.recentJobTitle,
+      skills: (skillsByUser.get(u.id) ?? []).map((name) => ({ name })),
+    }));
+  }
+
   async getUserByUsername(username: string): Promise<User> {
     const user = await this.userRepository.findOne({ where: { username } });
     if (!user) throw new NotFoundException('User not found');
