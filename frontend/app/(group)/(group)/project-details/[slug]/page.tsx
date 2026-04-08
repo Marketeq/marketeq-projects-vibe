@@ -506,7 +506,7 @@ export default function ProjectDetails() {
             `${apiBase}/v1/services/slug/${slug}`
           )
           if (!svcRes.ok) {
-            router.push("/")
+            setLoading(false)
             return
           }
           const svcData = await svcRes.json()
@@ -532,7 +532,6 @@ export default function ProjectDetails() {
         })
       } catch (err) {
         console.error(err)
-        router.push("/")
       } finally {
         setLoading(false)
       }
