@@ -68,45 +68,47 @@ interface HeroSlide {
 
 const HERO_SLIDES: HeroSlide[] = [
   {
-    eyebrow: "Design",
+    eyebrow: "UI / UX Design",
     title: "UX / UI Experts on Demand",
     description:
       "Ship pixel-perfect product experiences with senior designers who embed with your team in days, not months.",
     ctaLabel: "Browse UX / UI experts",
-    href: "/c/design",
+    // Deep-links to the UI/UX Design L2 subcategory (not the broad Design L1).
+    href: "/c/design/ui-ux-design",
     image: "/sending-emails.png",
     accent:
       "from-[#1661F6]/40 via-transparent to-[#0B1C3A]/60",
   },
   {
-    eyebrow: "AI & Data",
+    eyebrow: "AI & Machine Learning",
     title: "AI Specialists Who Ship",
     description:
       "From RAG pipelines to production ML — hire AI engineers who turn your data into revenue, not research papers.",
     ctaLabel: "Explore AI talent",
-    href: "/c/artificial-intelligence",
+    // AI/ML lives under Development in the taxonomy.
+    href: "/c/development/ai-ml",
     image: "/artificial-intelligence.jpeg",
     accent:
       "from-[#6E3DF6]/45 via-transparent to-[#0B1C3A]/65",
   },
   {
-    eyebrow: "Cloud",
+    eyebrow: "Cloud & DevOps",
     title: "Cloud & DevOps, Done Right",
     description:
       "Scale confidently with certified cloud architects — AWS, GCP, Azure, Kubernetes, and CI/CD built to last.",
     ctaLabel: "Find cloud engineers",
-    href: "/c/cloud",
+    href: "/c/development/cloud-devops",
     image: "/clouds.png",
     accent:
       "from-[#0EA5E9]/40 via-transparent to-[#0B1C3A]/65",
   },
   {
-    eyebrow: "Mobile",
+    eyebrow: "Mobile Development",
     title: "Mobile Teams That Launch",
     description:
       "Native iOS, Android, and cross-platform apps built by teams with App Store and Play Store hits on their resume.",
     ctaLabel: "Meet mobile teams",
-    href: "/c/mobile",
+    href: "/c/development/mobile-development",
     image: "/design-screens.png",
     accent:
       "from-[#F6953D]/35 via-transparent to-[#0B1C3A]/65",
