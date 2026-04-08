@@ -859,15 +859,15 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                     src={user?.avatarUrl ?? ""}
                     alt={user?.firstName ?? "User"}
                   />
-                  <AvatarFallback>
+                  <AvatarFallback suppressHydrationWarning>
                     {user?.firstName?.[0]?.toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col text-left">
-                  <span className="text-xs font-semibold leading-[15px] text-gray-700">
+                  <span className="text-xs font-semibold leading-[15px] text-gray-700" suppressHydrationWarning>
                     {user?.firstName || ""} {user?.lastName || ""}
                   </span>
-                  <span className="text-[9px] leading-[14px] text-gray-500">
+                  <span className="text-[9px] leading-[14px] text-gray-500" suppressHydrationWarning>
                     {user?.email}
                   </span>
                 </div>
@@ -882,7 +882,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                     <span className="text-xs leading-5 text-gray-700">
                       User ID: 2459749
                     </span>
-                    <span className="text-[13px] leading-5 text-primary-500">
+                    <span className="text-[13px] leading-5 text-primary-500" suppressHydrationWarning>
                       {user?.email}
                     </span>
                   </div>
