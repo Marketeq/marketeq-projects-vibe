@@ -1151,7 +1151,13 @@ const CreateYourUsername = ({
 
   const usernameSuggestions = useMemo(
     () =>
-      getClientUsernameSuggestions(user?.email),
+      getClientUsernameSuggestions({
+        email: user?.email,
+        firstName: stepData?.firstName ?? user?.firstName,
+        lastName: stepData?.lastName ?? user?.lastName,
+        teamName: stepData?.teamName,
+        role: stepData?.role,
+      }),
     [
       stepData?.firstName,
       stepData?.lastName,
@@ -2539,6 +2545,17 @@ const DoNext = ({
   const router = useRouter()
   const { setUser, user } = useAuth()
   const [isLoading, setIsLoading] = React.useState(false)
+
+  const requiresPasswordSetup = (candidate?: User | null) => {
+    const safeUser = candidate as { provider?: string; hasPassword?: boolean } | null | undefined
+    return safeUser?.provider === "EMAIL" && !safeUser?.hasPassword
+  }
+
+  const getPostOnboardingRoute = (targetRoute: string, candidate?: User | null) => {
+    // Enforce password setup before allowing post-onboarding route jumps.
+    return requiresPasswordSetup(candidate) ? "/client-dashboard" : targetRoute
+  }
+
   const handleFinish = async () => {
     try {
       setIsLoading(true)
@@ -2560,16 +2577,18 @@ const DoNext = ({
         setUser(nextUser)
       }
 
+      let refreshedUser = nextUser
       try {
         const userResponse = await UserAPI.me()
         if (userResponse?.data?.user) {
+          refreshedUser = userResponse.data.user
           setUser(userResponse.data.user)
         }
       } catch (error) {
         console.error("Failed to refresh user after onboarding", error)
       }
 
-      router.push("/client-dashboard")
+      router.push(getPostOnboardingRoute("/client-dashboard", refreshedUser ?? clientUser ?? user))
     } catch (error) {
       console.error("Failed to complete onboarding", error)
       // Show error toast if needed
@@ -2638,7 +2657,7 @@ const DoNext = ({
                 if (clientUser) {
                   setUser(clientUser)
                 }
-                router.push("/client-dashboard")
+                router.push(getPostOnboardingRoute("/client-dashboard", clientUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">

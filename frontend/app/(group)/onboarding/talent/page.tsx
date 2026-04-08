@@ -3382,6 +3382,17 @@ const DoNext = ({
   const router = useRouter()
   const { setUser, user } = useAuth()
   const [isLoading, setIsLoading] = React.useState(false)
+
+  const requiresPasswordSetup = (candidate?: User | null) => {
+    const safeUser = candidate as { provider?: string; hasPassword?: boolean } | null | undefined
+    return safeUser?.provider === "EMAIL" && !safeUser?.hasPassword
+  }
+
+  const getPostOnboardingRoute = (targetRoute: string, candidate?: User | null) => {
+    // Enforce password setup before allowing post-onboarding route jumps.
+    return requiresPasswordSetup(candidate) ? "/talent-dashboard" : targetRoute
+  }
+
   const handleFinish = async () => {
     try {
       setIsLoading(true)
@@ -3403,16 +3414,18 @@ const DoNext = ({
         setUser(nextUser)
       }
 
+      let refreshedUser = nextUser
       try {
         const userResponse = await UserAPI.me()
         if (userResponse?.data?.user) {
+          refreshedUser = userResponse.data.user
           setUser(userResponse.data.user)
         }
       } catch (error) {
         console.error("Failed to refresh user after onboarding", error)
       }
 
-      router.push("/talent-dashboard")
+      router.push(getPostOnboardingRoute("/talent-dashboard", refreshedUser ?? talentUser ?? user))
     } catch (error) {
       console.error("Failed to complete onboarding", error)
       // Show error toast if needed
@@ -3441,7 +3454,7 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push("/talent-dashboard")
+                router.push(getPostOnboardingRoute("/talent-dashboard", talentUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -3462,7 +3475,7 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push("/publish-project")
+                router.push(getPostOnboardingRoute("/publish-project", talentUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -3483,7 +3496,7 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push("/publish-project")
+                router.push(getPostOnboardingRoute("/publish-project", talentUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -3504,7 +3517,7 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push("/publish-project")
+                router.push(getPostOnboardingRoute("/publish-project", talentUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">

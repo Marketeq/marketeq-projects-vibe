@@ -865,7 +865,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                 </Avatar>
                 <div className="flex flex-col text-left">
                   <span className="text-xs font-semibold leading-[15px] text-gray-700" suppressHydrationWarning>
-                    {user?.firstName || ""} {user?.lastName || ""}
+                    {[user?.firstName, user?.lastName].filter(Boolean).join(" ")}
                   </span>
                   <span className="text-[9px] leading-[14px] text-gray-500" suppressHydrationWarning>
                     {user?.email}
