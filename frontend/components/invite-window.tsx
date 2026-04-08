@@ -290,7 +290,7 @@ export const InviteWindow = () => {
   const { open, title: storeTitle, toggle: toggleInviteWindow } = useInviteWindowStore()
   const [view, setView] = useState<InviteView>("invite")
   const [inviteSent, setInviteSent] = useState(false)
-  const [defaultRole, setDefaultRole] = useState<InviteRole>("viewer")
+  const [defaultRole] = useState<InviteRole>("viewer")
   const [isOpen, toggle] = useToggle(false)
   const [message, setMessage] = useState("")
   const [showSuggestions, setShowSuggestions] = useState(false)
