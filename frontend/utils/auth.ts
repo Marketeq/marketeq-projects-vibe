@@ -14,8 +14,8 @@ export const getCurrentUser = (): CurrentUser | null => {
   if (!token) return null
 
   try {
-    const decoded = jwtDecode<CurrentUser>(token)
-    return decoded
+    const decoded = jwtDecode<{ sub: string; username?: string; avatarUrl?: string }>(token)
+    return { id: decoded.sub, username: decoded.username ?? "", avatarUrl: decoded.avatarUrl }
   } catch (err) {
     console.error("Invalid token", err)
     return null

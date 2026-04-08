@@ -72,6 +72,7 @@ function useProvideAuth() {
 
     // Ensure cookie is always set with path="/" so it's available on all routes
     Cookies.set("access_token", accessToken, { path: "/" })
+    localStorage.setItem("token", accessToken)
 
     UserAPI.me()
       .then((response) => {

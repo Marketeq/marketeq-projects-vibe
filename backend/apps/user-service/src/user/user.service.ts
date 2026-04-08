@@ -174,6 +174,8 @@ export class UserService {
       Object.assign(existingById, {
         email: dto.email ?? existingById.email,
         role: resolvedRole ?? existingById.role,
+        ...(dto.firstName && { firstName: dto.firstName }),
+        ...(dto.lastName && { lastName: dto.lastName }),
       });
       if (normalizedIncomingUsername) {
         existingById.username = normalizedIncomingUsername;
@@ -203,6 +205,8 @@ export class UserService {
       email: dto.email,
       username: normalizedIncomingUsername ?? fallbackUsername,
       role: resolvedRole,
+      ...(dto.firstName && { firstName: dto.firstName }),
+      ...(dto.lastName && { lastName: dto.lastName }),
     });
 
     return this.userRepository.save(user);

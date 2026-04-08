@@ -13,6 +13,8 @@ export function useAblyChannel(
   const clientRef = useRef<Ably.Realtime | null>(null)
 
   useEffect(() => {
+    if (!threadId) return
+
     const currentUser = getCurrentUser()
 
     if (!currentUser) {
@@ -28,8 +30,8 @@ export function useAblyChannel(
           const token = localStorage.getItem("token")
           // your Nest endpoint returns the full Ably tokenDetails JSON
           const tokenDetails = await apiFetch<any>(
-            `/api/messaging/ably?threadId=${threadId}`,
-            { method: "POST", headers: { Authorization: `Bearer ${token}` } }
+            `/v1/threads/ably-token?threadId=${threadId}`,
+            { method: "GET", headers: { Authorization: `Bearer ${token}` } }
           )
           callback(null, tokenDetails)
         } catch (err) {
@@ -42,7 +44,7 @@ export function useAblyChannel(
 
     clientRef.current = client
 
-    const channel = client.channels.get(`thread-${threadId}`)
+    const channel = client.channels.get(`chat:thread-${threadId}`)
 
     channel.subscribe((msg) => {
       console.log(`Ably received ${msg.name}:`, msg.data)

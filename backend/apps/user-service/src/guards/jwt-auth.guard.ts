@@ -28,7 +28,7 @@ export class JwtAuthGuard implements CanActivate, OnModuleInit {
       );
       throw new Error('AUTH_JWT_PUBLIC_KEY is required');
     }
-    this.publicKey = publicKey;
+    this.publicKey = publicKey.replace(/\\n/g, '\n');
   }
 
   canActivate(context: ExecutionContext): boolean {

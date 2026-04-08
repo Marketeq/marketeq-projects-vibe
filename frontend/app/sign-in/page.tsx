@@ -73,6 +73,7 @@ export default function SignIn() {
       .then(async (response) => {
         if (response?.status === 200 && response?.data?.access_token) {
           Cookies.set("access_token", response?.data?.access_token, { path: "/" })
+          localStorage.setItem("token", response.data.access_token)
           if (response?.data?.refresh_token) {
             Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
           }
@@ -228,6 +229,7 @@ export default function SignIn() {
                       const res = await AuthAPI.DevLogin("olivia.brooks@example.com")
                       if (res?.data?.access_token) {
                         Cookies.set("access_token", res.data.access_token, { path: "/" })
+                        localStorage.setItem("token", res.data.access_token)
                         if (res.data.refresh_token) {
                           Cookies.set("refresh_token", res.data.refresh_token, { path: "/" })
                         }
@@ -254,6 +256,7 @@ export default function SignIn() {
                       const res = await AuthAPI.DevLogin("maya.johnson@example.com")
                       if (res?.data?.access_token) {
                         Cookies.set("access_token", res.data.access_token, { path: "/" })
+                        localStorage.setItem("token", res.data.access_token)
                         if (res.data.refresh_token) {
                           Cookies.set("refresh_token", res.data.refresh_token, { path: "/" })
                         }
