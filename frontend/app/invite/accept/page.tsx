@@ -31,7 +31,10 @@ export default function AcceptInvitationPage() {
     const message = String(rawMessage)
     const normalizedMessage = message.toLowerCase()
 
-    if (normalizedMessage.includes("email mismatch")) {
+    if (
+      normalizedMessage.includes("email mismatch") ||
+      normalizedMessage.includes("email does not match invitation")
+    ) {
       return "You are signed in with a different account. Please sign in using the invited email address and try again."
     }
 
@@ -152,7 +155,10 @@ export default function AcceptInvitationPage() {
 
         setStatus("error")
         setErrorTitle(
-          String(rawMessage).toLowerCase().includes("email mismatch")
+          String(rawMessage).toLowerCase().includes("email mismatch") ||
+            String(rawMessage)
+              .toLowerCase()
+              .includes("email does not match invitation")
             ? "Wrong Account"
             : "Invitation Error"
         )
