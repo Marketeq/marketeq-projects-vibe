@@ -8,19 +8,29 @@
 export { buildProjectUrl, buildServiceUrl } from "./urlHelpers"
 
 /**
- * Project detail page (direct, non-category URL).
- * Used from my-listings, favorites, dashboards, etc.
+ * Project listing/details page (direct, non-category URL).
+ *
+ * Canonical format: /project-details/{slug}-{shortId}
+ * where shortId = first 8 chars of the project UUID.
+ *
+ * - Pass both `slug` and `id` for real projects (recommended).
+ * - Pass `id` only (as a plain string) for draft listings that don't
+ *   yet have a slug — the page will handle it as a direct ID lookup.
  */
-export function projectDetailsUrl(id: string): string {
-  return `/project-details/${id}`
+export function projectDetailsUrl(slugOrId: string, id?: string): string {
+  if (id) {
+    const shortId = id.split("-")[0]
+    return `/project-details/${slugOrId}-${shortId}`
+  }
+  return `/project-details/${slugOrId}`
 }
 
 /**
- * Service detail page. Services currently redirect to the unified
- * project-details page, so this intentionally maps to the same route.
+ * Service listing/details page. Services currently redirect to the unified
+ * project-details page, so this maps to the same route.
  */
-export function serviceDetailsUrl(id: string): string {
-  return `/project-details/${id}`
+export function serviceDetailsUrl(slugOrId: string, id?: string): string {
+  return projectDetailsUrl(slugOrId, id)
 }
 
 /**

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react"
 import { fromLength, cn } from "@/utils/functions"
-import { buildProjectUrl } from "@/src/lib/listing-urls"
+import { projectDetailsUrl } from "@/src/lib/listing-urls"
 import {
   ChevronLeft,
   ChevronRight,
@@ -130,7 +130,7 @@ const CarouselSection = ({
         const projects = await res.json()
         const first = Array.isArray(projects) && projects[0]
         if (cancelled || !first?.id || !first?.slug) return
-        setSampleHref(buildProjectUrl(first.category ?? "", first.slug, first.id))
+        setSampleHref(projectDetailsUrl(first.slug, first.id))
       } catch {
         // keep fallback
       }
