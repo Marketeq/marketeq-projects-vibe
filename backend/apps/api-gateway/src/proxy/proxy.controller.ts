@@ -9,6 +9,9 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   listings: 'listings',
   checkout: 'checkout',
   messages: 'messages',
+  messaging: 'messages',
+  'user-keys': 'users',
+  devices: 'users',
   notifications: 'notifications',
   search: 'search',
   algolia: 'algolia',
@@ -59,6 +62,8 @@ export class ProxyController {
       prefix = 'users'
     } else if (prefix === 'v1' && (segments[1] === 'projects' || segments[1] === 'services')) {
       prefix = 'listings'
+    } else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {
+      prefix = 'messages'
     }
 
     const serviceName = SERVICE_PREFIX_MAP[prefix]
