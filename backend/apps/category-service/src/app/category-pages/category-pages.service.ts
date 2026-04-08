@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { CategoryEntity } from '../entities/category.entity';
 import { TagEntity } from '../entities/tag.entity';
-import { StrapiAdapter } from './adapters/strapi.adapter';
+import { CmsAdapter } from './adapters/cms.adapter';
 import { EvaluatorFactory } from './evaluators/evaluator-factory';
 import { Rule, BlockSpec } from './types/taxonomy.types';  // ← ADD BlockSpec
 import { SuggestionsAdapter } from './suggestions/suggestions.adapter';
@@ -27,7 +27,7 @@ export class CategoryPagesService {
     private categoryRepo: Repository<CategoryEntity>,
     @InjectRepository(TagEntity)
     private tagRepo: Repository<TagEntity>,
-    private readonly strapiAdapter: StrapiAdapter,
+    private readonly cmsAdapter: CmsAdapter,
     private readonly evaluatorFactory: EvaluatorFactory,
     private readonly suggestionsAdapter: SuggestionsAdapter,
     private readonly healthService: HealthService,
@@ -194,8 +194,8 @@ private async buildBlocks(
       `pageKind: ${pageKind}, rows: ${limit}`  // Changed log message
     );
 
-    // Fetch Taxonomy Groups from Strapi
-    const taxonomyGroups = await this.strapiAdapter.getTaxonomyGroups(categoryUuid);
+    // Fetch Taxonomy Groups from CMS
+    const taxonomyGroups = await this.cmsAdapter.getTaxonomyGroups(categoryUuid);
 
     if (taxonomyGroups.length === 0) {
       this.logger.warn(`No taxonomy groups found for category ${categoryUuid}`);
@@ -271,7 +271,7 @@ private async buildBlocks(
           };
           return block;
         } catch (error) {
-          this.logger.error(`Rule execution failed: ${error.message}`);
+          this.logger.error(`Rule execution failed: ${(error as any)?.message ?? error}`);
           return null;
         }
       })
@@ -290,22 +290,21 @@ private async buildBlocks(
       try {
         const healthResult = await this.healthService.assess({ blocks: validBlocks });
         
-        this.logger.log('='.repeat(50));
-        this.logger.log('🏥 PAGE HEALTH CHECK:');
-        this.logger.log(`Overall: ${healthResult.pass ? ' PASS' : ' FAIL'}`);
+        this.logger.log('--- PAGE HEALTH CHECK ---');
+        this.logger.log(`Overall: ${healthResult.pass ? 'PASS' : 'FAIL'}`);
         healthResult.checks.forEach(check => {
-          const icon = check.pass ? '✅' : '❌';
-          this.logger.log(`  ${icon} ${check.entity}: ${check.reason}`);
+          const status = check.pass ? '[PASS]' : '[FAIL]';
+          this.logger.log(`  ${status} ${check.entity}: ${check.reason}`);
         });
-        this.logger.log('='.repeat(50));
+        this.logger.log('--- END HEALTH CHECK ---');
       } catch (error) {
-        this.logger.error('Health check error:', error.message);
+        this.logger.error('Health check error:', (error as any)?.message ?? error);
       }
     }
 
     return validBlocks;
   } catch (error) {
-    this.logger.error(`Failed to build blocks: ${error.message}`);
+    this.logger.error(`Failed to build blocks: ${(error as any)?.message ?? error}`);
     return [];
   }
   
@@ -397,7 +396,7 @@ private getBlockDescription(rule: Rule): string {
         skills: 12,
       },
     });
-    const editorial = await this.strapiAdapter.getEditorial(category.uuid);
+    const editorial = await this.cmsAdapter.getEditorial(category.uuid);
 
     const level = slugParts.length as 1 | 2 | 3;
     const slugPath = [...slugParts];
@@ -600,7 +599,7 @@ private getBlockDescription(rule: Rule): string {
 
       return related;
     } catch (error) {
-      this.logger.warn(`Could not fetch related categories: ${error.message}`);
+      this.logger.warn(`Could not fetch related categories: ${(error as any)?.message ?? error}`);
       return [];
     }
   }

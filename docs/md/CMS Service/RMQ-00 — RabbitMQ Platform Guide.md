@@ -1,171 +1,124 @@
-**RMQ-00 — RabbitMQ Platform Guide**
+# RMQ-00 — RabbitMQ Platform Guide
 
-Scope: All services in the Marketeq monorepo
+**Scope:** All services in the Marketeq monorepo
 
-*Purpose: Platform-wide RabbitMQ exchange topology, naming conventions
-for exchanges, queues, and routing keys, consumer patterns, dead-letter
-queue configuration, and connection resilience strategy. This is the
-authoritative reference — all service-specific RabbitMQ docs (RMQ-01
-through RMQ-03) reference this guide and do not duplicate it.*
+> **Purpose:** Platform-wide RabbitMQ exchange topology, naming conventions, consumer patterns, dead-letter queue configuration, and connection resilience strategy. This is the authoritative reference — all service-specific RabbitMQ docs (RMQ-01 through RMQ-03) reference this guide and do not duplicate it.
 
-**1. Platform Overview**
+---
 
-RabbitMQ is the message broker for all async inter-service communication
-on the Marketeq platform. It provides delivery guarantees, automatic
-retry, and fully decoupled producers and consumers. All exchanges and
-queues are durable — they survive broker restarts.
+## 1. Platform Overview
 
-Connection string: RABBITMQ_URL env var. Format:
-amqp://user:pass@rabbitmq:5672. All services share the same RabbitMQ
-instance.
+RabbitMQ is the message broker for all async inter-service communication on the Marketeq platform. It provides delivery guarantees, automatic retry, and fully decoupled producers and consumers. All exchanges and queues are durable — they survive broker restarts.
 
-**2. Exchange Topology**
+**Connection string:** `RABBITMQ_URL` env var. Format: `amqp://user:pass@rabbitmq:5672`. All services share the same RabbitMQ instance.
 
-|  |  |  |  |
-|----|----|----|----|
-| **Exchange** | **Type** | **Durable** | **Purpose** |
-| **cms.events** | topic | Yes | Published by cms-service. Category sync events. All CMS-originated async messages. |
-| **cms.events.dlx** | direct | Yes | Dead-letter exchange for cms.events. Failed messages land here after max retries. |
+---
 
-**3. Queue Registry**
+## 2. Exchange Topology
 
-|  |  |  |  |
-|----|----|----|----|
-| **Queue** | **Exchange** | **Routing Key** | **Consumer** |
-| **cms.category.category** | cms.events | category.\* | category-service |
-| **cms.category.category.dlq** | cms.events.dlx | category.\* | Manual inspection / alerting |
+| Exchange | Type | Durable | Purpose |
+|---|---|---|---|
+| `cms.events` | topic | Yes | Published by cms-service. Category sync events. All CMS-originated async messages. |
+| `cms.events.dlx` | direct | Yes | Dead-letter exchange for `cms.events`. Failed messages land here after max retries. |
 
-**4. Naming Conventions**
+---
 
-> **Exchanges**
+## 3. Queue Registry
 
-- Pattern: \<publisher-service\>.events
+| Queue | Exchange | Routing Key | Consumer |
+|---|---|---|---|
+| `cms.category.category` | `cms.events` | `category.*` | category-service |
+| `cms.category.category.dlq` | `cms.events.dlx` | `category.*` | Manual inspection / alerting |
 
-- Example: cms.events — published by cms-service
+---
 
-- All exchanges are topic type and durable
+## 4. Naming Conventions
 
-> **Routing Keys**
+### Exchanges
+- Pattern: `<publisher-service>.events`
+- Example: `cms.events` — published by cms-service
+- All exchanges are `topic` type and durable
 
-- Pattern: \<resource\>.\<action\>
-
-- Examples: category.saved, category.deleted
-
+### Routing Keys
+- Pattern: `<resource>.<action>`
+- Examples: `category.saved`, `category.deleted`
 - Use past tense for events that have occurred
-
 - Use dot notation — no hyphens or underscores
 
-> **Consumer Queues**
+### Consumer Queues
+- Pattern: `<publisher-service>.<consumer-service>.<resource>`
+- Example: `cms.category.category` — published by cms-service, consumed by category-service, for the category resource
 
-- Pattern: \<publisher-service\>.\<consumer-service\>.\<resource\>
+### Dead-Letter Queues
+- Pattern: `<consumer-queue>.dlq`
+- Example: `cms.category.category.dlq`
 
-- Example: cms.category.category — published by cms-service, consumed by
-  category-service, for the category resource
+---
 
-> **Dead-Letter Queues**
+## 5. Dead-Letter Queue Configuration
 
-- Pattern: \<consumer-queue\>.dlq
+Every consumer queue must be configured with a dead-letter exchange and a message TTL for retry. Messages that exhaust retries are forwarded to the DLQ for manual inspection.
 
-- Example: cms.category.category.dlq
+```typescript
+// Consumer queue declaration with DLQ wiring (NestJS RMQ transport)
+queueOptions: {
+  durable: true,
+  arguments: {
+    'x-dead-letter-exchange':    'cms.events.dlx',
+    'x-dead-letter-routing-key': 'category.dead',
+    'x-message-ttl':             30000,  // 30s before message is DLQ'd on nack
+  },
+},
+```
 
-**5. Dead-Letter Queue Configuration**
+---
 
-Every consumer queue must be configured with a dead-letter exchange and
-a message TTL for retry. Messages that exhaust retries are forwarded to
-the DLQ for manual inspection.
+## 6. Consumer Pattern — NestJS Hybrid App
 
-> // Consumer queue declaration with DLQ wiring (NestJS RMQ transport)
->
-> queueOptions: {
->
-> durable: true,
->
-> arguments: {
->
-> 'x-dead-letter-exchange': 'cms.events.dlx',
->
-> 'x-dead-letter-routing-key': 'category.dead',
->
-> 'x-message-ttl': 30000, // 30s before message is DLQ'd on nack
->
-> },
->
-> },
+NestJS microservices that need to consume RabbitMQ events while also serving HTTP run as hybrid apps. This pattern is documented in RMQ-02 and RMQ-03.
 
-**6. Consumer Pattern — NestJS Hybrid App**
+```typescript
+// main.ts — hybrid app pattern
+const app = await NestFactory.create(AppModule);
 
-NestJS microservices that need to consume RabbitMQ events while also
-serving HTTP (e.g. category-service) run as hybrid apps. This pattern is
-documented in RMQ-02 and RMQ-03.
+// Connect the RabbitMQ microservice transport
+app.connectMicroservice<MicroserviceOptions>({
+  transport: Transport.RMQ,
+  options: {
+    urls:         [process.env.RABBITMQ_URL!],
+    queue:        'cms.category.category',
+    queueOptions: {
+      durable: true,
+      arguments: {
+        'x-dead-letter-exchange': 'cms.events.dlx',
+        'x-message-ttl': 30000,
+      },
+    },
+    noAck:        false,
+    prefetchCount:1,
+  },
+});
 
-> // main.ts — hybrid app pattern
->
-> const app = await NestFactory.create(AppModule);
->
-> // Connect the RabbitMQ microservice transport
->
-> app.connectMicroservice\<MicroserviceOptions\>({
->
-> transport: Transport.RMQ,
->
-> options: {
->
-> urls: \[process.env.RABBITMQ_URL!\],
->
-> queue: 'cms.category.category',
->
-> queueOptions: {
->
-> durable: true,
->
-> arguments: {
->
-> 'x-dead-letter-exchange': 'cms.events.dlx',
->
-> 'x-message-ttl': 30000,
->
-> },
->
-> },
->
-> noAck: false,
->
-> prefetchCount:1,
->
-> },
->
-> });
->
-> // Start both HTTP and microservice listeners
->
-> await app.startAllMicroservices();
->
-> await app.listen(process.env.PORT ?? 3025);
+// Start both HTTP and microservice listeners
+await app.startAllMicroservices();
+await app.listen(process.env.PORT ?? 3025);
+```
 
-**7. Connection Resilience**
+---
 
-- All services connect to RabbitMQ at startup. Connection failure is not
-  fatal — the service logs a warning and retries.
+## 7. Connection Resilience
 
+- All services connect to RabbitMQ at startup. Connection failure is not fatal — the service logs a warning and retries.
 - Use exponential backoff for reconnect: 1s → 5s → 30s → 60s.
+- NestJS RMQ transport handles reconnect automatically when `noAck: false` and the connection drops.
+- Publish failures in cms-service are retried up to 3 times (see CS-05, CmsEventPublisher).
+- The nightly cron reconciliation in category-service is the final safety net for any missed events.
 
-- NestJS RMQ transport handles reconnect automatically when noAck: false
-  and the connection drops.
+---
 
-- Publish failures in cms-service are retried up to 3 times (see CS-05,
-  CmsEventPublisher).
+## 8. Message Acknowledgement
 
-- The nightly cron reconciliation in category-service is the final
-  safety net for any missed events.
-
-**8. Message Acknowledgement**
-
-- Always use noAck: false. Manual acknowledgement ensures messages are
-  not lost if the consumer crashes mid-processing.
-
-- Acknowledge (ack) after successful processing.
-
-- Negative-acknowledge (nack) with requeue: false on permanent failures
-  — this routes the message to the DLQ.
-
-- Never nack with requeue: true — this creates infinite retry loops.
+- Always use `noAck: false`. Manual acknowledgement ensures messages are not lost if the consumer crashes mid-processing.
+- **Acknowledge (ack)** after successful processing.
+- **Negative-acknowledge (nack)** with `requeue: false` on permanent failures — this routes the message to the DLQ.
+- **Never nack with `requeue: true`** — this creates infinite retry loops.

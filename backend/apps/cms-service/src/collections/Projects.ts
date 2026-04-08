@@ -1,10 +1,10 @@
-import type { CollectionConfig, FieldHook } from 'payload'
+import { CollectionConfig, FieldHook } from 'payload/types';
 
 import {
   isAdmin,
   isEditor,
   readPublishedOrCmsUser,
-} from '../access/roles'
+} from '../access/roles';
 
 /**
  * Projects — dedicated CMS collection for the "Projects" listing type.
@@ -66,7 +66,6 @@ export const Projects: CollectionConfig = {
   versions: {
     drafts: {
       autosave: { interval: 800 },
-      schedulePublish: true,
     },
     maxPerDoc: 25,
   },
