@@ -28,7 +28,7 @@ export interface Conversation {
   isGroup: boolean
   createdAt: string // ISO timestamp
   updatedAt: string // ISO timestamp
-  participants: ConversationParticipant[]
+  participantIds: string[]
   isStarred: boolean
   group?: GroupInfo // only if isGroup is true
   /**

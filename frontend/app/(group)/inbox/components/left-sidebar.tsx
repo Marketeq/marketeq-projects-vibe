@@ -86,7 +86,7 @@ function getOtherParticipantId(
   conv: Conversation,
   me: string
 ): string | undefined {
-  return conv.participants.find((p) => p.userId !== me)?.userId
+  return conv.participantIds?.find((id) => id !== me)
 }
 
 interface LeftSidebarProps {
@@ -117,7 +117,7 @@ const LeftSidebar = ({
     const fetchConversations = async () => {
       try {
         const data = await apiFetch<Conversation[]>(
-          "/api/messaging/conversations",
+          "/v1/threads",
           {
             method: "GET",
             headers: { Authorization: `Bearer ${token}` },
@@ -130,7 +130,7 @@ const LeftSidebar = ({
             if (conv.isGroup) {
               try {
                 const group = await apiFetch<{ name: string }>(
-                  `/api/messaging/groups/${conv.id}`,
+                  `/v1/threads/${conv.id}`,
                   {
                     method: "GET",
                     headers: { Authorization: `Bearer ${token}` },
@@ -154,14 +154,14 @@ const LeftSidebar = ({
             }
 
             // INDIVIDUAL conversation
-            const otherId = conv.participants.find(
-              (p) => p.userId !== currentUserId
-            )?.userId
+            const otherId = conv.participantIds?.find(
+              (id) => id !== currentUserId
+            )
 
             if (!otherId) {
               console.warn(
                 `[LeftSidebar] couldn’t find “other” participant for conv ${conv.id}`,
-                { currentUserId, participants: conv.participants }
+                { currentUserId, participantIds: conv.participantIds }
               )
               return {
                 ...conv,
@@ -171,7 +171,7 @@ const LeftSidebar = ({
 
             try {
               const user = await apiFetch<{ username: string }>(
-                `/api/messaging/users/${otherId}`,
+                `/users/${otherId}`,
                 { method: "GET", headers: { Authorization: `Bearer ${token}` } }
               )
 

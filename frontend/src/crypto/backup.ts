@@ -3,7 +3,7 @@
 /** Deterministically derive a CryptoKey from userId + system salt */
 export async function deriveKEK(userId: string): Promise<CryptoKey> {
   const encoder = new TextEncoder()
-  const systemSecret = "" //import.meta.env.VITE_SYSTEM_SECRET;
+  const systemSecret = process.env.NEXT_PUBLIC_SYSTEM_SECRET || "";
   const keyMaterialRaw = encoder.encode(`${userId}:${systemSecret}`)
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
