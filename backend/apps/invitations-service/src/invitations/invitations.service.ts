@@ -75,6 +75,8 @@ export class InvitationsService {
     },
     userSummary: InternalUserSummary,
   ): AcceptInvitationResult {
+    const hasCompleted = userSummary.onboardingDismissed;
+
     return {
       ...invitation,
       canceledAt: invitation.canceledAt ?? null,
@@ -83,13 +85,15 @@ export class InvitationsService {
         email: userSummary.email,
         role: userSummary.role,
         onboardingDismissed: userSummary.onboardingDismissed,
-        hasCompletedOnboarding: true,
+        hasCompletedOnboarding: hasCompleted,
         accountState: 'existing_account',
       },
       postAccept: {
-        nextStep: 'go_to_team',
-        reason: 'existing_user_completed_onboarding',
-        suggestedPath: '/teams',
+        nextStep: hasCompleted ? 'go_to_team' : 'continue_onboarding',
+        reason: hasCompleted
+          ? 'existing_user_completed_onboarding'
+          : 'existing_user_needs_onboarding',
+        suggestedPath: hasCompleted ? '/teams' : '/onboarding',
         teamId: invitation.teamId,
       },
     };
@@ -154,7 +158,7 @@ export class InvitationsService {
         to: email,
         teamName: dto.teamId,
         role: dto.role,
-        acceptUrl: `${this.appBaseUrl}/invitations/accept?token=${token}`,
+        acceptUrl: `${this.appBaseUrl}/invite/accept?token=${token}`,
         inviterEmail: inviter.email,
         note: dto.note,
       });
@@ -201,7 +205,7 @@ export class InvitationsService {
       to: inv.invitedEmail,
       teamName: inv.teamId,
       role: inv.role,
-      acceptUrl: `${this.appBaseUrl}/invitations/accept?token=${inv.token}`,
+      acceptUrl: `${this.appBaseUrl}/invite/accept?token=${inv.token}`,
       inviterEmail: '',
     });
 
@@ -235,7 +239,7 @@ export class InvitationsService {
         [linkPayload.teamId, invitee.id, linkPayload.role],
       ).catch(() => null);
 
-      const updatedUserSummary = await this.userService.dismissOnboarding(invitee.id);
+      const userSummary = await this.userService.getUserSummary(invitee.id);
 
       return this.buildAcceptResponse({
         id: null,
@@ -250,7 +254,7 @@ export class InvitationsService {
         acceptedAt: new Date(),
         canceledAt: null,
         resentCount: 0,
-      }, updatedUserSummary);
+      }, userSummary);
     }
     if (inv.status !== InvitationStatus.PENDING) throw new BadRequestException('Invitation is no longer pending');
     if (inv.expiresAt < new Date()) {
@@ -278,14 +282,14 @@ export class InvitationsService {
       throw new NotFoundException('Invitation not found');
     }
 
-    const updatedUserSummary = await this.userService.dismissOnboarding(invitee.id);
+    const userSummary = await this.userService.getUserSummary(invitee.id);
 
     return this.buildAcceptResponse(
       {
         ...updated,
         acceptedAt: updated.acceptedAt ?? new Date(),
       },
-      updatedUserSummary,
+      userSummary,
     );
   }
 }

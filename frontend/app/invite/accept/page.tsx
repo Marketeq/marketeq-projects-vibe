@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useAuth } from "@/contexts/auth"
+import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import { InvitationsAPI } from "@/service/http/invitations"
 import {
   getAcceptInvitationPayload,
@@ -119,12 +119,28 @@ export default function AcceptInvitationPage() {
           })
         }
 
+        // Check onboarding state from all available sources:
+        // 1. The acceptedUser from the API response
+        // 2. The current user from auth context (may be null in new tab)
+        const onboardingDone =
+          acceptedUser?.hasCompletedOnboarding ??
+          acceptedUser?.onboardingDismissed ??
+          user?.onboardingDismissed ??
+          false
+
+        const checkUser = user || acceptedUser
+        const hasRole = !!resolveDashboardRole(checkUser)
+
+        const finalDestination = (!hasRole || !onboardingDone)
+          ? "/onboarding"
+          : redirect.destination
+
         setStatus("success")
         setMessage("Invitation accepted successfully.")
         setTimeout(() => {
-          const separator = redirect.destination.includes("?") ? "&" : "?"
+          const separator = finalDestination.includes("?") ? "&" : "?"
           window.location.assign(
-            `${redirect.destination}${separator}inviteAccepted=1`
+            `${finalDestination}${separator}inviteAccepted=1`
           )
         }, 2000)
       })
