@@ -7,6 +7,7 @@ import { ProxyService } from './proxy/proxy.service'
 import { ProxyController } from './proxy/proxy.controller'
 import { TalentUploadController } from './controllers/talent-upload.controller'
 import { PublishMediaController } from './controllers/publish-media.controller'
+import { HomepageModule } from './homepage/homepage.module'
 import { JwtStrategy } from './guards/jwt-auth.guard'
 import { JwtMiddleware } from './middleware/jwt.middleware'
 import { LoggingMiddleware } from './middleware/logging.middleware'
@@ -18,6 +19,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
       envFilePath: ['apps/api-gateway/.env', '.env'],
     }),
     HttpModule.register({ timeout: 30000 }),
+    HomepageModule,
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
