@@ -23,6 +23,7 @@ import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { ListingCard } from "@/components/listing-card"
+import { CategoryBanner } from "@/components/category-banner"
 import {
   Avatar,
   AvatarFallback,
@@ -158,39 +159,19 @@ export default function Projects() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <div className="py-[50px]">
         <div className="max-w-[1440px] mx-auto px-[50px]">
-          <div className="relative rounded-lg overflow-hidden h-[227px]">
-            <NextImage
-              src="/coding.png"
-              fill
-              className="object-cover"
-              sizes="100vw"
-            />
-            <div className="absolute inset-0 bg-black/60" />
-            <div className="absolute inset-0 p-6">
+          <CategoryBanner
+            image="/coding.png"
+            alt="Projects banner"
+            title="Projects"
+            description="Discover exciting projects across every category. Find the work that fits your skills and ambitions."
+            breadcrumbs={
               <div className="flex items-center gap-x-2">
-                <Home03 className="size-[18px]  text-white opacity-60" />
-
-                <div className="flex items-center gap-x-2">
-                  <span className="text-xs leading-6 font-semibold text-white opacity-60">
-                    /
-                  </span>
-                  <span className="text-xs leading-6 font-semibold text-white opacity-60">
-                    Projects
-                  </span>
-                </div>
+                <Home03 className="size-[18px] text-white opacity-60" />
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">Projects</span>
               </div>
-
-              <div className="mt-[50px] px-[50px]">
-                <h1 className="text-[36px] font-bold leading-none text-white">
-                  Projects
-                </h1>
-                <p className="text-xl mt-3 leading-none text-white">
-                  Discover exciting projects across every category. Find the
-                  work that fits your skills and ambitions.
-                </p>
-              </div>
-            </div>
-          </div>
+            }
+          />
 
           <div className="mt-[50px]">
             <div className="flex items-center justify-between">

@@ -821,7 +821,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
               <DropdownMenuItem onSelect={() => router.push("/add-funds")}>
                 <Plus className="size-4" /> Add Funds
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => router.push("/transfer-funds")}>
                 <Repeat className="size-4" /> Transfer Funds
               </DropdownMenuItem>
             </DropdownMenuContent>

@@ -33,6 +33,8 @@ import {
   Star01,
   Stars02,
 } from "@blend-metrics/icons"
+import { SubcategoryIconTile, resolveUniqueSubcategoryIcons } from "@/lib/subcategory-icon"
+import { CategoryBanner } from "@/components/category-banner"
 import { TabsList, TabsTrigger } from "@radix-ui/react-tabs"
 import { Tabs, TabsContent } from "@/components/ui"
 import { SwiperSlide } from "swiper/react"
@@ -95,6 +97,8 @@ const c = (...names: string[]): SubcategoryData[] =>
       .replace(/^-|-$/g, ""),
     description: `${name} projects, specialists, and services.`,
   }))
+
+// (subcategory icon resolver moved to @/lib/subcategory-icon)
 
 /** Back-compat shim for entries that still pass an explicit Unsplash id. */
 const unsplash = (id: string) =>
@@ -879,24 +883,22 @@ export default function Projects() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <div className="py-[50px]">
         <div className="max-w-[1440px] mx-auto px-[50px]">
-          <div className="relative rounded-lg overflow-hidden h-[227px]">
-            <NextImage
-              // Deterministic banner per deepest selected slug — every
-              // category and subcategory gets a unique, visually distinct image.
-              src={heroBannerFor(l1Meta.slug, l2Meta?.slug ?? "", l3Meta?.slug ?? "")}
-              alt={`${currentName} banner`}
-              fill
-              className="object-cover"
-              sizes="100vw"
-              priority
-              unoptimized
-            />
-            <div className="absolute inset-0 bg-black/60" />
-            <div className="absolute inset-0 p-6">
-              {/* Dynamic breadcrumbs.
-                  On kind-filtered browse pages (/projects, /services, /teams,
-                  /talent) the breadcrumb reflects the entity only. On true
-                  category pages it shows the L1/L2/L3 chain. */}
+          <CategoryBanner
+            image={heroBannerFor(l1Meta.slug, l2Meta?.slug ?? "", l3Meta?.slug ?? "")}
+            alt={`${currentName} banner`}
+            title={pageKind === "show-all" ? currentName : sectionLabel}
+            description={
+              pageKind === "show-all"
+                ? currentDescription
+                : pageKind === "projects"
+                ? `Browse ${currentName.toLowerCase()} projects posted by clients worldwide.`
+                : pageKind === "services"
+                ? `Discover ${currentName.toLowerCase()} services from top-rated freelancers.`
+                : pageKind === "teams"
+                ? `Hire vetted ${currentName.toLowerCase()} teams ready to deliver.`
+                : `Find expert ${currentName.toLowerCase()} talent for your next project.`
+            }
+            breadcrumbs={
               <div className="flex items-center gap-x-2">
                 <NextLink href="/">
                   <Home03 className="size-[18px] text-white opacity-60" />
@@ -970,25 +972,8 @@ export default function Projects() {
                   </>
                 )}
               </div>
-
-              <div className="mt-[50px] px-[50px]">
-                <h1 className="text-[36px] font-bold leading-none text-white">
-                  {pageKind === "show-all" ? currentName : sectionLabel}
-                </h1>
-                <p className="text-xl mt-3 leading-none text-white">
-                  {pageKind === "show-all"
-                    ? currentDescription
-                    : pageKind === "projects"
-                    ? `Browse ${currentName.toLowerCase()} projects posted by clients worldwide.`
-                    : pageKind === "services"
-                    ? `Discover ${currentName.toLowerCase()} services from top-rated freelancers.`
-                    : pageKind === "teams"
-                    ? `Hire vetted ${currentName.toLowerCase()} teams ready to deliver.`
-                    : `Find expert ${currentName.toLowerCase()} talent for your next project.`}
-                </p>
-              </div>
-            </div>
-          </div>
+            }
+          />
 
           {/* Dynamic subcategories section.
               Per Doc 1 (L1/L2/L3 Category Pages), L3 is the leaf — it has no
@@ -1021,10 +1006,12 @@ export default function Projects() {
               </div>
             </div>
 
-            <div className="mt-6 overflow-x-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
+            <div className="mt-6 overflow-x-auto overflow-y-visible py-1 -my-1 px-1 -mx-1" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
               <div className={`grid gap-[15px] ${l2 ? "grid-rows-1" : "grid-rows-2"} grid-flow-col`} style={{ gridAutoColumns: "calc((100% - 60px) / 5)" }}>
                 {subcategories.length > 0 ? (
-                  subcategories.map((subcat: any) => (
+                  (() => {
+                    const iconMap = resolveUniqueSubcategoryIcons(subcategories)
+                    return subcategories.map((subcat: any) => (
                     <NextLink
                       key={subcat.uuid ?? subcat.slug}
                       href={
@@ -1034,10 +1021,10 @@ export default function Projects() {
                           ? `/c/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`
                           : `/${pageKind}/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`
                       }
-                      className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300"
+                      className="group border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
                     >
                       <article>
-                        <div className="size-[35px] rounded-lg bg-gray-200" />
+                        <SubcategoryIconTile slug={subcat.slug} name={subcat.name} icon={iconMap.get(subcat.slug || subcat.name || "")} />
 
                         <div className="mt-5">
                           <h1 className="text-base leading-none font-semibold text-dark-blue-400 transition duration-300">
@@ -1049,7 +1036,8 @@ export default function Projects() {
                         </div>
                       </article>
                     </NextLink>
-                  ))
+                    ))
+                  })()
                 ) : (
                   <div className="text-center py-8 text-gray-500 w-full">
                     No subcategories available

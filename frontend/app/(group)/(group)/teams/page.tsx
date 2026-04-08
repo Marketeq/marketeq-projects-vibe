@@ -42,45 +42,26 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
+import { CategoryBanner } from "@/components/category-banner"
 
 export default function Teams() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <div className="py-[50px]">
         <div className="max-w-[1440px] mx-auto px-[50px]">
-          <div className="relative rounded-lg overflow-hidden h-[227px]">
-            <NextImage
-              src="/coding.png"
-              fill
-              className="object-cover"
-              sizes="100vw"
-            />
-            <div className="absolute inset-0 bg-black/60" />
-            <div className="absolute inset-0 p-6">
+          <CategoryBanner
+            image="/coding.png"
+            alt="Teams banner"
+            title="Teams"
+            description="Hire vetted teams ready to deliver across every category and skill set."
+            breadcrumbs={
               <div className="flex items-center gap-x-2">
-                <Home03 className="size-[18px]  text-white opacity-60" />
-
-                <div className="flex items-center gap-x-2">
-                  <span className="text-xs leading-6 font-semibold text-white opacity-60">
-                    /
-                  </span>
-                  <span className="text-xs leading-6 font-semibold text-white opacity-60">
-                    Teams
-                  </span>
-                </div>
+                <Home03 className="size-[18px] text-white opacity-60" />
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">Teams</span>
               </div>
-
-              <div className="mt-[50px] px-[50px]">
-                <h1 className="text-[36px] font-bold leading-none text-white">
-                  Teams
-                </h1>
-                <p className="text-xl mt-3 leading-none text-white">
-                  Hire vetted teams ready to deliver across every category and
-                  skill set.
-                </p>
-              </div>
-            </div>
-          </div>
+            }
+          />
 
           <div className="mt-[50px]">
             <div className="flex items-center justify-between">
