@@ -10,7 +10,7 @@ import Cookies from "js-cookie"
 
 interface Config extends AxiosRequestConfig {}
 
-const BASE = process.env.NEXT_PUBLIC_API_URL
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? ""
 
 const getAccessToken = () => {
   const cookieToken = Cookies.get("access_token") || Cookies.get("accessToken")
@@ -37,6 +37,8 @@ axiosInstance.interceptors.request.use(
     const access_token = getAccessToken()
     if (access_token) {
       config.headers.Authorization = `Bearer ${access_token}`
+    } else if (config.headers?.Authorization) {
+      delete config.headers.Authorization
     }
 
     return Promise.resolve(config)

@@ -22,6 +22,7 @@
  */
 
 const { spawn } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 
 // External port (Render injects PORT)
@@ -46,10 +47,28 @@ const gatewayEnv = {
 };
 
 function launchService(svc, env, isGateway = false) {
-  const distMain = path.join(__dirname, 'dist', svc.dir, 'main.js');
+  const mainCandidates = [
+    path.join(__dirname, 'dist', svc.dir, 'main.js'),
+    path.join(__dirname, 'dist', svc.dir, 'src', 'main.js'),
+    path.join(__dirname, 'dist', svc.dir, svc.dir, 'src', 'main.js'),
+  ];
+  const distMain = mainCandidates.find((candidate) => fs.existsSync(candidate));
   const svcEnv = env || { ...process.env, PORT: svc.port };
 
   console.log(`[boot] Starting ${svc.name} on port ${svcEnv.PORT}...`);
+
+  if (!distMain) {
+    console.error(
+      `[boot] Could not find compiled entrypoint for ${svc.name}. Tried:\n${mainCandidates
+        .map((candidate) => ` - ${candidate}`)
+        .join('\n')}`,
+    );
+    if (isGateway) {
+      process.exit(1);
+    }
+    setTimeout(() => launchService(svc, env, false), 2000);
+    return null;
+  }
 
   const child = spawn('node', [distMain], {
     env: svcEnv,

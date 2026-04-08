@@ -409,38 +409,74 @@ function Default() {
   }, [user])
 
   useEffect(() => {
-    if (usernameParam) {
-      setIsProfileLoading(true)
-      UserAPI.getByUsername(usernameParam)
-        .then((res) => {
-          if (res?.data) setProfile(res.data)
-        })
-        .catch((err) => { console.error("[profile] getByUsername error:", err?.response?.status, err?.message) })
-        .finally(() => setIsProfileLoading(false))
-    } else if (user?.id) {
-      // Load full profile in background (hero already showing from auth user)
-      UserAPI.getProfile(user.id)
-        .then((res) => {
-          if (res?.data) setProfile(res.data)
-        })
-        .catch((err) => { console.error("[profile] getProfile error:", err?.response?.status, err?.message) })
-        .finally(() => setIsProfileLoading(false))
-    } else {
+    let isActive = true
+
+    const loadProfile = async () => {
+      if (usernameParam) {
+        setIsProfileLoading(true)
+        try {
+          const res = await UserAPI.getByUsername(usernameParam)
+          if (isActive && res?.data) {
+            setProfile(res.data)
+          }
+          return
+        } catch (err: any) {
+          const status = err?.response?.status
+
+          // Username may be stale or unavailable; fall back to the signed-in user's profile.
+          if (status === 404 && user?.id) {
+            try {
+              const fallbackRes = await UserAPI.getProfile(user.id)
+              if (isActive && fallbackRes?.data) {
+                setProfile(fallbackRes.data)
+              }
+            } catch (fallbackErr: any) {
+              console.error("[profile] getProfile fallback error:", fallbackErr?.response?.status, fallbackErr?.message)
+            }
+          } else if (status !== 404) {
+            console.error("[profile] getByUsername error:", status, err?.message)
+          }
+        } finally {
+          if (isActive) setIsProfileLoading(false)
+        }
+        return
+      }
+
+      if (user?.id) {
+        // Load full profile in background (hero already showing from auth user)
+        setIsProfileLoading(true)
+        UserAPI.getProfile(user.id)
+          .then((res) => {
+            if (isActive && res?.data) setProfile(res.data)
+          })
+          .catch((err) => { console.error("[profile] getProfile error:", err?.response?.status, err?.message) })
+          .finally(() => {
+            if (isActive) setIsProfileLoading(false)
+          })
+        return
+      }
+
       // No user yet from auth — try /user/me directly as fallback
+      setIsProfileLoading(true)
       UserAPI.me()
         .then((res) => {
           const data = res?.data?.user ?? res?.data?.data?.user ?? res?.data
-          if (data && typeof data === "object" && data.id) {
+          if (isActive && data && typeof data === "object" && data.id) {
             setProfile(data)
-          } else {
-            setIsProfileLoading(false)
           }
         })
         .catch((err) => {
           console.error("[profile] me() fallback error:", err?.response?.status, err?.message)
-          setIsProfileLoading(false)
         })
-        .finally(() => setIsProfileLoading(false))
+        .finally(() => {
+          if (isActive) setIsProfileLoading(false)
+        })
+    }
+
+    void loadProfile()
+
+    return () => {
+      isActive = false
     }
   }, [user?.id, usernameParam])
 
@@ -764,7 +800,10 @@ function Default() {
                     </h1>
                     <div className="flex items-center gap-x-1 mt-1">
                       <h2 className="text-[22px] leading-[27px] text-dark-blue-400 font-medium">
-                        {profile?.role || "Unknown"}
+                        {((profile as any)?.jobTitles?.find((j: any) => j.isDefault)?.jobTitle) ||
+                          (profile as any)?.jobTitles?.[0]?.jobTitle ||
+                          profile?.role ||
+                          "Unknown"}
                       </h2>
                       {isEditMode && isOwnProfile && (
                         <IconButton
@@ -1080,7 +1119,10 @@ function Default() {
                         </span>
                       </span>
                       <span className="text-sm leading-none font-medium text-dark-blue-400">
-                        {profile?.role ?? ""}
+                        {((profile as any)?.jobTitles?.find((j: any) => j.isDefault)?.jobTitle) ||
+                          (profile as any)?.jobTitles?.[0]?.jobTitle ||
+                          profile?.role ||
+                          ""}
                       </span>
                     </div>
                   </div>
@@ -6814,7 +6856,7 @@ function Default() {
                             className="basis-[20%] h-[108px]"
                           >
                             <div className="p-1 size-full bg-gray-200 relative rounded-lg overflow-hidden">
-                              <NextImage src="/cpu.png" alt="CPU" fill />
+                              <NextImage src="/cpu.png" alt="CPU" fill sizes="(max-width: 768px) 40vw, 20vw" />
                             </div>
                           </CarouselItem>
                         ))}

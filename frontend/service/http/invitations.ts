@@ -1,29 +1,47 @@
 import {
+  AcceptInvitationDto,
+  AcceptInvitationResponse,
   CreateInvitationDto,
-  Invitation,
-  InvitationListResponse,
+  CreateInvitationLinkDto,
+  ListInvitationsParams,
 } from "@/types/invitation"
 import AxiosRequest from ".."
 
-// Invitations service runs on port 3011, accessed through gateway
-const INVITATIONS_BASE =
-  process.env.NEXT_PUBLIC_INVITATIONS_URL ?? "/invitations"
+const INVITATIONS_BASE = "/invitations"
 
-export const InvitationsAPI = {
-  // Create invitations
-  createInvitations: (dto: CreateInvitationDto) => {
+interface InvitationsAPIType {
+  createInvitations: (
+    dto: CreateInvitationDto
+  ) => ReturnType<typeof AxiosRequest.post<CreateInvitationDto>>
+  createInvitationLink: (
+    dto: CreateInvitationLinkDto
+  ) => ReturnType<typeof AxiosRequest.post<CreateInvitationLinkDto>>
+  listInvitations: (
+    params?: ListInvitationsParams
+  ) => ReturnType<typeof AxiosRequest.get>
+  getInvitation: (id: string) => ReturnType<typeof AxiosRequest.get>
+  resendInvitation: (
+    id: string
+  ) => ReturnType<typeof AxiosRequest.post<Record<string, never>>>
+  cancelInvitation: (id: string) => ReturnType<typeof AxiosRequest.del>
+  acceptInvitation: (
+    inviteToken: string
+  ) => ReturnType<typeof AxiosRequest.post<AcceptInvitationResponse>>
+}
+
+export const InvitationsAPI: InvitationsAPIType = {
+  createInvitations: (dto) => {
     return AxiosRequest.post(`${INVITATIONS_BASE}`, dto)
   },
 
-  // List invitations
-  listInvitations: (params?: {
-    teamId?: string
-    status?: "pending" | "accepted" | "canceled" | "expired"
-    limit?: number
-    cursor?: string
-  }) => {
+  createInvitationLink: (dto) => {
+    return AxiosRequest.post(`${INVITATIONS_BASE}/link`, dto)
+  },
+
+  listInvitations: (params) => {
     const query = new URLSearchParams()
     if (params?.teamId) query.set("teamId", params.teamId)
+    if (params?.invitedEmail) query.set("invitedEmail", params.invitedEmail)
     if (params?.status) query.set("status", params.status)
     if (params?.limit) query.set("limit", params.limit.toString())
     if (params?.cursor) query.set("cursor", params.cursor)
@@ -36,22 +54,18 @@ export const InvitationsAPI = {
     return AxiosRequest.get(url)
   },
 
-  // Get single invitation
   getInvitation: (id: string) => {
     return AxiosRequest.get(`${INVITATIONS_BASE}/${id}`)
   },
 
-  // Resend invitation
   resendInvitation: (id: string) => {
     return AxiosRequest.post(`${INVITATIONS_BASE}/${id}/resend`, {})
   },
 
-  // Cancel invitation
   cancelInvitation: (id: string) => {
     return AxiosRequest.del(`${INVITATIONS_BASE}/${id}/cancel`)
   },
 
-  // Accept invitation (by token from email)
   acceptInvitation: (inviteToken: string) => {
     return AxiosRequest.post(`${INVITATIONS_BASE}/accept`, {
       token: inviteToken,

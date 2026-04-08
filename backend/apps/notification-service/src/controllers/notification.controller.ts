@@ -1,10 +1,14 @@
 import { Controller, Get, Post, Delete, Param, Query, Req, HttpCode, HttpStatus } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { NotificationService, NotificationPayload } from '../services/notification.service';
+import { BrevoService } from '../brevo/brevo.service';
 
 @Controller('v1/notifications')
 export class NotificationController {
-  constructor(private readonly service: NotificationService) {}
+  constructor(
+    private readonly service: NotificationService,
+    private readonly brevoService: BrevoService,
+  ) {}
 
   @Get()
   getNotifications(
@@ -62,6 +66,17 @@ export class NotificationController {
     return this.service.dispatch(payload);
   }
 
+  @MessagePattern('auth.password_reset_requested')
+  async handlePasswordResetRequested(
+    @Payload() data: { email: string; firstName?: string; resetUrl: string },
+  ) {
+    await this.brevoService.sendPasswordResetEmail(data.email, {
+      firstName: data.firstName,
+      resetUrl: data.resetUrl,
+    });
+    return { ok: true };
+  }
+
   @MessagePattern('send_magic_link_email')
   handleMagicLink(@Payload() data: { email: string; userId: string; link: string; type: string }) {
     return this.service.dispatch({
@@ -74,5 +89,20 @@ export class NotificationController {
       link: data.link,
       delivery: { inApp: false, email: true },
     });
+  }
+
+  @MessagePattern('notification.email.team_invitation')
+  handleTeamInvitationEmail(
+    @Payload()
+    data: {
+      to: string;
+      teamName: string;
+      role: string;
+      acceptUrl: string;
+      inviterEmail?: string;
+      note?: string;
+    },
+  ) {
+    return this.service.sendTeamInvitationEmail(data);
   }
 }

@@ -1,8 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { UserAPI } from "@/service/http/user"
+import { InvitationsAPI } from "@/service/http/invitations"
+import { useAuth } from "@/contexts/auth"
 import {
   addFavorite,
   findFavoriteByItemId,
@@ -17,6 +19,7 @@ import {
   MapPin,
   MoreHorizontal,
   Plus,
+  RefreshCw04,
   SearchMd,
   Star,
   Trash2,
@@ -37,6 +40,7 @@ import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import { TalentSearchCard } from "@/components/talent-search-card"
 import { cn } from "@/utils/functions"
+import { useToast } from "@/components/ui"
 import {
   Avatar,
   AvatarFallback,
@@ -71,6 +75,7 @@ const LIST_LAYOUT = "LIST"
 // ========================
 
 interface AccountMember {
+  id: string
   name: string
   email: string
   role: string
@@ -79,64 +84,7 @@ interface AccountMember {
   status: "active" | "pending"
 }
 
-const ACCOUNT_MEMBERS: AccountMember[] = [
-  {
-    name: "Alicia Hebert",
-    email: "jfriedl@me.com",
-    role: "General Manager",
-    avatarSrc: "https://randomuser.me/api/portraits/women/44.jpg",
-    company: "Alliance Corp.",
-    status: "active",
-  },
-  {
-    name: "Kevin Zavala",
-    email: "raines@live.com",
-    role: "Legal Adviser",
-    avatarSrc: "https://randomuser.me/api/portraits/men/32.jpg",
-    company: "Alliance Corp.",
-    status: "pending",
-  },
-  {
-    name: "Paul Cannon",
-    email: "rande@gmail.com",
-    role: "Graphic Designer",
-    avatarSrc: "https://randomuser.me/api/portraits/men/75.jpg",
-    company: "Alliance Corp.",
-    status: "active",
-  },
-  {
-    name: "Elliot Spencer",
-    email: "leviathan@yahoo.com",
-    role: "Marketing Manager",
-    avatarSrc: "https://randomuser.me/api/portraits/men/22.jpg",
-    company: "Alliance Corp.",
-    status: "active",
-  },
-  {
-    name: "",
-    email: "oevans@icloud.com",
-    role: "",
-    company: "",
-    status: "pending",
-  },
-  {
-    name: "Jenny Gill",
-    email: "hmbrand@me.com",
-    role: "Project Manager",
-    avatarSrc: "https://randomuser.me/api/portraits/women/68.jpg",
-    company: "Alliance Corp.",
-    status: "active",
-  },
-  {
-    name: "Andrew Roddick",
-    email: "john.jacob@gmail.com",
-    role: "Systems Analyst",
-    avatarSrc: "https://randomuser.me/api/portraits/men/86.jpg",
-    company: "Alliance Corp.",
-    status: "active",
-  },
-]
-
+const ACCOUNT_MEMBERS: AccountMember[] = []
 interface TalentMember {
   id: string
   username: string
@@ -152,13 +100,102 @@ interface TalentMember {
   skills: string[]
 }
 
+const STATIC_ACCOUNT_MEMBERS: AccountMember[] = [
+  {
+    id: "static-1",
+    name: "Alicia Hebert",
+    email: "jfriedl@me.com",
+    role: "General Manager",
+    avatarSrc: "https://randomuser.me/api/portraits/women/44.jpg",
+    company: "Alliance Corp.",
+    status: "active",
+  },
+  {
+    id: "static-2",
+    name: "Kevin Zavala",
+    email: "raines@live.com",
+    role: "Legal Adviser",
+    avatarSrc: "https://randomuser.me/api/portraits/men/32.jpg",
+    company: "Alliance Corp.",
+    status: "pending",
+  },
+  {
+    id: "static-3",
+    name: "Paul Cannon",
+    email: "rande@gmail.com",
+    role: "Graphic Designer",
+    avatarSrc: "https://randomuser.me/api/portraits/men/75.jpg",
+    company: "Alliance Corp.",
+    status: "active",
+  },
+  {
+    id: "static-4",
+    name: "Elliot Spencer",
+    email: "leviathan@yahoo.com",
+    role: "Marketing Manager",
+    avatarSrc: "https://randomuser.me/api/portraits/men/22.jpg",
+    company: "Alliance Corp.",
+    status: "active",
+  },
+  {
+    id: "static-5",
+    name: "",
+    email: "oevans@icloud.com",
+    role: "",
+    company: "",
+    status: "pending",
+  },
+  {
+    id: "static-6",
+    name: "Jenny Gill",
+    email: "hmbrand@me.com",
+    role: "Project Manager",
+    avatarSrc: "https://randomuser.me/api/portraits/women/68.jpg",
+    company: "Alliance Corp.",
+    status: "active",
+  },
+  {
+    id: "static-7",
+    name: "Andrew Roddick",
+    email: "john.jacob@gmail.com",
+    role: "Systems Analyst",
+    avatarSrc: "https://randomuser.me/api/portraits/men/86.jpg",
+    company: "Alliance Corp.",
+    status: "active",
+  },
+]
+
+const STATIC_INVITATION_PLACEHOLDERS: AccountMember[] = [
+  ...STATIC_ACCOUNT_MEMBERS,
+  {
+    id: "placeholder-invite-1",
+    name: "",
+    email: "jane.client@example.com",
+    role: "viewer",
+    company: "Client Team",
+    status: "pending",
+  },
+  {
+    id: "placeholder-invite-2",
+    name: "",
+    email: "alex.partner@example.com",
+    role: "editor",
+    company: "Client Team",
+    status: "pending",
+  },
+]
+
 // ========================
 // Account Members Table (External Team list view)
 // ========================
 
 const accountColumnHelper = createColumnHelper<AccountMember>()
 
-const accountColumns = [
+function buildAccountColumns(
+  onResend: (id: string) => void,
+  onCancel: (id: string) => void,
+) {
+  return [
   accountColumnHelper.accessor("name", {
     header: "Team Member",
     cell: (info) => {
@@ -240,12 +277,12 @@ const accountColumns = [
               <Edit03 className="h-4 w-4" /> Edit
             </DropdownMenuItem>
             {isPending && (
-              <DropdownMenuItem>
-                <Plus className="h-4 w-4" /> Resend Invite
+              <DropdownMenuItem onSelect={() => onResend(row.original.id)}>
+                <RefreshCw04 className="h-4 w-4" /> Resend Invite
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem visual="destructive">
+            <DropdownMenuItem visual="destructive" onSelect={() => onCancel(row.original.id)}>
               <Trash2 className="h-4 w-4" /> Remove
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -255,13 +292,23 @@ const accountColumns = [
     enableSorting: false,
   }),
 ]
+}
 
-const AccountMembersTable = () => {
+const AccountMembersTable = ({
+  data,
+  onResend,
+  onCancel,
+}: {
+  data: AccountMember[]
+  onResend: (id: string) => void
+  onCancel: (id: string) => void
+}) => {
   const [sorting, setSorting] = useState<SortingState>([])
+  const columns = React.useMemo(() => buildAccountColumns(onResend, onCancel), [onResend, onCancel])
 
   const table = useReactTable({
-    data: ACCOUNT_MEMBERS,
-    columns: accountColumns,
+    data,
+    columns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
@@ -486,13 +533,19 @@ const TalentNetworkTable = ({ data }: { data: TalentMember[] }) => {
 // ========================
 
 const ExternalTeamCard = ({
+  id,
   name,
   email,
   role,
   avatarSrc,
   company,
   status,
-}: AccountMember) => {
+  onResend,
+  onCancel,
+}: AccountMember & {
+  onResend: (id: string) => void
+  onCancel: (id: string) => void
+}) => {
   const isPending = status === "pending"
 
   return (
@@ -512,12 +565,12 @@ const ExternalTeamCard = ({
             <Edit03 className="h-4 w-4" /> Edit
           </DropdownMenuItem>
           {isPending && (
-            <DropdownMenuItem>
-              <Plus className="h-4 w-4" /> Resend Invite
+            <DropdownMenuItem onSelect={() => onResend(id)}>
+              <RefreshCw04 className="h-4 w-4" /> Resend Invite
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem visual="destructive">
+          <DropdownMenuItem visual="destructive" onSelect={() => onCancel(id)}>
             <Trash2 className="h-4 w-4" /> Remove
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -644,10 +697,54 @@ function inferGender(firstName: string): "women" | "men" {
   return FEMALE_NAMES.has(firstName.toLowerCase()) ? "women" : "men"
 }
 
+const SYSTEM_GENERATED_USERNAME_REGEX = /^user_[a-f0-9]{8,}$/i
+
+const toTitleWords = (value: string) =>
+  value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ")
+
+function getReadableNameFromUser(u: any): string {
+  // Prefer explicit onboarding/profile names first.
+  const fullName = [u.firstName, u.lastName].filter(Boolean).join(" ").trim()
+  if (fullName) return fullName
+
+  const explicitName =
+    u.displayName ??
+    u.fullName ??
+    u.name ??
+    u.profileName ??
+    ""
+  if (typeof explicitName === "string" && explicitName.trim()) {
+    return explicitName.trim()
+  }
+
+  const username = typeof u.username === "string" ? u.username.trim() : ""
+  if (username && !SYSTEM_GENERATED_USERNAME_REGEX.test(username)) {
+    return username
+  }
+
+  const email = typeof u.email === "string" ? u.email : ""
+  const localPart = email.split("@")[0] ?? ""
+  const normalized = localPart
+    .replace(/[._-]+/g, " ")
+    .replace(/\d+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  if (normalized) {
+    return toTitleWords(normalized)
+  }
+
+  return "Team Member"
+}
+
 function mapUserToTalent(u: any, index: number): TalentMember {
   const firstName = u.firstName ?? ""
   const lastName = u.lastName ?? ""
-  const name = `${firstName} ${lastName}`.trim() || u.username || "Unknown"
+  const name = getReadableNameFromUser(u)
   const rateMin = u.rateMin ? `$${Math.round(Number(u.rateMin))}` : "$50"
   const rateMax = u.rateMax ? `$${Math.round(Number(u.rateMax))}` : "$100"
 
@@ -674,7 +771,11 @@ function mapUserToTalent(u: any, index: number): TalentMember {
     id: u.id,
     username: u.username ?? "",
     name,
-    handle: u.username ? `@${u.username}` : "",
+    // Hide auto-generated usernames like user_abc12345 from UI handles.
+    handle:
+      u.username && !SYSTEM_GENERATED_USERNAME_REGEX.test(u.username)
+        ? `@${u.username}`
+        : "",
     role: u.role ?? u.industry ?? "Freelancer",
     avatarSrc: u.avatarUrl || fallbackAvatar,
     rating: 4.0 + Math.round(Math.random() * 10) / 10,
@@ -690,12 +791,174 @@ function mapUserToTalent(u: any, index: number): TalentMember {
   }
 }
 
+function EmptyState({
+  icon: Icon = User01,
+  title,
+  description,
+  action,
+}: {
+  icon?: React.ComponentType<{ className?: string }>
+  title: string
+  description: string
+  action?: React.ReactNode
+}) {
+  return (
+    <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-white py-16 px-6 flex flex-col items-center justify-center text-center">
+      <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center">
+        <Icon className="size-6 text-gray-400" />
+      </div>
+      <h3 className="mt-4 text-base font-semibold text-dark-blue-400">
+        {title}
+      </h3>
+      <p className="mt-1 max-w-md text-sm text-gray-500">{description}</p>
+      {action && <div className="mt-5">{action}</div>}
+    </div>
+  )
+}
+
 export default function MyTeam() {
+  const { user } = useAuth()
+  const { toast } = useToast()
   const [value, setValue] = useState([GRID_LAYOUT])
   const isGrid = getFirstItem(value) === GRID_LAYOUT
   const [talentMembers, setTalentMembers] = useState<TalentMember[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [favoritedItems, setFavoritedItems] = useState<Set<string>>(new Set())
+
+  // External Team (invitations) state
+  const [teamMembers, setTeamMembers] = useState<AccountMember[]>([])
+  const [teamLoading, setTeamLoading] = useState(true)
+
+  const teamId = (user as any)?.id || (user as any)?.sub
+  const signedInEmailRaw = (user as any)?.email
+  const signedInEmail =
+    typeof signedInEmailRaw === "string" ? signedInEmailRaw.trim().toLowerCase() : undefined
+
+  const loadInvitations = useCallback(async () => {
+    if (!teamId && !signedInEmail) return
+    setTeamLoading(true)
+    try {
+      // Fetch inviter-side records and invitee-side accepted membership in one pass.
+      const requests: Promise<any>[] = []
+      if (teamId) {
+        requests.push(InvitationsAPI.listInvitations({ teamId, status: "pending" }))
+        requests.push(InvitationsAPI.listInvitations({ teamId, status: "accepted" }))
+      }
+      if (signedInEmail) {
+        // Fetch all statuses for invitee and split locally to avoid backend/status-filter drift.
+        requests.push(InvitationsAPI.listInvitations({ invitedEmail: signedInEmail }))
+      }
+
+      const settled = await Promise.allSettled(requests)
+      const extractData = (result: PromiseSettledResult<any>) => {
+        if (result.status !== "fulfilled") return []
+        return ((result.value as any)?.data?.data ?? (result.value as any)?.data ?? []) as any[]
+      }
+
+      const pending = teamId && settled[0] ? extractData(settled[0]) : []
+      const acceptedForTeam = teamId && settled[1] ? extractData(settled[1]) : []
+      const inviteeAll = signedInEmail
+        ? extractData(settled[teamId ? 2 : 0] as PromiseSettledResult<any>)
+        : []
+      const normalizeStatus = (status: unknown) =>
+        typeof status === "string" ? status.trim().toLowerCase() : ""
+      const acceptedForInvitee = inviteeAll.filter(
+        (inv: any) => normalizeStatus(inv?.status) === "accepted",
+      )
+      const pendingForInvitee = inviteeAll.filter(
+        (inv: any) => normalizeStatus(inv?.status) === "pending",
+      )
+
+      const toMember = (inv: any, status: "pending" | "active"): AccountMember => {
+        // For live members with no uploaded avatar, generate a stable per-user avatar.
+        // This avoids showing one generic image for multiple different invitees.
+        const liveAvatarFallbackSeed = inv.invitedEmail ?? inv.email ?? inv.id ?? "member"
+        const displayName =
+          status === "pending"
+            ? ""
+            : inv.inviteeName ??
+              inv.name ??
+              inv.invitedEmail ??
+              inv.email ??
+              ""
+
+        return {
+        id: inv.id,
+        name: displayName,
+        email: inv.invitedEmail ?? inv.email ?? "",
+        role: inv.role ?? "",
+        avatarSrc:
+          inv.avatarUrl ??
+          inv.avatarSrc ??
+          `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(liveAvatarFallbackSeed)}`,
+        // Never show internal UUIDs in UI labels; use a readable fallback.
+        company: inv.teamName ?? "Client Team",
+        status,
+        }
+      }
+
+      const acceptedCombined = [...acceptedForTeam, ...acceptedForInvitee]
+      const pendingCombined = [...pending, ...pendingForInvitee]
+      const liveMembers = [
+        ...acceptedCombined.map((inv: any) => toMember(inv, "active")),
+        ...pendingCombined.map((inv: any) => toMember(inv, "pending")),
+      ]
+
+      // Keep static placeholders, but let live API members override duplicates.
+      const uniqueLive = Array.from(
+        new Map(
+          liveMembers.map((member) => [member.email.toLowerCase() || member.id, member]),
+        ).values(),
+      )
+
+      // Keep placeholders, but render live members first in the list/grid.
+      const mergedMembers = [
+        ...uniqueLive,
+        ...STATIC_INVITATION_PLACEHOLDERS,
+      ]
+
+      const dedupedMembers = Array.from(
+        new Map(
+          mergedMembers.map((member) => [member.email.toLowerCase() || member.id, member]),
+        ).values(),
+      )
+
+      // Always show static placeholders + any live data from the API
+      setTeamMembers(dedupedMembers)
+    } catch {
+      // Show static placeholders on API failure
+      setTeamMembers(STATIC_INVITATION_PLACEHOLDERS)
+    } finally {
+      setTeamLoading(false)
+    }
+  }, [signedInEmail, teamId])
+
+  const handleResend = useCallback(async (id: string) => {
+    try {
+      await InvitationsAPI.resendInvitation(id)
+      toast({ title: "Invite resent", description: "A new invitation email was sent." })
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Failed to resend",
+        description: err?.response?.data?.message ?? "Please try again.",
+      })
+    }
+  }, [toast])
+
+  const handleCancel = useCallback(async (id: string) => {
+    try {
+      await InvitationsAPI.cancelInvitation(id)
+      setTeamMembers((prev) => prev.filter((m) => m.id !== id))
+      toast({ title: "Invitation removed" })
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Failed to remove",
+        description: err?.response?.data?.message ?? "Please try again.",
+      })
+    }
+  }, [toast])
 
   useEffect(() => {
     setIsLoading(true)
@@ -714,6 +977,17 @@ export default function MyTeam() {
     }
     loadFavorites()
   }, [])
+
+  useEffect(() => {
+    loadInvitations()
+  }, [loadInvitations])
+
+  // Re-fetch when InviteWindow fires the refresh event
+  useEffect(() => {
+    const handler = () => loadInvitations()
+    window.addEventListener("refresh-pending-invites", handler)
+    return () => window.removeEventListener("refresh-pending-invites", handler)
+  }, [loadInvitations])
 
   return (
     <div className="p-3.5 md:p-6 lg:py-[100px] lg:px-[200px]">
@@ -865,9 +1139,23 @@ export default function MyTeam() {
                 </div>
               </div>
             )
+          ) : talentMembers.length === 0 ? (
+            <EmptyState
+              icon={User01}
+              title="Your talent network is empty"
+              description="Discover and favorite talent to build your network. Saved talent will appear here for easy access on future projects."
+              action={
+                <NextLink href="/talent">
+                  <Button variant="outlined" visual="gray">
+                    <SearchMd className="size-[15px]" />
+                    Browse Talent
+                  </Button>
+                </NextLink>
+              }
+            />
           ) : isGrid ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6">
-              {talentMembers.map((member) => (
+              {talentMembers.map((member, index) => (
                 <TalentSearchCard
                   key={member.id}
                   id={member.id}
@@ -875,6 +1163,7 @@ export default function MyTeam() {
                   handle={member.handle}
                   role={member.role}
                   photo={member.avatarSrc}
+                  imageLoading={index < 2 ? "eager" : "lazy"}
                   rate={member.rate}
                   experience={member.experience}
                   country={member.country}
@@ -908,16 +1197,57 @@ export default function MyTeam() {
 
         {/* External Team Tab */}
         <TabsContent value="External Team">
-          {isGrid ? (
+          {teamLoading ? (
+            <div className="pt-3.5 lg:pt-6">
+              <div className="rounded-lg border border-gray-200 bg-white shadow-xs p-4 space-y-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-x-4">
+                    <div className="relative size-10 rounded-full bg-gray-100 shrink-0 overflow-hidden">
+                      <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                    </div>
+                    <div className="relative h-4 w-32 rounded bg-gray-100 overflow-hidden">
+                      <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                    </div>
+                    <div className="relative h-4 w-24 rounded bg-gray-100 ml-auto overflow-hidden">
+                      <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : teamMembers.length === 0 ? (
+            <EmptyState
+              icon={User01}
+              title="No external team members yet"
+              description="Invite colleagues, collaborators, or clients to join your external team. They'll get access to shared projects and workspaces."
+              action={
+                <InviteWindowTrigger asChild>
+                  <Button variant="outlined" visual="gray">
+                    <Plus className="size-[15px]" />
+                    Invite a Member
+                  </Button>
+                </InviteWindowTrigger>
+              }
+            />
+          ) : isGrid ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6">
-              {ACCOUNT_MEMBERS.map((member) => (
-                <ExternalTeamCard key={member.email} {...member} />
+              {teamMembers.map((member) => (
+                <ExternalTeamCard
+                  key={member.id}
+                  {...member}
+                  onResend={handleResend}
+                  onCancel={handleCancel}
+                />
               ))}
             </div>
           ) : (
             <div className="pt-3.5 lg:pt-6">
               <div className="rounded-lg border border-gray-200 bg-white shadow-xs">
-                <AccountMembersTable />
+                <AccountMembersTable
+                  data={teamMembers}
+                  onResend={handleResend}
+                  onCancel={handleCancel}
+                />
               </div>
             </div>
           )}

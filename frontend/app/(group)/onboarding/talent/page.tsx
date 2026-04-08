@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import industriesMock from "@/public/mock/industries.json"
 import jobTitlesMock from "@/public/mock/job_titles.json"
 import languagesMock from "@/public/mock/languages.json"
@@ -257,9 +256,8 @@ const IntroduceYourself = ({
                   name="avatar"
                   render={({ field: { onChange } }) => (
                     <ImageEditor
-                      initialFile={stepData?.avatar ?? null}
                       onValueChange={onChange}
-                      startingPoint={({ dataUrl, open, style, onChangePhoto }) => (
+                      startingPoint={({ dataUrl, open, style, onChangePhoto }: any) => (
                         <div className="flex flex-col gap-y-3 sm:flex-row sm:items-center sm:gap-x-4">
                           <div className="relative overflow-hidden size-[96px] bg-gray-100 rounded-full inline-flex items-center justify-center shrink-0">
                             {dataUrl ? (
@@ -826,14 +824,21 @@ const getUniqueOptions = (values: string[]) =>
     new Set(values.map((value) => value.trim()).filter((value) => value.length))
   )
 
+const hasCaseInsensitiveExactMatch = (values: string[], candidate: string) => {
+  const normalizedCandidate = candidate.trim().toLowerCase()
+  if (!normalizedCandidate) return false
+  return values.some((value) => value.trim().toLowerCase() === normalizedCandidate)
+}
+
 const submitAutocompleteValue = async (type: string, label: string) => {
   const trimmedLabel = label.trim()
-  if (!trimmedLabel) return
+  if (!trimmedLabel) return false
 
   try {
     await AutocompleteAPI.submit({ type, label: trimmedLabel })
+    return true
   } catch {
-    // Endpoint can be unavailable while backend rollout is in progress.
+    return false
   }
 }
 
@@ -1072,6 +1077,8 @@ const ShareYourLocation = ({
     handleSubmit,
     getValues,
     setValue,
+    clearErrors,
+    setError,
   } = useForm<ShareYourGoalsFormValues>({
     resolver: zodResolver(shareYourGoalsFormSchema),
     defaultValues: {
@@ -1084,9 +1091,6 @@ const ShareYourLocation = ({
   const [isHomeCountry, setIsHomeCountry] = useState(true)
   const [suppressLanguageFocusOpen, setSuppressLanguageFocusOpen] =
     useState(false)
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(
-    parseMultiSelectString(stepData?.language)
-  )
   const [languageOptions, setLanguageOptions] = useState<string[]>(
     getUniqueOptions(languagesMock.map((item) => item.label))
   )
@@ -1094,25 +1098,49 @@ const ShareYourLocation = ({
   const languagesDebounceTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null)
-
   const filteredLanguages = useMemo(() => {
     const query = languagesQuery.trim().toLowerCase()
     if (!query) return languageOptions
-    return languageOptions.filter((item) => item.toLowerCase().includes(query))
+    return languageOptions.filter((item) =>
+      item.toLowerCase().includes(query)
+    )
   }, [languageOptions, languagesQuery])
 
-  const addLanguageValue = (
+  const addLanguageValue = async (
     nextValue: string,
-    onChange: (values: string[]) => void
+    onChange: (values: string[]) => void,
+    currentValues: string[]
   ) => {
     const value = nextValue.trim()
     if (!value) return
+
+    const normalizedCurrentValues = getUniqueOptions(currentValues)
+    if (normalizedCurrentValues.includes(value)) {
+      setLanguagesQuery("")
+      setIsLanguagesOpen(false)
+      setSuppressLanguageFocusOpen(true)
+      return
+    }
+
+    const isKnownSuggestion = hasCaseInsensitiveExactMatch(languageOptions, value)
+    if (!isKnownSuggestion) {
+      const accepted = await submitAutocompleteValue("languages", value)
+      if (!accepted) {
+        setError("languages", {
+          type: "manual",
+          message:
+            "This value is not a valid language suggestion for this field.",
+        })
+        setLanguagesQuery("")
+        setIsLanguagesOpen(false)
+        return
+      }
+    }
+
+    clearErrors("languages")
     setLanguageOptions((prev) => getUniqueOptions([...prev, value]))
-    if (selectedLanguages.includes(value)) return
-    const next = [...selectedLanguages, value]
-    setSelectedLanguages(next)
+    const next = getUniqueOptions([...normalizedCurrentValues, value])
     onChange(next)
-    void submitAutocompleteValue("languages", value)
     setLanguagesQuery("")
     setIsLanguagesOpen(false)
     setSuppressLanguageFocusOpen(true)
@@ -1120,10 +1148,10 @@ const ShareYourLocation = ({
 
   const removeLanguageValue = (
     target: string,
-    onChange: (values: string[]) => void
+    onChange: (values: string[]) => void,
+    currentValues: string[]
   ) => {
-    const next = selectedLanguages.filter((item) => item !== target)
-    setSelectedLanguages(next)
+    const next = currentValues.filter((item) => item !== target)
     onChange(next)
   }
   const { toggleValidation } = useStepContext()
@@ -1132,63 +1160,6 @@ const ShareYourLocation = ({
   useEffect(() => {
     setValue("location", [detectedLocation], { shouldValidate: true })
   }, [detectedLocation, setValue])
-
-  const detectCurrentLocation = () => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setLocationDetectError(
-        "Location detection is unavailable in this browser."
-      )
-      return
-    }
-
-    setIsDetectingLocation(true)
-    setLocationDetectError(null)
-
-    navigator.geolocation.getCurrentPosition(
-      async ({ coords }) => {
-        setDetectedCoordinates({
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-        })
-
-        const resolvedLocation = await reverseGeocodeLocation(
-          coords.latitude,
-          coords.longitude
-        )
-
-        if (resolvedLocation) {
-          setDetectedLocation(resolvedLocation)
-        } else {
-          setLocationDetectError(
-            "Location detected, but we could not resolve the city. You can still continue."
-          )
-        }
-
-        setIsDetectingLocation(false)
-      },
-      (error) => {
-        if (error?.code === error.PERMISSION_DENIED) {
-          setLocationDetectError(
-            "Location permission was denied. Enable location access in your browser and try again."
-          )
-        } else if (error?.code === error.TIMEOUT) {
-          setLocationDetectError(
-            "Location request timed out. Please try again."
-          )
-        } else {
-          setLocationDetectError(
-            "Unable to detect your location right now. Please try again."
-          )
-        }
-        setIsDetectingLocation(false)
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 300000,
-      }
-    )
-  }
 
   useEffect(() => {
     if (detectedCoordinates) return
@@ -1217,10 +1188,7 @@ const ShareYourLocation = ({
     languagesDebounceTimerRef.current = setTimeout(async () => {
       const currentRequestId = ++languagesRequestRef.current
       try {
-        const response = await AutocompleteAPI.getByType(
-          "languages",
-          trimmedQuery
-        )
+        const response = await AutocompleteAPI.getByType("languages", trimmedQuery)
         if (currentRequestId !== languagesRequestRef.current) return
 
         const values: AutocompleteTypeSuggestion[] = Array.isArray(
@@ -1251,9 +1219,58 @@ const ShareYourLocation = ({
 
   useEffect(() => {
     if (stepData?.location?.trim()) return
-    detectCurrentLocation()
-  }, [stepData?.location])
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocationDetectError(
+        "Location detection is unavailable in this browser."
+      )
+      return
+    }
 
+    let isCancelled = false
+    setIsDetectingLocation(true)
+    setLocationDetectError(null)
+
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        setDetectedCoordinates({
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+        })
+
+        const resolvedLocation = await reverseGeocodeLocation(
+          coords.latitude,
+          coords.longitude
+        )
+        if (isCancelled) return
+
+        if (resolvedLocation) {
+          setDetectedLocation(resolvedLocation)
+        } else {
+          setLocationDetectError(
+            "Could not detect exact location. Using default location."
+          )
+        }
+
+        setIsDetectingLocation(false)
+      },
+      () => {
+        if (isCancelled) return
+        setLocationDetectError(
+          "Location permission denied. Using default location."
+        )
+        setIsDetectingLocation(false)
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 300000,
+      }
+    )
+
+    return () => {
+      isCancelled = true
+    }
+  }, [stepData?.location])
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
   const onSubmit: SubmitHandler<ShareYourGoalsFormValues> = ({
@@ -1345,20 +1362,6 @@ const ShareYourLocation = ({
                     {locationDetectError}
                   </p>
                 )}
-                <div className="mt-3 flex justify-center">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outlined"
-                    visual="gray"
-                    onClick={detectCurrentLocation}
-                    disabled={isDetectingLocation}
-                  >
-                    {isDetectingLocation
-                      ? "Detecting location..."
-                      : "Detect my location"}
-                  </Button>
-                </div>
                 <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
                   <GoogleMap
                     title="Detected location map"
@@ -1402,14 +1405,15 @@ const ShareYourLocation = ({
                 <Controller
                   control={control}
                   name="languages"
-                  render={({ field: { onChange } }) => (
-                    <div className="space-y-3">
+                  render={({ field: { onChange, value } }) => {
+                    const selectedLanguages = Array.isArray(value) ? value : []
+
+                    return <div className="space-y-3">
                       <Combobox
                         className="w-full"
                         value={selectedLanguages}
                         onChange={(values) => {
                           const next = values as string[]
-                          setSelectedLanguages(next)
                           onChange(next)
                           setLanguagesQuery("")
                           setIsLanguagesOpen(false)
@@ -1454,13 +1458,21 @@ const ShareYourLocation = ({
                                     activeOption?.textContent?.trim() ?? ""
 
                                   if (activeLabel) {
-                                    addLanguageValue(activeLabel, onChange)
+                                    void addLanguageValue(
+                                      activeLabel,
+                                      onChange,
+                                      selectedLanguages
+                                    )
                                     return
                                   }
                                 }
 
                                 event.preventDefault()
-                                addLanguageValue(languagesQuery, onChange)
+                                void addLanguageValue(
+                                  languagesQuery,
+                                  onChange,
+                                  selectedLanguages
+                                )
                               }
                             }}
                             invalid={hookFormHasError({
@@ -1477,7 +1489,11 @@ const ShareYourLocation = ({
                                   key={item}
                                   value={item}
                                   onClick={() =>
-                                    addLanguageValue(item, onChange)
+                                    void addLanguageValue(
+                                      item,
+                                      onChange,
+                                      selectedLanguages
+                                    )
                                   }
                                 >
                                   {item}
@@ -1496,7 +1512,11 @@ const ShareYourLocation = ({
                               <button
                                 className="focus-visible:outline-none"
                                 onClick={() =>
-                                  removeLanguageValue(item, onChange)
+                                  removeLanguageValue(
+                                    item,
+                                    onChange,
+                                    selectedLanguages
+                                  )
                                 }
                                 type="button"
                               >
@@ -1507,7 +1527,7 @@ const ShareYourLocation = ({
                         </div>
                       )}
                     </div>
-                  )}
+                  }}
                 />
                 <HookFormErrorMessage
                   errors={errors}
@@ -1884,6 +1904,8 @@ const ShowcaseYourTalent = ({
     control,
     getValues,
     setValue,
+    clearErrors,
+    setError,
   } = useForm<ShowcaseYourTalentFormValues>({
     resolver: zodResolver(showcaseYourTalentFormSchema),
     defaultValues: {
@@ -1910,9 +1932,9 @@ const ShowcaseYourTalent = ({
   )
   const jobTitleRequestRef = useRef(0)
   const industriesRequestRef = useRef(0)
-  const jobTitleDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  )
+  const jobTitleDebounceTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null)
   const industriesDebounceTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null)
@@ -1933,16 +1955,32 @@ const ShowcaseYourTalent = ({
     )
   }, [industriesOptions, industriesQuery, selectedIndustries])
 
-  const addIndustryValue = (nextValue: string) => {
+  const addIndustryValue = async (nextValue: string) => {
     const value = nextValue.trim()
     if (!value) return
+
+    const isKnownSuggestion = hasCaseInsensitiveExactMatch(industriesOptions, value)
+    if (!isKnownSuggestion) {
+      const accepted = await submitAutocompleteValue("industries", value)
+      if (!accepted) {
+        setError("industriesWorkedWith", {
+          type: "manual",
+          message:
+            "This value is not a valid industry suggestion for this field.",
+        })
+        setIndustriesQuery("")
+        setIsIndustriesOpen(false)
+        return
+      }
+    }
+
+    clearErrors("industriesWorkedWith")
     setIndustriesOptions((prev) => getUniqueOptions([...prev, value]))
     if (!selectedIndustries.includes(value)) {
       const next = [...selectedIndustries, value]
       setSelectedIndustries(next)
       setValue("industriesWorkedWith", next, { shouldValidate: true })
     }
-    void submitAutocompleteValue("industries", value)
     setIndustriesQuery("")
     setIsIndustriesOpen(false)
   }
@@ -2155,16 +2193,43 @@ const ShowcaseYourTalent = ({
                             const finalValue =
                               activeLabel || jobTitleQuery.trim()
                             if (!finalValue) return
-                            onChange(finalValue)
-                            setJobTitleOptions((prev) =>
-                              getUniqueOptions([...prev, finalValue])
-                            )
-                            void submitAutocompleteValue(
-                              "job_titles",
-                              finalValue
-                            )
-                            setJobTitleQuery("")
-                            setIsJobTitleOpen(false)
+                            const isKnownSuggestion =
+                              hasCaseInsensitiveExactMatch(
+                                jobTitleOptions,
+                                finalValue
+                              )
+                            const applyValue = () => {
+                              onChange(finalValue)
+                              setJobTitleOptions((prev) =>
+                                getUniqueOptions([...prev, finalValue])
+                              )
+                              clearErrors("recentJobTitle")
+                              setJobTitleQuery("")
+                              setIsJobTitleOpen(false)
+                            }
+
+                            if (isKnownSuggestion) {
+                              applyValue()
+                              return
+                            }
+
+                            void (async () => {
+                              const accepted = await submitAutocompleteValue(
+                                "job_titles",
+                                finalValue
+                              )
+                              if (!accepted) {
+                                setError("recentJobTitle", {
+                                  type: "manual",
+                                  message:
+                                    "This value is not a valid job title suggestion for this field.",
+                                })
+                                setJobTitleQuery("")
+                                setIsJobTitleOpen(false)
+                                return
+                              }
+                              applyValue()
+                            })()
                           }}
                           invalid={hookFormHasError({
                             errors,
@@ -2181,6 +2246,7 @@ const ShowcaseYourTalent = ({
                                 value={item}
                                 onClick={() => {
                                   onChange(item)
+                                  clearErrors("recentJobTitle")
                                   setJobTitleQuery("")
                                   setIsJobTitleOpen(false)
                                 }}
@@ -2259,13 +2325,13 @@ const ShowcaseYourTalent = ({
                                   activeOption?.textContent?.trim() ?? ""
 
                                 if (activeLabel) {
-                                  addIndustryValue(activeLabel)
+                                  void addIndustryValue(activeLabel)
                                   return
                                 }
                               }
 
                               event.preventDefault()
-                              addIndustryValue(industriesQuery)
+                              void addIndustryValue(industriesQuery)
                             }
                           }}
                           invalid={hookFormHasError({
@@ -2281,7 +2347,7 @@ const ShowcaseYourTalent = ({
                               <ComboboxOption
                                 key={item}
                                 value={item}
-                                onClick={() => addIndustryValue(item)}
+                                onClick={() => void addIndustryValue(item)}
                               >
                                 {item}
                               </ComboboxOption>
@@ -3316,6 +3382,17 @@ const DoNext = ({
   const router = useRouter()
   const { setUser, user } = useAuth()
   const [isLoading, setIsLoading] = React.useState(false)
+
+  const requiresPasswordSetup = (candidate?: User | null) => {
+    const safeUser = candidate as { provider?: string; hasPassword?: boolean } | null | undefined
+    return safeUser?.provider === "EMAIL" && !safeUser?.hasPassword
+  }
+
+  const getPostOnboardingRoute = (targetRoute: string, candidate?: User | null) => {
+    // Enforce password setup before allowing post-onboarding route jumps.
+    return requiresPasswordSetup(candidate) ? "/talent-dashboard" : targetRoute
+  }
+
   const handleFinish = async () => {
     try {
       setIsLoading(true)
@@ -3337,16 +3414,18 @@ const DoNext = ({
         setUser(nextUser)
       }
 
+      let refreshedUser = nextUser
       try {
         const userResponse = await UserAPI.me()
         if (userResponse?.data?.user) {
+          refreshedUser = userResponse.data.user
           setUser(userResponse.data.user)
         }
       } catch (error) {
         console.error("Failed to refresh user after onboarding", error)
       }
 
-      router.push("/talent-dashboard")
+      router.push(getPostOnboardingRoute("/talent-dashboard", refreshedUser ?? talentUser ?? user))
     } catch (error) {
       console.error("Failed to complete onboarding", error)
       // Show error toast if needed
@@ -3375,7 +3454,7 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push("/talent-dashboard")
+                router.push(getPostOnboardingRoute("/talent-dashboard", talentUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -3396,7 +3475,7 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push("/publish-project")
+                router.push(getPostOnboardingRoute("/publish-project", talentUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -3417,7 +3496,7 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push("/publish-project")
+                router.push(getPostOnboardingRoute("/publish-project", talentUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -3438,7 +3517,7 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push("/publish-project")
+                router.push(getPostOnboardingRoute("/publish-project", talentUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -3676,46 +3755,44 @@ export default function TalentOnboardingRoot() {
   const [stepData, setStepData] = React.useState<CreateTalentType | null>(null)
 
   return (
-    <AuthenticatedRoute>
-      <TalentOnboarding
-        introduceYourself={
-          <IntroduceYourself
-            sidebar={<Sidebar />}
-            stepData={stepData}
-            setStepData={setStepData}
-          />
-        }
-        createYourUsername={
-          <CreateYourUsername
-            sidebar={<Sidebar />}
-            stepData={stepData}
-            setStepData={setStepData}
-          />
-        }
-        shareYourLocation={
-          <ShareYourLocation
-            sidebar={<Sidebar />}
-            stepData={stepData}
-            setStepData={setStepData}
-          />
-        }
-        showcaseYourTalent={
-          <ShowcaseYourTalent
-            sidebar={<Sidebar />}
-            stepData={stepData}
-            setStepData={setStepData}
-          />
-        }
-        setYourPreferences={
-          <SetYourPreferences
-            sidebar={<Sidebar />}
-            stepData={stepData}
-            setStepData={setStepData}
-            setTalentUser={setTalentUser}
-          />
-        }
-        doNext={<DoNext talentUser={talentUser} sidebar={<DoNextSidebar />} />}
-      />
-    </AuthenticatedRoute>
+    <TalentOnboarding
+      introduceYourself={
+        <IntroduceYourself
+          sidebar={<Sidebar />}
+          stepData={stepData}
+          setStepData={setStepData}
+        />
+      }
+      createYourUsername={
+        <CreateYourUsername
+          sidebar={<Sidebar />}
+          stepData={stepData}
+          setStepData={setStepData}
+        />
+      }
+      shareYourLocation={
+        <ShareYourLocation
+          sidebar={<Sidebar />}
+          stepData={stepData}
+          setStepData={setStepData}
+        />
+      }
+      showcaseYourTalent={
+        <ShowcaseYourTalent
+          sidebar={<Sidebar />}
+          stepData={stepData}
+          setStepData={setStepData}
+        />
+      }
+      setYourPreferences={
+        <SetYourPreferences
+          sidebar={<Sidebar />}
+          stepData={stepData}
+          setStepData={setStepData}
+          setTalentUser={setTalentUser}
+        />
+      }
+      doNext={<DoNext talentUser={talentUser} sidebar={<DoNextSidebar />} />}
+    />
   )
 }

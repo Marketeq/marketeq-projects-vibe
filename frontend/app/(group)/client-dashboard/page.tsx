@@ -78,7 +78,7 @@ const LeftSidebar = () => {
         <div className="flex flex-col gap-y-1">
           <NextLink
             className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/client-dashboard"
+            href="/"
           >
             <Home03 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
             Home
