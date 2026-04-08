@@ -788,7 +788,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
   return (
     <div
       className={cn(
-        "px-3.5 md:px-6 lg:px-[50px] relative bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 sticky top-0 z-50",
+        "px-3.5 md:px-6 lg:px-[50px] bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 sticky top-0 z-50",
         showNavShadow
           ? "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]"
           : "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] md:shadow-none",
@@ -821,7 +821,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
               <DropdownMenuItem onSelect={() => router.push("/add-funds")}>
                 <Plus className="size-4" /> Add Funds
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => router.push("/transfer-funds")}>
                 <Repeat className="size-4" /> Transfer Funds
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -859,15 +859,15 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                     src={user?.avatarUrl ?? ""}
                     alt={user?.firstName ?? "User"}
                   />
-                  <AvatarFallback>
+                  <AvatarFallback suppressHydrationWarning>
                     {user?.firstName?.[0]?.toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col text-left">
-                  <span className="text-xs font-semibold leading-[15px] text-gray-700">
-                    {user?.firstName || ""} {user?.lastName || ""}
+                  <span className="text-xs font-semibold leading-[15px] text-gray-700" suppressHydrationWarning>
+                    {[user?.firstName, user?.lastName].filter(Boolean).join(" ")}
                   </span>
-                  <span className="text-[9px] leading-[14px] text-gray-500">
+                  <span className="text-[9px] leading-[14px] text-gray-500" suppressHydrationWarning>
                     {user?.email}
                   </span>
                 </div>
@@ -882,7 +882,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                     <span className="text-xs leading-5 text-gray-700">
                       User ID: 2459749
                     </span>
-                    <span className="text-[13px] leading-5 text-primary-500">
+                    <span className="text-[13px] leading-5 text-primary-500" suppressHydrationWarning>
                       {user?.email}
                     </span>
                   </div>
@@ -891,35 +891,37 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/talent-profile")}>
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/talent-profile") }}>
                 <User className="size-4" />
                 My Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard")}>
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>
                 <LayoutGrid02 className="size-4" />
                 My Dashboard
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/my-listings")}>
-                <List className="size-4" />
-                My Listings
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/my-contracts")}>
+              {user?.accountType === "TALENT" && (
+                <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-listings") }}>
+                  <List className="size-4" />
+                  My Listings
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-contracts") }}>
                 <FileCheck02 className="size-4" />
                 My Contracts
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/my-team")}>
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-team") }}>
                 <Users className="size-4" />
                 My Team
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/favorites")}>
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/favorites") }}>
                 <Star className="size-4" />
                 My Favorites
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setMenuOpen(false); router.push("/billing") }}>
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/billing") }}>
                 <CoinStack className="size-4" />
                 Billing
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setMenuOpen(false); router.push("/settings") }}>
+              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/settings") }}>
                 <Settings className="size-4" />
                 Settings
               </DropdownMenuItem>

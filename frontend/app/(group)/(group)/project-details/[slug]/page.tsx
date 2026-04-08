@@ -491,22 +491,38 @@ export default function ProjectDetails() {
     async function fetchProject() {
       try {
         const rawSlug = params.slug as string
-        // Extract the slug portion (everything before the last `-shortId` segment)
+        // URLs are generated as `${slug}-${shortId}` but the shortId may be
+        // a short numeric CMS id (e.g. "55") or an 8-char hex UUID prefix.
+        // Try the full URL slug first, then fall back to stripping the
+        // trailing id segment.
         const parts = rawSlug.split("-")
-        const slug = parts.slice(0, -1).join("-")
+        const stripped = parts.length > 1 ? parts.slice(0, -1).join("-") : rawSlug
+        const candidates = Array.from(new Set([rawSlug, stripped]))
 
         // Try fetching from listings-service via gateway
         const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
-        const res = await fetch(
-          `${apiBase}/v1/projects/slug/${slug}`
-        )
+        let res: Response | null = null
+        let slug = rawSlug
+        for (const candidate of candidates) {
+          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`)
+          if (r.ok) {
+            res = r
+            slug = candidate
+            break
+          }
+        }
+        if (!res) {
+          // last attempt — assign the final failing response so the fallback
+          // branches below can run against the last tried slug
+          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`)
+        }
         if (!res.ok) {
           // Try as a service
           const svcRes = await fetch(
             `${apiBase}/v1/services/slug/${slug}`
           )
           if (!svcRes.ok) {
-            router.push("/")
+            setLoading(false)
             return
           }
           const svcData = await svcRes.json()
@@ -532,7 +548,6 @@ export default function ProjectDetails() {
         })
       } catch (err) {
         console.error(err)
-        router.push("/")
       } finally {
         setLoading(false)
       }
@@ -548,13 +563,82 @@ export default function ProjectDetails() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+      <div className="min-h-screen bg-white px-[100px] py-10">
+        <div className="max-w-[1240px] animate-pulse">
+          {/* breadcrumb */}
+          <div className="flex items-center gap-x-3">
+            <div className="h-3 w-3 rounded-full bg-gray-200" />
+            <div className="h-3 w-16 rounded bg-gray-200" />
+            <div className="h-3 w-24 rounded bg-gray-200" />
+            <div className="h-3 w-32 rounded bg-gray-200" />
+          </div>
+          <div className="flex items-start gap-x-8 mt-8">
+            <div className="max-w-[818px] flex-auto space-y-6">
+              {/* title + meta */}
+              <div className="space-y-3">
+                <div className="h-8 w-2/3 rounded bg-gray-200" />
+                <div className="h-4 w-1/3 rounded bg-gray-200" />
+              </div>
+              {/* hero media */}
+              <div className="h-[460px] w-full rounded-lg bg-gray-200" />
+              {/* tabs */}
+              <div className="flex gap-x-4">
+                {["Details", "Phases", "Reviews", "Q&A"].map((t) => (
+                  <div key={t} className="h-8 w-20 rounded-full bg-gray-200" />
+                ))}
+              </div>
+              {/* body paragraphs */}
+              <div className="space-y-3">
+                <div className="h-4 w-full rounded bg-gray-200" />
+                <div className="h-4 w-11/12 rounded bg-gray-200" />
+                <div className="h-4 w-10/12 rounded bg-gray-200" />
+                <div className="h-4 w-9/12 rounded bg-gray-200" />
+              </div>
+              <div className="space-y-3">
+                <div className="h-4 w-full rounded bg-gray-200" />
+                <div className="h-4 w-11/12 rounded bg-gray-200" />
+                <div className="h-4 w-8/12 rounded bg-gray-200" />
+              </div>
+            </div>
+            {/* sidebar card */}
+            <div className="w-[360px] shrink-0 rounded-lg border border-gray-200 p-6 space-y-4">
+              <div className="h-6 w-32 rounded bg-gray-200" />
+              <div className="h-10 w-full rounded bg-gray-200" />
+              <div className="h-10 w-full rounded bg-gray-200" />
+              <div className="h-10 w-full rounded bg-gray-200" />
+              <div className="h-px w-full bg-gray-200" />
+              <div className="h-10 w-full rounded bg-gray-200" />
+              <div className="h-10 w-full rounded bg-gray-200" />
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
 
-  if (!project) return null
+  if (!project) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <div className="mx-auto mb-4 size-12 rounded-full bg-gray-100 flex items-center justify-center">
+            <AlertCircle className="size-6 text-gray-400" />
+          </div>
+          <h1 className="text-xl font-semibold text-dark-blue-400">
+            Project not found
+          </h1>
+          <p className="mt-2 text-sm text-gray-500">
+            We couldn&apos;t find the project you&apos;re looking for. It may
+            have been removed or the link is broken.
+          </p>
+          <div className="mt-6">
+            <Button onClick={() => router.push("/projects")}>
+              Browse projects
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="px-[100px] relative bg-white">

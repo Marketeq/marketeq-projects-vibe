@@ -90,4 +90,19 @@ export class NotificationController {
       delivery: { inApp: false, email: true },
     });
   }
+
+  @MessagePattern('notification.email.team_invitation')
+  handleTeamInvitationEmail(
+    @Payload()
+    data: {
+      to: string;
+      teamName: string;
+      role: string;
+      acceptUrl: string;
+      inviterEmail?: string;
+      note?: string;
+    },
+  ) {
+    return this.service.sendTeamInvitationEmail(data);
+  }
 }

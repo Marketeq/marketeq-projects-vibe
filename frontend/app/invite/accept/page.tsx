@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useAuth } from "@/contexts/auth"
+import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import { InvitationsAPI } from "@/service/http/invitations"
 import {
   getAcceptInvitationPayload,
@@ -31,7 +31,10 @@ export default function AcceptInvitationPage() {
     const message = String(rawMessage)
     const normalizedMessage = message.toLowerCase()
 
-    if (normalizedMessage.includes("email mismatch")) {
+    if (
+      normalizedMessage.includes("email mismatch") ||
+      normalizedMessage.includes("email does not match invitation")
+    ) {
       return "You are signed in with a different account. Please sign in using the invited email address and try again."
     }
 
@@ -119,12 +122,28 @@ export default function AcceptInvitationPage() {
           })
         }
 
+        // Check onboarding state from all available sources:
+        // 1. The acceptedUser from the API response
+        // 2. The current user from auth context (may be null in new tab)
+        const onboardingDone =
+          acceptedUser?.hasCompletedOnboarding ??
+          acceptedUser?.onboardingDismissed ??
+          user?.onboardingDismissed ??
+          false
+
+        const checkUser = user || acceptedUser
+        const hasRole = !!resolveDashboardRole(checkUser)
+
+        const finalDestination = (!hasRole || !onboardingDone)
+          ? "/onboarding"
+          : redirect.destination
+
         setStatus("success")
         setMessage("Invitation accepted successfully.")
         setTimeout(() => {
-          const separator = redirect.destination.includes("?") ? "&" : "?"
+          const separator = finalDestination.includes("?") ? "&" : "?"
           window.location.assign(
-            `${redirect.destination}${separator}inviteAccepted=1`
+            `${finalDestination}${separator}inviteAccepted=1`
           )
         }, 2000)
       })
@@ -136,7 +155,10 @@ export default function AcceptInvitationPage() {
 
         setStatus("error")
         setErrorTitle(
-          String(rawMessage).toLowerCase().includes("email mismatch")
+          String(rawMessage).toLowerCase().includes("email mismatch") ||
+            String(rawMessage)
+              .toLowerCase()
+              .includes("email does not match invitation")
             ? "Wrong Account"
             : "Invitation Error"
         )

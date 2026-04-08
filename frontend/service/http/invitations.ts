@@ -41,6 +41,7 @@ export const InvitationsAPI: InvitationsAPIType = {
   listInvitations: (params) => {
     const query = new URLSearchParams()
     if (params?.teamId) query.set("teamId", params.teamId)
+    if (params?.invitedEmail) query.set("invitedEmail", params.invitedEmail)
     if (params?.status) query.set("status", params.status)
     if (params?.limit) query.set("limit", params.limit.toString())
     if (params?.cursor) query.set("cursor", params.cursor)

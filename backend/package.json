@@ -4,6 +4,7 @@
   "private": true,
   "workspaces": [
     "apps/*",
+    "!apps/cms-service",
     "shared"
   ],
   "scripts": {
@@ -46,7 +47,6 @@
   "overrides": {
     "multer": "^2.1.1",
     "minimatch": "^9.0.7",
-    "path-to-regexp": "^8.4.0",
     "picomatch": "^4.0.4",
     "tar": "^7.5.13",
     "glob": "^10.5.0",

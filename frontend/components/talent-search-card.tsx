@@ -66,6 +66,7 @@ interface TalentSearchCardProps {
   profileHref?: string
   isFavorited?: boolean
   onFavoriteChange?: (favorited: boolean) => void
+  imageLoading?: "lazy" | "eager"
   /** When true, replaces favorite icon with an options menu (for saved/favorites views) */
   showOptionsMenu?: boolean
   onRemove?: () => void
@@ -138,6 +139,7 @@ export const TalentSearchCard = ({
   profileHref = "#",
   isFavorited = false,
   onFavoriteChange,
+  imageLoading = "lazy",
   showOptionsMenu = false,
   onRemove,
 }: TalentSearchCardProps) => {
@@ -153,6 +155,7 @@ export const TalentSearchCard = ({
                 src={photo}
                 sizes="25vw"
                 fill
+                loading={imageLoading}
                 className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
                 alt={name}
               />
@@ -322,9 +325,12 @@ export const TalentSearchCard = ({
             {skill}
           </span>
         ))}
-        <span className="text-xs leading-5 font-bold text-gray-500/60 hover:text-gray-500 cursor-pointer whitespace-nowrap">
+        <NextLink
+          href={profileHref ? `${profileHref}#skills` : "#"}
+          className="text-xs leading-5 font-bold text-gray-500/60 hover:text-gray-500 hover:underline cursor-pointer whitespace-nowrap"
+        >
           More...
-        </span>
+        </NextLink>
       </div>
     </article>
   )
