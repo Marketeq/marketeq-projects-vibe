@@ -111,15 +111,27 @@ interface CarouselSectionProps {
   count?: number
 }
 
+interface FeaturedProject {
+  id: string
+  slug: string
+  title: string
+  summary?: string
+  description?: string
+  role?: string
+  category?: string
+  mediaUrls?: string[]
+}
+
 const CarouselSection = ({
   title,
   description,
   count = 8,
 }: CarouselSectionProps) => {
-  // Fetch one real project so the placeholder cards can link to an actual
-  // details page. If the API is unreachable or returns nothing, fall back
-  // to the /projects browse page which always exists.
-  const [sampleHref, setSampleHref] = useState<string>("/projects")
+  // Fetch real projects from the CMS-backed /v1/projects endpoint so each
+  // card in the carousel is a distinct real project that links to its own
+  // details page. Falls back to an empty list if the fetch fails — the
+  // carousel will still render with placeholder cards in that case.
+  const [projects, setProjects] = useState<FeaturedProject[]>([])
   useEffect(() => {
     const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
     let cancelled = false
@@ -127,18 +139,24 @@ const CarouselSection = ({
       try {
         const res = await fetch(`${apiBase}/v1/projects`)
         if (!res.ok) return
-        const projects = await res.json()
-        const first = Array.isArray(projects) && projects[0]
-        if (cancelled || !first?.id || !first?.slug) return
-        setSampleHref(projectDetailsUrl(first.slug, first.id))
+        const data = await res.json()
+        if (cancelled || !Array.isArray(data)) return
+        setProjects(data.slice(0, count))
       } catch {
-        // keep fallback
+        // keep empty list — UI falls back to placeholders
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [count])
+
+  const slides: Array<
+    | { kind: "real"; project: FeaturedProject }
+    | { kind: "placeholder"; key: number }
+  > = projects.length > 0
+    ? projects.map((p) => ({ kind: "real" as const, project: p }))
+    : fromLength(count).map((key) => ({ kind: "placeholder" as const, key }))
 
   return (
     <div>
@@ -173,15 +191,29 @@ const CarouselSection = ({
         <div className="mt-6">
           <div className="gap-5 flex items-center">
             <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                {fromLength(count).map((key) => (
-                  <SwiperSlide className="w-[355px]" key={key}>
+                {slides.map((slide) => {
+                  const isReal = slide.kind === "real"
+                  const p = isReal ? slide.project : null
+                  const slideKey = isReal
+                    ? `project-${p!.id}`
+                    : `placeholder-${(slide as { key: number }).key}`
+                  return (
+                  <SwiperSlide className="w-[355px]" key={slideKey}>
                     <ListingCard
                       kind="project"
-                      id={`homepage-placeholder-${key}`}
-                      href={sampleHref}
-                      title="The Ultimate Mobile App Experience"
-                      description="Brief description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
-                      mediaUrl="/dashboard.png"
+                      id={p?.id ?? `homepage-placeholder-${slideKey}`}
+                      href={
+                        p
+                          ? projectDetailsUrl(p.slug, p.id)
+                          : projectDetailsUrl("modern-brand-identity-design")
+                      }
+                      title={p?.title ?? "The Ultimate Mobile App Experience"}
+                      description={
+                        p?.summary ??
+                        p?.description ??
+                        "Brief description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
+                      }
+                      mediaUrl={p?.mediaUrls?.[0] ?? "/dashboard.png"}
                       budget="$50,000 budget"
                       duration="Starting from 12 weeks"
                       rating={4.9}
@@ -214,7 +246,8 @@ const CarouselSection = ({
                       }
                     />
                   </SwiperSlide>
-                ))}
+                  )
+                })}
             </SwiperContent>
           </div>
         </div>
