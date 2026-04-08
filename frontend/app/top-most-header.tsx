@@ -788,7 +788,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
   return (
     <div
       className={cn(
-        "px-3.5 md:px-6 lg:px-[50px] relative bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 sticky top-0 z-50",
+        "px-3.5 md:px-6 lg:px-[50px] bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 sticky top-0 z-50",
         showNavShadow
           ? "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]"
           : "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] md:shadow-none",
