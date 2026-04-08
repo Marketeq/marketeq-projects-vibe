@@ -14,10 +14,6 @@ export class TalentProfileSyncService {
   ) {}
 
   async upsert(event: TalentProfileSavedEvent): Promise<TalentProfile> {
-    const existing = await this.repo.findOne({
-      where: { externalId: event.id },
-    });
-
     const data: Partial<TalentProfile> = {
       externalId: event.id,
       sourceId: event.sourceId ?? null,
@@ -42,6 +38,12 @@ export class TalentProfileSyncService {
       status: event.status ?? 'active',
     };
 
+    // Use save() which does INSERT ... ON CONFLICT UPDATE when entity has
+    // a matching unique key, avoiding race conditions between find and insert.
+    const existing = await this.repo.findOne({
+      where: { externalId: event.id },
+    });
+
     if (existing) {
       Object.assign(existing, data);
       const saved = await this.repo.save(existing);
@@ -51,12 +53,27 @@ export class TalentProfileSyncService {
       return saved;
     }
 
-    const profile = this.repo.create(data);
-    const saved = await this.repo.save(profile);
-    this.logger.log(
-      `Created talent profile "${event.username}" (externalId=${event.id})`,
-    );
-    return saved;
+    try {
+      const profile = this.repo.create(data);
+      const saved = await this.repo.save(profile);
+      this.logger.log(
+        `Created talent profile "${event.username}" (externalId=${event.id})`,
+      );
+      return saved;
+    } catch (err: any) {
+      // Handle race condition: another process inserted between find and save
+      if (err?.code === '23505') {
+        this.logger.warn(
+          `Duplicate insert race for "${event.username}" — retrying as update`,
+        );
+        const retryExisting = await this.repo.findOneOrFail({
+          where: { externalId: event.id },
+        });
+        Object.assign(retryExisting, data);
+        return this.repo.save(retryExisting);
+      }
+      throw err;
+    }
   }
 
   async delete(externalId: string): Promise<void> {
