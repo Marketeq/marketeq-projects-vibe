@@ -103,12 +103,11 @@ export class InvitationsService {
     };
   }
 
-  // NOTE: invitation note is temporarily disabled.
-  // private normalizeInvitationNote(note?: string): string | null {
-  //   if (typeof note !== 'string') return null;
-  //   const trimmed = note.trim();
-  //   return trimmed.length > 0 ? trimmed : null;
-  // }
+  private normalizeInvitationNote(note?: string): string | null {
+    if (typeof note !== 'string') return null;
+    const trimmed = note.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
 
   createInviteLink(
     dto: CreateInviteLinkDto,
@@ -189,8 +188,7 @@ export class InvitationsService {
 
   async createInvites(dto: CreateInvitationsDto, inviter: { id: string; email: string }) {
     const results = [];
-    // NOTE: invitation note is temporarily disabled.
-    // const normalizedNote = this.normalizeInvitationNote(dto.note);
+    const normalizedNote = this.normalizeInvitationNote(dto.note);
     for (const email of dto.emails) {
       const existing = await this.repo.findOne({
         where: { teamId: dto.teamId, invitedEmail: email, status: InvitationStatus.PENDING },
@@ -210,8 +208,7 @@ export class InvitationsService {
           teamId: dto.teamId,
           invitedEmail: email,
           role: dto.role,
-          // NOTE: invitation note is temporarily disabled.
-          // note: normalizedNote ?? undefined,
+          note: normalizedNote ?? undefined,
           token,
           expiresAt,
           createdByUserId: inviter.id,
@@ -224,8 +221,7 @@ export class InvitationsService {
         role: dto.role,
         acceptUrl: `${this.appBaseUrl}/invite/accept?token=${token}`,
         inviterEmail: inviter.email,
-        // NOTE: invitation note is temporarily disabled.
-        // note: normalizedNote ?? undefined,
+        note: normalizedNote ?? undefined,
       });
 
       // Publish notification event to RabbitMQ
@@ -312,8 +308,7 @@ export class InvitationsService {
       role: inv.role,
       acceptUrl: `${this.appBaseUrl}/invite/accept?token=${inv.token}`,
       inviterEmail: '',
-      // NOTE: invitation note is temporarily disabled.
-      // note: inv.note,
+      note: inv.note,
     });
 
     return inv;

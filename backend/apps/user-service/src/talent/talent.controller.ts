@@ -34,14 +34,8 @@ export class TalentController {
     @UploadedFile() avatar?: Express.Multer.File,
   ) {
     const userId = user.sub ?? user.id;
-    return this.talentService.createTalent(
-      {
-        id: userId,
-        email: user.email,
-      },
-      dto,
-      avatar,
-    );
+    // Pass both id and email to match TalentService.createTalent signature
+    return this.talentService.createTalent({ id: userId, email: user.email }, dto, avatar);
   }
 
   @ApiOperation({ summary: 'Public list of talent users for browse pages' })
