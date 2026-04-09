@@ -376,10 +376,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    const isDev = this.configService.get<string>('NODE_ENV') !== 'production';
+
     return {
       message,
-      reset_token: resetToken,
-      reset_url: resetUrl,
+      ...(isDev && { reset_token: resetToken, reset_url: resetUrl }),
     };
   }
 
