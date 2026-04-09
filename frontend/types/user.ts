@@ -22,6 +22,7 @@ export type User = {
   accountType?: ROLE
   provider: AUTH_PROVIDERS
   hasPassword?: boolean
+  twoFactorEnabled?: boolean
   socialId?: string | null
   emailVerified: boolean
   onboardingDismissed: boolean

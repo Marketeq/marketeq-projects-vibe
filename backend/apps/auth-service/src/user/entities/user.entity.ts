@@ -21,4 +21,13 @@ export class User {
 
   @Column({ default: false })
   hasPassword: boolean;
+
+  @Column({ nullable: true, select: false })
+  twoFactorSecret: string;
+
+  @Column({ default: false })
+  twoFactorEnabled: boolean;
+
+  @Column({ type: 'text', nullable: true, select: false })
+  twoFactorBackupCodes: string;
 }

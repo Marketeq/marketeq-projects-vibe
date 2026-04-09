@@ -222,9 +222,16 @@ export class AuthController {
   @ApiOperation({ summary: 'Verify 2FA code during login' })
   @Post('2fa/verify')
   @HttpCode(HttpStatus.OK)
-  verifyTwoFactor(@Body() dto: TwoFactorVerifyLoginDto, @Req() req: Request) {
+  async verifyTwoFactor(@Body() dto: TwoFactorVerifyLoginDto, @Req() req: Request) {
     const { userAgent, ipAddress } = extractRequestMeta(req);
-    return this.authService.verifyTwoFactorLogin(dto.partialToken, dto.code, userAgent, ipAddress);
+    const result = await this.authService.verifyTwoFactorLogin(dto.partialToken, dto.code, userAgent, ipAddress);
+    console.log('[2FA/verify] Response:', {
+      hasAccessToken: !!result.access_token,
+      hasRefreshToken: !!result.refresh_token,
+      hasSessionId: !!result.sessionId,
+      hasUser: !!result.user,
+    });
+    return result;
   }
 
   @ApiOperation({ summary: 'Regenerate backup codes' })

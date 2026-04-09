@@ -84,6 +84,8 @@ export default function SignIn() {
     try {
       const res = await AuthAPI.VerifyTwoFactor({ code: twoFactorCode, partialToken })
       console.log("[2FA] VerifyTwoFactor response:", res?.data)
+      console.log("[2FA] Access token in response:", !!res?.data?.access_token)
+
       if (res?.data?.access_token) {
         Cookies.set("access_token", res.data.access_token, { path: "/" })
         if (res.data.refresh_token) {
@@ -93,9 +95,14 @@ export default function SignIn() {
           Cookies.set("session_id", res.data.sessionId, { path: "/" })
         }
 
+        // Verify tokens were set before proceeding
+        console.log("[2FA] Token in cookie after set:", Cookies.get("access_token") ? "✓" : "✗")
+
         let nextUser = res.data.user
         try {
+          console.log("[2FA] Calling UserAPI.me() with token in cookie")
           const meResponse = await UserAPI.me()
+          console.log("[2FA] UserAPI.me() success:", meResponse?.status)
           if (meResponse?.status === 200) {
             const profileUser =
               meResponse?.data?.user ??
@@ -106,7 +113,8 @@ export default function SignIn() {
               nextUser = { ...nextUser, ...profileUser }
             }
           }
-        } catch {
+        } catch (meError: any) {
+          console.log("[2FA] UserAPI.me() error:", meError?.response?.status, meError?.message)
           // fall back to auth payload
         }
 
@@ -117,8 +125,12 @@ export default function SignIn() {
         const destination = redirectTarget ? nextRoute : resolveDashboardRoute(nextUser)
         router.push(destination)
         reset()
+      } else {
+        console.log("[2FA] No access_token in response. Response:", res?.data)
+        toast({ title: "Invalid response from server", variant: "destructive" })
       }
     } catch (err: any) {
+      console.log("[2FA] VerifyTwoFactor error:", err?.response?.status, err?.response?.data)
       const msg = err?.response?.data?.message || "Invalid verification code"
       toast({ title: msg, variant: "destructive" })
       setTwoFactorCode("")
