@@ -247,8 +247,8 @@ SendGrid code is commented out but preserved for future use.
 #### Required env vars (per service `.env`):
 ```
 BREVO_API_KEY=xkeysib-...
-BREVO_FROM_EMAIL=reka.connect@gmail.com
-BREVO_FROM_NAME=Reka
+BREVO_FROM_EMAIL=your-verified-sender@example.com
+BREVO_FROM_NAME=YourName
 ```
 
 #### Services that need Brevo config:
@@ -262,7 +262,7 @@ BREVO_FROM_NAME=Reka
 
 #### Brevo sender setup:
 - The `BREVO_FROM_EMAIL` must be a **verified sender** in Brevo dashboard → Settings → Senders, domains, IPs
-- Current verified sender: `reka.connect@gmail.com`
+- The from email must be a verified sender in your Brevo account
 
 #### Switching back to SendGrid:
 - Uncomment SendGrid imports and calls in `notification.service.ts`
