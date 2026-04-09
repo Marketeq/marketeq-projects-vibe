@@ -13,6 +13,7 @@ import {
   CategoryRef,
   TalentNetworkCta,
   FooterNavColumn,
+  ScoringFields,
   ProjectCard,
   ServiceCard,
   TeamCard,
@@ -135,7 +136,12 @@ export class HomepageService {
       // Cache keys use hp:home:{variant} — always invalidate all homepage variants
       const pattern = `hp:home:*`;
       let cursor = '0';
+      let iterations = 0;
       do {
+        if (++iterations > 100) {
+          this.logger.warn('Cache invalidation exceeded max iterations, aborting scan');
+          break;
+        }
         const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
         cursor = nextCursor;
         if (keys.length > 0) {
@@ -176,30 +182,13 @@ export class HomepageService {
       seo = { ...seo, noindex: true };
     }
 
-    // Sort projects/services based on section config
-    const projectsByNewest = [...allProjects].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-    const servicesByNewest = [...allServices].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-    const teamsByNewest = [...allTeams].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-    const talentByNewest = [...allTalent].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-
-    // Deduplicate across all sections and entity types
     const usedIds = new Set<string>();
     const sections: HomepageSection[] = [];
-
-    // Build pinned items map from CMS config (key → pinnedItemIds)
     const pinnedMap = cmsConfig?.pinnedItems ?? {};
 
     for (const sectionCfg of sectionConfigs) {
       const section = this.assembleSection(
-        sectionCfg, projectsByNewest, servicesByNewest, teamsByNewest, talentByNewest,
+        sectionCfg, allProjects, allServices, allTeams, allTalent,
         usedIds, pinnedMap[sectionCfg.key],
       );
       if (section.blocks.some((b) => b.items.length > 0)) {
@@ -488,57 +477,48 @@ export class HomepageService {
     };
   }
 
-  private async fetchProjects(): Promise<ProjectCard[]> {
+  private async fetchAndMap<T>(url: string, mapper: (raw: any) => T): Promise<T[]> {
     try {
       const { data } = await firstValueFrom(
-        this.http.get(`${this.listingsUrl}/v1/projects`, { timeout: 5000 }),
+        this.http.get(url, { timeout: 5000 }),
       );
-      return (Array.isArray(data) ? data : []).map((p: any) => this.toProjectCard(p));
+      return (Array.isArray(data) ? data : []).map(mapper);
     } catch (err: any) {
-      this.logger.warn(`Failed to fetch projects: ${err.message}`);
+      this.logger.warn(`Failed to fetch ${url}: ${err.message}`);
       return [];
     }
   }
 
-  private async fetchServices(): Promise<ServiceCard[]> {
-    try {
-      const { data } = await firstValueFrom(
-        this.http.get(`${this.listingsUrl}/v1/services`, { timeout: 5000 }),
-      );
-      return (Array.isArray(data) ? data : []).map((s: any) => this.toServiceCard(s));
-    } catch (err: any) {
-      this.logger.warn(`Failed to fetch services: ${err.message}`);
-      return [];
-    }
+  private fetchProjects(): Promise<ProjectCard[]> {
+    return this.fetchAndMap(`${this.listingsUrl}/v1/projects`, (p) => this.toProjectCard(p));
   }
 
-  private async fetchTeams(): Promise<TeamCard[]> {
-    try {
-      const { data } = await firstValueFrom(
-        this.http.get(`${this.listingsUrl}/v1/teams`, { timeout: 5000 }),
-      );
-      return (Array.isArray(data) ? data : []).map((t: any) => this.toTeamCard(t));
-    } catch (err: any) {
-      this.logger.warn(`Failed to fetch teams: ${err.message}`);
-      return [];
-    }
+  private fetchServices(): Promise<ServiceCard[]> {
+    return this.fetchAndMap(`${this.listingsUrl}/v1/services`, (s) => this.toServiceCard(s));
   }
 
-  private async fetchTalent(): Promise<TalentCard[]> {
-    try {
-      const { data } = await firstValueFrom(
-        this.http.get(`${this.userServiceUrl}/talent/users`, { timeout: 5000 }),
-      );
-      return (Array.isArray(data) ? data : []).map((t: any) => this.toTalentCard(t));
-    } catch (err: any) {
-      this.logger.warn(`Failed to fetch talent: ${err.message}`);
-      return [];
-    }
+  private fetchTeams(): Promise<TeamCard[]> {
+    return this.fetchAndMap(`${this.listingsUrl}/v1/teams`, (t) => this.toTeamCard(t));
+  }
+
+  private fetchTalent(): Promise<TalentCard[]> {
+    return this.fetchAndMap(`${this.userServiceUrl}/talent/users`, (t) => this.toTalentCard(t));
   }
 
   private truncate(text: string, max = CARD_DESCRIPTION_MAX_LENGTH): string {
     if (text.length <= max) return text;
     return text.slice(0, max - 1).trimEnd() + '\u2026';
+  }
+
+  private extractScoring(raw: any): ScoringFields {
+    return {
+      rating: raw.rating != null ? Number(raw.rating) : undefined,
+      reviewCount: raw.reviewCount ?? undefined,
+      completionsCount: raw.completionsCount ?? undefined,
+      views90d: raw.views90d ?? undefined,
+      adminBoost: raw.adminBoost != null ? Number(raw.adminBoost) : undefined,
+      featured: raw.featured ?? undefined,
+    };
   }
 
   private toProjectCard(raw: any): ProjectCard {
@@ -556,13 +536,7 @@ export class HomepageService {
       skills: raw.skills ?? [],
       tags: raw.tags ?? [],
       createdAt: raw.createdAt,
-      // Scoring signals for evaluator
-      rating: raw.rating != null ? Number(raw.rating) : undefined,
-      reviewCount: raw.reviewCount ?? undefined,
-      completionsCount: raw.completionsCount ?? undefined,
-      views90d: raw.views90d ?? undefined,
-      adminBoost: raw.adminBoost != null ? Number(raw.adminBoost) : undefined,
-      featured: raw.featured ?? undefined,
+      ...this.extractScoring(raw),
     };
   }
 
@@ -582,18 +556,13 @@ export class HomepageService {
       skills: raw.skills ?? [],
       tags: raw.tags ?? [],
       createdAt: raw.createdAt,
-      // Scoring signals for evaluator
-      rating: raw.rating != null ? Number(raw.rating) : undefined,
-      reviewCount: raw.reviewCount ?? undefined,
-      completionsCount: raw.completionsCount ?? undefined,
-      views90d: raw.views90d ?? undefined,
-      adminBoost: raw.adminBoost != null ? Number(raw.adminBoost) : undefined,
-      featured: raw.featured ?? undefined,
+      ...this.extractScoring(raw),
     };
   }
 
   private toTeamCard(raw: any): TeamCard {
     return {
+      ...this.extractScoring(raw),
       id: raw.id,
       name: raw.title ?? '',
       slug: raw.slug ?? null,

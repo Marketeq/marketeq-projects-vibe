@@ -44,7 +44,7 @@ export interface ServiceCard extends ScoringFields {
 }
 
 /** Card shape returned for team profiles */
-export interface TeamCard {
+export interface TeamCard extends ScoringFields {
   id: string;
   name: string;
   slug: string | null;

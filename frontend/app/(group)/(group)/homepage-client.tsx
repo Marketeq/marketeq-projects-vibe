@@ -90,7 +90,10 @@ function Banner({ banner }: { banner: HomepageBanner }) {
   const [dismissed, setDismissed] = React.useState(false)
 
   if (!banner.enabled || dismissed) return null
-  if (banner.expiresAt && new Date(banner.expiresAt) < new Date()) return null
+  if (banner.expiresAt) {
+    const expiry = new Date(banner.expiresAt)
+    if (!isNaN(expiry.getTime()) && expiry < new Date()) return null
+  }
 
   const colors = {
     info: "bg-blue-50 border-blue-200 text-blue-800",
@@ -107,7 +110,7 @@ function Banner({ banner }: { banner: HomepageBanner }) {
           {banner.ctaLabel}
         </NextLink>
       )}
-      <button onClick={() => setDismissed(true)} className="shrink-0">
+      <button onClick={() => setDismissed(true)} className="shrink-0 p-1 rounded hover:bg-black/5" aria-label="Dismiss banner" type="button">
         <X className="size-4" />
       </button>
     </div>
@@ -200,7 +203,9 @@ function formatDuration(duration: string | null): string {
 function formatPrice(min: number | null, max: number | null): string {
   if (min == null && max == null) return "Contact for pricing"
   if (min != null && max != null) return `$${min.toLocaleString()} – $${max.toLocaleString()}/mo`
-  return `$${(min ?? max)!.toLocaleString()}/mo`
+  const price = min ?? max
+  if (price == null) return "Contact for pricing"
+  return `$${price.toLocaleString()}/mo`
 }
 
 // ── Card renderers ──────────────────────────────────────────────────────────
@@ -241,7 +246,7 @@ function renderServiceCarousel(item: ServiceCard) {
   )
 }
 
-function renderTeamCarousel(item: TeamCard) {
+function renderTeamCard(item: TeamCard) {
   return (
     <ListingCard
       kind="team"
@@ -254,7 +259,7 @@ function renderTeamCarousel(item: TeamCard) {
   )
 }
 
-function renderTalentCarousel(item: TalentCard) {
+function renderTalentCard(item: TalentCard) {
   const name = [item.firstName, item.lastName].filter(Boolean).join(" ") || item.username
   const rate = item.rateMin != null ? `$${item.rateMin}/hr` : undefined
   return (
@@ -305,6 +310,8 @@ function renderServiceGrid(item: ServiceCard) {
 // ── Block renderer ──────────────────────────────────────────────────────────
 
 function CarouselBlock({ block }: { block: HomepageBlock }) {
+  if (block.items.length === 0) return null
+
   return (
     <SwiperRoot>
       <div className="flex justify-end gap-x-3 mb-4">
@@ -329,11 +336,11 @@ function CarouselBlock({ block }: { block: HomepageBlock }) {
       </div>
       <SwiperContent slidesPerView="auto" spaceBetween={20}>
         {block.items.map((item) => (
-          <SwiperSlide className="w-[355px]" key={item.id}>
+          <SwiperSlide className="w-[355px]" key={`${block.entity}-${item.id}`}>
             {block.entity === "projects" && renderProjectCarousel(item as ProjectCard)}
             {block.entity === "services" && renderServiceCarousel(item as ServiceCard)}
-            {block.entity === "teams" && renderTeamCarousel(item as TeamCard)}
-            {block.entity === "talent" && renderTalentCarousel(item as TalentCard)}
+            {block.entity === "teams" && renderTeamCard(item as TeamCard)}
+            {block.entity === "talent" && renderTalentCard(item as TalentCard)}
           </SwiperSlide>
         ))}
       </SwiperContent>
@@ -343,13 +350,13 @@ function CarouselBlock({ block }: { block: HomepageBlock }) {
 
 function GridBlock({ block }: { block: HomepageBlock }) {
   return (
-    <div className="grid grid-cols-3 gap-x-[42px] gap-y-10">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-[42px] gap-y-10">
       {block.items.map((item) => (
-        <div key={item.id}>
+        <div key={`${block.entity}-${item.id}`}>
           {block.entity === "projects" && renderProjectGrid(item as ProjectCard)}
           {block.entity === "services" && renderServiceGrid(item as ServiceCard)}
-          {block.entity === "teams" && renderTeamCarousel(item as TeamCard)}
-          {block.entity === "talent" && renderTalentCarousel(item as TalentCard)}
+          {block.entity === "teams" && renderTeamCard(item as TeamCard)}
+          {block.entity === "talent" && renderTalentCard(item as TalentCard)}
         </div>
       ))}
     </div>

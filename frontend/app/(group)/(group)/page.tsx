@@ -1,22 +1,13 @@
+import { cache } from "react"
 import { cookies } from "next/headers"
 import type { Metadata } from "next"
-import type {
-  HomepagePayload,
-  HomepageSection,
-  HomepageBlock,
-  ProjectCard,
-  ServiceCard,
-  TeamCard,
-  TalentCard,
-  CategoryRef,
-  HomepageBanner,
-} from "@/types/homepage"
+import type { HomepagePayload } from "@/types/homepage"
 import { HomepageClient } from "./homepage-client"
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
 
-async function fetchHomepage(): Promise<HomepagePayload | null> {
+const fetchHomepage = cache(async (): Promise<HomepagePayload | null> => {
   try {
     const cookieStore = await cookies()
     const variant = cookieStore.get("mktq_hp_variant")?.value ?? ""
@@ -31,7 +22,7 @@ async function fetchHomepage(): Promise<HomepagePayload | null> {
   } catch {
     return null
   }
-}
+})
 
 export async function generateMetadata(): Promise<Metadata> {
   const data = await fetchHomepage()
