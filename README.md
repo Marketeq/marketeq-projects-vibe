@@ -35,7 +35,10 @@ Vibe Coding Marketeq Projects talent network platform.
 - py -m pip install fastapi uvicorn transformers torch pillow
 - py -m pip install python-multipart
 - py --version
-- npm install -w apps/notification-service nodemailer @types/nodemailer --legacy-peer-deps
+- npm install nodemailer @types/nodemailer --legacy-peer-deps
+
+### Install the Brevo (Sendinblue) Node.js SDK in your
+- npm install sib-api-v3-sdk  
 
 ### Build:
 - npx nest build api-gateway
@@ -55,6 +58,7 @@ Vibe Coding Marketeq Projects talent network platform.
 - npx nest start notification-service
 - npx nest start invitations-service
 - npx nest start favorites-service
+- npx nest start category-service
 
 ### Using npm:
 ```npm exec nest -- start listings-service --watch```
@@ -230,7 +234,37 @@ Located at `backend/apps/content-moderation-service/src/filters/python/`:
 - `POST http://localhost:4000/invitations/accept {"token":""}`
 - Open this URL in browser while signed in with the invited email account.
 - If you are signed in with a different account, click Sign In With Invited Email on the accept page.
-- Primary transport: SendGrid (`SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`)
+- Primary transport: SendGrid (`SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`) — currently commented out
 - Fallback transport: SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`)
 - If SendGrid key is missing/invalid, service automatically attempts SMTP.
 - Restart notification-service after changing env values.
+
+### Email Provider: Brevo (Active for Testing)
+
+The notification-service and invitations-service now use **Brevo** for transactional emails.
+SendGrid code is commented out but preserved for future use.
+
+#### Required env vars (per service `.env`):
+```
+BREVO_API_KEY=xkeysib-...
+BREVO_FROM_EMAIL=your-verified-sender@example.com
+BREVO_FROM_NAME=YourName
+```
+
+#### Services that need Brevo config:
+- `backend/apps/notification-service/.env` — handles RabbitMQ-routed emails (team invitations, notifications)
+- `backend/apps/invitations-service/.env` — direct Brevo send for testing invitations
+
+#### How invitation emails flow:
+1. **invitations-service** creates the invite in DB
+2. **invitations-service** emits `notification.email.team_invitation` via RabbitMQ → **notification-service** picks it up and sends via Brevo
+3. **invitations-service** also sends a direct Brevo email (for testing, can be commented out)
+
+#### Brevo sender setup:
+- The `BREVO_FROM_EMAIL` must be a **verified sender** in Brevo dashboard → Settings → Senders, domains, IPs
+- The from email must be a verified sender in your Brevo account
+
+#### Switching back to SendGrid:
+- Uncomment SendGrid imports and calls in `notification.service.ts`
+- Comment out the Brevo calls
+- Set `SENDGRID_API_KEY` and `SENDGRID_FROM_EMAIL` in the notification-service `.env`

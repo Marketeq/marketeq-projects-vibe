@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Module } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 
 const BREVO_API_BASE = 'https://api.brevo.com/v3';
@@ -61,9 +61,16 @@ export class BrevoService {
   }
 
   private async send(request: SendTransacEmailRequest): Promise<void> {
+    const sender = request.sender ?? this.defaultSender;
+    const recipients = request.to.map((r) => r.email).join(',');
+
+    this.logger.log(
+      `Brevo sending: from=${sender.email} to=${recipients} subject="${request.subject ?? '(template)'}" templateId=${request.templateId ?? 'none'} tags=${(request.tags ?? []).join(',')}`,
+    );
+
     try {
-      await this.http.post('/smtp/email', {
-        sender: request.sender ?? this.defaultSender,
+      const response = await this.http.post('/smtp/email', {
+        sender,
         to: request.to,
         subject: request.subject,
         htmlContent: request.htmlContent,
@@ -71,15 +78,17 @@ export class BrevoService {
         params: request.params,
         tags: request.tags,
       });
+
+      this.logger.log(
+        `Brevo success: to=${recipients} messageId=${response.data?.messageId ?? 'n/a'} statusCode=${response.status}`,
+      );
     } catch (err) {
-      const message =
-        (axios.isAxiosError(err) && err.response?.data
-          ? JSON.stringify(err.response.data)
-          : (err as Error)?.message) || 'unknown error';
+      const statusCode = axios.isAxiosError(err) ? err.response?.status : undefined;
+      const responseBody = axios.isAxiosError(err) ? JSON.stringify(err.response?.data ?? 'n/a') : undefined;
+      const message = (err as Error)?.message || 'unknown error';
+
       this.logger.error(
-        `Brevo send failed (templateId=${request.templateId ?? 'none'}, to=${request.to
-          .map((r) => r.email)
-          .join(',')}): ${message}`,
+        `Brevo send failed: to=${recipients} status=${statusCode ?? 'n/a'} message=${message} body=${responseBody ?? 'n/a'}`,
       );
       throw err;
     }
@@ -132,3 +141,9 @@ export class BrevoService {
     });
   }
 }
+
+@Module({
+  providers: [BrevoService],
+  exports: [BrevoService],
+})
+export class BrevoModule {}

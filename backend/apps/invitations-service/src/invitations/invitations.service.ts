@@ -1,3 +1,4 @@
+import { BrevoService } from '../../../notification-service/src/brevo/brevo.service';
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Inject, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan } from 'typeorm';
@@ -56,6 +57,8 @@ export class InvitationsService {
     private readonly userService: UserServiceClient,
     @Inject('RABBITMQ_CLIENT')
     private readonly rabbitmq: ClientProxy,
+    // Add BrevoService for direct email sending
+    private readonly brevoService: BrevoService,
   ) {
     this.expDays = parseInt(config.get('INVITE_EXP_DAYS') ?? '7', 10);
     this.appBaseUrl = config.get('APP_BASE_URL') ?? 'http://localhost:3000';
@@ -215,6 +218,8 @@ export class InvitationsService {
         }),
       );
 
+
+      // --- Send invitation via RabbitMQ (existing logic) ---
       this.rabbitmq.emit('notification.email.team_invitation', {
         to: email,
         teamName: dto.teamId,
@@ -223,6 +228,23 @@ export class InvitationsService {
         inviterEmail: inviter.email,
         note: normalizedNote ?? undefined,
       });
+
+      // --- Direct Brevo email for testing (comment out when switching back to SendGrid) ---
+      this.logger.log(
+        `[DirectBrevo] Sending invitation email: to=${email} teamId=${dto.teamId} role=${dto.role} inviter=${inviter.email} token=${token.substring(0, 8)}...`,
+      );
+      try {
+        await this.brevoService.sendNotificationEmail(
+          email,
+          `You're invited to join team ${dto.teamId}`,
+          `You have been invited as ${dto.role}.`,
+          `${this.appBaseUrl}/invite/accept?token=${token}`
+        );
+        this.logger.log(`[DirectBrevo] Invitation email sent successfully: to=${email}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(`[DirectBrevo] Failed to send invitation email: to=${email} error=${message}`);
+      }
 
       // Publish notification event to RabbitMQ
       this.rabbitmq.emit('notification.send', {
