@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Delete, Param, Query, Req, HttpCode, HttpStatus } from '@nestjs/common';
-import { MessagePattern, Payload } from '@nestjs/microservices';
+import { EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
 import { NotificationService, NotificationPayload } from '../services/notification.service';
 import { BrevoService } from '../brevo/brevo.service';
 
@@ -61,12 +61,13 @@ export class NotificationController {
   }
 
   // RabbitMQ event handlers from other services
-  @MessagePattern('notification.send')
+  // Using @EventPattern because publishers use client.emit() (fire-and-forget)
+  @EventPattern('notification.send')
   handleSend(@Payload() payload: NotificationPayload) {
     return this.service.dispatch(payload);
   }
 
-  @MessagePattern('auth.password_reset_requested')
+  @EventPattern('auth.password_reset_requested')
   async handlePasswordResetRequested(
     @Payload() data: { email: string; firstName?: string; resetUrl: string },
   ) {
@@ -74,10 +75,9 @@ export class NotificationController {
       firstName: data.firstName,
       resetUrl: data.resetUrl,
     });
-    return { ok: true };
   }
 
-  @MessagePattern('send_magic_link_email')
+  @EventPattern('send_magic_link_email')
   handleMagicLink(@Payload() data: { email: string; userId: string; link: string; type: string }) {
     return this.service.dispatch({
       recipientId: data.userId,
@@ -91,7 +91,7 @@ export class NotificationController {
     });
   }
 
-  @MessagePattern('notification.email.team_invitation')
+  @EventPattern('notification.email.team_invitation')
   handleTeamInvitationEmail(
     @Payload()
     data: {
