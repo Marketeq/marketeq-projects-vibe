@@ -176,6 +176,26 @@ function useProvideAuth() {
 
   useEffect(() => {
     getUser()
+
+    // Setup session cleanup on tab/window close
+    const handleBeforeUnload = () => {
+      const refreshToken = Cookies.get("refresh_token")
+      const sessionId = Cookies.get("session_id")
+
+      if (refreshToken && sessionId) {
+        const AUTH_BASE = process.env.NEXT_PUBLIC_AUTH_URL ?? ""
+        navigator.sendBeacon(
+          `${AUTH_BASE}/auth/sessions/cleanup`,
+          JSON.stringify({
+            refresh_token: refreshToken,
+            sessionId,
+          })
+        )
+      }
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload)
   }, [])
 
   return {

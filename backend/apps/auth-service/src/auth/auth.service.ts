@@ -882,6 +882,30 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     await this.sessionRepository.delete({ id: sessionId });
   }
 
+  async cleanupSession(refreshToken: string, sessionId: string): Promise<void> {
+    const refreshSecret = this.getRefreshSecret();
+    let payload: any;
+
+    try {
+      payload = await this.jwtService.verifyAsync(refreshToken, {
+        secret: refreshSecret,
+        algorithms: ['HS256'],
+      });
+    } catch {
+      // Token may be expired — still try to delete if sessionId provided
+      if (!sessionId) throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const userId = payload?.sub;
+    if (!userId && !sessionId) {
+      throw new UnauthorizedException('Cannot cleanup session');
+    }
+
+    if (sessionId) {
+      await this.sessionRepository.delete({ id: sessionId, ...(userId && { userId }) });
+    }
+  }
+
   async revokeAllOtherSessions(userId: string, currentSessionId: string): Promise<{ revoked: number }> {
     const result = await this.sessionRepository.delete({ userId, id: Not(currentSessionId) });
     return { revoked: result.affected ?? 0 };

@@ -90,7 +90,13 @@ export default function ActiveSessionsModal({ onClose }: ActiveSessionsModalProp
     AuthAPI.GetSessions(currentSessionId)
       .then((res) => {
         if (res?.status === 200 && Array.isArray(res.data)) {
-          setSessions(res.data)
+          // Sort: current session first, then by lastActiveAt
+          const sorted = [...res.data].sort((a, b) => {
+            if (a.isCurrent) return -1
+            if (b.isCurrent) return 1
+            return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
+          })
+          setSessions(sorted)
         }
       })
       .catch((err) => {
@@ -108,6 +114,16 @@ export default function ActiveSessionsModal({ onClose }: ActiveSessionsModalProp
       if (res?.status === 200) {
         setSessions((prev) => prev.filter((s) => s.id !== sessionId))
         toast({ title: "Session revoked" })
+
+        // If we just revoked the current session, logout
+        if (sessionId === currentSessionId) {
+          setTimeout(() => {
+            Cookies.remove("session_id", { path: "/" })
+            Cookies.remove("refresh_token", { path: "/" })
+            Cookies.remove("access_token", { path: "/" })
+            window.location.href = "/sign-in"
+          }, 500)
+        }
       }
     } catch (err: any) {
       const msg =

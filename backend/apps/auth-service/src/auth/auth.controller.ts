@@ -14,6 +14,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { SessionValidationGuard } from './guards/session-validation.guard';
 import { Request } from 'express';
 
 import { AuthService } from './auth.service';
@@ -154,7 +155,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'List active sessions' })
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
   @Get('sessions')
   getSessions(@Req() req: Request, @Query('currentSessionId') currentSessionId?: string) {
     const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
@@ -163,7 +164,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Revoke a specific session' })
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
   @Delete('sessions/:id')
   @HttpCode(HttpStatus.OK)
   revokeSession(@Req() req: Request, @Param('id') sessionId: string) {
@@ -173,12 +174,19 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Revoke all sessions except current' })
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
   @Delete('sessions')
   @HttpCode(HttpStatus.OK)
   revokeAllOtherSessions(@Req() req: Request, @Query('currentSessionId') currentSessionId: string) {
     const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
     return this.authService.revokeAllOtherSessions(userId, currentSessionId);
+  }
+
+  @ApiOperation({ summary: 'Cleanup session on tab close (called via sendBeacon)' })
+  @Post('sessions/cleanup')
+  @HttpCode(HttpStatus.OK)
+  cleanupSession(@Body() body: { refresh_token: string; sessionId: string }) {
+    return this.authService.cleanupSession(body.refresh_token, body.sessionId);
   }
 
   @ApiOperation({ summary: 'Generate 2FA secret and QR code' })
