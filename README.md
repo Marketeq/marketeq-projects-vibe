@@ -221,6 +221,10 @@ Located at `backend/apps/content-moderation-service/src/filters/python/`:
 | Bad image + good content | ok | ok | Image rejected |
 | Good content + good image | ok | ok | Clean pass |
 
+
+- good video - samplelib.com/lib/preview/mp4/sample-5s.mp4   
+- bad video - pub-4789db6a57d64de3ad7b5e8c316d125b.r2.dev/projects/318fd0e8-0d86-455d-bebb-656bd0530c70/media/angry_face-58e0a31f-c8d7-447a-b1d7-06cfda191980.mp4
+
 ### Invitation Email Delivery (notification-service)
 - Invitation accept URL (UI): `http://localhost:3000/invite/accept?token=YOUR_TOKEN`
 - `POST http://localhost:4000/invitations/accept {"token":""}`
