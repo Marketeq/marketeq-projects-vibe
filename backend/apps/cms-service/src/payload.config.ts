@@ -17,6 +17,7 @@ import { FeatureFlags } from './collections/FeatureFlags';
 import { Media } from './collections/Media';
 import { Testimonials } from './collections/Testimonials';
 import { LandingPages } from './collections/LandingPages';
+import { Homepages } from './collections/Homepages';
 
 // Globals
 import { SiteSettings } from './globals/SiteSettings';
@@ -88,6 +89,7 @@ export default buildConfig({
     Media,
     Testimonials,
     LandingPages,
+    Homepages,
   ],
 
   globals: [
