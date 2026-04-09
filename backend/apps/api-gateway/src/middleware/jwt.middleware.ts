@@ -8,6 +8,7 @@ const PUBLIC_ROUTES = [
   '/auth/refresh', '/auth/check-username',
   '/auth/google', '/auth/linkedin', '/auth/magic-link', '/auth/verify', '/auth/dev-login',
   '/auth/forgot-password', '/auth/reset-password',
+  '/auth/2fa/verify',   // 2FA verification during login (uses partialToken, not full auth)
   '/search', '/autocomplete', '/suggestions',
   '/talent/users',     // public talent profiles
   '/v1/users/username',
