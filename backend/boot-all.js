@@ -33,7 +33,7 @@ const SERVICES = [
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
   { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
-  { name: 'invitations-service',        port: '3011', dir: 'apps/invitations-service' },
+  { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service' },
   { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service' },
 ];
 
@@ -46,7 +46,7 @@ const gatewayEnv = {
   AUTH_SERVICE_URL:         'http://localhost:3001',
   USER_SERVICE_URL:         'http://localhost:3002',
   LISTINGS_SERVICE_URL:     'http://localhost:3003',
-  INVITATIONS_SERVICE_URL:  'http://localhost:3011',
+  INVITATIONS_SERVICE_URL:  'http://localhost:3013',
   MODERATION_SERVICE_URL:   'http://localhost:3014',
 };
 
