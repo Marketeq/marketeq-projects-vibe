@@ -37,9 +37,6 @@ Vibe Coding Marketeq Projects talent network platform.
 - py --version
 - npm install -w apps/notification-service nodemailer @types/nodemailer --legacy-peer-deps
 
-### Fast API:
-```py -m uvicorn clip_moderation_api:app --host 0.0.0.0 --port 8000 --app-dir apps/content-moderation-service/src/filters/python```
-
 ### Build:
 - npx nest build api-gateway
 - npx nest build autocomplete-service
@@ -68,6 +65,12 @@ Vibe Coding Marketeq Projects talent network platform.
 
 ### Rabbitmq:
 ```docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management```
+
+### Fast API:
+```py -m uvicorn clip_moderation_api:app --host 0.0.0.0 --port 8000 --app-dir apps/content-moderation-service/src/filters/python```
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+- Moderate endpoint: `POST http://localhost:8000/moderate` (multipart file upload)
 
 ## Claude CLI Setup (API Key)
 
@@ -191,14 +194,39 @@ Script path:
 
 Run command:
 - powershell -ExecutionPolicy Bypass -File "./scripts/run-publish-moderation-matrix.ps1"
+- With explicit token: `powershell -ExecutionPolicy Bypass -File "./scripts/run-publish-moderation-matrix.ps1" -Token "<jwt>"`
+
+Fixtures:
+- `backend/scripts/fixtures/bad-image-emoji.png` — deterministic bad image
+- `backend/scripts/fixtures/good_test_image.jpg` — safe test image
+
+### Python Moderation Scripts
+
+Located at `backend/apps/content-moderation-service/src/filters/python/`:
+
+| Script | Purpose |
+|--------|---------|
+| `clip_moderation_api.py` | FastAPI server — CLIP-based image moderation with 16 label categories |
+| `clip_moderation.py` | CLI — binary safe/unsafe image classification |
+| `blur_check.py` | CLI — Laplacian variance blur detection (requires opencv) |
+| `detect_animation.py` | CLI — checks if an image is animated (GIF) |
+| `video_moderation.py` | CLI — frame-by-frame CLIP moderation for videos (requires opencv) |
+
+### Test Matrix Results
+
+| Scenario | Project | Media | Result |
+|----------|---------|-------|--------|
+| Bad title + good image | ok | ok | Text flagged |
+| Bad description + good image | ok | ok | Text flagged |
+| Bad image + good content | ok | ok | Image rejected |
+| Good content + good image | ok | ok | Clean pass |
 
 ### Invitation Email Delivery (notification-service)
 - Invitation accept URL (UI): `http://localhost:3000/invite/accept?token=YOUR_TOKEN`
-- POST http://localhost:4000/invitations/accept
-   {"token":"<token>"}
+- `POST http://localhost:4000/invitations/accept {"token":""}`
 - Open this URL in browser while signed in with the invited email account.
-- If you are signed in with a different account, click **Sign In With Invited Email** on the accept page.
+- If you are signed in with a different account, click Sign In With Invited Email on the accept page.
 - Primary transport: SendGrid (`SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`)
 - Fallback transport: SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`)
 - If SendGrid key is missing/invalid, service automatically attempts SMTP.
-- Restart `notification-service` after changing env values.
+- Restart notification-service after changing env values.
