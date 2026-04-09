@@ -129,6 +129,22 @@ export const Homepages: CollectionConfig = {
         { name: 'ctaLabel', type: 'text' },
         { name: 'ctaUrl', type: 'text' },
         {
+          name: 'manualEnabled',
+          type: 'checkbox',
+          defaultValue: false,
+          admin: { description: 'Enable manual pinning. Pinned items appear first, remaining slots filled by evaluator.' },
+        },
+        {
+          name: 'pinnedItems',
+          type: 'relationship',
+          relationTo: 'listings',
+          hasMany: true,
+          admin: {
+            description: 'Hand-picked listings to pin at the top of this section. Only used when manualEnabled is true.',
+            condition: (data: any, siblingData: any) => siblingData?.manualEnabled === true,
+          },
+        },
+        {
           name: 'blocks',
           type: 'array',
           fields: [

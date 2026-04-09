@@ -20,6 +20,7 @@ import {
   CAROUSEL_MIN_PAGES,
   GRID_SIZE,
 } from './homepage.types';
+import { evaluateItems } from './homepage.evaluator';
 import {
   HOMEPAGE_HERO,
   HOMEPAGE_SECTIONS,
@@ -180,9 +181,13 @@ export class HomepageService {
     const usedIds = new Set<string>();
     const sections: HomepageSection[] = [];
 
+    // Build pinned items map from CMS config (key → pinnedItemIds)
+    const pinnedMap = cmsConfig?.pinnedItems ?? {};
+
     for (const sectionCfg of sectionConfigs) {
       const section = this.assembleSection(
         sectionCfg, projectsByNewest, servicesByNewest, usedIds,
+        pinnedMap[sectionCfg.key],
       );
       if (section.blocks.some((b) => b.items.length > 0)) {
         sections.push(section);
@@ -335,7 +340,19 @@ export class HomepageService {
         }
       : undefined;
 
-    return { hero, sections, popularTabs, moreCategoriesList, talentNetworkCta, footerNav, seo };
+    // Extract pinned items from sections (key → pinnedItemIds)
+    const pinnedItems: Record<string, string[]> = {};
+    if (doc.sections?.length) {
+      for (const s of doc.sections) {
+        if (s.manualEnabled && Array.isArray(s.pinnedItems) && s.pinnedItems.length > 0) {
+          pinnedItems[s.key] = s.pinnedItems.map((p: any) =>
+            typeof p === 'object' ? (p.sourceId || String(p.id)) : String(p),
+          );
+        }
+      }
+    }
+
+    return { hero, sections, popularTabs, moreCategoriesList, talentNetworkCta, footerNav, seo, pinnedItems };
   }
 
   // ── Banner ────────────────────────────────────────────────────────────────
@@ -372,6 +389,7 @@ export class HomepageService {
     allProjects: ProjectCard[],
     allServices: ServiceCard[],
     usedIds: Set<string>,
+    pinnedItemIds?: string[],
   ): HomepageSection {
     const blocks: HomepageBlock[] = [];
 
@@ -384,7 +402,7 @@ export class HomepageService {
         pool = allServices.filter((s) => !usedIds.has(s.id));
       }
 
-      // #9 — Apply category filter if configured
+      // Apply category filter if configured
       if (blockCfg.categoryFilter) {
         const cat = blockCfg.categoryFilter.toLowerCase();
         pool = pool.filter((item) =>
@@ -392,23 +410,38 @@ export class HomepageService {
         );
       }
 
-      // #8 — Apply sort
-      if (blockCfg.sort === 'random') {
-        pool = [...pool].sort(() => Math.random() - 0.5);
+      // ── Pinned items (hybrid mode) ──
+      // If section has pinned items, place them first and fill remaining
+      // slots with evaluated results. Pinned items excluded from evaluator pool.
+      let pinnedItems: (ProjectCard | ServiceCard)[] = [];
+      if (pinnedItemIds?.length) {
+        const pinSet = new Set(pinnedItemIds);
+        pinnedItems = pool.filter((item) => pinSet.has(item.id));
+        pool = pool.filter((item) => !pinSet.has(item.id));
+        pinnedItems.forEach((i) => usedIds.add(i.id));
       }
-      // 'newest' is already sorted by createdAt DESC from the caller
 
-      const items = pool.slice(0, blockCfg.limit);
+      const adjustedLimit = Math.max(0, blockCfg.limit - pinnedItems.length);
+
+      // ── Evaluate / rank by kind ──
+      let evaluated: (ProjectCard | ServiceCard)[];
+      if (blockCfg.sort === 'random') {
+        evaluated = [...pool].sort(() => Math.random() - 0.5).slice(0, adjustedLimit);
+      } else {
+        evaluated = evaluateItems(pool as any[], blockCfg.kind, adjustedLimit) as (ProjectCard | ServiceCard)[];
+      }
+
+      // Merge: pinned first, then evaluated
+      const items = [...pinnedItems, ...evaluated];
       items.forEach((i) => usedIds.add(i.id));
 
-      // #5 — Carousel guard: downgrade to grid if insufficient items
+      // Carousel guard: downgrade to grid if insufficient items
       const effectiveType =
         blockCfg.type === 'carousel' && items.length < GRID_SIZE * CAROUSEL_MIN_PAGES
           ? 'grid'
           : blockCfg.type;
 
-      // #4 — Pagination metadata
-      const totalAvailable = pool.length;
+      const totalAvailable = pinnedItems.length + pool.length;
       const pageSize = blockCfg.limit;
 
       blocks.push({
@@ -516,4 +549,6 @@ interface CmsHomepageConfig {
   talentNetworkCta?: TalentNetworkCta;
   footerNav?: FooterNavColumn[];
   seo?: HomepageSeo;
+  /** Map of section key → array of pinned item IDs */
+  pinnedItems?: Record<string, string[]>;
 }
