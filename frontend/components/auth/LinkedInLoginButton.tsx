@@ -68,7 +68,7 @@ const LinkedInLogin = () => {
               response?.data?.access_token &&
               response?.data?.user
             ) {
-              Cookies.set("access_token", response?.data?.access_token)
+              Cookies.set("access_token", response?.data?.access_token, { path: "/" })
               UserAPI.me().then((me) => {
                 if (me?.status === 200) {
                   const user = me.data?.user ?? me.data
