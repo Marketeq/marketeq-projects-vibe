@@ -54,8 +54,8 @@ export class CategoryPagesService {
   
     category.name = entry.name;
     category.slug = entry.slug;
-    category.seo_meta_title = entry.seo_meta_title || null;
-    category.seo_meta_description = entry.seo_meta_description || null;
+    category.seo_meta_title = entry.seo_meta_title || undefined;
+    category.seo_meta_description = entry.seo_meta_description || undefined;
     category.published_in_marketplace = entry.published_in_marketplace ?? true;
     category.approved = entry.approved ?? false;
   
