@@ -232,7 +232,7 @@ export class InvitationsService {
         event: 'invitation.sent',
         title: `Invitation sent to ${email}`,
         body: `You've invited ${email} to join your team as ${dto.role}`,
-        link: `/my-team`,
+        link: `${this.appBaseUrl}/my-team`,
         metadata: { invitedEmail: email, teamId: dto.teamId, role: dto.role },
         delivery: { inApp: true, email: false },
       });
