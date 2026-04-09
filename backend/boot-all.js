@@ -30,9 +30,11 @@ const GATEWAY_PORT = process.env.PORT || '10000';
 
 // Internal ports — only reachable inside the container
 const SERVICES = [
-  { name: 'auth-service',     port: '3001', dir: 'apps/auth-service' },
-  { name: 'user-service',     port: '3002', dir: 'apps/user-service' },
-  { name: 'listings-service', port: '3003', dir: 'apps/listings-service' },
+  { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
+  { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
+  { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
+  { name: 'invitations-service',        port: '3011', dir: 'apps/invitations-service' },
+  { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service' },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway' };
@@ -41,9 +43,11 @@ const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gatewa
 const gatewayEnv = {
   ...process.env,
   PORT: GATEWAY_PORT,
-  AUTH_SERVICE_URL: 'http://localhost:3001',
-  USER_SERVICE_URL: 'http://localhost:3002',
-  LISTINGS_SERVICE_URL: 'http://localhost:3003',
+  AUTH_SERVICE_URL:         'http://localhost:3001',
+  USER_SERVICE_URL:         'http://localhost:3002',
+  LISTINGS_SERVICE_URL:     'http://localhost:3003',
+  INVITATIONS_SERVICE_URL:  'http://localhost:3011',
+  MODERATION_SERVICE_URL:   'http://localhost:3014',
 };
 
 function launchService(svc, env, isGateway = false) {

@@ -1,7 +1,7 @@
 # render.yaml — Render Blueprint for marketeq-projects-vibe
 #
-# ONE service runs everything: gateway + auth + users + listings
-# in a single container. You pay for ONE Render service, not four.
+# ONE service runs everything: gateway + all microservices
+# in a single container. You pay for ONE Render service.
 #
 # Deploy: Render Dashboard → New → Blueprint → connect marketeq-projects-vibe repo
 #
@@ -15,7 +15,7 @@ services:
     name: marketeq-backend
     runtime: docker
     repo: https://github.com/Marketeq/marketeq-projects-vibe.git
-    branch: main
+    branch: dev-main
     dockerfilePath: backend/Dockerfile.all
     dockerContext: backend
     region: oregon
@@ -25,7 +25,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: FRONTEND_URL
-        value: https://marketeq-mvp-live.vercel.app,https://marketeq-mvp-dev.vercel.app,https://marketeq-mvp-staging.vercel.app,https://dev-marketeq-projects.vercel.app,http://localhost:3000
+        value: https://marketeq-mvp-live.vercel.app,https://marketeq-mvp-dev.vercel.app,https://marketeq-mvp-staging.vercel.app,https://dev-marketeq-projects.vercel.app,https://staging-marketeq-projects.vercel.app,http://localhost:3000
       - fromGroup: marketeq-secrets
 
 envVarGroups:
@@ -71,3 +71,13 @@ envVarGroups:
         sync: false
       - key: CLOUDFLARE_PUBLIC_URL
         value: https://pub-4789db6a57d64de3ad7b5e8c316d125b.r2.dev
+      # ── Email (Brevo) ──
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_FROM_EMAIL
+        sync: false
+      - key: BREVO_FROM_NAME
+        sync: false
+      # ── RabbitMQ ──
+      - key: RABBITMQ_URL
+        sync: false
