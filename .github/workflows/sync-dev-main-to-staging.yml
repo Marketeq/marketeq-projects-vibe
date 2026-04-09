@@ -1,0 +1,84 @@
+name: Sync dev-main to staging
+
+on:
+  push:
+    branches:
+      - dev-main
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync-to-staging:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get merge info
+        id: merge_info
+        run: |
+          echo "commit_msg=$(git log -1 --pretty=format:'%s')" >> $GITHUB_OUTPUT
+          echo "commit_author=$(git log -1 --pretty=format:'%an')" >> $GITHUB_OUTPUT
+          echo "commit_short=$(git log -1 --pretty=format:'%h')" >> $GITHUB_OUTPUT
+
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "changed_files<<$EOF" >> $GITHUB_OUTPUT
+          git diff-tree --no-commit-id --name-only -r HEAD | head -20 >> $GITHUB_OUTPUT
+          echo "$EOF" >> $GITHUB_OUTPUT
+
+      - name: Force sync dev-main to staging
+        id: sync
+        run: |
+          git fetch origin
+
+          if git ls-remote --exit-code --heads origin staging; then
+            echo "staging branch exists. Syncing..."
+            git checkout staging
+          else
+            echo "staging branch does not exist. Creating it..."
+            git checkout -b staging origin/dev-main
+          fi
+
+          git reset --hard origin/dev-main
+          git push --force origin staging
+
+      - name: Notify team via commit comment
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA=$(git rev-parse HEAD)
+
+          if [ "${{ job.status }}" = "success" ]; then
+            BODY="## ✅ Synced dev-main → staging
+
+          **Commit:** ${{ steps.merge_info.outputs.commit_short }} — ${{ steps.merge_info.outputs.commit_msg }}
+          **Author:** ${{ steps.merge_info.outputs.commit_author }}
+
+          **Changed files:**
+          \`\`\`
+          ${{ steps.merge_info.outputs.changed_files }}
+          \`\`\`
+
+          [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          else
+            BODY="## ⚠️ FAILED: Sync dev-main → staging
+
+          **Commit:** ${{ steps.merge_info.outputs.commit_short }} — ${{ steps.merge_info.outputs.commit_msg }}
+          **Author:** ${{ steps.merge_info.outputs.commit_author }}
+
+          Please check the workflow logs: [View run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          fi
+
+          gh api repos/${{ github.repository }}/commits/${SHA}/comments \
+            -f body="$BODY"
