@@ -34,7 +34,6 @@ export class TalentController {
     @UploadedFile() avatar?: Express.Multer.File,
   ) {
     const userId = user.sub ?? user.id;
-    // Pass both id and email to match TalentService.createTalent signature
     return this.talentService.createTalent({ id: userId, email: user.email }, dto, avatar);
   }
 
