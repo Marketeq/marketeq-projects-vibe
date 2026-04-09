@@ -81,8 +81,8 @@ export class CategoryService {
     // 3) Assign basic fields
     cat.name = dto.name;
     cat.slug = dto.slug;
-    if (dto.seo_meta_title !== undefined) cat.seo_meta_title = dto.seo_meta_title;
-    if (dto.seo_meta_description !== undefined) cat.seo_meta_description = dto.seo_meta_description;
+    if (dto.seo_meta_title !== undefined) cat.seo_meta_title = dto.seo_meta_title ?? undefined;
+    if (dto.seo_meta_description !== undefined) cat.seo_meta_description = dto.seo_meta_description ?? undefined;
     cat.approved = !!dto.approved;
     cat.published_in_marketplace = !!dto.published_in_marketplace;
 
