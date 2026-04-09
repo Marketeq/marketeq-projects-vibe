@@ -155,6 +155,7 @@ export const Homepages: CollectionConfig = {
               options: [
                 { label: 'Projects', value: 'projects' },
                 { label: 'Services', value: 'services' },
+                { label: 'Talent', value: 'talent' },
               ],
             },
             {

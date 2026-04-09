@@ -15,6 +15,7 @@ import {
   FooterNavColumn,
   ProjectCard,
   ServiceCard,
+  TalentCard,
   SectionConfig,
   CARD_DESCRIPTION_MAX_LENGTH,
   CAROUSEL_MIN_PAGES,
@@ -41,6 +42,7 @@ interface GetHomepageOptions {
 export class HomepageService {
   private readonly logger = new Logger(HomepageService.name);
   private readonly listingsUrl: string;
+  private readonly userServiceUrl: string;
   private readonly cmsUrl: string | null;
   private readonly previewSecret: string | null;
   private readonly cacheTtl: number;
@@ -52,6 +54,8 @@ export class HomepageService {
   ) {
     this.listingsUrl =
       config.get<string>('LISTINGS_SERVICE_URL') || 'http://localhost:3004';
+    this.userServiceUrl =
+      config.get<string>('USER_SERVICE_URL') || 'http://localhost:3002';
     this.cmsUrl = config.get<string>('CMS_SERVICE_URL') || null;
     this.previewSecret = config.get<string>('PREVIEW_SECRET') || null;
     this.cacheTtl = config.get<number>('HOMEPAGE_CACHE_TTL') || 300;
@@ -146,10 +150,11 @@ export class HomepageService {
   // ── Assembly ──────────────────────────────────────────────────────────────
 
   private async assembleHomepage(variant?: string, isDraft = false): Promise<HomepagePayload> {
-    const [cmsResult, allProjects, allServices, banner] = await Promise.all([
+    const [cmsResult, allProjects, allServices, allTalent, banner] = await Promise.all([
       this.fetchCmsHomepage(variant, isDraft),
       this.fetchProjects(),
       this.fetchServices(),
+      this.fetchTalent(),
       this.fetchBanner(),
     ]);
 
@@ -176,6 +181,9 @@ export class HomepageService {
     const servicesByNewest = [...allServices].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
+    const talentByNewest = [...allTalent].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
 
     // Deduplicate across all sections and entity types
     const usedIds = new Set<string>();
@@ -186,8 +194,8 @@ export class HomepageService {
 
     for (const sectionCfg of sectionConfigs) {
       const section = this.assembleSection(
-        sectionCfg, projectsByNewest, servicesByNewest, usedIds,
-        pinnedMap[sectionCfg.key],
+        sectionCfg, projectsByNewest, servicesByNewest, talentByNewest,
+        usedIds, pinnedMap[sectionCfg.key],
       );
       if (section.blocks.some((b) => b.items.length > 0)) {
         sections.push(section);
@@ -388,16 +396,19 @@ export class HomepageService {
     cfg: SectionConfig,
     allProjects: ProjectCard[],
     allServices: ServiceCard[],
+    allTalent: TalentCard[],
     usedIds: Set<string>,
     pinnedItemIds?: string[],
   ): HomepageSection {
     const blocks: HomepageBlock[] = [];
 
     for (const blockCfg of cfg.blocks) {
-      let pool: (ProjectCard | ServiceCard)[];
+      let pool: (ProjectCard | ServiceCard | TalentCard)[];
 
       if (blockCfg.entity === 'projects') {
         pool = allProjects.filter((p) => !usedIds.has(p.id));
+      } else if (blockCfg.entity === 'talent') {
+        pool = allTalent.filter((t) => !usedIds.has(t.id));
       } else {
         pool = allServices.filter((s) => !usedIds.has(s.id));
       }
@@ -406,7 +417,7 @@ export class HomepageService {
       if (blockCfg.categoryFilter) {
         const cat = blockCfg.categoryFilter.toLowerCase();
         pool = pool.filter((item) =>
-          item.categories.some((c) => c.toLowerCase() === cat),
+          'categories' in item && item.categories?.some((c: string) => c.toLowerCase() === cat),
         );
       }
 
@@ -492,6 +503,18 @@ export class HomepageService {
     }
   }
 
+  private async fetchTalent(): Promise<TalentCard[]> {
+    try {
+      const { data } = await firstValueFrom(
+        this.http.get(`${this.userServiceUrl}/talent/users`, { timeout: 5000 }),
+      );
+      return (Array.isArray(data) ? data : []).map((t: any) => this.toTalentCard(t));
+    } catch (err: any) {
+      this.logger.warn(`Failed to fetch talent: ${err.message}`);
+      return [];
+    }
+  }
+
   private truncate(text: string, max = CARD_DESCRIPTION_MAX_LENGTH): string {
     if (text.length <= max) return text;
     return text.slice(0, max - 1).trimEnd() + '\u2026';
@@ -531,6 +554,22 @@ export class HomepageService {
       skills: raw.skills ?? [],
       tags: raw.tags ?? [],
       createdAt: raw.createdAt,
+    };
+  }
+
+  private toTalentCard(raw: any): TalentCard {
+    return {
+      id: raw.id,
+      username: raw.username ?? '',
+      firstName: raw.firstName ?? null,
+      lastName: raw.lastName ?? null,
+      avatarUrl: raw.avatarUrl ?? null,
+      title: raw.recentJobTitle ?? raw.jobTitles?.[0] ?? null,
+      location: raw.location ?? null,
+      rateMin: raw.rateMin != null ? Number(raw.rateMin) : null,
+      rateMax: raw.rateMax != null ? Number(raw.rateMax) : null,
+      skills: (raw.skills ?? []).map((s: any) => (typeof s === 'string' ? s : s.name)),
+      createdAt: raw.createdAt ?? raw.onboardedAt ?? new Date().toISOString(),
     };
   }
 }

@@ -118,7 +118,6 @@ CMS Admin saves homepage → afterChange hook → RabbitMQ (homepage.saved)
 | Feature | Blocked By |
 |---------|-----------|
 | Team cards (entity: teams) | No team listing endpoint in listings-service |
-| Talent cards (entity: talent) | No talent listing endpoint exposed via api-gateway |
 | Rating, reviewCount, views90d, completionsCount on cards | Fields not yet in listings-service Project/Service entities |
 
 ### Frontend Integration

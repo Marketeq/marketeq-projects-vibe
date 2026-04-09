@@ -33,6 +33,21 @@ export interface ServiceCard {
   createdAt: string;
 }
 
+/** Card shape returned for talent profiles */
+export interface TalentCard {
+  id: string;
+  username: string;
+  firstName: string | null;
+  lastName: string | null;
+  avatarUrl: string | null;
+  title: string | null;
+  location: string | null;
+  rateMin: number | null;
+  rateMax: number | null;
+  skills: string[];
+  createdAt: string;
+}
+
 /** Pagination metadata for a block */
 export interface BlockPagination {
   page: number;
@@ -45,8 +60,8 @@ export interface BlockPagination {
 export interface HomepageBlock {
   key: string;
   type: 'grid' | 'carousel';
-  entity: 'projects' | 'services';
-  items: (ProjectCard | ServiceCard)[];
+  entity: 'projects' | 'services' | 'talent';
+  items: (ProjectCard | ServiceCard | TalentCard)[];
   pagination?: BlockPagination;
 }
 
@@ -144,7 +159,7 @@ export interface SectionConfig {
   ctaLabel?: string;
   ctaUrl?: string;
   blocks: {
-    entity: 'projects' | 'services';
+    entity: 'projects' | 'services' | 'talent';
     type: 'grid' | 'carousel';
     /** Ranking algorithm — evaluator integration needed for top_rated/trending/most_popular */
     kind: 'newest' | 'top_rated' | 'trending' | 'most_popular';

@@ -29,6 +29,20 @@ export interface ServiceCard {
   createdAt: string
 }
 
+export interface TalentCard {
+  id: string
+  username: string
+  firstName: string | null
+  lastName: string | null
+  avatarUrl: string | null
+  title: string | null
+  location: string | null
+  rateMin: number | null
+  rateMax: number | null
+  skills: string[]
+  createdAt: string
+}
+
 export interface BlockPagination {
   page: number
   pageSize: number
@@ -39,8 +53,8 @@ export interface BlockPagination {
 export interface HomepageBlock {
   key: string
   type: "grid" | "carousel"
-  entity: "projects" | "services"
-  items: (ProjectCard | ServiceCard)[]
+  entity: "projects" | "services" | "talent"
+  items: (ProjectCard | ServiceCard | TalentCard)[]
   pagination?: BlockPagination
 }
 
