@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/notification-service/package*.json ./apps/notification-service/
 COPY shared/ ./shared/
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY . .
 RUN npm run build -w apps/notification-service
 

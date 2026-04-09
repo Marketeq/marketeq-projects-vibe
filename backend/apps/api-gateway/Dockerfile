@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/api-gateway/package*.json ./apps/api-gateway/
 COPY shared/ ./shared/
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY . .
 RUN npm run build -w apps/api-gateway
 
