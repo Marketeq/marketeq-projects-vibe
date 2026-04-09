@@ -8,6 +8,7 @@ import { ProxyController } from './proxy/proxy.controller'
 import { TalentUploadController } from './controllers/talent-upload.controller'
 import { PublishMediaController } from './controllers/publish-media.controller'
 import { HomepageModule } from './homepage/homepage.module'
+import { HomepageController } from './homepage/homepage.controller'
 import { JwtStrategy } from './guards/jwt-auth.guard'
 import { JwtMiddleware } from './middleware/jwt.middleware'
 import { LoggingMiddleware } from './middleware/logging.middleware'
@@ -41,7 +42,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
     }),
   ],
   providers: [ProxyService, JwtStrategy],
-  controllers: [TalentUploadController, PublishMediaController, ProxyController],
+  controllers: [HomepageController, TalentUploadController, PublishMediaController, ProxyController],
 })
 export class ApiGatewayModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

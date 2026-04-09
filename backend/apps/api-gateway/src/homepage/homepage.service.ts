@@ -55,7 +55,7 @@ export class HomepageService {
     this.listingsUrl =
       config.get<string>('LISTINGS_SERVICE_URL') || 'http://localhost:3004';
     this.userServiceUrl =
-      config.get<string>('USER_SERVICE_URL') || 'http://localhost:3002';
+      config.get<string>('USER_SERVICE_URL') || 'http://localhost:3003';
     this.cmsUrl = config.get<string>('CMS_SERVICE_URL') || null;
     this.previewSecret = config.get<string>('PREVIEW_SECRET') || null;
     this.cacheTtl = config.get<number>('HOMEPAGE_CACHE_TTL') || 300;
@@ -424,7 +424,8 @@ export class HomepageService {
       // ── Pinned items (hybrid mode) ──
       // If section has pinned items, place them first and fill remaining
       // slots with evaluated results. Pinned items excluded from evaluator pool.
-      let pinnedItems: (ProjectCard | ServiceCard)[] = [];
+      type CardItem = ProjectCard | ServiceCard | TalentCard;
+      let pinnedItems: CardItem[] = [];
       if (pinnedItemIds?.length) {
         const pinSet = new Set(pinnedItemIds);
         pinnedItems = pool.filter((item) => pinSet.has(item.id));
@@ -435,11 +436,11 @@ export class HomepageService {
       const adjustedLimit = Math.max(0, blockCfg.limit - pinnedItems.length);
 
       // ── Evaluate / rank by kind ──
-      let evaluated: (ProjectCard | ServiceCard)[];
+      let evaluated: CardItem[];
       if (blockCfg.sort === 'random') {
         evaluated = [...pool].sort(() => Math.random() - 0.5).slice(0, adjustedLimit);
       } else {
-        evaluated = evaluateItems(pool as any[], blockCfg.kind, adjustedLimit) as (ProjectCard | ServiceCard)[];
+        evaluated = evaluateItems(pool as any[], blockCfg.kind, adjustedLimit) as CardItem[];
       }
 
       // Merge: pinned first, then evaluated
