@@ -22,7 +22,7 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
 
   @Index()
   @Column({ type: String, nullable: true, unique: true })
-  strapiId?: string;
+  cmsId?: string;
 
   @Index()
   @Column({ type: String, length: 120 })
