@@ -430,19 +430,18 @@ export const InviteWindow = () => {
   }
 
   const handleCopyLink = async () => {
-    try {
-      const teamId =
-        user?.id || (user as any)?.sub
-      if (!teamId) {
-        toast({
-          title: "Unable to copy link",
-          description:
-            "Could not determine your team. Please sign in and try again.",
-          variant: "destructive",
-        })
-        return
-      }
+    const teamId = user?.id || (user as any)?.sub
+    if (!teamId) {
+      toast({
+        title: "Unable to copy link",
+        description:
+          "Could not determine your team. Please sign in and try again.",
+        variant: "destructive",
+      })
+      return
+    }
 
+    try {
       let teamName = (user as any)?.teamName || "Client Team"
       try {
         const teamResponse =
@@ -450,7 +449,7 @@ export const InviteWindow = () => {
         const teamData = teamResponse?.data
         teamName = teamData?.name || teamData?.teamName || teamName
       } catch {
-        // If team lookup fails, continue with fallback teamName so copy-link still works.
+        // If team lookup fails, continue with fallback teamName
       }
 
       const res = await InvitationsAPI.createInvitationLink({
