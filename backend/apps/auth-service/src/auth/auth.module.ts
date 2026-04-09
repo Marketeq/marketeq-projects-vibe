@@ -8,6 +8,7 @@ import type { StringValue } from 'ms';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { SessionValidationGuard } from './guards/session-validation.guard';
 import { BrevoService } from '../brevo/brevo.service';
 import { User } from '../user/entities/user.entity';
 import { Session } from '../session/entities/session.entity';
@@ -56,7 +57,7 @@ const parseExpiresIn = (value: string): number | StringValue =>
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, BrevoService],
+  providers: [AuthService, JwtStrategy, SessionValidationGuard, BrevoService],
   exports: [PassportModule, JwtModule],
 })
 export class AuthModule {}

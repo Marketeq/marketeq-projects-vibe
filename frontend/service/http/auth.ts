@@ -84,11 +84,8 @@ export const AuthAPI = {
     return AxiosRequest.del(`${AUTH_BASE}/auth/sessions/${sessionId}`)
   },
 
-  CleanupSession: (refreshToken: string, sessionId: string) => {
-    return AxiosRequest.post(`${AUTH_BASE}/auth/sessions/cleanup`, {
-      refresh_token: refreshToken,
-      sessionId,
-    })
+  Heartbeat: () => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/sessions/heartbeat`, {})
   },
 
   RevokeAllOtherSessions: (currentSessionId: string) => {

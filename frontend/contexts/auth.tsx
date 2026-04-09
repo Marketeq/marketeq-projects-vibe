@@ -176,27 +176,31 @@ function useProvideAuth() {
 
   useEffect(() => {
     getUser()
+  }, [])
 
-    // Setup session cleanup on tab/window close
-    const handleBeforeUnload = () => {
-      const refreshToken = Cookies.get("refresh_token")
-      const sessionId = Cookies.get("session_id")
+  // Heartbeat: keeps session alive and detects revocation
+  useEffect(() => {
+    const accessToken = Cookies.get("access_token")
+    const sessionId = Cookies.get("session_id")
+    if (!accessToken || !sessionId) return
 
-      if (refreshToken && sessionId) {
-        const AUTH_BASE = process.env.NEXT_PUBLIC_AUTH_URL ?? ""
-        navigator.sendBeacon(
-          `${AUTH_BASE}/auth/sessions/cleanup`,
-          JSON.stringify({
-            refresh_token: refreshToken,
-            sessionId,
-          })
-        )
-      }
+    const tick = () => {
+      AuthAPI.Heartbeat().catch((err) => {
+        if (err?.response?.status === 401) {
+          Cookies.remove("access_token", { path: "/" })
+          Cookies.remove("refresh_token", { path: "/" })
+          Cookies.remove("session_id", { path: "/" })
+          setUser(null)
+          router.push("/sign-in")
+        }
+      })
     }
 
-    window.addEventListener("beforeunload", handleBeforeUnload)
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload)
-  }, [])
+    // First heartbeat immediately so lastActiveAt is fresh
+    tick()
+    const id = setInterval(tick, 60_000)
+    return () => clearInterval(id)
+  }, [user])
 
   return {
     isLoading,

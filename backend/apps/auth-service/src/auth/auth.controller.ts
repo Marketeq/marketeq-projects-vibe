@@ -182,11 +182,15 @@ export class AuthController {
     return this.authService.revokeAllOtherSessions(userId, currentSessionId);
   }
 
-  @ApiOperation({ summary: 'Cleanup session on tab close (called via sendBeacon)' })
-  @Post('sessions/cleanup')
+  @ApiOperation({ summary: 'Heartbeat — keeps session alive and validates it' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  @Post('sessions/heartbeat')
   @HttpCode(HttpStatus.OK)
-  cleanupSession(@Body() body: { refresh_token: string; sessionId: string }) {
-    return this.authService.cleanupSession(body.refresh_token, body.sessionId);
+  heartbeat(@Req() req: Request) {
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    const sessionId = (req.user as any)?.sid ?? '';
+    return this.authService.heartbeat(userId, sessionId);
   }
 
   @ApiOperation({ summary: 'Generate 2FA secret and QR code' })

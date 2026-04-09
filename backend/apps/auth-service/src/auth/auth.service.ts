@@ -862,8 +862,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     const now = new Date();
+    const staleThresholdMs = 3 * 60 * 1000; // 3 minutes without heartbeat = stale
+
     return sessions
       .filter((s) => s.expiresAt > now)
+      .filter((s) => {
+        // Always show the current session; hide stale sessions from other devices
+        if (s.id === currentSessionId) return true;
+        return (now.getTime() - s.lastActiveAt.getTime()) < staleThresholdMs;
+      })
       .map((s) => ({
         id: s.id,
         userAgent: s.userAgent,
@@ -882,28 +889,22 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     await this.sessionRepository.delete({ id: sessionId });
   }
 
-  async cleanupSession(refreshToken: string, sessionId: string): Promise<void> {
-    const refreshSecret = this.getRefreshSecret();
-    let payload: any;
-
-    try {
-      payload = await this.jwtService.verifyAsync(refreshToken, {
-        secret: refreshSecret,
-        algorithms: ['HS256'],
-      });
-    } catch {
-      // Token may be expired — still try to delete if sessionId provided
-      if (!sessionId) throw new UnauthorizedException('Invalid refresh token');
+  async heartbeat(userId: string, sessionId: string): Promise<{ valid: boolean }> {
+    if (!sessionId) {
+      return { valid: true };
     }
 
-    const userId = payload?.sub;
-    if (!userId && !sessionId) {
-      throw new UnauthorizedException('Cannot cleanup session');
+    const session = await this.sessionRepository.findOne({
+      where: { id: sessionId, userId },
+    });
+
+    if (!session || session.expiresAt < new Date()) {
+      throw new UnauthorizedException('Session has been revoked or expired');
     }
 
-    if (sessionId) {
-      await this.sessionRepository.delete({ id: sessionId, ...(userId && { userId }) });
-    }
+    session.lastActiveAt = new Date();
+    await this.sessionRepository.save(session);
+    return { valid: true };
   }
 
   async revokeAllOtherSessions(userId: string, currentSessionId: string): Promise<{ revoked: number }> {
@@ -1187,7 +1188,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     email: string;
     sessionId?: string;
   }): Promise<JwtPair> {
-    const access_token = this.jwtService.sign({ sub: payload.sub, email: payload.email });
+    const accessPayload: Record<string, any> = { sub: payload.sub, email: payload.email };
+    if (payload.sessionId) {
+      accessPayload.sid = payload.sessionId;
+    }
+    const access_token = this.jwtService.sign(accessPayload);
 
     const refreshSecret = this.getRefreshSecret();
     const refreshExpires = parseExpiresIn(
