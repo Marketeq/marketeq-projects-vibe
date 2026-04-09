@@ -23,7 +23,6 @@ import {
   SwiperRoot,
 } from "@/components/swiper"
 import {
-  Badge,
   Button,
   Favorite,
   FavoriteRoot,
