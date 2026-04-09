@@ -153,10 +153,13 @@ function useProvideAuth() {
 
   const logoutHandler = async () => {
     try {
-      await AuthAPI.Logout()
+      const refreshToken = Cookies.get("refresh_token")
+      await AuthAPI.Logout(refreshToken)
       document.cookie =
         "access_token=; Path=/; Max-Age=0; SameSite=None; Secure"
       document.cookie = "accessToken=; Path=/; Max-Age=0; SameSite=None; Secure"
+      Cookies.remove("refresh_token", { path: "/" })
+      Cookies.remove("session_id", { path: "/" })
     } catch (err: any) {
       toast({
         title:

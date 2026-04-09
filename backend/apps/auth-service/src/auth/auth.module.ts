@@ -10,6 +10,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { BrevoService } from '../brevo/brevo.service';
 import { User } from '../user/entities/user.entity';
+import { Session } from '../session/entities/session.entity';
 
 const normalizeKey = (value?: string) =>
   value ? value.replace(/\\n/g, '\n') : value;
@@ -21,7 +22,7 @@ const parseExpiresIn = (value: string): number | StringValue =>
   imports: [
     ConfigModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, Session]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

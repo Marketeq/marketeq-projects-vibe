@@ -1,12 +1,15 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Patch,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -25,7 +28,13 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { LinkedInLoginDto } from './dto/linkedin-login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyTwoFactorDto, TwoFactorVerifyLoginDto } from './dto/two-factor.dto';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+
+const extractRequestMeta = (req: Request) => ({
+  userAgent: (req.headers['user-agent'] as string) ?? '',
+  ipAddress: ((req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()) ?? req.ip ?? '',
+});
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -35,15 +44,17 @@ export class AuthController {
   @ApiOperation({ summary: 'Register the user' })
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  register(@Body() dto: RegisterDto, @Req() req: Request) {
+    const { userAgent, ipAddress } = extractRequestMeta(req);
+    return this.authService.register(dto, userAgent, ipAddress);
   }
 
   @ApiOperation({ summary: 'Register the user with email' })
   @Post('register-email')
   @HttpCode(HttpStatus.CREATED)
-  registerEmail(@Body() dto: RegisterEmailDto) {
-    return this.authService.registerEmail(dto);
+  registerEmail(@Body() dto: RegisterEmailDto, @Req() req: Request) {
+    const { userAgent, ipAddress } = extractRequestMeta(req);
+    return this.authService.registerEmail(dto, userAgent, ipAddress);
   }
 
   @ApiOperation({ summary: 'Check that the username is available' })
@@ -74,15 +85,17 @@ export class AuthController {
   @ApiOperation({ summary: 'Login' })
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  login(@Body() dto: LoginDto, @Req() req: Request) {
+    const { userAgent, ipAddress } = extractRequestMeta(req);
+    return this.authService.login(dto, userAgent, ipAddress);
   }
 
   @ApiOperation({ summary: 'Dev-only login by email (no password). Disabled in production.' })
   @Post('dev-login')
   @HttpCode(HttpStatus.OK)
-  devLogin(@Body() body: { email: string }) {
-    return this.authService.devLogin(body.email);
+  devLogin(@Body() body: { email: string }, @Req() req: Request) {
+    const { userAgent, ipAddress } = extractRequestMeta(req);
+    return this.authService.devLogin(body.email, userAgent, ipAddress);
   }
 
   @ApiOperation({ summary: 'Forgot Password' })
@@ -102,15 +115,17 @@ export class AuthController {
   @ApiOperation({ summary: 'Login using Google' })
   @Post('google')
   @HttpCode(HttpStatus.OK)
-  googleLogin(@Body() dto: GoogleLoginDto) {
-    return this.authService.loginWithGoogle(dto);
+  googleLogin(@Body() dto: GoogleLoginDto, @Req() req: Request) {
+    const { userAgent, ipAddress } = extractRequestMeta(req);
+    return this.authService.loginWithGoogle(dto, userAgent, ipAddress);
   }
 
   @ApiOperation({ summary: 'Login using LinkedIn' })
   @Post('linkedin')
   @HttpCode(HttpStatus.OK)
-  linkedInLogin(@Body() dto: LinkedInLoginDto) {
-    return this.authService.loginWithLinkedIn(dto);
+  linkedInLogin(@Body() dto: LinkedInLoginDto, @Req() req: Request) {
+    const { userAgent, ipAddress } = extractRequestMeta(req);
+    return this.authService.loginWithLinkedIn(dto, userAgent, ipAddress);
   }
 
   @ApiOperation({ summary: 'Refresh' })
@@ -125,8 +140,8 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  logout(@Req() req: Request) {
-    return this.authService.logout(req.user!);
+  logout(@Req() req: Request, @Body() body?: { refresh_token?: string }) {
+    return this.authService.logout(req.user!, body?.refresh_token);
   }
 
   @ApiOperation({ summary: 'Get the current user' })
@@ -135,5 +150,82 @@ export class AuthController {
   @Get('me')
   getProfile(@Req() req: Request) {
     return req.user ?? null;
+  }
+
+  @ApiOperation({ summary: 'List active sessions' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  @Get('sessions')
+  getSessions(@Req() req: Request, @Query('currentSessionId') currentSessionId?: string) {
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.getSessions(userId, currentSessionId);
+  }
+
+  @ApiOperation({ summary: 'Revoke a specific session' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  @Delete('sessions/:id')
+  @HttpCode(HttpStatus.OK)
+  revokeSession(@Req() req: Request, @Param('id') sessionId: string) {
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.revokeSession(userId, sessionId);
+  }
+
+  @ApiOperation({ summary: 'Revoke all sessions except current' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  @Delete('sessions')
+  @HttpCode(HttpStatus.OK)
+  revokeAllOtherSessions(@Req() req: Request, @Query('currentSessionId') currentSessionId: string) {
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.revokeAllOtherSessions(userId, currentSessionId);
+  }
+
+  @ApiOperation({ summary: 'Generate 2FA secret and QR code' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/generate')
+  @HttpCode(HttpStatus.OK)
+  generateTwoFactor(@Req() req: Request) {
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.generateTwoFactorSecret(userId);
+  }
+
+  @ApiOperation({ summary: 'Enable 2FA after verifying code' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/enable')
+  @HttpCode(HttpStatus.OK)
+  enableTwoFactor(@Req() req: Request, @Body() dto: VerifyTwoFactorDto) {
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.enableTwoFactor(userId, dto.code);
+  }
+
+  @ApiOperation({ summary: 'Disable 2FA' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/disable')
+  @HttpCode(HttpStatus.OK)
+  disableTwoFactor(@Req() req: Request, @Body() dto: VerifyTwoFactorDto) {
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.disableTwoFactor(userId, dto.code);
+  }
+
+  @ApiOperation({ summary: 'Verify 2FA code during login' })
+  @Post('2fa/verify')
+  @HttpCode(HttpStatus.OK)
+  verifyTwoFactor(@Body() dto: TwoFactorVerifyLoginDto, @Req() req: Request) {
+    const { userAgent, ipAddress } = extractRequestMeta(req);
+    return this.authService.verifyTwoFactorLogin(dto.partialToken, dto.code, userAgent, ipAddress);
+  }
+
+  @ApiOperation({ summary: 'Regenerate backup codes' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/backup-codes')
+  @HttpCode(HttpStatus.OK)
+  regenerateBackupCodes(@Req() req: Request, @Body() dto: VerifyTwoFactorDto) {
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.regenerateBackupCodes(userId, dto.code);
   }
 }

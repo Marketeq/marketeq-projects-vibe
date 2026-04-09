@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
 import SecuritySettingsStepper from "@/components/security-settings"
+import ActiveSessionsModal from "@/components/active-sessions-modal"
+import { TwoFactorSetupModal, DisableTwoFactorModal } from "@/components/two-factor-setup"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   Bell,
@@ -47,6 +49,9 @@ export default function SettingsPage() {
   })
 
   const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [showSessionsModal, setShowSessionsModal] = useState(false)
+  const [show2FASetup, setShow2FASetup] = useState(false)
+  const [show2FADisable, setShow2FADisable] = useState(false)
 
   useEffect(() => {
     if (user) {
@@ -306,16 +311,26 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between py-3 border-b border-gray-100">
                     <div>
                       <p className="text-sm font-medium text-dark-blue-400">Two-Factor Authentication</p>
-                      <p className="text-xs text-gray-500">Add an extra layer of security to your account</p>
+                      <p className="text-xs text-gray-500">
+                        {user?.twoFactorEnabled
+                          ? "Authenticator app enabled"
+                          : "Add an extra layer of security to your account"}
+                      </p>
                     </div>
-                    <Switch />
+                    <Switch
+                      checked={user?.twoFactorEnabled ?? false}
+                      onCheckedChange={(checked) => {
+                        if (checked) setShow2FASetup(true)
+                        else setShow2FADisable(true)
+                      }}
+                    />
                   </div>
                   <div className="flex items-center justify-between py-3 border-b border-gray-100">
                     <div>
                       <p className="text-sm font-medium text-dark-blue-400">Active Sessions</p>
                       <p className="text-xs text-gray-500">Manage your active login sessions</p>
                     </div>
-                    <Button variant="outlined" visual="gray" size="sm">View Sessions</Button>
+                    <Button variant="outlined" visual="gray" size="sm" onClick={() => setShowSessionsModal(true)}>View Sessions</Button>
                   </div>
                 </div>
               </div>
@@ -326,6 +341,18 @@ export default function SettingsPage() {
 
       {showPasswordModal && (
         <SecuritySettingsStepper onCloseModal={() => setShowPasswordModal(false)} />
+      )}
+
+      {show2FASetup && (
+        <TwoFactorSetupModal onClose={() => setShow2FASetup(false)} />
+      )}
+
+      {show2FADisable && (
+        <DisableTwoFactorModal onClose={() => setShow2FADisable(false)} />
+      )}
+
+      {showSessionsModal && (
+        <ActiveSessionsModal onClose={() => setShowSessionsModal(false)} />
       )}
     </AuthenticatedRoute>
   )

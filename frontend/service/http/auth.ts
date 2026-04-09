@@ -38,10 +38,12 @@ export const AuthAPI = {
     return AxiosRequest.patch(`${AUTH_BASE}/auth/set-password`, data)
   },
 
-  Logout: () => {
-    return AxiosRequest.post(`${AUTH_BASE}/auth/logout`, null, {
-      withCredentials: true,
-    })
+  Logout: (refreshToken?: string) => {
+    return AxiosRequest.post(
+      `${AUTH_BASE}/auth/logout`,
+      refreshToken ? { refresh_token: refreshToken } : null,
+      { withCredentials: true }
+    )
   },
 
   ForgotPassword: (data: { email: string; redirectUrl?: string }) => {
@@ -50,5 +52,41 @@ export const AuthAPI = {
 
   ResetPassword: (data: { token: string; password: string }) => {
     return AxiosRequest.post(`${AUTH_BASE}/auth/reset-password`, data)
+  },
+
+  GenerateTwoFactor: () => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/generate`, {})
+  },
+
+  EnableTwoFactor: (data: { code: string }) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/enable`, data)
+  },
+
+  DisableTwoFactor: (data: { code: string }) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/disable`, data)
+  },
+
+  VerifyTwoFactor: (data: { code: string; partialToken: string }) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/verify`, data)
+  },
+
+  RegenerateBackupCodes: (data: { code: string }) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/backup-codes`, data)
+  },
+
+  GetSessions: (currentSessionId: string) => {
+    return AxiosRequest.get(
+      `${AUTH_BASE}/auth/sessions?currentSessionId=${encodeURIComponent(currentSessionId)}`
+    )
+  },
+
+  RevokeSession: (sessionId: string) => {
+    return AxiosRequest.del(`${AUTH_BASE}/auth/sessions/${sessionId}`)
+  },
+
+  RevokeAllOtherSessions: (currentSessionId: string) => {
+    return AxiosRequest.del(
+      `${AUTH_BASE}/auth/sessions?currentSessionId=${encodeURIComponent(currentSessionId)}`
+    )
   },
 }
