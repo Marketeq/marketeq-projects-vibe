@@ -146,6 +146,8 @@ export interface SectionConfig {
   blocks: {
     entity: 'projects' | 'services';
     type: 'grid' | 'carousel';
+    /** Ranking algorithm — evaluator integration needed for top_rated/trending/most_popular */
+    kind: 'newest' | 'top_rated' | 'trending' | 'most_popular';
     limit: number;
     sort: 'newest' | 'random';
     categoryFilter?: string;

@@ -30,7 +30,7 @@ export const HOMEPAGE_SECTIONS: SectionConfig[] = [
     subtitle:
       'Hand-picked projects from our top-rated experts across every category — see what teams are building right now.',
     blocks: [
-      { entity: 'projects', type: 'carousel', limit: 12, sort: 'newest' },
+      { entity: 'projects', type: 'carousel', limit: 12, kind: 'top_rated', sort: 'newest' },
     ],
   },
   {
@@ -39,8 +39,8 @@ export const HOMEPAGE_SECTIONS: SectionConfig[] = [
     subtitle:
       'The latest projects and services added to the Marketeq marketplace this week.',
     blocks: [
-      { entity: 'projects', type: 'grid', limit: 6, sort: 'newest' },
-      { entity: 'services', type: 'grid', limit: 6, sort: 'newest' },
+      { entity: 'projects', type: 'grid', limit: 6, kind: 'newest', sort: 'newest' },
+      { entity: 'services', type: 'grid', limit: 6, kind: 'newest', sort: 'newest' },
     ],
   },
   {
@@ -49,8 +49,8 @@ export const HOMEPAGE_SECTIONS: SectionConfig[] = [
     subtitle:
       'The projects and services generating the most interest from clients across the platform.',
     blocks: [
-      { entity: 'projects', type: 'grid', limit: 6, sort: 'newest' },
-      { entity: 'services', type: 'grid', limit: 6, sort: 'newest' },
+      { entity: 'projects', type: 'grid', limit: 6, kind: 'most_popular', sort: 'newest' },
+      { entity: 'services', type: 'grid', limit: 6, kind: 'most_popular', sort: 'newest' },
     ],
   },
   {
@@ -59,7 +59,7 @@ export const HOMEPAGE_SECTIONS: SectionConfig[] = [
     subtitle:
       'High-converting funnels, landing pages, and lead capture systems built by proven growth experts.',
     blocks: [
-      { entity: 'projects', type: 'carousel', limit: 8, sort: 'newest' },
+      { entity: 'projects', type: 'carousel', limit: 8, kind: 'newest', sort: 'newest' },
     ],
   },
   {
@@ -68,7 +68,7 @@ export const HOMEPAGE_SECTIONS: SectionConfig[] = [
     subtitle:
       'Help desks, chatbots, and support workflows designed to scale your customer experience.',
     blocks: [
-      { entity: 'services', type: 'carousel', limit: 8, sort: 'newest' },
+      { entity: 'services', type: 'carousel', limit: 8, kind: 'newest', sort: 'newest' },
     ],
   },
   {
@@ -77,7 +77,7 @@ export const HOMEPAGE_SECTIONS: SectionConfig[] = [
     subtitle:
       'End-to-end automation workflows across email, SMS, and CRM that turn prospects into customers.',
     blocks: [
-      { entity: 'projects', type: 'carousel', limit: 8, sort: 'newest' },
+      { entity: 'projects', type: 'carousel', limit: 8, kind: 'newest', sort: 'newest' },
     ],
   },
   {
@@ -86,7 +86,7 @@ export const HOMEPAGE_SECTIONS: SectionConfig[] = [
     subtitle:
       'Custom SaaS builds, internal tools, and cloud-native applications shipped by senior engineering teams.',
     blocks: [
-      { entity: 'projects', type: 'carousel', limit: 8, sort: 'newest' },
+      { entity: 'projects', type: 'carousel', limit: 8, kind: 'newest', sort: 'newest' },
     ],
   },
   {
@@ -95,7 +95,7 @@ export const HOMEPAGE_SECTIONS: SectionConfig[] = [
     subtitle:
       'Native and cross-platform iOS and Android apps designed and developed by expert mobile teams.',
     blocks: [
-      { entity: 'projects', type: 'carousel', limit: 8, sort: 'newest' },
+      { entity: 'projects', type: 'carousel', limit: 8, kind: 'newest', sort: 'newest' },
     ],
   },
 ];

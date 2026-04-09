@@ -159,6 +159,18 @@ export const Homepages: CollectionConfig = {
               max: 20,
             },
             {
+              name: 'kind',
+              type: 'select',
+              defaultValue: 'newest',
+              options: [
+                { label: 'Newest', value: 'newest' },
+                { label: 'Top Rated', value: 'top_rated' },
+                { label: 'Trending', value: 'trending' },
+                { label: 'Most Popular', value: 'most_popular' },
+              ],
+              admin: { description: 'Ranking algorithm. Evaluator integration required for top_rated/trending/most_popular.' },
+            },
+            {
               name: 'sort',
               type: 'select',
               defaultValue: 'newest',
@@ -166,6 +178,7 @@ export const Homepages: CollectionConfig = {
                 { label: 'Newest', value: 'newest' },
                 { label: 'Random', value: 'random' },
               ],
+              admin: { description: 'Display order within the block (after kind ranking).' },
             },
             { name: 'categoryFilter', type: 'text', admin: { description: 'Optional category slug to filter by.' } },
           ],

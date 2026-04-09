@@ -161,7 +161,12 @@ export class HomepageService {
     const moreCategoriesList: CategoryRef[] = cmsConfig?.moreCategoriesList ?? HOMEPAGE_MORE_CATEGORIES;
     const talentNetworkCta: TalentNetworkCta = cmsConfig?.talentNetworkCta ?? HOMEPAGE_TALENT_CTA;
     const footerNav: FooterNavColumn[] = cmsConfig?.footerNav ?? HOMEPAGE_FOOTER_NAV;
-    const seo: HomepageSeo = cmsConfig?.seo ?? HOMEPAGE_SEO;
+    let seo: HomepageSeo = cmsConfig?.seo ?? HOMEPAGE_SEO;
+
+    // Force noindex for preview/draft content so search engines don't index it
+    if (isDraft) {
+      seo = { ...seo, noindex: true };
+    }
 
     // Sort projects/services based on section config
     const projectsByNewest = [...allProjects].sort(
@@ -287,6 +292,7 @@ export class HomepageService {
           blocks: (s.blocks || []).map((b: any) => ({
             entity: b.entity,
             type: b.displayType || 'carousel',
+            kind: b.kind || 'newest',
             limit: b.limit || 8,
             sort: b.sort || 'newest',
             categoryFilter: b.categoryFilter,
