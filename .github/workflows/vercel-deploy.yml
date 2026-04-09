@@ -1,0 +1,36 @@
+name: Vercel Deploy (Public Toggle)
+
+on:
+  push:
+    branches:
+      - dev-main
+      - staging
+      - 'live/mvp'
+    paths:
+      - 'frontend/**'
+      - 'package.json'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: vercel-deploy-${{ github.ref_name }}
+      cancel-in-progress: true
+    steps:
+      - name: Make repo public
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ADMIN_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }} -X PATCH -f visibility=public --silent
+          echo "Repo set to public"
+
+      - name: Wait for Vercel to pick up the push
+        run: sleep 30
+
+      - name: Make repo private
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ADMIN_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }} -X PATCH -f visibility=private --silent
+          echo "Repo set back to private"
