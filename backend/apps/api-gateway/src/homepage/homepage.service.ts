@@ -15,6 +15,7 @@ import {
   FooterNavColumn,
   ProjectCard,
   ServiceCard,
+  TeamCard,
   TalentCard,
   SectionConfig,
   CARD_DESCRIPTION_MAX_LENGTH,
@@ -150,10 +151,11 @@ export class HomepageService {
   // ── Assembly ──────────────────────────────────────────────────────────────
 
   private async assembleHomepage(variant?: string, isDraft = false): Promise<HomepagePayload> {
-    const [cmsResult, allProjects, allServices, allTalent, banner] = await Promise.all([
+    const [cmsResult, allProjects, allServices, allTeams, allTalent, banner] = await Promise.all([
       this.fetchCmsHomepage(variant, isDraft),
       this.fetchProjects(),
       this.fetchServices(),
+      this.fetchTeams(),
       this.fetchTalent(),
       this.fetchBanner(),
     ]);
@@ -181,6 +183,9 @@ export class HomepageService {
     const servicesByNewest = [...allServices].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
+    const teamsByNewest = [...allTeams].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
     const talentByNewest = [...allTalent].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
@@ -194,7 +199,7 @@ export class HomepageService {
 
     for (const sectionCfg of sectionConfigs) {
       const section = this.assembleSection(
-        sectionCfg, projectsByNewest, servicesByNewest, talentByNewest,
+        sectionCfg, projectsByNewest, servicesByNewest, teamsByNewest, talentByNewest,
         usedIds, pinnedMap[sectionCfg.key],
       );
       if (section.blocks.some((b) => b.items.length > 0)) {
@@ -396,6 +401,7 @@ export class HomepageService {
     cfg: SectionConfig,
     allProjects: ProjectCard[],
     allServices: ServiceCard[],
+    allTeams: TeamCard[],
     allTalent: TalentCard[],
     usedIds: Set<string>,
     pinnedItemIds?: string[],
@@ -403,10 +409,12 @@ export class HomepageService {
     const blocks: HomepageBlock[] = [];
 
     for (const blockCfg of cfg.blocks) {
-      let pool: (ProjectCard | ServiceCard | TalentCard)[];
+      let pool: (ProjectCard | ServiceCard | TeamCard | TalentCard)[];
 
       if (blockCfg.entity === 'projects') {
         pool = allProjects.filter((p) => !usedIds.has(p.id));
+      } else if (blockCfg.entity === 'teams') {
+        pool = allTeams.filter((t) => !usedIds.has(t.id));
       } else if (blockCfg.entity === 'talent') {
         pool = allTalent.filter((t) => !usedIds.has(t.id));
       } else {
@@ -424,7 +432,7 @@ export class HomepageService {
       // ── Pinned items (hybrid mode) ──
       // If section has pinned items, place them first and fill remaining
       // slots with evaluated results. Pinned items excluded from evaluator pool.
-      type CardItem = ProjectCard | ServiceCard | TalentCard;
+      type CardItem = ProjectCard | ServiceCard | TeamCard | TalentCard;
       let pinnedItems: CardItem[] = [];
       if (pinnedItemIds?.length) {
         const pinSet = new Set(pinnedItemIds);
@@ -504,6 +512,18 @@ export class HomepageService {
     }
   }
 
+  private async fetchTeams(): Promise<TeamCard[]> {
+    try {
+      const { data } = await firstValueFrom(
+        this.http.get(`${this.listingsUrl}/v1/teams`, { timeout: 5000 }),
+      );
+      return (Array.isArray(data) ? data : []).map((t: any) => this.toTeamCard(t));
+    } catch (err: any) {
+      this.logger.warn(`Failed to fetch teams: ${err.message}`);
+      return [];
+    }
+  }
+
   private async fetchTalent(): Promise<TalentCard[]> {
     try {
       const { data } = await firstValueFrom(
@@ -536,6 +556,13 @@ export class HomepageService {
       skills: raw.skills ?? [],
       tags: raw.tags ?? [],
       createdAt: raw.createdAt,
+      // Scoring signals for evaluator
+      rating: raw.rating != null ? Number(raw.rating) : undefined,
+      reviewCount: raw.reviewCount ?? undefined,
+      completionsCount: raw.completionsCount ?? undefined,
+      views90d: raw.views90d ?? undefined,
+      adminBoost: raw.adminBoost != null ? Number(raw.adminBoost) : undefined,
+      featured: raw.featured ?? undefined,
     };
   }
 
@@ -554,6 +581,27 @@ export class HomepageService {
       categories: raw.categories ?? [],
       skills: raw.skills ?? [],
       tags: raw.tags ?? [],
+      createdAt: raw.createdAt,
+      // Scoring signals for evaluator
+      rating: raw.rating != null ? Number(raw.rating) : undefined,
+      reviewCount: raw.reviewCount ?? undefined,
+      completionsCount: raw.completionsCount ?? undefined,
+      views90d: raw.views90d ?? undefined,
+      adminBoost: raw.adminBoost != null ? Number(raw.adminBoost) : undefined,
+      featured: raw.featured ?? undefined,
+    };
+  }
+
+  private toTeamCard(raw: any): TeamCard {
+    return {
+      id: raw.id,
+      name: raw.title ?? '',
+      slug: raw.slug ?? null,
+      logo: raw.logo ?? raw.mediaUrls?.[0] ?? null,
+      memberCount: raw.teamSize ?? raw.memberIds?.length ?? 0,
+      rating: raw.rating != null ? Number(raw.rating) : 0,
+      specializations: raw.specializations ?? raw.skills ?? [],
+      completedProjects: raw.completedProjects ?? raw.completionsCount ?? 0,
       createdAt: raw.createdAt,
     };
   }

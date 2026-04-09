@@ -19,10 +19,11 @@ export class CmsProjectsController {
     const rows = await this.dataSource.query(
       `SELECT id, title, slug, "shortDescription", description, category,
               categories, skills, tags, "mediaUrls", budget, duration,
+              rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
               status, "createdAt", "updatedAt"
          FROM public.projects
         WHERE status != 'draft'
-        ORDER BY "createdAt" DESC
+        ORDER BY featured DESC NULLS LAST, "createdAt" DESC
         LIMIT 50`,
     );
     return rows.map(shapeProject);
@@ -33,6 +34,7 @@ export class CmsProjectsController {
     const rows = await this.dataSource.query(
       `SELECT id, title, slug, "shortDescription", description, category,
               categories, skills, tags, "mediaUrls", budget, duration,
+              rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
               status, "createdAt", "updatedAt"
          FROM public.projects
         WHERE slug = $1
@@ -61,5 +63,11 @@ function shapeProject(row: any) {
     mediaUrls: row.mediaUrls ?? [],
     skills: row.skills ?? [],
     tags: row.tags ?? [],
+    rating: row.rating != null ? Number(row.rating) : 0,
+    reviewCount: row.reviewCount ?? 0,
+    completionsCount: row.completionsCount ?? 0,
+    views90d: row.views90d ?? 0,
+    adminBoost: row.adminBoost != null ? Number(row.adminBoost) : 0,
+    featured: row.featured ?? false,
   };
 }

@@ -1,7 +1,17 @@
 // ── Shared types for the homepage assembly endpoint ─────────────────────────
 
+/** Scoring signals shared across all listing card types */
+export interface ScoringFields {
+  rating?: number;
+  reviewCount?: number;
+  completionsCount?: number;
+  views90d?: number;
+  adminBoost?: number;
+  featured?: boolean;
+}
+
 /** Card shape returned for project listings */
-export interface ProjectCard {
+export interface ProjectCard extends ScoringFields {
   id: string;
   title: string;
   slug: string | null;
@@ -17,7 +27,7 @@ export interface ProjectCard {
 }
 
 /** Card shape returned for service listings */
-export interface ServiceCard {
+export interface ServiceCard extends ScoringFields {
   id: string;
   title: string;
   slug: string | null;
@@ -30,6 +40,19 @@ export interface ServiceCard {
   categories: string[];
   skills: string[];
   tags: string[];
+  createdAt: string;
+}
+
+/** Card shape returned for team profiles */
+export interface TeamCard {
+  id: string;
+  name: string;
+  slug: string | null;
+  logo: string | null;
+  memberCount: number;
+  rating: number;
+  specializations: string[];
+  completedProjects: number;
   createdAt: string;
 }
 
@@ -60,8 +83,8 @@ export interface BlockPagination {
 export interface HomepageBlock {
   key: string;
   type: 'grid' | 'carousel';
-  entity: 'projects' | 'services' | 'talent';
-  items: (ProjectCard | ServiceCard | TalentCard)[];
+  entity: 'projects' | 'services' | 'teams' | 'talent';
+  items: (ProjectCard | ServiceCard | TeamCard | TalentCard)[];
   pagination?: BlockPagination;
 }
 
@@ -159,7 +182,7 @@ export interface SectionConfig {
   ctaLabel?: string;
   ctaUrl?: string;
   blocks: {
-    entity: 'projects' | 'services' | 'talent';
+    entity: 'projects' | 'services' | 'teams' | 'talent';
     type: 'grid' | 'carousel';
     /** Ranking algorithm — evaluator integration needed for top_rated/trending/most_popular */
     kind: 'newest' | 'top_rated' | 'trending' | 'most_popular';

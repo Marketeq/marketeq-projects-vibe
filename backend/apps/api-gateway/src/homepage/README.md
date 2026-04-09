@@ -2,14 +2,14 @@
 
 ## Overview
 
-The homepage module assembles a fully dynamic, CMS-driven landing page payload via `GET /homepage`. It fetches configuration from Payload CMS, listings from listings-service, talent profiles from user-service, and caches assembled responses in Redis with event-driven invalidation via RabbitMQ.
+The homepage module assembles a fully dynamic, CMS-driven landing page payload via `GET /homepage`. It fetches configuration from Payload CMS, listings from listings-service (projects, services, teams), talent profiles from user-service, and caches assembled responses in Redis with event-driven invalidation via RabbitMQ.
 
 ## Architecture
 
 ```
 Browser → API Gateway (/homepage) → HomepageService
                                       ├── CMS Service (Homepages collection, HomepageBanner global)
-                                      ├── Listings Service (/v1/projects, /v1/services)
+                                      ├── Listings Service (/v1/projects, /v1/services, /v1/teams)
                                       ├── User Service (/talent/users)
                                       └── Redis (cache layer)
 
@@ -26,7 +26,7 @@ CMS Admin saves homepage → afterChange hook → RabbitMQ (homepage.saved)
 | `homepage.service.ts` | Assembly orchestrator: CMS fetch, listings fetch, caching, banner, A/B resolution, pinned items |
 | `homepage.evaluator.ts` | Scoring blends: top_rated, trending, most_popular, newest with pool-relative normalization |
 | `homepage.consumer.ts` | RabbitMQ consumer — invalidates Redis cache on CMS publish/delete events |
-| `homepage.types.ts` | Shared types: ProjectCard, ServiceCard, TalentCard, sections, blocks, payload |
+| `homepage.types.ts` | Shared types: ProjectCard, ServiceCard, TeamCard, TalentCard, ScoringFields, sections, blocks, payload |
 | `homepage.config.ts` | Static defaults — fallback when CMS is unavailable or not yet configured |
 | `homepage.module.ts` | NestJS module registration |
 
@@ -50,15 +50,17 @@ CMS Admin saves homepage → afterChange hook → RabbitMQ (homepage.saved)
 - [x] `generatedAt` — ISO 8601 timestamp
 
 ### Card Types
-- [x] **ProjectCard** — id, title, slug, description, thumbnail, budget, duration, categories, skills, tags
-- [x] **ServiceCard** — id, title, slug, description, thumbnail, priceMin/Max, deliveryTime, categories, skills, tags
+- [x] **ProjectCard** — id, title, slug, description, thumbnail, budget, duration, categories, skills, tags + scoring fields
+- [x] **ServiceCard** — id, title, slug, description, thumbnail, priceMin/Max, deliveryTime, categories, skills, tags + scoring fields
+- [x] **TeamCard** — id, name, slug, logo, memberCount, rating, specializations, completedProjects
 - [x] **TalentCard** — id, username, firstName, lastName, avatarUrl, title, location, rateMin/Max, skills
+- [x] **ScoringFields** — rating, reviewCount, completionsCount, views90d, adminBoost, featured (on ProjectCard & ServiceCard)
 - [x] Description truncation — capped at 120 chars with ellipsis
 
 ### Sections & Blocks
-- [x] 8 default sections (Our Favorites, Newest, Most Popular, + 5 themed carousels)
+- [x] 9 default sections (Our Favorites, Newest, Most Popular, Top Teams, + 5 themed carousels)
 - [x] Block types: `grid` and `carousel`
-- [x] Block entities: `projects`, `services`, and `talent`
+- [x] Block entities: `projects`, `services`, `teams`, and `talent`
 - [x] Pagination metadata per block (page, pageSize, totalPages, hasMore)
 - [x] Carousel guard — downgrade to grid when items < gridSize × 3
 
@@ -68,7 +70,8 @@ CMS Admin saves homepage → afterChange hook → RabbitMQ (homepage.saved)
 - [x] `trending` — CTR 40%, impressions 30%, recency 30%
 - [x] `most_popular` — completions 40%, views_90d 35%, recency 15%, boost 10%
 - [x] Pool-relative normalization (scores relative to current pool max)
-- [x] Graceful fallback when scoring fields unavailable (uses recency + proxy signals from budget, skills, thumbnail)
+- [x] Real scoring data flows from listings-service (rating, reviewCount, completionsCount, views90d, adminBoost, featured)
+- [x] Graceful fallback when scoring fields are zero (uses recency + proxy signals from budget, skills, thumbnail)
 - [x] 3× pool oversampling for ranking fidelity
 - [x] Kind dispatched per block via `kind` field in section config
 
@@ -118,39 +121,98 @@ CMS Admin saves homepage → afterChange hook → RabbitMQ (homepage.saved)
 - [x] `testGroup` for A/B variant matching
 - [x] `afterChange` / `afterDelete` hooks publish RabbitMQ events for cache invalidation
 
-### Frontend
+### Upstream Services (Previously Blocked — Now Implemented)
+- [x] **Team cards** — TeamsModule registered in listings-service, `GET /v1/teams` endpoint live, TeamCard type + fetchTeams() in homepage service, "Top Rated Teams" section in default config
+- [x] **Scoring fields** — `rating`, `reviewCount`, `completionsCount`, `views90d`, `adminBoost`, `featured` added to Project, Service, and Team entities in listings-service. Evaluator consumes real scoring data. Fields returned via cms-projects controller and services/teams controllers.
+
+### Frontend (API Client & Types)
 - [x] `service/http/homepage.ts` — API client (`HomepageAPI.getHomepage()`)
-- [x] `types/homepage.ts` — full TypeScript types matching backend (ProjectCard, ServiceCard, TalentCard, HomepagePayload)
+- [x] `types/homepage.ts` — full TypeScript types matching backend (ProjectCard, ServiceCard, TeamCard, TalentCard, ScoringFields, HomepagePayload)
+
+### Frontend (SSR Page & Components)
+- [x] **SSR page rewrite** — `page.tsx` is now a server component; fetches `GET /homepage` server-side with `next: { revalidate: 60 }`
+- [x] **SSR cookie forwarding** — reads `mktq_hp_variant` cookie via `cookies()` and forwards to API gateway
+- [x] **SEO from API** — `generateMetadata()` sets title, description, canonical, ogImage, noindex from `payload.seo`
+- [x] **Dynamic hero** — renders headline, subheadline, backgroundImage, CTA from `payload.hero`
+- [x] **Banner component** — dismissible banner with info/promo/warning styles, respects `expiresAt`
+- [x] **Dynamic sections** — iterates `payload.sections[]`, renders each block as carousel or grid based on `block.type`
+- [x] **Project card rendering** — maps ProjectCard fields to `ListingCard` (budget, duration, rating, reviewCount)
+- [x] **Service card rendering** — maps ServiceCard fields (priceMin/Max, deliveryTime) to `ListingCard`
+- [x] **Team card rendering** — maps TeamCard to `ListingCard` (kind="team", name, memberCount, specializations)
+- [x] **Talent card rendering** — maps TalentCard to `ListingCard` (kind="talent", username, rate, skills)
+- [x] **Compact grid cards** — `ListingCardCompact` used for grid blocks (project + service)
+- [x] **More Categories** — renders from `payload.moreCategoriesList[]` as clickable tiles with hover states
+- [x] **Null handling** — comprehensive checks per doc 09 Section 7 (hero, banner, sections, SEO all nullable)
+- [x] **Error fallback** — shows "Homepage unavailable" message on API failure
 
 ## What's NOT Implemented (Deferred)
 
-### Needs Upstream Services
-| Feature | Blocked By |
-|---------|-----------|
-| Team cards (entity: teams) | No team listing endpoint in listings-service or user-service |
-| Rating, reviewCount, views90d, completionsCount on project/service cards | Fields not yet in listings-service Project/Service entities — evaluator uses proxy signals until then |
-
-### Frontend Integration
+### Frontend (Minor Gaps)
 | Feature | Notes |
 |---------|-------|
-| Frontend page doesn't call HomepageAPI | `page.tsx` uses hardcoded seed data with `useFeaturedProjects` hook. Replace with `HomepageAPI.getHomepage()` when ready |
-| SSR with cookie forwarding | Frontend needs to forward `mktq_hp_variant` cookie during server-side rendering |
-| Banner rendering | Frontend component needed to render the promotional banner from API response |
-| TalentCard component | Frontend card component for displaying talent profiles in sections |
+| Preview mode UI | Backend supports `?preview=1`, but no frontend admin gate for triggering preview |
+| Talent Network CTA section | `payload.talentNetworkCta` returned by API but not rendered as a standalone section — footer in layout handles this |
+| Footer nav from API | `payload.footerNav` returned but footer is rendered by the layout component, not the homepage |
+| `stale-while-revalidate` | Docs recommend SWR pattern; current implementation uses `next: { revalidate: 60 }` ISR instead |
+
+### Testing & QA
+| Feature | Notes |
+|---------|-------|
+| Unit tests (Jest) | No `.spec.ts` files for homepage module — target 80% service logic, 100% evaluator |
+| Integration tests (e2e) | No `homepage.e2e-spec.ts` |
+| Postman collection | Not provided |
+| Test seed script | Manual SQL seeds exist, no automated `test/seed-homepage.ts` |
+| CI/CD integration | No GitHub Actions workflow for homepage tests |
 
 ### Operational
 | Feature | Notes |
 |---------|-------|
-| Unit/integration tests | Deferred pending service stability |
-| Metrics & structured logging | Prometheus/Datadog not wired; basic NestJS Logger in place |
-| Health endpoint for homepage module | API-wide `/health` exists at gateway level |
+| Performance metrics | No latency histograms, cache hit/miss ratios, or evaluator timings |
+| Structured logging | Basic NestJS Logger in place; Prometheus/Datadog not wired |
+| Health endpoint for homepage module | API-wide `/health` exists at gateway level, not module-specific |
+
+## Local Development
+
+### Required Services
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| api-gateway | 4000 | Homepage endpoint, proxy |
+| listings-service | 3004 | `/v1/projects`, `/v1/services`, `/v1/teams` |
+| user-service | 3003 | `/talent/users` |
+| PostgreSQL | 5432 | Database (Docker: `marketeq-db`) |
+| Frontend | 3000 | Next.js dev server |
+
+Optional: Redis (caching), RabbitMQ (cache invalidation), CMS service (dynamic config)
+
+### Quick Start
+
+```bash
+# Start PostgreSQL (if not running)
+docker start marketeq-db
+
+# Start backend services
+cd backend
+npx pm2 start ecosystem.config.js --only api-gateway,listings-service,user-service
+
+# Start frontend
+cd frontend
+npm run dev
+
+# Test homepage endpoint
+curl http://localhost:4000/homepage | python3 -m json.tool
+```
+
+### Test Data
+
+12 seed projects, 6 services, and 6 teams are in the database with scoring data (rating, views, completions). See `.claude/memory/services/homepage-service.md` for details.
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `LISTINGS_SERVICE_URL` | No | `http://localhost:3004` | Listings service base URL |
-| `USER_SERVICE_URL` | No | `http://localhost:3002` | User service base URL (talent profiles) |
+| `USER_SERVICE_URL` | No | `http://localhost:3003` | User service base URL (talent profiles) |
 | `CMS_SERVICE_URL` | No | null (uses static defaults) | Payload CMS base URL |
 | `REDIS_URL` | No | null (caching disabled) | Redis connection string |
 | `PREVIEW_SECRET` | No | null (preview disabled) | Secret for preview token validation |
@@ -170,14 +232,15 @@ CMS Admin saves homepage → afterChange hook → RabbitMQ (homepage.saved)
 3. Assembly (parallel fetches):
    ├── CMS: Homepages collection (variant → default → any active)
    ├── CMS: HomepageBanner global
-   ├── Listings: GET /v1/projects
-   ├── Listings: GET /v1/services
+   ├── Listings: GET /v1/projects (with scoring fields)
+   ├── Listings: GET /v1/services (with scoring fields)
+   ├── Listings: GET /v1/teams (with scoring fields)
    └── User: GET /talent/users
 
 4. For each section:
    ├── Extract pinned items (if manualEnabled)
-   ├── Filter pool (category, dedup)
-   ├── Score + rank via evaluator (kind)
+   ├── Filter pool (entity type, category, dedup)
+   ├── Score + rank via evaluator (kind) using real scoring data
    ├── Merge: pinned first + evaluated remaining
    ├── Apply carousel guard
    └── Build block with pagination

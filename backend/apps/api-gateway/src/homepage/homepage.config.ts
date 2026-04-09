@@ -54,6 +54,15 @@ export const HOMEPAGE_SECTIONS: SectionConfig[] = [
     ],
   },
   {
+    key: 'top-teams',
+    title: 'Top Rated Teams',
+    subtitle:
+      'Pre-vetted expert teams ready to take on your next project — browse by specialization.',
+    blocks: [
+      { entity: 'teams', type: 'carousel', limit: 8, kind: 'top_rated', sort: 'newest' },
+    ],
+  },
+  {
     key: 'online-sales',
     title: 'Online Sales Funnels',
     subtitle:

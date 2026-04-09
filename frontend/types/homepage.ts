@@ -11,6 +11,12 @@ export interface ProjectCard {
   skills: string[]
   tags: string[]
   createdAt: string
+  rating?: number
+  reviewCount?: number
+  completionsCount?: number
+  views90d?: number
+  adminBoost?: number
+  featured?: boolean
 }
 
 export interface ServiceCard {
@@ -26,6 +32,24 @@ export interface ServiceCard {
   categories: string[]
   skills: string[]
   tags: string[]
+  createdAt: string
+  rating?: number
+  reviewCount?: number
+  completionsCount?: number
+  views90d?: number
+  adminBoost?: number
+  featured?: boolean
+}
+
+export interface TeamCard {
+  id: string
+  name: string
+  slug: string | null
+  logo: string | null
+  memberCount: number
+  rating: number
+  specializations: string[]
+  completedProjects: number
   createdAt: string
 }
 
@@ -53,8 +77,8 @@ export interface BlockPagination {
 export interface HomepageBlock {
   key: string
   type: "grid" | "carousel"
-  entity: "projects" | "services" | "talent"
-  items: (ProjectCard | ServiceCard | TalentCard)[]
+  entity: "projects" | "services" | "teams" | "talent"
+  items: (ProjectCard | ServiceCard | TeamCard | TalentCard)[]
   pagination?: BlockPagination
 }
 
