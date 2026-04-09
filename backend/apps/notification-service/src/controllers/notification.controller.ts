@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Delete, Param, Query, Req, HttpCode, HttpStatus } from '@nestjs/common';
-import { EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
+import { EventPattern, Payload } from '@nestjs/microservices';
 import { NotificationService, NotificationPayload } from '../services/notification.service';
 import { BrevoService } from '../brevo/brevo.service';
 
