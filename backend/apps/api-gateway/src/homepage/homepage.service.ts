@@ -54,11 +54,19 @@ export class HomepageService {
 
     const redisUrl = config.get<string>('REDIS_URL');
     if (redisUrl) {
-      this.redis = new Redis(redisUrl, { maxRetriesPerRequest: 1, lazyConnect: true });
-      this.redis.connect().catch((err) => {
-        this.logger.warn(`Redis connection failed — caching disabled: ${err.message}`);
+      try {
+        this.redis = new Redis(redisUrl, {
+          maxRetriesPerRequest: 1,
+          connectTimeout: 5000,
+          retryStrategy: (times) => (times > 3 ? null : Math.min(times * 500, 2000)),
+        });
+        this.redis.on('error', (err) => {
+          this.logger.warn(`Redis error: ${err.message}`);
+        });
+      } catch (err: any) {
+        this.logger.warn(`Redis init failed — caching disabled: ${err.message}`);
         this.redis = null;
-      });
+      }
     }
   }
 
@@ -74,14 +82,14 @@ export class HomepageService {
 
     // Preview mode — bypass cache, validate token
     if (preview) {
-      if (this.previewSecret && previewToken !== this.previewSecret) {
+      if (!this.previewSecret || previewToken !== this.previewSecret) {
         throw new NotFoundException('Invalid preview token');
       }
       return this.assembleHomepage(variant, true);
     }
 
-    // Check cache
-    const cacheKey = `hp:home:${variant || ''}`;
+    // Check cache — use "default" when no variant to avoid empty-string collisions
+    const cacheKey = `hp:home:${variant || 'default'}`;
     if (this.redis) {
       try {
         const cached = await this.redis.get(cacheKey);
@@ -112,10 +120,11 @@ export class HomepageService {
    * Invalidate all cached homepage variants for a given slug.
    * Called by the RabbitMQ consumer on homepage.saved / homepage.deleted events.
    */
-  async invalidateCache(slug: string): Promise<void> {
+  async invalidateCache(_slug: string): Promise<void> {
     if (!this.redis) return;
     try {
-      const pattern = `hp:${slug}:*`;
+      // Cache keys use hp:home:{variant} — always invalidate all homepage variants
+      const pattern = `hp:home:*`;
       let cursor = '0';
       do {
         const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
@@ -192,7 +201,7 @@ export class HomepageService {
 
     try {
       // Try variant first (testing status + matching testGroup)
-      if (variant) {
+      if (variant?.trim()) {
         const variantResult = await this.queryCmsHomepages({
           'where[status][equals]': 'testing',
           'where[testGroup][equals]': variant,
@@ -239,7 +248,7 @@ export class HomepageService {
       ? {
           headline: doc.hero.headline,
           subheadline: doc.hero.subheadline || '',
-          backgroundImage: doc.hero.backgroundImage?.url || doc.hero.backgroundImage || '/sending-emails.png',
+          backgroundImage: (typeof doc.hero.backgroundImage === 'object' ? doc.hero.backgroundImage?.url : doc.hero.backgroundImage) || '/sending-emails.png',
           ctaLabel: doc.hero.ctaLabel || 'Browse Projects',
           ctaUrl: doc.hero.ctaUrl || '/c/development',
         }

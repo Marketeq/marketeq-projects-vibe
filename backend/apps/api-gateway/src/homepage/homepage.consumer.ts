@@ -30,11 +30,17 @@ export class HomepageConsumer {
     const message = context.getMessage();
 
     try {
-      this.logger.log(`Received homepage.saved for slug: ${event.slug}`);
-      await this.homepageService.invalidateCache(event.slug);
+      const slug = event?.slug;
+      if (!slug) {
+        this.logger.warn('Received homepage.saved with missing slug — acking');
+        channel.ack(message);
+        return;
+      }
+      this.logger.log(`Received homepage.saved for slug: ${slug}`);
+      await this.homepageService.invalidateCache(slug);
       channel.ack(message);
     } catch (err) {
-      this.logger.error(`Failed to invalidate cache for homepage "${event.slug}"`, err);
+      this.logger.error(`Failed to invalidate cache for homepage "${event?.slug}"`, err);
       channel.nack(message, false, true);
     }
   }
@@ -48,11 +54,17 @@ export class HomepageConsumer {
     const message = context.getMessage();
 
     try {
-      this.logger.log(`Received homepage.deleted for slug: ${event.slug}`);
-      await this.homepageService.invalidateCache(event.slug);
+      const slug = event?.slug;
+      if (!slug) {
+        this.logger.warn('Received homepage.deleted with missing slug — acking');
+        channel.ack(message);
+        return;
+      }
+      this.logger.log(`Received homepage.deleted for slug: ${slug}`);
+      await this.homepageService.invalidateCache(slug);
       channel.ack(message);
     } catch (err) {
-      this.logger.error(`Failed to invalidate cache for homepage "${event.slug}"`, err);
+      this.logger.error(`Failed to invalidate cache for homepage "${event?.slug}"`, err);
       channel.nack(message, false, true);
     }
   }
