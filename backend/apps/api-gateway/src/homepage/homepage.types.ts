@@ -111,6 +111,12 @@ export interface TalentNetworkCta {
 
 /** Full homepage API response */
 export interface HomepagePayload {
+  /** Internal title of this homepage document */
+  title: string;
+  /** URL slug of this homepage (e.g. "home") */
+  slug: string;
+  /** Document status: active, testing, or draft (preview only) */
+  status: 'active' | 'testing' | 'draft';
   hero: HomepageHero;
   /** Promotional banner — null when disabled or expired */
   banner: HomepageBanner | null;
@@ -122,6 +128,12 @@ export interface HomepagePayload {
   seo: HomepageSeo;
   generatedAt: string;
 }
+
+/** Max description length for card summaries */
+export const CARD_DESCRIPTION_MAX_LENGTH = 120;
+/** Carousel minimum: only render carousel if items >= gridSize * CAROUSEL_MIN_PAGES */
+export const CAROUSEL_MIN_PAGES = 3;
+export const GRID_SIZE = 4;
 
 // ── Section configuration (replaces CMS later) ─────────────────────────────
 

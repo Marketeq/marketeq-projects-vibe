@@ -97,6 +97,9 @@ export interface TalentNetworkCta {
 }
 
 export interface HomepagePayload {
+  title: string
+  slug: string
+  status: "active" | "testing" | "draft"
   hero: HomepageHero
   banner: HomepageBanner | null
   sections: HomepageSection[]

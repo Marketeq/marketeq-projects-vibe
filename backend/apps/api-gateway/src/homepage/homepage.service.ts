@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
@@ -16,6 +16,9 @@ import {
   ProjectCard,
   ServiceCard,
   SectionConfig,
+  CARD_DESCRIPTION_MAX_LENGTH,
+  CAROUSEL_MIN_PAGES,
+  GRID_SIZE,
 } from './homepage.types';
 import {
   HOMEPAGE_HERO,
@@ -83,7 +86,7 @@ export class HomepageService {
     // Preview mode — bypass cache, validate token
     if (preview) {
       if (!this.previewSecret || previewToken !== this.previewSecret) {
-        throw new NotFoundException('Invalid preview token');
+        throw new ForbiddenException('Invalid or missing preview token');
       }
       return this.assembleHomepage(variant, true);
     }
@@ -142,15 +145,16 @@ export class HomepageService {
   // ── Assembly ──────────────────────────────────────────────────────────────
 
   private async assembleHomepage(variant?: string, isDraft = false): Promise<HomepagePayload> {
-    // Fetch CMS config, listings, and banner in parallel
-    const [cmsConfig, allProjects, allServices, banner] = await Promise.all([
+    const [cmsResult, allProjects, allServices, banner] = await Promise.all([
       this.fetchCmsHomepage(variant, isDraft),
       this.fetchProjects(),
       this.fetchServices(),
       this.fetchBanner(),
     ]);
 
-    // Use CMS config if available, otherwise static defaults
+    const cmsConfig = cmsResult?.config ?? null;
+    const cmsMeta = cmsResult?.meta ?? { title: 'Marketeq Home', slug: 'home', status: isDraft ? 'draft' as const : 'active' as const };
+
     const hero: HomepageHero = cmsConfig?.hero ?? HOMEPAGE_HERO;
     const sectionConfigs: SectionConfig[] = cmsConfig?.sections ?? HOMEPAGE_SECTIONS;
     const popularTabs: CategoryRef[] = cmsConfig?.popularTabs ?? HOMEPAGE_POPULAR_TABS;
@@ -159,14 +163,21 @@ export class HomepageService {
     const footerNav: FooterNavColumn[] = cmsConfig?.footerNav ?? HOMEPAGE_FOOTER_NAV;
     const seo: HomepageSeo = cmsConfig?.seo ?? HOMEPAGE_SEO;
 
-    // Deduplicate across sections
-    const usedProjectIds = new Set<string>();
-    const usedServiceIds = new Set<string>();
+    // Sort projects/services based on section config
+    const projectsByNewest = [...allProjects].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+    const servicesByNewest = [...allServices].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+
+    // Deduplicate across all sections and entity types
+    const usedIds = new Set<string>();
     const sections: HomepageSection[] = [];
 
     for (const sectionCfg of sectionConfigs) {
       const section = this.assembleSection(
-        sectionCfg, allProjects, allServices, usedProjectIds, usedServiceIds,
+        sectionCfg, projectsByNewest, servicesByNewest, usedIds,
       );
       if (section.blocks.some((b) => b.items.length > 0)) {
         sections.push(section);
@@ -174,6 +185,9 @@ export class HomepageService {
     }
 
     return {
+      title: cmsMeta.title,
+      slug: cmsMeta.slug,
+      status: cmsMeta.status,
       hero,
       banner,
       sections,
@@ -196,37 +210,46 @@ export class HomepageService {
   private async fetchCmsHomepage(
     variant?: string,
     isDraft = false,
-  ): Promise<CmsHomepageConfig | null> {
+  ): Promise<CmsHomepageResult | null> {
     if (!this.cmsUrl) return null;
 
     try {
+      let doc: any = null;
+
       // Try variant first (testing status + matching testGroup)
       if (variant?.trim()) {
-        const variantResult = await this.queryCmsHomepages({
+        doc = await this.queryCmsHomepages({
           'where[status][equals]': 'testing',
           'where[testGroup][equals]': variant,
         });
-        if (variantResult) return this.transformCmsHomepage(variantResult);
       }
 
-      // Fall back to default active homepage
-      const status = isDraft ? 'draft' : 'active';
-      const defaultResult = await this.queryCmsHomepages({
-        'where[status][equals]': status,
-        'where[isDefault][equals]': 'true',
-      });
-
-      if (defaultResult) return this.transformCmsHomepage(defaultResult);
+      // Fall back to default active/draft homepage
+      if (!doc) {
+        const status = isDraft ? 'draft' : 'active';
+        doc = await this.queryCmsHomepages({
+          'where[status][equals]': status,
+          'where[isDefault][equals]': 'true',
+        });
+      }
 
       // Try any active homepage if no default is set
-      if (!isDraft) {
-        const anyActive = await this.queryCmsHomepages({
+      if (!doc && !isDraft) {
+        doc = await this.queryCmsHomepages({
           'where[status][equals]': 'active',
         });
-        if (anyActive) return this.transformCmsHomepage(anyActive);
       }
 
-      return null;
+      if (!doc) return null;
+
+      return {
+        meta: {
+          title: doc.title || 'Marketeq Home',
+          slug: doc.slug || 'home',
+          status: doc.status || 'active',
+        },
+        config: this.transformCmsHomepage(doc),
+      };
     } catch (err: any) {
       this.logger.warn(`Failed to fetch homepage config from CMS: ${err.message}`);
       return null;
@@ -342,29 +365,57 @@ export class HomepageService {
     cfg: SectionConfig,
     allProjects: ProjectCard[],
     allServices: ServiceCard[],
-    usedProjectIds: Set<string>,
-    usedServiceIds: Set<string>,
+    usedIds: Set<string>,
   ): HomepageSection {
     const blocks: HomepageBlock[] = [];
 
     for (const blockCfg of cfg.blocks) {
-      let items: (ProjectCard | ServiceCard)[];
+      let pool: (ProjectCard | ServiceCard)[];
 
       if (blockCfg.entity === 'projects') {
-        const available = allProjects.filter((p) => !usedProjectIds.has(p.id));
-        items = available.slice(0, blockCfg.limit);
-        items.forEach((i) => usedProjectIds.add(i.id));
+        pool = allProjects.filter((p) => !usedIds.has(p.id));
       } else {
-        const available = allServices.filter((s) => !usedServiceIds.has(s.id));
-        items = available.slice(0, blockCfg.limit);
-        items.forEach((i) => usedServiceIds.add(i.id));
+        pool = allServices.filter((s) => !usedIds.has(s.id));
       }
+
+      // #9 — Apply category filter if configured
+      if (blockCfg.categoryFilter) {
+        const cat = blockCfg.categoryFilter.toLowerCase();
+        pool = pool.filter((item) =>
+          item.categories.some((c) => c.toLowerCase() === cat),
+        );
+      }
+
+      // #8 — Apply sort
+      if (blockCfg.sort === 'random') {
+        pool = [...pool].sort(() => Math.random() - 0.5);
+      }
+      // 'newest' is already sorted by createdAt DESC from the caller
+
+      const items = pool.slice(0, blockCfg.limit);
+      items.forEach((i) => usedIds.add(i.id));
+
+      // #5 — Carousel guard: downgrade to grid if insufficient items
+      const effectiveType =
+        blockCfg.type === 'carousel' && items.length < GRID_SIZE * CAROUSEL_MIN_PAGES
+          ? 'grid'
+          : blockCfg.type;
+
+      // #4 — Pagination metadata
+      const totalAvailable = pool.length;
+      const pageSize = blockCfg.limit;
 
       blocks.push({
         key: `${cfg.key}-${blockCfg.entity}`,
-        type: blockCfg.type,
+        type: effectiveType,
         entity: blockCfg.entity,
         items,
+        pagination: {
+          page: 1,
+          pageSize,
+          totalPages: Math.ceil(totalAvailable / pageSize),
+          hasMore: totalAvailable > pageSize,
+        },
       });
     }
 
@@ -402,13 +453,19 @@ export class HomepageService {
     }
   }
 
+  private truncate(text: string, max = CARD_DESCRIPTION_MAX_LENGTH): string {
+    if (text.length <= max) return text;
+    return text.slice(0, max - 1).trimEnd() + '\u2026';
+  }
+
   private toProjectCard(raw: any): ProjectCard {
+    const desc = raw.shortDescription || raw.description || '';
     return {
       id: raw.id,
       title: raw.title ?? '',
       slug: raw.slug ?? null,
-      description: raw.description ?? '',
-      shortDescription: raw.shortDescription ?? null,
+      description: this.truncate(desc),
+      shortDescription: raw.shortDescription ? this.truncate(raw.shortDescription) : null,
       thumbnail: raw.mediaUrls?.[0] ?? null,
       budget: raw.budget != null ? Number(raw.budget) : null,
       duration: raw.duration ?? null,
@@ -420,12 +477,13 @@ export class HomepageService {
   }
 
   private toServiceCard(raw: any): ServiceCard {
+    const desc = raw.shortDescription || raw.description || '';
     return {
       id: raw.id,
       title: raw.title ?? '',
       slug: raw.slug ?? null,
-      description: raw.description ?? '',
-      shortDescription: raw.shortDescription ?? null,
+      description: this.truncate(desc),
+      shortDescription: raw.shortDescription ? this.truncate(raw.shortDescription) : null,
       thumbnail: raw.mediaUrls?.[0] ?? null,
       priceMin: raw.priceMin != null ? Number(raw.priceMin) : null,
       priceMax: raw.priceMax != null ? Number(raw.priceMax) : null,
@@ -438,7 +496,12 @@ export class HomepageService {
   }
 }
 
-/** Internal type for CMS homepage config — all fields optional (partial override of defaults) */
+/** Internal type for CMS homepage result — meta + partial config */
+interface CmsHomepageResult {
+  meta: { title: string; slug: string; status: 'active' | 'testing' | 'draft' };
+  config: CmsHomepageConfig;
+}
+
 interface CmsHomepageConfig {
   hero?: HomepageHero;
   sections?: SectionConfig[];
