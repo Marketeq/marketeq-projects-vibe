@@ -13,17 +13,22 @@ import {
 } from "@/src/lib/api/contracts"
 import {
   Briefcase,
+  Calendar,
   ChevronDown,
-  ChevronRight,
-  Clock,
-  Eye,
+  Copy,
+  Download01,
   FileCheck02,
+  FilterLines,
+  HelpCircle,
   Monitor,
   MoreHorizontal,
+  Plus,
   Search,
+  SwitchVertical01,
   User,
   Users,
 } from "@blend-metrics/icons"
+import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Avatar,
   AvatarFallback,
@@ -37,10 +42,7 @@ import {
   DropdownMenuTrigger,
   IconButton,
   Input,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
+  Progress,
 } from "@/components/ui"
 
 type ContractType = "project" | "service" | "team" | "individual"
@@ -68,18 +70,29 @@ interface Contract {
   schedule: string
   duration: string
   startDate: string
+  endDate: string
   nextMilestone: string
   updatedAt: string
+  lastActivity: string
+  billingCycle: string
+  progress: number
+  hoursToday: string
+  hoursThisWeek: string
+  hoursThisMonth: string
+  hoursTotal: string
+  weeklyLimit?: string
+  talentUsername?: string
+  talentRole?: string
   teamMembers: TeamMember[]
 }
 
 const sampleContracts: Contract[] = [
-  // Project contracts — grouped under "Mobile App Redesign"
+  // Project contracts — grouped under "Redesigning and Optimizing Website"
   {
     id: "c1",
-    title: "UX Designer for Mobile App",
+    title: "Redesigning and Optimizing Website for Enhanced User Experience.",
     groupId: "g1",
-    groupName: "Mobile App Redesign",
+    groupName: "Website Redesign",
     type: "project",
     status: "Active",
     talentName: "Sarah Chen",
@@ -87,19 +100,34 @@ const sampleContracts: Contract[] = [
     clientName: "You",
     rate: "$85/hr",
     schedule: "Full-time",
-    duration: "3 months",
-    startDate: "Mar 1, 2026",
+    duration: "15 months",
+    startDate: "Mar 10, 2025",
+    endDate: "Jun 6, 2026",
     nextMilestone: "Wireframes Due — Mar 28",
     updatedAt: "2 hours ago",
+    lastActivity: "No updates this week",
+    billingCycle: "Billed every Monday",
+    progress: 46,
+    hoursToday: "4h 30m",
+    hoursThisWeek: "21h 50m",
+    hoursThisMonth: "86h 0m",
+    hoursTotal: "142h 30m",
     teamMembers: [
       { name: "Sarah Chen", avatar: "/man.jpg", role: "UX Designer" },
+      { name: "Alex Rivera", avatar: "/images/avatar-1.png", role: "Frontend Developer" },
+      { name: "Jordan Lee", avatar: "/images/avatar-2.png", role: "QA Engineer" },
+      { name: "Chris Patel", avatar: "/man.jpg", role: "Backend Developer" },
+      { name: "Dana Kim", avatar: "/images/avatar-1.png", role: "PM" },
+      { name: "Nina Torres", avatar: "/images/avatar-2.png", role: "Designer" },
+      { name: "Leo Park", avatar: "/man.jpg", role: "DevOps" },
+      { name: "Mia Johnson", avatar: "/images/avatar-1.png", role: "Content" },
     ],
   },
   {
     id: "c2",
     title: "Frontend Developer for Mobile App",
     groupId: "g1",
-    groupName: "Mobile App Redesign",
+    groupName: "Website Redesign",
     type: "project",
     status: "Active",
     talentName: "Alex Rivera",
@@ -109,8 +137,16 @@ const sampleContracts: Contract[] = [
     schedule: "Full-time",
     duration: "3 months",
     startDate: "Mar 1, 2026",
+    endDate: "Jun 1, 2026",
     nextMilestone: "Sprint 2 Review — Apr 1",
     updatedAt: "5 hours ago",
+    lastActivity: "Committed 3 files",
+    billingCycle: "Billed every Friday",
+    progress: 28,
+    hoursToday: "3h 15m",
+    hoursThisWeek: "18h 20m",
+    hoursThisMonth: "62h 0m",
+    hoursTotal: "62h 0m",
     teamMembers: [
       { name: "Alex Rivera", avatar: "/man.jpg", role: "Frontend Developer" },
     ],
@@ -119,7 +155,7 @@ const sampleContracts: Contract[] = [
     id: "c3",
     title: "QA Engineer for Mobile App",
     groupId: "g1",
-    groupName: "Mobile App Redesign",
+    groupName: "Website Redesign",
     type: "project",
     status: "Pending",
     talentName: "Jordan Lee",
@@ -129,18 +165,26 @@ const sampleContracts: Contract[] = [
     schedule: "Part-time",
     duration: "3 months",
     startDate: "",
+    endDate: "",
     nextMilestone: "Awaiting deposit",
     updatedAt: "1 day ago",
+    lastActivity: "Awaiting acceptance",
+    billingCycle: "Billed bi-weekly",
+    progress: 0,
+    hoursToday: "0h 0m",
+    hoursThisWeek: "0h 0m",
+    hoursThisMonth: "0h 0m",
+    hoursTotal: "0h 0m",
     teamMembers: [
       { name: "Jordan Lee", avatar: "/man.jpg", role: "QA Engineer" },
     ],
   },
-  // Service contracts — grouped under "SEO Optimization Package"
+  // Service contracts
   {
     id: "c4",
-    title: "SEO Specialist",
+    title: "Redesigning and Optimizing Website for Enhanced User Experience.",
     groupId: "g2",
-    groupName: "SEO Optimization Package",
+    groupName: "Website Services",
     type: "service",
     status: "Active",
     talentName: "Chris Patel",
@@ -149,18 +193,33 @@ const sampleContracts: Contract[] = [
     rate: "$1,200/mo",
     schedule: "Ongoing",
     duration: "6 months",
-    startDate: "Jan 15, 2026",
+    startDate: "Mar 10, 2025",
+    endDate: "",
     nextMilestone: "Monthly Report — Mar 31",
     updatedAt: "1 day ago",
+    lastActivity: "No updates this week",
+    billingCycle: "Billed on the 1st of each month",
+    progress: 46,
+    hoursToday: "4h 30m",
+    hoursThisWeek: "21h 50m",
+    hoursThisMonth: "86h 0m",
+    hoursTotal: "142h 30m",
     teamMembers: [
       { name: "Chris Patel", avatar: "/man.jpg", role: "SEO Specialist" },
+      { name: "Dana Kim", avatar: "/images/avatar-1.png", role: "Content Writer" },
+      { name: "Sarah Chen", avatar: "/images/avatar-2.png", role: "Designer" },
+      { name: "Alex Rivera", avatar: "/man.jpg", role: "Developer" },
+      { name: "Jordan Lee", avatar: "/images/avatar-1.png", role: "QA" },
+      { name: "Nina Torres", avatar: "/images/avatar-2.png", role: "PM" },
+      { name: "Leo Park", avatar: "/man.jpg", role: "DevOps" },
+      { name: "Mia Johnson", avatar: "/images/avatar-1.png", role: "Content" },
     ],
   },
   {
     id: "c5",
     title: "Content Writer for SEO",
     groupId: "g2",
-    groupName: "SEO Optimization Package",
+    groupName: "Website Services",
     type: "service",
     status: "Active",
     talentName: "Dana Kim",
@@ -170,18 +229,26 @@ const sampleContracts: Contract[] = [
     schedule: "Part-time",
     duration: "6 months",
     startDate: "Jan 15, 2026",
+    endDate: "",
     nextMilestone: "Blog Batch 4 — Apr 5",
     updatedAt: "3 days ago",
+    lastActivity: "Published 2 blog posts",
+    billingCycle: "Billed bi-weekly",
+    progress: 0,
+    hoursToday: "0h 0m",
+    hoursThisWeek: "6h 0m",
+    hoursThisMonth: "24h 0m",
+    hoursTotal: "72h 0m",
     teamMembers: [
       { name: "Dana Kim", avatar: "/man.jpg", role: "Content Writer" },
     ],
   },
-  // Team contract — grouped under "Marketing Team"
+  // Team contracts
   {
     id: "c6",
-    title: "Social Media Manager",
+    title: "Design Dynamics",
     groupId: "g3",
-    groupName: "Marketing Team",
+    groupName: "Design Dynamics",
     type: "team",
     status: "Active",
     talentName: "Nina Torres",
@@ -190,18 +257,33 @@ const sampleContracts: Contract[] = [
     rate: "$60/hr",
     schedule: "Full-time",
     duration: "Ongoing",
-    startDate: "Feb 1, 2026",
+    startDate: "Mar 10, 2025",
+    endDate: "",
     nextMilestone: "Q1 Campaign Launch — Mar 30",
     updatedAt: "4 hours ago",
+    lastActivity: "No updates this week",
+    billingCycle: "Billed on the 1st of each month",
+    progress: 0,
+    hoursToday: "4h 30m",
+    hoursThisWeek: "21h 50m",
+    hoursThisMonth: "86h 0m",
+    hoursTotal: "142h 30m",
     teamMembers: [
       { name: "Nina Torres", avatar: "/man.jpg", role: "Social Media Manager" },
+      { name: "Leo Park", avatar: "/images/avatar-1.png", role: "Graphic Designer" },
+      { name: "Mia Johnson", avatar: "/images/avatar-2.png", role: "Copywriter" },
+      { name: "Tom Blake", avatar: "/man.jpg", role: "Designer" },
+      { name: "Sam Reyes", avatar: "/images/avatar-1.png", role: "Video" },
+      { name: "Chris Patel", avatar: "/images/avatar-2.png", role: "SEO" },
+      { name: "Dana Kim", avatar: "/man.jpg", role: "Content" },
+      { name: "Alex Rivera", avatar: "/images/avatar-1.png", role: "Dev" },
     ],
   },
   {
     id: "c7",
     title: "Graphic Designer",
     groupId: "g3",
-    groupName: "Marketing Team",
+    groupName: "Design Dynamics",
     type: "team",
     status: "Active",
     talentName: "Leo Park",
@@ -211,8 +293,16 @@ const sampleContracts: Contract[] = [
     schedule: "Full-time",
     duration: "Ongoing",
     startDate: "Feb 1, 2026",
+    endDate: "",
     nextMilestone: "Brand Assets V2 — Apr 2",
     updatedAt: "6 hours ago",
+    lastActivity: "Uploaded 3 assets",
+    billingCycle: "Billed every Monday",
+    progress: 0,
+    hoursToday: "4h 0m",
+    hoursThisWeek: "20h 0m",
+    hoursThisMonth: "80h 0m",
+    hoursTotal: "160h 0m",
     teamMembers: [
       { name: "Leo Park", avatar: "/man.jpg", role: "Graphic Designer" },
     ],
@@ -221,7 +311,7 @@ const sampleContracts: Contract[] = [
     id: "c8",
     title: "Copywriter",
     groupId: "g3",
-    groupName: "Marketing Team",
+    groupName: "Design Dynamics",
     type: "team",
     status: "Pending",
     talentName: "Mia Johnson",
@@ -231,31 +321,50 @@ const sampleContracts: Contract[] = [
     schedule: "Part-time",
     duration: "Ongoing",
     startDate: "",
+    endDate: "",
     nextMilestone: "Awaiting acceptance",
     updatedAt: "2 days ago",
+    lastActivity: "Awaiting acceptance",
+    billingCycle: "Billed bi-weekly",
+    progress: 0,
+    hoursToday: "0h 0m",
+    hoursThisWeek: "0h 0m",
+    hoursThisMonth: "0h 0m",
+    hoursTotal: "0h 0m",
     teamMembers: [
       { name: "Mia Johnson", avatar: "/man.jpg", role: "Copywriter" },
     ],
   },
-  // Individual contract (standalone)
+  // Individual contracts
   {
     id: "c9",
-    title: "Logo Design",
+    title: "UX Designer",
     groupId: "g4",
-    groupName: "Logo Design",
+    groupName: "UX Designer",
     type: "individual",
     status: "Active",
-    talentName: "Tom Blake",
+    talentName: "Devon",
     talentAvatar: "/man.jpg",
     clientName: "You",
-    rate: "$2,500",
-    schedule: "Fixed",
-    duration: "2 weeks",
-    startDate: "Mar 10, 2026",
-    nextMilestone: "Final Delivery — Mar 24",
+    rate: "$15.00/hr",
+    schedule: "Part-time",
+    duration: "Ongoing",
+    startDate: "Mar 10, 2025",
+    endDate: "",
+    nextMilestone: "—",
     updatedAt: "12 hours ago",
+    lastActivity: "No updates this week",
+    billingCycle: "",
+    progress: 0,
+    hoursToday: "4h 30m",
+    hoursThisWeek: "4h 30m",
+    hoursThisMonth: "4h 30m",
+    hoursTotal: "4h 30m",
+    weeklyLimit: "20 hrs weekly limit",
+    talentUsername: "@uxdesignpro22",
+    talentRole: "UX Designer",
     teamMembers: [
-      { name: "Tom Blake", avatar: "/man.jpg", role: "Designer" },
+      { name: "Devon", avatar: "/man.jpg", role: "UX Designer" },
     ],
   },
   {
@@ -272,8 +381,19 @@ const sampleContracts: Contract[] = [
     schedule: "Part-time",
     duration: "1 month",
     startDate: "Feb 1, 2026",
+    endDate: "",
     nextMilestone: "—",
     updatedAt: "2 weeks ago",
+    lastActivity: "Contract ended",
+    billingCycle: "",
+    progress: 0,
+    hoursToday: "0h 0m",
+    hoursThisWeek: "0h 0m",
+    hoursThisMonth: "0h 0m",
+    hoursTotal: "48h 0m",
+    weeklyLimit: "40 hrs weekly limit",
+    talentUsername: "@samreyes",
+    talentRole: "Video Editor",
     teamMembers: [
       { name: "Sam Reyes", avatar: "/man.jpg", role: "Video Editor" },
     ],
@@ -336,7 +456,7 @@ function mapApiContract(c: ApiContract): Contract {
     id: c.id,
     title: c.title,
     groupId: c.groupId,
-    groupName: c.title, // group name resolved when grouped
+    groupName: c.title,
     type: ct,
     status: statusMap[c.status] ?? "Active",
     talentName: c.talentId,
@@ -346,8 +466,16 @@ function mapApiContract(c: ApiContract): Contract {
     schedule: c.schedule,
     duration: c.duration,
     startDate: c.startAtISO ? new Date(c.startAtISO).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "",
+    endDate: "",
     nextMilestone: "—",
     updatedAt: new Date(c.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    lastActivity: "—",
+    billingCycle: "Billed weekly",
+    progress: 0,
+    hoursToday: "0h 0m",
+    hoursThisWeek: "0h 0m",
+    hoursThisMonth: "0h 0m",
+    hoursTotal: "0h 0m",
     teamMembers: [{ name: c.talentId, avatar: "/man.jpg", role: c.title }],
   }
 }
@@ -436,53 +564,93 @@ export default function MyContractsPage() {
   const activeCount = contracts.filter((c) => c.status === "Active" || c.status === "Ended" || c.status === "Disputed").length
   const pendingCount = contracts.filter((c) => c.status === "Pending" || c.status === "Canceled").length
 
+  const [showSearch, setShowSearch] = useState(false)
+  const [filterCount] = useState(3)
+
   return (
     <AuthenticatedRoute>
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="flex bg-gray-50 min-h-screen">
+        <LeftSidebar />
+
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-dark-blue-400">My Contracts</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                {contracts.length} total contracts &middot; {contracts.filter((c) => c.status === "Active").length} active
+              <h1 className="text-xl font-bold text-dark-blue-400">My Contracts</h1>
+              <p className="text-sm text-gray-500 mt-0.5">
+                You have {contracts.length} contracts in total
               </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" visual="gray" size="sm" leftIcon={<HelpCircle className="size-4" />}>
+                Get help
+              </Button>
+              <Button variant="outlined" visual="gray" size="sm" leftIcon={<Copy className="size-4" />}>
+                Browse Contracts
+              </Button>
+              <Button size="sm" leftIcon={<Plus className="size-4" />}>
+                New Contract
+              </Button>
             </div>
           </div>
 
-          {/* Tabs: Active / Pending */}
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "active" | "pending")} className="mt-6">
-            <TabsList className="border-b border-gray-200 bg-transparent w-full justify-start gap-x-6 px-0">
-              <TabsTrigger
-                value="active"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-primary-500 data-[state=active]:text-primary-500 rounded-none pb-3 px-1 text-sm text-gray-500"
-              >
-                Active
-                <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-gray-100 px-1.5 text-[10px] font-medium text-gray-500 data-[state=active]:bg-primary-50 data-[state=active]:text-primary-500">
-                  {activeCount}
-                </span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="pending"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-primary-500 data-[state=active]:text-primary-500 rounded-none pb-3 px-1 text-sm text-gray-500"
-              >
-                Pending
-                <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-gray-100 px-1.5 text-[10px] font-medium text-gray-500 data-[state=active]:bg-primary-50 data-[state=active]:text-primary-500">
-                  {pendingCount}
-                </span>
-              </TabsTrigger>
-            </TabsList>
+          {/* Tabs row + Filter bar row */}
+          <div className="mt-6">
+            {/* Tabs + filter actions on same visual row */}
+            <div className="flex items-end justify-between border-b border-gray-200">
+              {/* Left: search icon + tab triggers */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className="flex items-center justify-center size-9 text-gray-400 hover:text-gray-600"
+                  onClick={() => setShowSearch(!showSearch)}
+                >
+                  <Search className="size-4" />
+                </button>
 
-            {/* Shared filter bar for both tabs */}
-            <div className="mt-4 flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-3">
-                {/* Type filter */}
+                <button
+                  type="button"
+                  className={`px-3 pb-3 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === "active"
+                      ? "border-primary-500 text-primary-500"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                  onClick={() => setActiveTab("active")}
+                >
+                  Active
+                  <span className={`ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium ${
+                    activeTab === "active" ? "bg-primary-50 text-primary-500" : "bg-gray-100 text-gray-500"
+                  }`}>
+                    {activeCount}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`px-3 pb-3 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === "pending"
+                      ? "border-primary-500 text-primary-500"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                  onClick={() => setActiveTab("pending")}
+                >
+                  Pending
+                  <span className={`ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium ${
+                    activeTab === "pending" ? "bg-primary-50 text-primary-500" : "bg-gray-100 text-gray-500"
+                  }`}>
+                    {pendingCount}
+                  </span>
+                </button>
+
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outlined" visual="gray" size="sm">
-                      {typeFilter === "all" ? "All Types" : typeLabels[typeFilter]}
-                      <ChevronDown className="size-4 ml-1.5" />
-                    </Button>
+                    <button
+                      type="button"
+                      className="px-3 pb-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                    >
+                      More
+                      <ChevronDown className="size-3.5" />
+                    </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
                     <DropdownMenuItem onClick={() => setTypeFilter("all")}>All Types</DropdownMenuItem>
@@ -492,60 +660,99 @@ export default function MyContractsPage() {
                     <DropdownMenuItem onClick={() => setTypeFilter("individual")}>Individual</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+              </div>
 
-                {/* Sort */}
+              {/* Right: Filters, Recent Activity, Download, Group/Individual toggle */}
+              <div className="flex items-center gap-2 pb-2">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outlined" visual="gray" size="sm">
-                      {sortBy === "recent" ? "Recently Updated" : sortBy === "milestone" ? "Next Milestone" : sortBy === "az" ? "A → Z" : "Z → A"}
-                      <ChevronDown className="size-4 ml-1.5" />
+                    <Button variant="ghost" visual="gray" size="sm" className="gap-1.5">
+                      <FilterLines className="size-4" />
+                      Filters
+                      {filterCount > 0 && (
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-gray-100 px-1.5 text-[11px] font-medium text-gray-600">
+                          {filterCount}
+                        </span>
+                      )}
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuItem onClick={() => setSortBy("recent")}>Recently Updated</DropdownMenuItem>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setTypeFilter("all")}>All Types</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTypeFilter("project")}>Projects</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTypeFilter("service")}>Services</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTypeFilter("team")}>Teams</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTypeFilter("individual")}>Individual</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" visual="gray" size="sm" className="gap-1.5">
+                      <SwitchVertical01 className="size-4" />
+                      Recent Activity
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setSortBy("recent")}>Recent Activity</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setSortBy("milestone")}>Next Milestone</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setSortBy("az")}>A → Z</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setSortBy("za")}>Z → A</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {/* Search */}
-                <div className="relative">
-                  <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <Input
-                    className="pl-9 h-9 w-[220px] text-sm"
-                    placeholder="Search contracts..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-              </div>
+                <IconButton variant="ghost" visual="gray" size="sm">
+                  <Download01 className="size-4" />
+                </IconButton>
 
-              {/* View toggle: Grouped / Individual */}
-              <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5">
-                <button
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === "grouped" ? "bg-gray-100 text-dark-blue-400" : "text-gray-400 hover:text-gray-600"}`}
-                  onClick={() => setViewMode("grouped")}
-                >
-                  Grouped
-                </button>
-                <button
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === "individual" ? "bg-gray-100 text-dark-blue-400" : "text-gray-400 hover:text-gray-600"}`}
-                  onClick={() => setViewMode("individual")}
-                >
-                  Individual
-                </button>
+                {/* Group / Individual toggle */}
+                <div className="flex items-center gap-0.5 border border-gray-200 rounded-lg p-0.5 ml-1">
+                  <button
+                    type="button"
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                      viewMode === "grouped"
+                        ? "bg-gray-100 text-dark-blue-400"
+                        : "text-gray-400 hover:text-gray-600"
+                    }`}
+                    onClick={() => setViewMode("grouped")}
+                  >
+                    Group
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                      viewMode === "individual"
+                        ? "bg-gray-100 text-dark-blue-400"
+                        : "text-gray-400 hover:text-gray-600"
+                    }`}
+                    onClick={() => setViewMode("individual")}
+                  >
+                    Individual
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Content for both tabs — same layout, different data via filter */}
-            <TabsContent value="active" className="mt-4">
+            {/* Search bar (expandable) */}
+            {showSearch && (
+              <div className="mt-3">
+                <div className="relative max-w-sm">
+                  <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <Input
+                    className="pl-9 h-9 text-sm"
+                    placeholder="Search contracts..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Contract cards */}
+            <div className="mt-4">
               <ContractsView contracts={filtered} grouped={grouped} viewMode={viewMode} />
-            </TabsContent>
-            <TabsContent value="pending" className="mt-4">
-              <ContractsView contracts={filtered} grouped={grouped} viewMode={viewMode} />
-            </TabsContent>
-          </Tabs>
+            </div>
+          </div>
         </div>
       </div>
     </AuthenticatedRoute>
@@ -554,7 +761,6 @@ export default function MyContractsPage() {
 
 function ContractsView({
   contracts,
-  grouped,
   viewMode,
 }: {
   contracts: Contract[]
@@ -573,9 +779,9 @@ function ContractsView({
 
   if (viewMode === "grouped") {
     return (
-      <div className="space-y-4">
-        {grouped.map((group) => (
-          <GroupCard key={group.groupName} group={group} />
+      <div className="space-y-3">
+        {contracts.map((contract) => (
+          <ContractCard key={contract.id} contract={contract} />
         ))}
       </div>
     )
@@ -590,9 +796,9 @@ function ContractsView({
             <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Type</th>
             <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Talent</th>
             <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Status</th>
-            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Rate</th>
-            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Next Milestone</th>
-            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Updated</th>
+            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Total Hours</th>
+            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Progress</th>
+            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Last Activity</th>
             <th className="text-left text-xs font-medium text-gray-500 px-4 py-3"></th>
           </tr>
         </thead>
@@ -606,89 +812,152 @@ function ContractsView({
   )
 }
 
-function GroupCard({
-  group,
-}: {
-  group: { groupName: string; type: ContractType; contracts: Contract[] }
-}) {
-  const TypeIcon = typeIcons[group.type]
-  const activeCount = group.contracts.filter((c) => c.status === "Active").length
-  const allMembers = group.contracts.map((c) => ({ name: c.talentName, avatar: c.talentAvatar }))
-
-  return (
-    <div className="space-y-3">
-      {/* Group label */}
-      <div className="flex items-center gap-3 px-1">
-        <div className="size-8 rounded-lg bg-primary-50 flex items-center justify-center flex-none">
-          <TypeIcon className="size-4 text-primary-500" />
-        </div>
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-dark-blue-400">{group.groupName}</h3>
-          <Badge
-            className="rounded-full text-[10px] capitalize"
-            size="sm"
-            visual={typeColors[group.type] as any}
-          >
-            {typeLabels[group.type]}
-          </Badge>
-          <span className="text-xs text-gray-400">
-            {group.contracts.length} contract{group.contracts.length !== 1 ? "s" : ""} &middot; {activeCount} active
-          </span>
-        </div>
-        <AvatarGroup size="xs" max={4} excess className="ml-auto">
-          {allMembers.map((member, i) => (
-            <Avatar key={i} size="xs">
-              <AvatarImage src={member.avatar} alt={member.name} />
-              <AvatarFallback>{member.name[0]}</AvatarFallback>
-            </Avatar>
-          ))}
-        </AvatarGroup>
-      </div>
-
-      {/* Flat contract cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {group.contracts.map((contract) => (
-          <ContractCard key={contract.id} contract={contract} />
-        ))}
-      </div>
-    </div>
-  )
-}
 
 function ContractCard({ contract }: { contract: Contract }) {
+  const TypeIcon = typeIcons[contract.type]
+  const isProject = contract.type === "project"
+  const isService = contract.type === "service"
+  const isTeam = contract.type === "team"
+  const isIndividual = contract.type === "individual"
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3 min-w-0">
-          <Avatar size="sm">
-            <AvatarImage src={contract.talentAvatar} alt={contract.talentName} />
-            <AvatarFallback>{contract.talentName[0]}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-dark-blue-400 truncate">{contract.title}</p>
-            <p className="text-xs text-gray-500">{contract.talentName}</p>
+    <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-sm transition-shadow">
+      {/* Row 1: Title + Status + Actions */}
+      <div className="flex items-start justify-between gap-4">
+        <h3 className="text-base font-semibold text-dark-blue-400 leading-snug">
+          {contract.title}
+        </h3>
+        <div className="flex items-center gap-3 flex-none">
+          <span className={`text-xs font-medium px-3 py-1 rounded-full border ${statusColors[contract.status]}`}>
+            {contract.status}
+          </span>
+          <Button variant="outlined" visual="gray" size="sm" className="flex-none">
+            <Plus className="size-4 mr-1.5" />
+            Add Team Member
+          </Button>
+          <ContractActions contract={contract} />
+        </div>
+      </div>
+
+      {/* Row 2: Subtitle — varies by type */}
+      <div className="flex items-center gap-2.5 mt-1.5">
+        {/* Project & Service: Type badge + Billing cycle */}
+        {(isProject || isService) && (
+          <>
+            <Badge visual={typeColors[contract.type] as any} size="sm" className="rounded-full capitalize gap-1">
+              <TypeIcon className="size-3.5" />
+              {typeLabels[contract.type]}
+            </Badge>
+            <span className="text-sm text-gray-400">
+              Billing cycle · <span className="font-semibold text-dark-blue-400">{contract.billingCycle}</span>
+            </span>
+          </>
+        )}
+        {/* Team: Billing Cycle only (no type badge) */}
+        {isTeam && (
+          <span className="text-sm text-gray-400">
+            Billing Cycle · <span className="font-semibold text-dark-blue-400">{contract.billingCycle}</span>
+          </span>
+        )}
+        {/* Individual: Rate + weekly limit */}
+        {isIndividual && (
+          <span className="text-sm text-gray-400">
+            Rate · <span className="font-semibold text-dark-blue-400">{contract.rate}</span>
+            {contract.weeklyLimit && (
+              <span className="ml-1.5 text-gray-400">{contract.weeklyLimit}</span>
+            )}
+          </span>
+        )}
+      </div>
+
+      {/* Row 3: People + Time Stats */}
+      <div className="flex items-center justify-between mt-5">
+        {/* Left side: Avatars or single talent */}
+        {isIndividual ? (
+          /* Individual: single avatar with name & role */
+          <div className="flex items-center gap-3">
+            <Avatar size="md">
+              <AvatarImage src={contract.talentAvatar} alt={contract.talentName} />
+              <AvatarFallback>{contract.talentName[0]}</AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="text-sm font-semibold text-dark-blue-400">
+                {contract.talentName}{" "}
+                {contract.talentUsername && (
+                  <span className="font-normal text-gray-400">{contract.talentUsername}</span>
+                )}
+              </p>
+              {contract.talentRole && (
+                <p className="text-xs text-gray-400">{contract.talentRole}</p>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* Project / Service / Team: avatar group */
+          <AvatarGroup size="md" max={3} excess>
+            {contract.teamMembers.map((member, i) => (
+              <Avatar key={i} size="md">
+                <AvatarImage src={member.avatar} alt={member.name} />
+                <AvatarFallback>{member.name[0]}</AvatarFallback>
+              </Avatar>
+            ))}
+          </AvatarGroup>
+        )}
+
+        {/* Right side: Time stats */}
+        <div className="flex items-center gap-6">
+          <div className="text-right">
+            <p className="text-xs text-gray-400">Today</p>
+            <p className="text-sm font-bold text-dark-blue-400">{contract.hoursToday} <span className="font-normal text-gray-400">Logged</span></p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-400">This Week</p>
+            <p className="text-sm font-bold text-dark-blue-400">{contract.hoursThisWeek} <span className="font-normal text-gray-400">Logged</span></p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-400">This Month</p>
+            <p className="text-sm font-bold text-dark-blue-400">{contract.hoursThisMonth} <span className="font-normal text-gray-400">Logged</span></p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-400">Total Hours</p>
+            <p className="text-sm font-bold text-dark-blue-400">{contract.hoursTotal} <span className="font-normal text-gray-400">Logged</span></p>
           </div>
         </div>
-        <ContractActions contract={contract} />
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
-        <span className={`text-[10px] px-2 py-0.5 rounded-full border ${statusColors[contract.status]}`}>
-          {contract.status}
-        </span>
-        <span className="text-xs text-gray-400">{contract.rate} &middot; {contract.schedule}</span>
-      </div>
-
-      <div className="mt-3 text-xs text-gray-500">
-        {contract.nextMilestone}
-      </div>
-
-      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
-        <span>{contract.duration}</span>
-        <span className="flex items-center gap-1">
-          <Clock className="size-3" />
-          {contract.updatedAt}
-        </span>
+      {/* Row 4: Date range + (optional progress bar) + Last activity */}
+      <div className="flex items-center justify-between mt-5">
+        <div className="flex items-center gap-3 min-w-0 flex-auto mr-6">
+          <div className="flex items-center gap-1.5 text-xs text-gray-400 flex-none">
+            <Calendar className="size-3.5" />
+            <span>
+              {contract.startDate}
+              {contract.startDate && " - "}
+              {contract.endDate || "Present"}
+            </span>
+          </div>
+          {/* Progress bar: only for project type (has fixed end date) */}
+          {isProject && contract.progress > 0 && (
+            <div className="flex items-center gap-2.5 flex-auto max-w-[180px]">
+              <div className="relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full bg-success-500"
+                  style={{ width: `${Math.min(contract.progress, 100)}%` }}
+                />
+                {contract.progress < 100 && (
+                  <div
+                    className="absolute inset-y-0 rounded-r-full bg-primary-500"
+                    style={{ left: `${contract.progress}%`, width: `${Math.min(20, 100 - contract.progress)}%` }}
+                  />
+                )}
+              </div>
+              <span className="text-xs text-gray-500 flex-none">{contract.progress}%</span>
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-gray-400 flex-none">
+          Last activity <span className="font-semibold text-dark-blue-400">{contract.lastActivity}</span>
+        </p>
       </div>
     </div>
   )
@@ -699,7 +968,7 @@ function ContractRow({ contract }: { contract: Contract }) {
     <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
       <td className="px-4 py-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-dark-blue-400 truncate max-w-[200px]">{contract.title}</p>
+          <p className="text-sm font-medium text-dark-blue-400 truncate max-w-[240px]">{contract.title}</p>
           <p className="text-xs text-gray-400">{contract.groupName}</p>
         </div>
       </td>
@@ -727,13 +996,16 @@ function ContractRow({ contract }: { contract: Contract }) {
         </span>
       </td>
       <td className="px-4 py-3">
-        <span className="text-sm text-dark-blue-400">{contract.rate}</span>
+        <span className="text-sm text-dark-blue-400">{contract.hoursTotal}</span>
       </td>
       <td className="px-4 py-3">
-        <span className="text-xs text-gray-500">{contract.nextMilestone}</span>
+        <div className="flex items-center gap-2 min-w-[100px]">
+          <Progress value={contract.progress} bubble={false} className="h-1.5 flex-auto" />
+          <span className="text-xs text-gray-500">{contract.progress}%</span>
+        </div>
       </td>
       <td className="px-4 py-3">
-        <span className="text-xs text-gray-400">{contract.updatedAt}</span>
+        <span className="text-xs text-gray-400">{contract.lastActivity}</span>
       </td>
       <td className="px-4 py-3">
         <ContractActions contract={contract} />
