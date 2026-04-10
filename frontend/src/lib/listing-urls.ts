@@ -42,11 +42,12 @@ export function talentProfileUrl(username: string): string {
 }
 
 /**
- * Team detail page. The page does not yet exist in the app — this helper
- * defines the canonical route so all cards link consistently once it lands.
+ * Team profile page. Mirrors the talent-profile pattern by using a query
+ * param so all team cards in the master ListingCard component land on the
+ * same route.
  */
 export function teamDetailsUrl(id: string): string {
-  return `/team-details/${id}`
+  return `/team-profile?teamId=${encodeURIComponent(id)}`
 }
 
 /**
