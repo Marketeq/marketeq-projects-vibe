@@ -94,7 +94,10 @@ export class UserSelfController {
     // log a warning and return a null URL so the caller can proceed without
     // blocking onboarding. Production deployments are expected to configure
     // these env vars, in which case the happy path below runs.
-    if (!this.configService.get<string>('CLOUDFLARE_R2_BUCKET')) {
+    const bucket =
+      this.configService.get<string>('CLOUDFLARE_R2_BUCKET') ||
+      this.configService.get<string>('R2_BUCKET');
+    if (!bucket) {
       this.logger.warn(
         'Skipping avatar upload: CLOUDFLARE_R2_BUCKET is not configured',
       );
