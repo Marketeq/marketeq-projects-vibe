@@ -385,7 +385,42 @@ function LineClampText({
   )
 }
 
-export default function TalentProfilePage() {
+// ────────────────────────────────────────────────────────────────────────────
+// Team profile mock. The team profile page is a copy of the talent profile
+// page; only the hero and team-specific sections are overridden below.
+// ────────────────────────────────────────────────────────────────────────────
+const TEAM = {
+  name: "V6 Group",
+  tagline: "Development Team",
+  headline: "Headline text will go here talking about the company identity.",
+  skills: [
+    "Typescript",
+    "React.js",
+    "Tailwind CSS",
+    "Next.js",
+    "Redux",
+    "Wireframing",
+    "Sketch App",
+    "Azure RP",
+    "UX Pin",
+    "Wireframing",
+  ],
+  rateMin: 85,
+  rateMax: 120,
+  clientSuccessRating: 0.95,
+  totalProjectsCompleted: 1450,
+  averageRating: 4.5,
+  repeatHireRate: 0.85,
+  featuredMembers: [
+    { name: "Username", role: "Full-stack Developer", photo: "/man.jpg" },
+    { name: "Username", role: "Full-stack Developer", photo: "/woman.jpg" },
+    { name: "Username", role: "Full-stack Developer", photo: "/man.jpg" },
+  ],
+  otherMemberAvatars: ["/man.jpg", "/woman.jpg", "/man.jpg", "/woman.jpg"],
+  extraMemberCount: 24,
+}
+
+export default function TeamProfilePage() {
   return (
     <Suspense>
       <Default />
@@ -396,7 +431,9 @@ export default function TalentProfilePage() {
 function Default() {
   const { user } = useAuth()
   const searchParams = useSearchParams()
-  const usernameParam = searchParams.get("username")
+  // Team profile loads placeholder talent data so the existing scaffolding
+  // renders. Team-specific sections below override the talent rendering.
+  const usernameParam = searchParams.get("username") ?? "htorres.creative"
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
 
@@ -782,237 +819,145 @@ function Default() {
             ) : (
             <>
             <div className="p-10 flex items-start gap-x-10">
-              <Avatar className="size-[318px]">
-                <AvatarImage src={profile?.avatarUrl ?? "/man.jpg"} alt={profile?.firstName ?? "User"} />
-                <AvatarFallback>{profile?.firstName?.charAt(0) ?? ""}</AvatarFallback>
-              </Avatar>
-
               <div className="flex-auto">
-                <div className="flex items-start">
-                  <div className="flex-auto">
-                    <h1 className="text-[28px] leading-[34px] font-bold text-dark-blue-400">
-                      {profile?.firstName ?? "Talent"}{profile?.lastName ? ` ${profile.lastName}` : ""}
-                      {profile?.username && (
-                        <span className="text-[26px] font-extralight">
-                          {" "}@{profile.username}
-                        </span>
-                      )}
+                <div className="flex items-center gap-x-3">
+                  <Avatar className="size-[42px]">
+                    <AvatarImage src="/man.jpg" alt={TEAM.name} />
+                    <AvatarFallback>V6</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h1 className="text-[22px] leading-7 font-bold text-dark-blue-400">
+                      {TEAM.name}
                     </h1>
-                    <div className="flex items-center gap-x-1 mt-1">
-                      <h2 className="text-[22px] leading-[27px] text-dark-blue-400 font-medium">
-                        {((profile as any)?.jobTitles?.find((j: any) => j.isDefault)?.jobTitle) ||
-                          (profile as any)?.jobTitles?.[0]?.jobTitle ||
-                          profile?.role ||
-                          "Unknown"}
-                      </h2>
-                      {isEditMode && isOwnProfile && (
-                        <IconButton
-                          className="rounded-full text-gray-500 hover:text-gray-800"
-                          variant="ghost"
-                          visual="gray"
-                          onClick={() => setJobTitleOpen(true)}
-                        >
-                          <Edit03 className="size-4" />
-                        </IconButton>
-                      )}
-                    </div>
-
-                    <p className="mt-2 text-sm leading-none text-gray-500">
-                      {(() => {
-                        const dates: Date[] = []
-                        const endDates: Date[] = []
-                        // Gather start/end dates from work experience
-                        profile?.experience?.forEach((e) => {
-                          if (e.startDate) dates.push(new Date(e.startDate))
-                          if (e.endDate) endDates.push(new Date(e.endDate))
-                          else endDates.push(new Date()) // present
-                        })
-                        // TODO: gather start/end dates from project history when available
-                        if (dates.length === 0) return ""
-                        const earliest = dates.reduce((a, b) => (a < b ? a : b))
-                        const latest = endDates.reduce((a, b) => (a > b ? a : b))
-                        const months = (latest.getFullYear() - earliest.getFullYear()) * 12 + (latest.getMonth() - earliest.getMonth())
-                        if (months < 12) return `${Math.max(1, months)} month${months === 1 ? "" : "s"} of experience`
-                        const years = Math.round(months / 12)
-                        return `${years} year${years === 1 ? "" : "s"} of experience`
-                      })()}
+                    <p className="text-sm text-gray-500 font-light leading-none mt-1">
+                      {TEAM.tagline}
                     </p>
-
-                    <div className="mt-6 flex items-center gap-x-3">
-                      <Badge
-                        className="bg-primary-500 text-white rounded-[4px]"
-                        visual="primary"
-                      >
-                        <Star className="size-3 fill-white" /> 4.5
-                      </Badge>
-
-                      <span className="text-xs leading-none text-gray-500">
-                        24 reviews
-                      </span>
-                    </div>
-
-                    <div className="mt-6">
-                      <div className="flex items-center gap-x-[9px]">
-                        <MapPin className="size-4" />
-                        <p className="text-sm leading-none font-medium text-dark-blue-400">
-                          {profile?.location ?? "Location not set"}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center mt-3 gap-x-2">
-                        <Clock className="size-4" />
-                        <p className="text-sm leading-none font-extralight text-dark-blue-400">
-                          {isEditMode && isOwnProfile ? "You are" : `${profile?.firstName ?? "Talent"} is`}{" "}
-                          currently{" "}
-                          <span className="text-success-600 font-medium">
-                            {profile?.availability ?? "available"}
-                          </span>{" "}
-                          for hire
-                        </p>
-                        {isEditMode && isOwnProfile && (
-                          <IconButton
-                            className="rounded-full text-gray-500 hover:text-gray-800"
-                            variant="ghost"
-                            visual="gray"
-                            onClick={() => setAvailabilityOpen(true)}
-                          >
-                            <Edit03 className="size-4" />
-                          </IconButton>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-x-3">
-                    {isOwnProfile ? (
-                      <>
-                        {isEditMode ? (
-                          <Button
-                            variant="outlined"
-                            visual="gray"
-                            onClick={() => setIsEditMode(false)}
-                          >
-                            <Eye className="size-[15px]" />
-                            View as Client
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outlined"
-                            visual="gray"
-                            onClick={() => setIsEditMode(true)}
-                          >
-                            <Edit03 className="size-[15px]" />
-                            Edit Profile
-                          </Button>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <TooltipProvider delayDuration={0}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button size="md">
-                                <Plus className="size-[15px]" />
-                                Hire Me
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent
-                              visual="white"
-                              size="md"
-                              className="group text-gray-700 p-6 max-w-[344px] border border-gray-200 shadow-[0px_24px_48px_-12px_rgba(16,24,40,.18)]"
-                              sideOffset={14}
-                              side="bottom"
-                            >
-                              <div className="flex items-center mt-3 gap-x-2">
-                                <Clock className="size-4" />
-                                <p className="text-sm leading-none font-extralight text-dark-blue-400">
-                                  {profile?.firstName ?? "This talent"}{" "}
-                                  is currently{" "}
-                                  <span className={`font-medium ${profile?.availability === "unavailable" ? "text-error-600" : "text-success-600"}`}>
-                                    {profile?.availability === "unavailable" ? "not available" : "available"}
-                                  </span>{" "}
-                                  for hire
-                                </p>
-                              </div>
-
-                              <Button
-                                className="mt-3 group"
-                                size="md"
-                                variant="link"
-                              >
-                                View similar talent{" "}
-                                <ArrowRight className="size-3 transition duration-300 group-hover:translate-x-[4px]" />
-                              </Button>
-
-                              <span className="absolute inline-block size-4 border-b border-r border-gray-200 bg-white rotate-45 group-data-[side=bottom]:border-r-0 group-data-[side=bottom]:border-b-0 group-data-[side=bottom]:border-l group-data-[side=bottom]:border-t inset-x-0 mx-auto group-data-[side=top]:-bottom-2 group-data-[side=bottom]:-top-2" />
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-
-                        <SaveButton />
-                      </>
-                    )}
-
-                    <IconButton
-                      className="text-gray-500"
-                      variant="outlined"
-                      visual="gray"
-                      size="md"
-                    >
-                      <Share06 className="size-[20px]" />
-                    </IconButton>
                   </div>
                 </div>
 
-                <div className="mt-[54px]">
-                  <h1 className="text-sm font-bold leading-none text-dark-blue-400">
-                    What I do
-                  </h1>
+                <h2 className="mt-6 text-[34px] leading-[40px] font-bold text-dark-blue-400 max-w-[440px]">
+                  {TEAM.headline}
+                </h2>
 
-                  <div className="flex items-start mt-3 gap-x-3">
-                    <div className="flex gap-3 flex-wrap">
-                      <ShowMoreLessRoot>
-                        <ShowMoreLess
-                          trigger={(extraChildrenCount) => (
-                            <Badge
-                              className="text-gray-700 cursor-pointer"
-                              visual="gray"
-                              size="lg"
-                              onClick={() => {
-                                setActiveTab("Skills")
-                                setTimeout(() => {
-                                  const el = document.getElementById("skills")
-                                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-                                }, 100)
-                              }}
-                            >
-                              <Plus2 className="h-3 w-3" />{" "}
-                              {extraChildrenCount} more...
-                            </Badge>
-                          )}
-                          max={5}
-                        >
-                          {(profile?.skills && profile.skills.length > 0)
-                            ? profile.skills.map((skill) => (
-                                <Badge
-                                  key={skill.id}
-                                  className="text-gray-700"
-                                  visual="gray"
-                                  size="lg"
-                                >
-                                  {skill.name}
-                                </Badge>
-                              ))
-                            : (
-                              <span className="text-sm text-gray-400">
-                                No skills added yet
-                              </span>
-                            )
-                          }
-                        </ShowMoreLess>
-                      </ShowMoreLessRoot>
-                    </div>
+                <div className="mt-6 flex flex-wrap gap-2 max-w-[520px]">
+                  {TEAM.skills.map((skill, i) => (
+                    <Badge
+                      key={`${skill}-${i}`}
+                      visual="gray"
+                      size="lg"
+                      className="text-gray-700"
+                    >
+                      {skill}
+                    </Badge>
+                  ))}
+                </div>
+
+                <div className="mt-6 flex items-center gap-x-3">
+                  <Button size="md">
+                    <Plus className="size-[15px]" />
+                    Join Team
+                  </Button>
+                  <SaveButton />
+                  <IconButton
+                    className="text-gray-500"
+                    variant="outlined"
+                    visual="gray"
+                    size="md"
+                  >
+                    <Share06 className="size-[20px]" />
+                  </IconButton>
+                </div>
+              </div>
+
+              <div className="shrink-0 w-[380px] relative h-[320px]">
+                <div className="absolute top-0 right-4">
+                  <div className="relative">
+                    <Avatar className="size-[150px] border-4 border-white shadow-lg">
+                      <AvatarImage
+                        src={TEAM.featuredMembers[0].photo}
+                        alt={TEAM.featuredMembers[0].name}
+                      />
+                      <AvatarFallback>M</AvatarFallback>
+                    </Avatar>
+                    <Badge
+                      visual="primary"
+                      className="absolute -top-1 right-0 bg-dark-blue-400 text-white rounded-full border-none"
+                    >
+                      <Star className="size-3 fill-primary-500 text-primary-500" />
+                      All Star
+                    </Badge>
                   </div>
+                  <div className="mt-2 text-center">
+                    <p className="text-xs font-semibold text-dark-blue-400">
+                      {TEAM.featuredMembers[0].name}
+                    </p>
+                    <p className="text-[10px] font-light text-gray-500">
+                      {TEAM.featuredMembers[0].role}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="absolute top-[70px] right-0">
+                  <div className="relative">
+                    <Avatar className="size-[80px] border-4 border-white shadow-lg">
+                      <AvatarImage
+                        src={TEAM.featuredMembers[1].photo}
+                        alt={TEAM.featuredMembers[1].name}
+                      />
+                      <AvatarFallback>M</AvatarFallback>
+                    </Avatar>
+                    <Badge
+                      visual="primary"
+                      className="absolute -top-1 -right-1 bg-dark-blue-400 text-white rounded-full border-none text-[9px]"
+                    >
+                      <Star className="size-2.5 fill-primary-500 text-primary-500" />
+                      All Star
+                    </Badge>
+                  </div>
+                  <div className="mt-1 text-center">
+                    <p className="text-[10px] font-semibold text-dark-blue-400">
+                      {TEAM.featuredMembers[1].name}
+                    </p>
+                    <p className="text-[9px] font-light text-gray-500">
+                      {TEAM.featuredMembers[1].role}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="absolute top-[170px] left-8">
+                  <Avatar className="size-[80px] border-4 border-white shadow-lg">
+                    <AvatarImage
+                      src={TEAM.featuredMembers[2].photo}
+                      alt={TEAM.featuredMembers[2].name}
+                    />
+                    <AvatarFallback>M</AvatarFallback>
+                  </Avatar>
+                  <div className="mt-1 text-center">
+                    <p className="text-[10px] font-semibold text-dark-blue-400">
+                      {TEAM.featuredMembers[2].name}
+                    </p>
+                    <p className="text-[9px] font-light text-gray-500">
+                      {TEAM.featuredMembers[2].role}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="absolute bottom-4 right-0 flex items-center gap-x-2">
+                  <AvatarGroup max={4} size="sm">
+                    {TEAM.otherMemberAvatars.map((src, i) => (
+                      <Avatar
+                        key={i}
+                        size="sm"
+                        className="border-2 border-white"
+                      >
+                        <AvatarImage src={src} alt="Member" />
+                        <AvatarFallback>·</AvatarFallback>
+                      </Avatar>
+                    ))}
+                  </AvatarGroup>
+                  <span className="text-[10px] font-medium text-gray-500">
+                    {TEAM.extraMemberCount} more team members
+                  </span>
                 </div>
               </div>
             </div>
@@ -1066,12 +1011,11 @@ function Default() {
               </div>
               <div className="flex gap-x-2 justify-center items-center">
                 <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Member since
+                  Average rating
                 </span>
-                <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  {profile?.createdAt
-                    ? new Date(profile.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
-                    : "\u2014"}
+                <span className="inline-flex items-center gap-x-1 text-sm font-bold leading-none text-dark-blue-400">
+                  <Star className="size-3 fill-primary-500 text-primary-500" />
+                  {TEAM.averageRating}
                 </span>
               </div>
               <div className="flex gap-x-2 justify-center items-center">
