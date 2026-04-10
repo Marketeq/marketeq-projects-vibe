@@ -3,9 +3,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/api-gateway/package*.json ./apps/api-gateway/
 COPY shared/ ./shared/
-RUN npm install --legacy-peer-deps
+RUN npm ci
 COPY . .
-RUN npm run build -w apps/api-gateway
+RUN npx nest build api-gateway
 
 FROM node:20-alpine
 WORKDIR /app

@@ -3,9 +3,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/user-service/package*.json ./apps/user-service/
 COPY shared/ ./shared/
-RUN npm install --legacy-peer-deps
+RUN npm ci
 COPY . .
-RUN npm run build -w apps/user-service
+RUN npx nest build user-service
 
 FROM node:20-alpine
 WORKDIR /app

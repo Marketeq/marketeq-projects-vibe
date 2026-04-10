@@ -3,9 +3,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/earnings-service/package*.json ./apps/earnings-service/
 COPY shared/ ./shared/
-RUN npm install --legacy-peer-deps
+RUN npm ci
 COPY . .
-RUN npm run build -w apps/earnings-service
+RUN npx nest build earnings-service
 
 FROM node:20-alpine
 WORKDIR /app
