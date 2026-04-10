@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Clock,
   DollarSign,
+  MarkerPin02,
   Plus,
   Sliders02,
   Sliders04,
