@@ -2261,28 +2261,14 @@ const ShowcaseYourTalent = ({
                                 setIsJobTitleOpen(false)
                               }
 
-                              if (isKnownSuggestion) {
-                                applyValue()
-                                return
-                              }
+                              applyValue()
 
-                              void (async () => {
-                                const accepted = await submitAutocompleteValue(
+                              if (!isKnownSuggestion) {
+                                void submitAutocompleteValue(
                                   "job_titles",
                                   finalValue
                                 )
-                                if (!accepted) {
-                                  setError("recentJobTitle", {
-                                    type: "manual",
-                                    message:
-                                      "This value is not a valid job title suggestion for this field.",
-                                  })
-                                  setJobTitleQuery("")
-                                  setIsJobTitleOpen(false)
-                                  return
-                                }
-                                applyValue()
-                              })()
+                              }
                             }}
                             invalid={hookFormHasError({
                               errors,
