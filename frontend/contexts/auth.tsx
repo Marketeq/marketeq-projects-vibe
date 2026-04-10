@@ -121,6 +121,14 @@ function useProvideAuth() {
             response?.data?.user ?? response?.data?.data?.user ?? response?.data
 
           if (nextUser && typeof nextUser === "object") {
+            // Merge localStorage onboarding flag in case the API didn't persist it
+            if (
+              !nextUser.onboardingDismissed &&
+              typeof window !== "undefined" &&
+              window.localStorage.getItem("marketeq-onboarding-dismissed") === "true"
+            ) {
+              nextUser.onboardingDismissed = true
+            }
             setUser(nextUser)
           }
         }
@@ -154,6 +162,7 @@ function useProvideAuth() {
       document.cookie =
         "access_token=; Path=/; Max-Age=0; SameSite=None; Secure"
       document.cookie = "accessToken=; Path=/; Max-Age=0; SameSite=None; Secure"
+      try { window.localStorage.removeItem("marketeq-onboarding-dismissed") } catch {}
     } catch (err: any) {
       toast({
         title:
