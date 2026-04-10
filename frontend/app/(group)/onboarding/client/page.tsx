@@ -194,7 +194,7 @@ const deriveClientProfileNames = (
   }
 }
 
-const isNonEmptyString = (value?: string | null) =>
+const isNonEmptyString = (value?: string | null): value is string =>
   Boolean(value && value.trim().length > 0)
 
 const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value)
@@ -204,7 +204,20 @@ const getClientPayloadValidationErrors = (data: CreateClientType) => {
 
   if (!isNonEmptyString(data.firstName)) errors.push("First name is required.")
   if (!isNonEmptyString(data.lastName)) errors.push("Last name is required.")
-  if (!isNonEmptyString(data.username)) errors.push("Username must be at least 3 characters.")
+  // Username is optional; only validate format when the user supplied one.
+  // The step-5 schema allows an empty username, so the final payload must
+  // not hard-require it — that would contradict a user who skipped that step.
+  const rawUsername = data.username
+  if (isNonEmptyString(rawUsername)) {
+    const u = rawUsername.trim()
+    if (u.length < 3 || u.length > 24) {
+      errors.push("Username must be between 3 and 24 characters.")
+    } else if (!/^[a-z][a-z0-9_]*$/.test(u)) {
+      errors.push(
+        "Username must start with a letter and contain only lowercase letters, numbers, and underscores."
+      )
+    }
+  }
   if (!isNonEmptyString(data.teamName)) errors.push("Team/company name is required.")
   if (!isNonEmptyString(data.role)) errors.push("Role/job title is required.")
   if (!isNonEmptyString(data.industry)) errors.push("Industry is required.")
@@ -1402,24 +1415,37 @@ const CreateYourUsername = ({
     let cancelled = false
     setSuggestionsChecking(true)
 
-    Promise.all(
-      usernameSuggestions.map((s) =>
-        AuthAPI.CheckUsername({ username: s })
-          .then((res) => ({
-            name: s,
-            available: res?.status === 200 && res?.data?.available === true,
-          }))
-          .catch(() => ({ name: s, available: false }))
-      )
-    ).then((results) => {
-      if (cancelled) return
+    // Cap in-flight availability checks so a large suggestion list doesn't
+    // produce a burst of parallel requests against the auth service. Three
+    // in flight at a time is a reasonable balance between latency and load.
+    const MAX_CONCURRENCY = 3
+    const run = async () => {
       const map: Record<string, boolean> = {}
-      results.forEach((r) => {
-        map[r.name] = r.available
-      })
+      let cursor = 0
+      const worker = async () => {
+        while (!cancelled) {
+          const index = cursor++
+          if (index >= usernameSuggestions.length) return
+          const name = usernameSuggestions[index]
+          try {
+            const res = await AuthAPI.CheckUsername({ username: name })
+            map[name] =
+              res?.status === 200 && res?.data?.available === true
+          } catch {
+            map[name] = false
+          }
+        }
+      }
+      const workers = Array.from(
+        { length: Math.min(MAX_CONCURRENCY, usernameSuggestions.length) },
+        () => worker()
+      )
+      await Promise.all(workers)
+      if (cancelled) return
       setCheckedSuggestions(map)
       setSuggestionsChecking(false)
-    })
+    }
+    run()
 
     return () => {
       cancelled = true

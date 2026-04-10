@@ -31,6 +31,60 @@ const ALLOWED_AVATAR_MIME_TYPES = new Set([
 ]);
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
+/**
+ * Inspect the first few bytes of an uploaded buffer against the well-known
+ * image format signatures and return the detected mime type, or null if the
+ * buffer does not match any supported image format. This is the server-side
+ * cross-check of the client-supplied mimetype so a request that claims to
+ * be `image/png` but actually contains, say, a PHP payload is rejected.
+ */
+function detectImageMimeType(buffer: Buffer): string | null {
+  if (!buffer || buffer.length < 12) return null;
+
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+  // GIF: "GIF87a" or "GIF89a"
+  if (
+    buffer[0] === 0x47 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x38 &&
+    (buffer[4] === 0x37 || buffer[4] === 0x39) &&
+    buffer[5] === 0x61
+  ) {
+    return 'image/gif';
+  }
+  // WEBP: "RIFF" ... "WEBP"
+  if (
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer[8] === 0x57 &&
+    buffer[9] === 0x45 &&
+    buffer[10] === 0x42 &&
+    buffer[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+  return null;
+}
+
 @ApiTags('User')
 @Controller('user')
 export class UserSelfController {
@@ -84,11 +138,24 @@ export class UserSelfController {
     if (!file) {
       throw new BadRequestException('Avatar file is required');
     }
+    // Do not trust `file.mimetype` — it is client-controlled. Re-derive the
+    // real format from the file's magic bytes and reject anything that does
+    // not match one of the allowed image signatures. The declared mimetype
+    // is still used for a fast reject before reading bytes.
     if (!ALLOWED_AVATAR_MIME_TYPES.has(file.mimetype)) {
       throw new BadRequestException(
         'Avatar must be a JPEG, PNG, WEBP, or GIF image',
       );
     }
+    const detectedMimeType = detectImageMimeType(file.buffer);
+    if (!detectedMimeType || !ALLOWED_AVATAR_MIME_TYPES.has(detectedMimeType)) {
+      throw new BadRequestException(
+        'Avatar file contents do not match a supported image format',
+      );
+    }
+    // From here on, treat the detected type as authoritative — overwrite the
+    // multer-reported mimetype so downstream storage uses what the bytes say.
+    file.mimetype = detectedMimeType;
 
     // Storage is optional in local/dev environments: if R2 is not wired up we
     // log a warning and return a null URL so the caller can proceed without

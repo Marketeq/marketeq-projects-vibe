@@ -67,8 +67,15 @@ export class UserAvatarUploadController {
     })
 
     const headers: Record<string, string> = { ...form.getHeaders() }
-    if (req.headers.authorization) {
-      headers['authorization'] = req.headers.authorization as string
+    // Match the catch-all proxy's auth-forwarding rules: prefer an explicit
+    // Authorization header but synthesize one from the access_token cookie
+    // so cookie-authenticated requests still reach the downstream service.
+    const authHeader = req.headers.authorization as string | undefined
+    const cookieToken = (req as any).cookies?.access_token as string | undefined
+    if (authHeader) {
+      headers['authorization'] = authHeader
+    } else if (cookieToken) {
+      headers['authorization'] = `Bearer ${cookieToken}`
     }
     const user = (req as any).user
     if (user) {
