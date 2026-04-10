@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { SVGProps } from "react"
+import { usePathname } from "next/navigation"
 import data from "@/public/mock/projects.json"
 import { ONE_SECOND } from "@/utils/constants"
 import { cn, getId, getIsEmpty, getIsNotEmpty } from "@/utils/functions"
@@ -14,6 +15,8 @@ import {
   Briefcase,
   Check,
   ChevronLeft,
+  CoinStack,
+  CurrencyDollar,
   ChevronRight,
   Clock,
   FileCheck02,
@@ -153,6 +156,16 @@ export const WalletBold = ({
 }
 
 export const LeftSidebar = () => {
+  const pathname = usePathname()
+
+  const linkClass = (href: string) =>
+    cn(
+      "flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none px-3",
+      pathname === href || pathname?.startsWith(href + "/")
+        ? "bg-gray-100"
+        : "hover:bg-gray-100"
+    )
+
   return (
     <div className="w-[224px] shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r space-y-6 border-gray-200 p-[15px]">
       <div className="flex flex-col gap-y-2">
@@ -161,39 +174,32 @@ export const LeftSidebar = () => {
         </span>
 
         <div className="flex flex-col gap-y-1">
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/talent-dashboard"
-          >
-            <Home03 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
+          <NextLink className={linkClass("/talent-dashboard")} href="/talent-dashboard">
+            <Home03 className="size-[18px] text-dark-blue-400/50" />
             Home
           </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/find-jobs"
-          >
-            <Search className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
+          <NextLink className={linkClass("/find-jobs")} href="/find-jobs">
+            <Search className="size-[18px] text-dark-blue-400/50" />
             Find Jobs
           </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/my-listings"
-          >
-            <Briefcase className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
+          <NextLink className={linkClass("/my-listings")} href="/my-listings">
+            <Briefcase className="size-[18px] text-dark-blue-400/50" />
             My Projects
           </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/publish-project"
-          >
-            <Plus className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
+          <NextLink className={linkClass("/my-contracts")} href="/my-contracts">
+            <FileCheck02 className="size-[18px] text-dark-blue-400/50" />
+            My Contracts
+          </NextLink>
+          <NextLink className={linkClass("/publish-project")} href="/publish-project">
+            <Plus className="size-[18px] text-dark-blue-400/50" />
             Create a Project
           </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/stats"
-          >
-            <BarChartSquare02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
+          <NextLink className={linkClass("/transactions")} href="/transactions">
+            <CurrencyDollar className="size-[18px] text-dark-blue-400/50" />
+            Transactions
+          </NextLink>
+          <NextLink className={linkClass("/stats")} href="/stats">
+            <BarChartSquare02 className="size-[18px] text-dark-blue-400/50" />
             Stats & Trends
           </NextLink>
         </div>
@@ -205,38 +211,30 @@ export const LeftSidebar = () => {
         </span>
 
         <div className="flex flex-col gap-y-1">
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/talent-profile"
-          >
-            <UserCircle className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
+          <NextLink className={linkClass("/talent-profile")} href="/talent-profile">
+            <UserCircle className="size-[18px] text-dark-blue-400/50" />
             Profile
           </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/inbox"
-          >
-            <Mail01 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
+          <NextLink className={linkClass("/inbox")} href="/inbox">
+            <Mail01 className="size-[18px] text-dark-blue-400/50" />
             Inbox
             <Badge className="rounded-full ml-auto" size="md" visual="error">
               3
             </Badge>
           </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/notifications"
-          >
-            <AlertCircle className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
+          <NextLink className={linkClass("/notifications")} href="/notifications">
+            <AlertCircle className="size-[18px] text-dark-blue-400/50" />
             Notifications
             <Badge className="rounded-full ml-auto" size="md" visual="error">
               2
             </Badge>
           </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/settings"
-          >
-            <Settings02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
+          <NextLink className={linkClass("/billing")} href="/billing">
+            <CoinStack className="size-[18px] text-dark-blue-400/50" />
+            Billing
+          </NextLink>
+          <NextLink className={linkClass("/settings")} href="/settings">
+            <Settings02 className="size-[18px] text-dark-blue-400/50" />
             Settings
           </NextLink>
         </div>
