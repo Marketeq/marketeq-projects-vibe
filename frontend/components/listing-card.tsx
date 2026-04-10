@@ -15,10 +15,11 @@
  * implements the full grid layout with skills, rating, avatar, etc.
  */
 
-import { Briefcase, Clock, Edit03, Star, Users } from "@blend-metrics/icons"
+import { Briefcase, Clock, Edit03, MarkerPin02, Star, Users } from "@blend-metrics/icons"
+import { Badge } from "@/components/ui"
 import { Money } from "@/components/money"
-import NextImage from "@/components/next-image"
-import NextLink from "@/components/next-link"
+import { NextImage } from "@/components/next-image"
+import { NextLink } from "@/components/next-link"
 import {
   projectDetailsUrl,
   serviceDetailsUrl,
@@ -101,10 +102,17 @@ interface TeamCardProps {
   kind: "team"
   id: string
   name: string
-  description?: string
-  mediaUrl?: string
-  memberCount?: number
+  handle?: string
+  tagline?: string
+  experience?: string
+  rate?: string
+  locations?: string
+  rating?: number
+  projectCount?: number
+  skills?: string[]
+  memberAvatars?: string[]
   href?: string
+  favoriteSlot?: React.ReactNode
 }
 
 export type ListingCardProps =
@@ -177,7 +185,7 @@ function ProjectListingCard({
         : projectDetailsUrl(id))
 
   return (
-    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+    <article className="h-full flex flex-col p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
       <NextLink
         href={computedHref}
         className="block focus-visible:outline-none group/card"
@@ -256,7 +264,7 @@ function ProjectListingCard({
         </div>
       </NextLink>
 
-      <div className="mt-5 flex items-end justify-between">
+      <div className="mt-auto pt-5 flex items-end justify-between">
         {avatarsSlot ?? (
           <AvatarGroup
             max={5}
@@ -297,57 +305,127 @@ function ProjectListingCard({
   )
 }
 
-/* ─── Team card (minimal) ─────────────────────────────────────────────── */
+/* ─── Team card (rich) ────────────────────────────────────────────────── */
 
 function TeamListingCard({
   id,
   name,
-  description,
-  mediaUrl,
-  memberCount,
+  handle,
+  tagline,
+  experience,
+  rate,
+  locations,
+  rating,
+  projectCount,
+  skills,
+  memberAvatars,
   href,
+  favoriteSlot,
 }: TeamCardProps) {
   const computedHref = href ?? teamDetailsUrl(id)
+  const avatars =
+    memberAvatars && memberAvatars.length > 0
+      ? memberAvatars
+      : ["/woman.jpg"]
 
   return (
-    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-      <NextLink
-        href={computedHref}
-        className="block focus-visible:outline-none"
-      >
-        <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-          {mediaUrl ? (
-            <NextImage
-              className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-              src={mediaUrl}
-              alt={name}
-              fill
-              sizes="33vw"
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
-              <Users className="size-10 text-gray-300" />
-            </div>
-          )}
-        </div>
-      </NextLink>
+    <article className="h-full flex flex-col p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white">
+      <div className="flex items-start justify-between">
+        <AvatarGroup
+          max={3}
+          size="md"
+          excess
+          excessClassName="border-gray-300 text-gray-500"
+        >
+          {avatars.map((src, i) => (
+            <Avatar
+              key={i}
+              size="md"
+              className="border-2 border-white hover:ring-0 active:ring-0"
+            >
+              <AvatarImage src={src} alt="Team member" />
+              <AvatarFallback>T</AvatarFallback>
+            </Avatar>
+          ))}
+        </AvatarGroup>
+        {favoriteSlot}
+      </div>
 
-      <div className="mt-3">
+      {rate && (
+        <div className="mt-5 flex items-center">
+          <span className="text-sm font-bold text-dark-blue-400 leading-none">
+            {rate}
+          </span>
+        </div>
+      )}
+
+      <div className="mt-5">
         <NextLink
           href={computedHref}
-          className="focus-visible:outline-none font-bold text-base leading-none text-dark-blue-400 hover:underline"
+          className="focus-visible:outline-none text-base leading-none text-dark-blue-400 font-bold hover:underline"
         >
           {name}
+          {handle && (
+            <span className="font-light text-gray-500"> {handle}</span>
+          )}
         </NextLink>
-        {typeof memberCount === "number" && (
-          <p className="mt-2 text-xs text-gray-500">
-            {memberCount} {memberCount === 1 ? "member" : "members"}
+
+        {tagline && (
+          <h3 className="mt-0.5 text-xs font-medium text-dark-blue-400 leading-none">
+            {tagline}
+          </h3>
+        )}
+
+        {experience && (
+          <p className="mt-2 text-[11px] font-light leading-none text-dark-blue-400">
+            {experience}
           </p>
         )}
-        {description && (
-          <p className="mt-3 text-sm leading-[1.4] font-extralight text-dark-blue-400 line-clamp-2">
-            {description}
-          </p>
+
+        {locations && (
+          <div className="mt-3.5 flex items-center gap-x-1">
+            <MarkerPin02 className="size-3 text-gray-500" />
+            <span className="leading-4 text-[10px] font-medium text-gray-500">
+              {locations}
+            </span>
+          </div>
+        )}
+
+        {(typeof rating === "number" || typeof projectCount === "number") && (
+          <div className="mt-3.5 flex items-center gap-x-2">
+            {typeof rating === "number" && (
+              <div className="flex items-center gap-x-2">
+                <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
+                  <div className="flex items-center gap-x-[3px]">
+                    {Array.from({ length: 5 }).map((_, k) => (
+                      <Star
+                        key={k}
+                        className="size-3 text-primary-500 fill-primary-500 shrink-0"
+                      />
+                    ))}
+                  </div>
+                </div>
+                <span className="text-xs font-semibold leading-none text-dark-blue-400">
+                  {rating.toFixed(1)}
+                </span>
+              </div>
+            )}
+            {typeof projectCount === "number" && (
+              <span className="text-xs font-semibold leading-none text-dark-blue-400">
+                {projectCount} {projectCount === 1 ? "Project" : "Projects"}
+              </span>
+            )}
+          </div>
+        )}
+
+        {skills && skills.length > 0 && (
+          <div className="mt-5 flex gap-2 flex-wrap">
+            {skills.map((skill) => (
+              <Badge key={skill} className="bg-transparent" visual="gray">
+                {skill}
+              </Badge>
+            ))}
+          </div>
         )}
       </div>
     </article>
