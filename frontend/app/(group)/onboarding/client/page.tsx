@@ -3219,7 +3219,10 @@ const IntroduceYourself = ({
     } else if (first instanceof File) {
       try {
         const response = await ClientAPI.UploadAvatar(first)
-        avatarUrl = response?.data?.url
+        // Backend returns `{ url: null }` when object storage is not
+        // configured (local/dev). In that case we keep going without
+        // setting an avatar instead of blocking the step.
+        avatarUrl = response?.data?.url ?? undefined
       } catch (error: any) {
         toast({
           title:

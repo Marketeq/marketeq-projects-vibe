@@ -4,12 +4,14 @@ import {
   Controller,
   Get,
   InternalServerErrorException,
+  Logger,
   Patch,
   Post,
   Req,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { CurrentUser } from '../decorators/current-user.decorator';
@@ -32,9 +34,12 @@ const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 @ApiTags('User')
 @Controller('user')
 export class UserSelfController {
+  private readonly logger = new Logger(UserSelfController.name);
+
   constructor(
     private readonly userService: UserService,
     private readonly r2Service: R2Service,
+    private readonly configService: ConfigService,
   ) {}
 
   @ApiOperation({ summary: 'Get current user' })
@@ -75,7 +80,7 @@ export class UserSelfController {
   async uploadAvatar(
     @CurrentUser() user: JwtUser,
     @UploadedFile() file?: Express.Multer.File,
-  ): Promise<{ url: string }> {
+  ): Promise<{ url: string | null }> {
     if (!file) {
       throw new BadRequestException('Avatar file is required');
     }
@@ -83,6 +88,17 @@ export class UserSelfController {
       throw new BadRequestException(
         'Avatar must be a JPEG, PNG, WEBP, or GIF image',
       );
+    }
+
+    // Storage is optional in local/dev environments: if R2 is not wired up we
+    // log a warning and return a null URL so the caller can proceed without
+    // blocking onboarding. Production deployments are expected to configure
+    // these env vars, in which case the happy path below runs.
+    if (!this.configService.get<string>('CLOUDFLARE_R2_BUCKET')) {
+      this.logger.warn(
+        'Skipping avatar upload: CLOUDFLARE_R2_BUCKET is not configured',
+      );
+      return { url: null };
     }
 
     const resolved = await this.userService.getUserByClaims(user);
