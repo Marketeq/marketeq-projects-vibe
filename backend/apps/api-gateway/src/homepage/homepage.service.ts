@@ -57,7 +57,7 @@ export class HomepageService {
     this.listingsUrl =
       config.get<string>('LISTINGS_SERVICE_URL') || 'http://localhost:3004';
     this.userServiceUrl =
-      config.get<string>('USER_SERVICE_URL') || 'http://localhost:3003';
+      config.get<string>('USER_SERVICE_URL') || 'http://localhost:3002';
     this.cmsUrl = config.get<string>('CMS_SERVICE_URL') || null;
     this.previewSecret = config.get<string>('PREVIEW_SECRET') || null;
     this.cacheTtl = config.get<number>('HOMEPAGE_CACHE_TTL') || 300;

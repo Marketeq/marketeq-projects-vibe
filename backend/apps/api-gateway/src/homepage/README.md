@@ -179,7 +179,7 @@ CMS Admin saves homepage → afterChange hook → RabbitMQ (homepage.saved)
 |---------|------|---------|
 | api-gateway | 4000 | Homepage endpoint, proxy |
 | listings-service | 3004 | `/v1/projects`, `/v1/services`, `/v1/teams` |
-| user-service | 3003 | `/talent/users` |
+| user-service | 3002 | `/talent/users` |
 | PostgreSQL | 5432 | Database (Docker: `marketeq-db`) |
 | Frontend | 3000 | Next.js dev server |
 
@@ -212,7 +212,7 @@ curl http://localhost:4000/homepage | python3 -m json.tool
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `LISTINGS_SERVICE_URL` | No | `http://localhost:3004` | Listings service base URL |
-| `USER_SERVICE_URL` | No | `http://localhost:3003` | User service base URL (talent profiles) |
+| `USER_SERVICE_URL` | No | `http://localhost:3002` | User service base URL (talent profiles) |
 | `CMS_SERVICE_URL` | No | null (uses static defaults) | Payload CMS base URL |
 | `REDIS_URL` | No | null (caching disabled) | Redis connection string |
 | `PREVIEW_SECRET` | No | null (preview disabled) | Secret for preview token validation |

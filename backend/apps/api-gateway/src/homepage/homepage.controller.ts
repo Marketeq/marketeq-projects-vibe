@@ -19,16 +19,30 @@ export class HomepageController {
    * Cookies:
    *   mktq_hp_variant=<group>  Serve A/B test variant matching testGroup
    */
+  /** Max length for variant cookie to prevent cache-key churn */
+  private static readonly VARIANT_MAX_LENGTH = 64;
+  private static readonly VARIANT_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
   @Get()
   async getHomepage(
     @Req() req: Request,
     @Query('preview') preview?: string,
     @Headers('x-preview-token') previewToken?: string,
   ): Promise<HomepagePayload> {
-    const variant = (req as any).cookies?.mktq_hp_variant as string | undefined;
+    const rawVariant = (req as any).cookies?.mktq_hp_variant as string | undefined;
+
+    // Sanitize variant: must be alphanumeric/dash/underscore and length-limited
+    let variant: string | undefined;
+    if (
+      rawVariant &&
+      rawVariant.length <= HomepageController.VARIANT_MAX_LENGTH &&
+      HomepageController.VARIANT_PATTERN.test(rawVariant)
+    ) {
+      variant = rawVariant;
+    }
 
     return this.homepageService.getHomepage({
-      variant: variant || undefined,
+      variant,
       preview: preview === '1',
       previewToken: previewToken || undefined,
     });
