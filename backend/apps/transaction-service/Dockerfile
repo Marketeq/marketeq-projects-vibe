@@ -3,9 +3,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/transaction-service/package*.json ./apps/transaction-service/
 COPY shared/ ./shared/
-RUN npm install
+RUN npm ci
 COPY . .
-RUN npm run build -w apps/transaction-service
+RUN npx nest build transaction-service
 
 FROM node:20-alpine
 WORKDIR /app
