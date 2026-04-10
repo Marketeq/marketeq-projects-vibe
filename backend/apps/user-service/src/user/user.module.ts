@@ -10,10 +10,16 @@ import { UserSchemaGuardService } from './user-schema-guard.service';
 // import { User } from 'src/user/entities/user.entity';
 import { User } from './entities/user.entity';
 import { TimezoneResolutionService } from './timezone-resolution.service';
+import { R2Service } from '../storage/r2.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([User])],
-  providers: [UserService, TimezoneResolutionService, UserSchemaGuardService],
+  providers: [
+    UserService,
+    TimezoneResolutionService,
+    UserSchemaGuardService,
+    R2Service,
+  ],
   controllers: [
     UserController,
     UserSettingsController,

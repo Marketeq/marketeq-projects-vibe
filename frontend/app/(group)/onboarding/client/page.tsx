@@ -3203,21 +3203,32 @@ const IntroduceYourself = ({
   const { firstName, lastName } = watch()
   const { toggleValidation } = useStepContext()
   const { nextStep, setStep } = useStepperContext()
+  const { toast } = useToast()
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
   const { totalSteps, currentStep } = useStepRootContext()
   const initials = `${firstName?.[0] || ""}${lastName?.[0] || ""}`.trim()
-  const onSubmit: SubmitHandler<IntroduceYourselfFormValues> = ({
+  const onSubmit: SubmitHandler<IntroduceYourselfFormValues> = async ({
     avatar,
     firstName,
     lastName,
   }) => {
-    // If avatar[0] is a File, keep as is; if string, use as is
-    let avatarUrl: string | undefined = undefined
-    if (typeof avatar?.[0] === "string") {
-      avatarUrl = avatar[0]
-    } else if (avatar?.[0] instanceof File) {
-      // You may want to upload the file and get a URL here; for now, just set undefined
-      avatarUrl = undefined
+    let avatarUrl: string | undefined = stepData?.avatarUrl
+    const first = avatar?.[0]
+    if (typeof first === "string") {
+      avatarUrl = first
+    } else if (first instanceof File) {
+      try {
+        const response = await ClientAPI.UploadAvatar(first)
+        avatarUrl = response?.data?.url
+      } catch (error: any) {
+        toast({
+          title:
+            error?.response?.data?.message ||
+            "Failed to upload profile photo. Please try again.",
+          variant: "destructive",
+        })
+        return
+      }
     }
     setStepData({
       ...stepData,

@@ -55,6 +55,12 @@ export class UserService {
     return user;
   }
 
+  async updateAvatarUrl(id: string, avatarUrl: string): Promise<User> {
+    const user = await this.getUserById(id);
+    user.avatarUrl = avatarUrl;
+    return this.userRepository.save(user);
+  }
+
   async listUsers(limit = 50, offset = 0): Promise<User[]> {
     const safeLimit = Math.min(Math.max(limit, 1), 100);
     const safeOffset = Math.max(offset, 0);

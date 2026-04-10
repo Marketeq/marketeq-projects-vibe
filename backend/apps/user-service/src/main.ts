@@ -1,12 +1,16 @@
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const logger = new Logger('UserService');
   const app = await NestFactory.create(AppModule);
   const port = process.env.PORT || 3002;
+
+  app.use(json({ limit: '1mb' }));
+  app.use(urlencoded({ limit: '1mb', extended: true }));
 
   app.enableCors({
     origin: process.env.FE_ORIGIN || 'http://localhost:3000',
