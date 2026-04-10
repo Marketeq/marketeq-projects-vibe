@@ -10,6 +10,7 @@ import {
   FileText,
   Plus,
 } from "@blend-metrics/icons"
+import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Badge,
   Button,
@@ -60,8 +61,10 @@ export default function BillingPage() {
 
   return (
     <AuthenticatedRoute>
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="flex bg-gray-50 min-h-screen">
+        <LeftSidebar />
+
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
           <h1 className="text-2xl font-semibold text-dark-blue-400">Billing</h1>
           <p className="text-sm text-gray-500 mt-1">Manage your plan, payment methods, and invoices</p>
 
