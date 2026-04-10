@@ -248,11 +248,15 @@ export function SubcategoryIconTile({
   return (
     <div
       className={
-        "size-[40px] rounded-xl bg-primary-50 ring-1 ring-primary-100 flex items-center justify-center text-primary-600 " +
+        "relative h-[44px] w-[44px] shrink-0 inline-flex items-center justify-center rounded-[10px] " +
+        "bg-gradient-to-b from-primary-50 to-primary-100/60 " +
+        "ring-1 ring-inset ring-primary-200/70 " +
+        "shadow-[0_1px_0_0_rgba(255,255,255,0.9)_inset,0_1px_2px_0_rgba(16,24,40,0.06)] " +
+        "text-primary-600 " +
         (className ?? "")
       }
     >
-      <Icon className="size-[20px]" />
+      <Icon className="h-[22px] w-[22px]" strokeWidth={2} />
     </div>
   )
 }
