@@ -1,6 +1,6 @@
-import type { CollectionConfig } from 'payload'
+import { CollectionConfig } from 'payload/types';
 
-import { isAdmin, isEditor, readPublishedOrCmsUser } from '../access/roles'
+import { isAdmin, isEditor, readPublishedOrCmsUser } from '../access/roles';
 
 /**
  * CategoryPages — editorial decoration for category landing pages.
@@ -42,7 +42,6 @@ export const CategoryPages: CollectionConfig = {
   versions: {
     drafts: {
       autosave: { interval: 800 },
-      schedulePublish: true,
     },
     maxPerDoc: 25,
   },
@@ -163,8 +162,10 @@ export const CategoryPages: CollectionConfig = {
                   name: 'image',
                   type: 'upload',
                   relationTo: 'media',
-                  required: true,
-                  admin: { description: 'Banner background image. Stored in Cloudflare R2.' },
+                  admin: {
+                    description:
+                      'Banner background image override. If blank, the frontend uses its default L1 banner. Stored in Cloudflare R2.',
+                  },
                 },
                 {
                   name: 'titleOverride',
@@ -255,7 +256,7 @@ export const CategoryPages: CollectionConfig = {
         {
           label: 'L1: Featured Subcategories',
           admin: {
-            condition: (data) => data?.level === 'l1',
+            condition: (data: any) => data?.level === 'l1',
             description:
               'Curated grid of L2 subcategories shown on this L1 page. Only visible when level = L1.',
           },
@@ -283,7 +284,7 @@ export const CategoryPages: CollectionConfig = {
         {
           label: 'Promoted Children',
           admin: {
-            condition: (data) => data?.level === 'l1' || data?.level === 'l2',
+            condition: (data: any) => data?.level === 'l1' || data?.level === 'l2',
             description:
               'Carousel of promoted child categories. Visible on L1 and L2 pages.',
           },
@@ -309,7 +310,7 @@ export const CategoryPages: CollectionConfig = {
         {
           label: 'L3: Niche Detail',
           admin: {
-            condition: (data) => data?.level === 'l3',
+            condition: (data: any) => data?.level === 'l3',
             description:
               'Deep niche content for L3 pages — comparison tables, use-case copy, etc. Only visible when level = L3.',
           },

@@ -129,7 +129,7 @@ module.exports = {
       watch: false,
       max_restarts: 10,
       restart_delay: 2000,
-      env: { PORT: 3011, NODE_ENV: 'development' },
+      env: { PORT: 3013, NODE_ENV: 'development' },
     },
   ],
 };

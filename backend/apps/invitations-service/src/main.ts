@@ -7,7 +7,7 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
 
-  const port = process.env.PORT || 3011;
+  const port = process.env.PORT || 3013;
   await app.listen(port);
   console.log(`invitations-service running on port ${port}`);
 }

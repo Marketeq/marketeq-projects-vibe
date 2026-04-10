@@ -1,16 +1,5 @@
-node_modules
-.next
-dist
-build
-
-# env files
+node_modules/
+dist/
+build/
 .env
-.env.*.local
-.env.local
-
-# payload-generated
-src/payload-types.ts.bak
-
-# misc
-.DS_Store
-*.log
+media/

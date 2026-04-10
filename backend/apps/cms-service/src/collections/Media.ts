@@ -1,15 +1,21 @@
-import type { CollectionConfig } from 'payload'
+import { CollectionConfig } from 'payload/types';
+import { isContentEditorOrAbove } from '../access/roles';
 
-/**
- * Media — every uploaded file lives here. The S3 storage adapter
- * (configured in payload.config.ts) routes uploads to Cloudflare R2 via
- * R2's S3-compatible endpoint. Files are NEVER stored on the cms-service
- * filesystem.
- */
 export const Media: CollectionConfig = {
   slug: 'media',
+  upload: {
+    staticURL: '/media',
+    staticDir: 'media',
+    mimeTypes: ['image/*', 'application/pdf'],
+  },
+  admin: {
+    useAsTitle: 'alt',
+  },
   access: {
     read: () => true,
+    create: isContentEditorOrAbove,
+    update: isContentEditorOrAbove,
+    delete: isContentEditorOrAbove,
   },
   fields: [
     {
@@ -20,15 +26,9 @@ export const Media: CollectionConfig = {
       name: 'caption',
       type: 'text',
     },
+    {
+      name: 'credit',
+      type: 'text',
+    },
   ],
-  upload: {
-    // Required image sizes the frontend consumes via signed CDN URLs.
-    imageSizes: [
-      { name: 'thumbnail', width: 400, height: 300, position: 'centre' },
-      { name: 'card', width: 768, height: 1024, position: 'centre' },
-      { name: 'tablet', width: 1024, position: 'centre' },
-    ],
-    adminThumbnail: 'thumbnail',
-    mimeTypes: ['image/*', 'video/mp4', 'application/pdf'],
-  },
-}
+};

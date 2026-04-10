@@ -1,100 +1,112 @@
-// apps/cms-service/src/payload.config.ts
-//
-// Master Payload v3 configuration. This file is the single source of truth
-// for every collection, global, plugin, and database setting in cms-service.
-// Keep it as a registry — do not put business logic here.
-//
-// Architectural note: cms-service is decoupled. The frontend NEVER reads from
-// Payload directly. Editors mutate content here → afterChange hooks publish
-// RabbitMQ events → consumer NestJS services write to their own schemas →
-// the frontend reads from those services. This means we can upgrade Payload,
-// add plugins, or change CMS internals without ever risking a frontend outage.
+import { buildConfig } from 'payload/config';
+import { postgresAdapter } from '@payloadcms/db-postgres';
+import { lexicalEditor } from '@payloadcms/richtext-lexical';
+import { webpackBundler } from '@payloadcms/bundler-webpack';
+import seoPlugin from '@payloadcms/plugin-seo';
 
-import path from 'path'
-import { fileURLToPath } from 'url'
-import { buildConfig } from 'payload'
-import { postgresAdapter } from '@payloadcms/db-postgres'
-import { lexicalEditor } from '@payloadcms/richtext-lexical'
-import { s3Storage } from '@payloadcms/storage-s3'
-import { seoPlugin } from '@payloadcms/plugin-seo'
+// Collections
+import { Listings } from './collections/Listings';
+import { Users } from './collections/Users';
+import { Orders } from './collections/Orders';
+import { Categories } from './collections/Categories';
+import { TalentProfiles } from './collections/TalentProfiles';
+import { BlogPosts } from './collections/BlogPosts';
+import { HelpArticles } from './collections/HelpArticles';
+import { Announcements } from './collections/Announcements';
+import { FeatureFlags } from './collections/FeatureFlags';
+import { Media } from './collections/Media';
+import { Testimonials } from './collections/Testimonials';
+import { LandingPages } from './collections/LandingPages';
 
-// ── Collections ─────────────────────────────────────────────────────────────
-import { Users } from './collections/Users'
-import { Media } from './collections/Media'
-import { Projects } from './collections/Projects'
-import { CategoryPages } from './collections/CategoryPages'
+// Globals
+import { SiteSettings } from './globals/SiteSettings';
+import { HomepageBanner } from './globals/HomepageBanner';
+import { AdminConfig } from './globals/AdminConfig';
 
-const filename = fileURLToPath(import.meta.url)
-const dirname = path.dirname(filename)
+// Plugins
+import { categorySyncPlugin } from './plugins/categorySync.plugin';
+import { talentProfileSyncPlugin } from './plugins/talentProfileSync.plugin';
 
 export default buildConfig({
-  serverURL: process.env.CMS_SERVER_URL,
+  serverURL: process.env.CMS_SERVER_URL || 'http://localhost:3020',
 
   admin: {
     user: Users.slug,
-    importMap: {
-      baseDir: path.resolve(dirname),
+    disable: process.env.PAYLOAD_ADMIN_DISABLE === 'true',
+    bundler: webpackBundler(),
+    webpack: (config) => {
+      // Prevent server-only modules from being bundled into admin UI
+      return {
+        ...config,
+        resolve: {
+          ...config.resolve,
+          fallback: {
+            ...(config.resolve?.fallback || {}),
+            fs: false,
+            net: false,
+            tls: false,
+            dns: false,
+            util: false,
+            stream: false,
+            crypto: false,
+            os: false,
+            path: false,
+            url: false,
+            buffer: false,
+            events: false,
+          },
+          alias: {
+            ...(config.resolve?.alias || {}),
+            // Stub out server-only RabbitMQ modules for admin panel
+            'amqplib': false,
+            'amqp-connection-manager': false,
+          },
+        },
+      };
     },
   },
 
-  // ── Editor ────────────────────────────────────────────────────────────────
-  editor: lexicalEditor(),
+  editor: lexicalEditor({}),
 
-  // ── Database ──────────────────────────────────────────────────────────────
-  // All Payload tables live under the dedicated `cms` schema so they never
-  // collide with TypeORM-managed tables owned by NestJS services.
   db: postgresAdapter({
     pool: {
-      connectionString: process.env.DATABASE_URI || '',
+      connectionString: process.env.DATABASE_URL,
     },
-    schemaName: process.env.DATABASE_SCHEMA || 'cms',
+    schemaName: 'cms',
   }),
 
-  // ── Collections ───────────────────────────────────────────────────────────
-  // Per-listing-type schemas (Projects, Services, Teams, Talent, Jobs) are
-  // added in their respective build tasks. Each gets its OWN dedicated
-  // collection — there is no shared "Listings" collection with a discriminator.
-  collections: [Users, Media, Projects, CategoryPages],
+  collections: [
+    Listings,
+    Users,
+    Orders,
+    Categories,
+    TalentProfiles,
+    BlogPosts,
+    HelpArticles,
+    Announcements,
+    FeatureFlags,
+    Media,
+    Testimonials,
+    LandingPages,
+  ],
 
-  // ── Globals ───────────────────────────────────────────────────────────────
-  globals: [],
+  globals: [
+    SiteSettings,
+    HomepageBanner,
+    AdminConfig,
+  ],
 
-  // ── Plugins ───────────────────────────────────────────────────────────────
   plugins: [
-    // SEO plugin — exposes seoTitle/seoDescription/seoImage on content
-    // collections that opt in. We'll enable per-collection as we add them.
+    categorySyncPlugin,
+    talentProfileSyncPlugin,
     seoPlugin({
-      collections: ['projects', 'category-pages'],
       uploadsCollection: 'media',
-      generateTitle: ({ doc }) =>
-        typeof doc?.title === 'string' ? `${doc.title} | Marketeq` : 'Marketeq',
-    }),
-
-    // S3 storage adapter pointed at Cloudflare R2 (R2 is S3-compatible).
-    // The legacy v2 @payloadcms/storage-r2 package does NOT exist for v3 —
-    // this is the canonical v3 path for R2.
-    s3Storage({
-      collections: {
-        media: {
-          prefix: 'cms',
-        },
-      },
-      bucket: process.env.R2_BUCKET || '',
-      config: {
-        endpoint: process.env.R2_ENDPOINT,
-        region: process.env.R2_REGION || 'auto',
-        credentials: {
-          accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
-        },
-        forcePathStyle: true,
-      },
+      generateTitle: ({ doc }: any) => `${doc?.title || 'Marketeq'} | Marketeq`,
+      generateDescription: ({ doc }: any) => doc?.excerpt || doc?.description || '',
     }),
   ],
 
-  // ── Secret + TypeScript codegen ──────────────────────────────────────────
-  secret: process.env.PAYLOAD_SECRET || '',
   typescript: {
-    outputFile: path.resolve(dirname, 'payload-types.ts'),
+    outputFile: './src/payload-types.ts',
   },
-})
+});

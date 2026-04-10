@@ -7,6 +7,7 @@ import { Invitation } from './entities/invitation.entity';
 import { InvitationsService } from './invitations/invitations.service';
 import { InvitationsController } from './invitations/invitations.controller';
 import { UserServiceClient } from './invitations/user-service.client';
+import { BrevoModule } from '../../notification-service/src/brevo/brevo.service';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { UserServiceClient } from './invitations/user-service.client';
       }),
     }),
     TypeOrmModule.forFeature([Invitation]),
+    BrevoModule,
   ],
   controllers: [InvitationsController],
   providers: [InvitationsService, UserServiceClient],
