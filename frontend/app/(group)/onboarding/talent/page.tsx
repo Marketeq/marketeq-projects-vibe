@@ -424,7 +424,11 @@ const IntroduceYourself = ({
 }
 
 const createYourUsernameFormSchema = z.object({
-  username: optionalUsernameString,
+  username: z
+    .string({ required_error: "Username must be entered" })
+    .min(3, "Please enter at least 3 character(s)")
+    .regex(USERNAME_PATTERN, USERNAME_RULE_MESSAGE)
+    .transform((val) => val.trim()),
 })
 
 type CreateYourUsernameFormValues = z.infer<typeof createYourUsernameFormSchema>
@@ -483,10 +487,15 @@ const CreateYourUsername = ({
   const onSubmit: SubmitHandler<CreateYourUsernameFormValues> = ({
     username,
   }) => {
+    if (!username?.trim()) {
+      setError("username", { type: "manual", message: "Username must be entered" })
+      return
+    }
     setStepData({
       ...stepData,
       username,
     })
+    toggleValidation(true)
     nextStep()
   }
   const setFormValue: UseFormSetValue<CreateYourUsernameFormValues> = (
@@ -502,9 +511,7 @@ const CreateYourUsername = ({
   const progress = ((currentStep + 1) / totalSteps) * 100
 
   const skip = () => {
-    toggleValidation(true)
-    const nextStepIndex = currentStep + 1
-    setStep(nextStepIndex)
+    setError("username", { type: "manual", message: "Username must be entered" })
   }
 
   const back = () => {
@@ -1998,23 +2005,13 @@ const ShowcaseYourTalent = ({
     )
   }, [industriesOptions, industriesQuery, selectedIndustries])
 
-  const addIndustryValue = async (nextValue: string) => {
+  const addIndustryValue = (nextValue: string) => {
     const value = nextValue.trim()
     if (!value) return
 
     const isKnownSuggestion = hasCaseInsensitiveExactMatch(industriesOptions, value)
     if (!isKnownSuggestion) {
-      const accepted = await submitAutocompleteValue("industries", value)
-      if (!accepted) {
-        setError("industriesWorkedWith", {
-          type: "manual",
-          message:
-            "This value is not a valid industry suggestion for this field.",
-        })
-        setIndustriesQuery("")
-        setIsIndustriesOpen(false)
-        return
-      }
+      void submitAutocompleteValue("industries", value)
     }
 
     clearErrors("industriesWorkedWith")
@@ -3121,17 +3118,7 @@ const SetYourPreferences = ({
     hasInitializedCustomDefault.current = true
   }, [availability, customAvailability, setValue])
 
-  const onSubmit: SubmitHandler<SetYourPreferencesFormValues> = ({
-    projects,
-    yourAvailability,
-    customAvailability,
-  }) => {
-    setIsLoading(true)
-
-    const availability: AVAILABILITY = yourAvailability
-      ?.replaceAll("-", "_")
-      ?.toUpperCase() as AVAILABILITY
-
+  const buildStepDataFormData = (): FormData => {
     const formData = new FormData()
 
     if (stepData?.avatar instanceof File) {
@@ -3163,27 +3150,15 @@ const SetYourPreferences = ({
       formData.append("lookingToWorkWith", item)
     })
 
-    projects?.forEach((item) => {
-      formData.append("projectTypes", item)
-    })
-
     if (stepData?.isStudent != null) {
       formData.append("isStudent", stepData.isStudent.toString())
     }
 
-    if (availability) {
-      formData.append("availability", availability)
-    }
+    return formData
+  }
 
-    if (
-      availability === AVAILABILITY.CUSTOM &&
-      (customAvailability?.length || 0) > 0
-    ) {
-      formData.append(
-        "customAvailability",
-        JSON.stringify(customAvailability) || ""
-      )
-    }
+  const submitTalent = (formData: FormData) => {
+    setIsLoading(true)
 
     TalentAPI.CreateTalent(formData)
       .then((response) => {
@@ -3223,15 +3198,46 @@ const SetYourPreferences = ({
       })
   }
 
+  const onSubmit: SubmitHandler<SetYourPreferencesFormValues> = ({
+    projects,
+    yourAvailability,
+    customAvailability,
+  }) => {
+    const availability: AVAILABILITY = yourAvailability
+      ?.replaceAll("-", "_")
+      ?.toUpperCase() as AVAILABILITY
+
+    const formData = buildStepDataFormData()
+
+    projects?.forEach((item) => {
+      formData.append("projectTypes", item)
+    })
+
+    if (availability) {
+      formData.append("availability", availability)
+    }
+
+    if (
+      availability === AVAILABILITY.CUSTOM &&
+      (customAvailability?.length || 0) > 0
+    ) {
+      formData.append(
+        "customAvailability",
+        JSON.stringify(customAvailability) || ""
+      )
+    }
+
+    submitTalent(formData)
+  }
+
   const { totalSteps, currentStep } = useStepRootContext()
 
   const progress = ((currentStep + 1) / totalSteps) * 100
 
   const skip = async () => {
     try {
-      toggleValidation(true)
-      const nextStepIndex = currentStep + 1
-      setStep(nextStepIndex)
+      const formData = buildStepDataFormData()
+      submitTalent(formData)
     } catch (error) {
       toast({
         title: "Failed to skip onboarding. Please try again.",
