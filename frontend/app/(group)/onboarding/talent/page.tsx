@@ -3394,44 +3394,31 @@ const DoNext = ({
   }
 
   const handleFinish = async () => {
+    setIsLoading(true)
+
+    // Always mark onboarding as dismissed locally so AuthenticatedRoute won't bounce back
+    const finishedUser = {
+      ...(talentUser ?? user),
+      onboardingDismissed: true,
+      userType: "talent",
+    } as User
+    setUser(finishedUser)
+
+    // Persist to localStorage as a fallback in case the API call fails
+    try { window.localStorage.setItem("marketeq-onboarding-dismissed", "true") } catch {}
+
     try {
-      setIsLoading(true)
-      const response = await UserAPI.handleSkip({ role: ROLE.TALENT })
-
-      let nextUser = response?.data?.user as User | undefined
-      if (!nextUser) {
-        const fallbackUser = talentUser ?? user
-        if (fallbackUser) {
-          nextUser = {
-            ...fallbackUser,
-            onboardingDismissed: true,
-            userType: "talent",
-          }
-        }
+      await UserAPI.handleSkip({ role: ROLE.TALENT })
+      const userResponse = await UserAPI.me()
+      if (userResponse?.data?.user) {
+        setUser(userResponse.data.user)
       }
-
-      if (nextUser) {
-        setUser(nextUser)
-      }
-
-      let refreshedUser = nextUser
-      try {
-        const userResponse = await UserAPI.me()
-        if (userResponse?.data?.user) {
-          refreshedUser = userResponse.data.user
-          setUser(userResponse.data.user)
-        }
-      } catch (error) {
-        console.error("Failed to refresh user after onboarding", error)
-      }
-
-      router.push(getPostOnboardingRoute("/talent-dashboard", refreshedUser ?? talentUser ?? user))
     } catch (error) {
       console.error("Failed to complete onboarding", error)
-      // Show error toast if needed
-    } finally {
-      setIsLoading(false)
     }
+
+    setIsLoading(false)
+    router.push("/talent-dashboard")
   }
 
   return (
