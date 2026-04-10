@@ -1,36 +1,47 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
-import data from "@/public/mock/projects.json"
+import { UserAPI } from "@/service/http/user"
 import { cn } from "@/utils/functions"
+
+type DashboardProfile = {
+  id: string
+  email: string
+  firstName?: string | null
+  lastName?: string | null
+  username?: string | null
+  avatarUrl?: string | null
+  bio?: string | null
+  overview?: string | null
+  location?: string | null
+  industry?: string | null
+  recentJobTitle?: string | null
+  userType?: string | null
+  lookingToWorkWith?: string[] | null
+  businessGoals?: string | null
+  gettingStartedStep?: number | null
+  totalProjectsCompleted?: number | null
+  clientSuccessRating?: number | null
+  createdAt?: string | Date
+}
 import {
-  AlertCircle,
   ArrowRight,
-  BarChartSquare02,
   Briefcase,
   Check,
-  FileCheck02,
   ChevronDown,
   ChevronRight,
   Clock,
   Download,
   Edit03,
   Facebook,
-  Globe,
-  Home03,
   Linkedin,
-  Mail01,
   MapPin,
   MoreHorizontal,
   Plus,
-  Search,
-  Settings02,
   Share06,
   Star,
-  UserCircle,
-  Video,
   X,
 } from "@blend-metrics/icons"
 import { InstagramDefault } from "@blend-metrics/icons/social"
@@ -178,23 +189,26 @@ const Table = () => {
           </thead>
 
           <tbody>
-            {data.projects.map((project, index) => (
-              <TableRow key={index} {...project} />
-            ))}
+            <tr>
+              <td colSpan={4} className="px-6 py-10 text-center text-sm text-gray-400">
+                No projects yet. Create your first project to get started.
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
       <div className="h-[49px] flex items-center md:hidden justify-center border-t border-gray-200">
-        <Button className="text-dark-blue-400" variant="link">
-          View All Projects <ArrowRight className="size-3.5" />
-        </Button>
+        <NextLink href="/projects">
+          <Button className="text-dark-blue-400" variant="link">
+            View All Projects <ArrowRight className="size-3.5" />
+          </Button>
+        </NextLink>
       </div>
     </>
   )
 }
 
-const Welcome = ({ onOpenProfile }: { onOpenProfile?: () => void }) => {
-  const { user } = useAuth()
+const Welcome = ({ onOpenProfile, user }: { onOpenProfile?: () => void; user?: DashboardProfile | null }) => {
   return (
     <div className="space-y-3.5 md:space-y-5">
       <div className="md:contents flex flex-col space-y-5">
@@ -204,13 +218,15 @@ const Welcome = ({ onOpenProfile }: { onOpenProfile?: () => void }) => {
           </h1>
 
           <div className="flex items-center gap-x-3">
-            <Button
-              className="text-dark-blue-400 bg-white xs:max-md:hidden"
-              variant="outlined"
-              visual="gray"
-            >
-              <Plus className="size-3.5" /> Create a Project
-            </Button>
+            <NextLink href="/publish-project">
+              <Button
+                className="text-dark-blue-400 bg-white xs:max-md:hidden"
+                variant="outlined"
+                visual="gray"
+              >
+                <Plus className="size-3.5" /> Create a Project
+              </Button>
+            </NextLink>
             <Button
               className="bg-primary-50 text-primary-500 hover:text-white min-[1440px]:hidden"
               variant="filled"
@@ -222,13 +238,15 @@ const Welcome = ({ onOpenProfile }: { onOpenProfile?: () => void }) => {
           </div>
         </div>
 
-        <Button
-          className="text-dark-blue-400 bg-white md:hidden"
-          variant="outlined"
-          visual="gray"
-        >
-          <Plus className="size-3.5" /> Create a Project
-        </Button>
+        <NextLink href="/publish-project" className="md:hidden">
+          <Button
+            className="text-dark-blue-400 bg-white"
+            variant="outlined"
+            visual="gray"
+          >
+            <Plus className="size-3.5" /> Create a Project
+          </Button>
+        </NextLink>
       </div>
 
       <div className="flex md:flex-row flex-col xs:max-md:gap-y-5 md:items-center bg-white p-5 border rounded-lg border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
@@ -238,7 +256,7 @@ const Welcome = ({ onOpenProfile }: { onOpenProfile?: () => void }) => {
               Active Projects
             </p>
             <h1 className="text-2xl text-center leading-[29.05px] font-semibold text-dark-blue-400">
-              4
+              0
             </h1>
           </article>
           <article className="md:px-6 space-y-3">
@@ -246,7 +264,7 @@ const Welcome = ({ onOpenProfile }: { onOpenProfile?: () => void }) => {
               Completed Projects
             </p>
             <h1 className="text-2xl text-center leading-[29.05px] font-semibold text-dark-blue-400">
-              4
+              {user?.totalProjectsCompleted ?? 0}
             </h1>
           </article>
           <article className="md:px-6 space-y-3">
@@ -254,7 +272,7 @@ const Welcome = ({ onOpenProfile }: { onOpenProfile?: () => void }) => {
               Paused Projects
             </p>
             <h1 className="text-2xl text-center leading-[29.05px] font-semibold text-dark-blue-400">
-              1
+              0
             </h1>
           </article>
           <article className="md:px-6 space-y-3">
@@ -262,19 +280,21 @@ const Welcome = ({ onOpenProfile }: { onOpenProfile?: () => void }) => {
               Overdue Tasks
             </p>
             <h1 className="text-2xl text-center leading-[29.05px] font-semibold text-dark-blue-400">
-              3
+              0
             </h1>
           </article>
         </div>
 
         <div className="md:pl-6 md:py-3.5 xs:max-md:mt-[25px]">
-          <Button
-            className="bg-white w-full text-dark-blue-400"
-            variant="outlined"
-            visual="gray"
-          >
-            View More KPI&apos;s
-          </Button>
+          <NextLink href="/projects">
+            <Button
+              className="bg-white w-full text-dark-blue-400"
+              variant="outlined"
+              visual="gray"
+            >
+              View More KPI&apos;s
+            </Button>
+          </NextLink>
         </div>
       </div>
     </div>
@@ -289,13 +309,15 @@ const RecentProjects = () => {
           Recent Projects
         </h1>
 
-        <Button
-          className="text-dark-blue-400 xs:max-md:hidden"
-          variant="link"
-          visual="gray"
-        >
-          View All Projects <ArrowRight className="size-3.5" />
-        </Button>
+        <NextLink href="/projects" className="xs:max-md:hidden">
+          <Button
+            className="text-dark-blue-400"
+            variant="link"
+            visual="gray"
+          >
+            View All Projects <ArrowRight className="size-3.5" />
+          </Button>
+        </NextLink>
       </div>
 
       <Tabs className="mt-1" defaultValue="All Projects">
@@ -318,185 +340,187 @@ const RecentProjects = () => {
   )
 }
 
-const RecentActivity = () => {
+const GETTING_STARTED_STEPS = [
+  {
+    title: "Set Up Your Profile",
+    description:
+      "Make your profile reflect your brand and connect with the right talent. Verifying your business details can increase your chances of attracting top freelancers by up to 40%.",
+    time: "About 4 minutes",
+    ctaLabel: "Set up now",
+    ctaHref: "/complete-profile",
+  },
+  {
+    title: "Verify Your Company",
+    description:
+      "Verify your business details to build trust with freelancers and increase your visibility on the platform.",
+    time: "About 4 minutes",
+    ctaLabel: "Verify now",
+    ctaHref: "/settings",
+  },
+  {
+    title: "Create Your First Project",
+    description:
+      "Post your first project to start attracting top talent. Describe what you need and let skilled freelancers come to you.",
+    time: "About 10 minutes",
+    ctaLabel: "Create project",
+    ctaHref: "/publish-project",
+  },
+]
+
+const RecentActivity = ({
+  user,
+  onStepChange,
+}: {
+  user?: DashboardProfile | null
+  onStepChange?: (step: number) => void
+}) => {
+  const { user: authUser } = useAuth()
+  const [currentStep, setCurrentStep] = useState(user?.gettingStartedStep ?? 0)
+  const totalSteps = GETTING_STARTED_STEPS.length
+  const completedSteps = Math.min(currentStep, totalSteps)
+  const remainingSteps = totalSteps - completedSteps
+  const progressPercent = Math.round((completedSteps / totalSteps) * 100)
+
+  useEffect(() => {
+    if (user?.gettingStartedStep != null) {
+      setCurrentStep(user.gettingStartedStep)
+    }
+  }, [user?.gettingStartedStep])
+
+  const handleSkip = (stepIndex: number) => {
+    const nextStep = stepIndex + 1
+    setCurrentStep(nextStep)
+    onStepChange?.(nextStep)
+    const userId = authUser?.id
+    if (userId) {
+      UserAPI.updateProfile(userId, { gettingStartedStep: nextStep }).catch(
+        () => {}
+      )
+    }
+  }
+
+  // Find the first incomplete step for "Continue to next step"
+  const nextIncompleteStep = GETTING_STARTED_STEPS.findIndex(
+    (_, i) => i >= currentStep
+  )
+  const nextStepHref =
+    nextIncompleteStep >= 0
+      ? GETTING_STARTED_STEPS[nextIncompleteStep].ctaHref
+      : undefined
+
   return (
     <Tabs defaultValue="Next Steps">
       <TabsList className="w-full border-b-0">
         <TabsTrigger value="Next Steps">
           Next Steps
           <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-            2
+            {remainingSteps}
           </span>
         </TabsTrigger>
         <TabsTrigger value="Recent Activity">Recent Activity</TabsTrigger>
 
-        <Button
-          className="text-dark-blue-400 my-auto ml-auto"
-          variant="link"
-          visual="gray"
-        >
-          Continue to next step <ArrowRight className="size-3.5" />
-        </Button>
+        {nextStepHref && (
+          <NextLink href={nextStepHref} className="my-auto ml-auto">
+            <Button
+              className="text-dark-blue-400"
+              variant="link"
+              visual="gray"
+            >
+              Continue to next step <ArrowRight className="size-3.5" />
+            </Button>
+          </NextLink>
+        )}
       </TabsList>
       <TabsContent value="Next Steps">
         <div className="pt-3">
           <div className="border p-5 rounded-lg bg-white border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
             <h1 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
-              Let’s Get Started
+              {completedSteps >= totalSteps ? "All Done!" : "Let\u2019s Get Started"}
             </h1>
 
             <div className="mt-5">
-              <Progress value={30} />
+              <Progress value={progressPercent} />
 
               <div className="flex items-center mt-2 gap-x-3">
                 <span className="inline-block text-sm leading-[16.94px] font-light">
-                  1 of 3 complete
+                  {completedSteps} of {totalSteps} complete
                 </span>
 
-                <span className="text-gray-900/50 font-semibold text-[11px] leading-6 inline-flex px-2 items-center gap-x-2">
-                  <Clock className="size-[15px]" />
-                  About 14 minutes total
-                </span>
+                {remainingSteps > 0 && (
+                  <span className="text-gray-900/50 font-semibold text-[11px] leading-6 inline-flex px-2 items-center gap-x-2">
+                    <Clock className="size-[15px]" />
+                    About {remainingSteps * 4} minutes remaining
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
           <Accordion className="space-y-3 mt-3" collapsible type="single">
-            <AccordionItem
-              className="relative p-5 pr-[72px] border rounded-lg bg-white border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
-              value="item-1"
-            >
-              <div className="flex items-start gap-x-5">
-                <div className="size-8 rounded-full inline-flex items-center justify-center shrink-0 bg-primary-500 text-white">
-                  <Check className="size-[22.4px]" />
-                </div>
-
-                <div className="flex-auto pt-[7px]">
-                  <h1 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
-                    Set Up Your Profile
-                  </h1>
-                  <p className="text-[11px] leading-6 mt-2 font-semibold text-gray-800/50">
-                    About 4 minutes
-                  </p>
-                </div>
-
-                <AccordionTrigger className="absolute right-5 top-5 focus-visible:outline-none size-8 inline-flex items-center justify-center shrink-0 text-gray-400">
-                  <ChevronDown className="size-5 transition duration-300 group-data-[state=open]/trigger:-rotate-180" />
-                </AccordionTrigger>
-              </div>
-              <DisclosureContent className="pt-2 pl-[52px]">
-                <div className="max-w-[540px]">
-                  <p className="text-[13px] leading-[15.73px] font-light text-dark-blue-400">
-                    Make your profile reflect your brand and connect with the
-                    right talent. Verifying your business details can increase
-                    your chances of attracting top freelancers by up to 40%.
-                  </p>
-                </div>
-
-                <div className="mt-6 flex items-center gap-x-2">
-                  <Button visual="gray" variant="outlined">
-                    Verify now
-                  </Button>
-                  <Button
-                    className="opacity-50 hover:opacity-100"
-                    visual="gray"
-                    variant="ghost"
+            {GETTING_STARTED_STEPS.map((stepDef, index) => (
+              <AccordionItem
+                key={index}
+                className="relative p-5 pr-[72px] border rounded-lg bg-white border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
+                value={`item-${index}`}
+              >
+                <div className="flex items-start gap-x-5">
+                  <div
+                    className={cn(
+                      "size-8 rounded-full inline-flex items-center justify-center shrink-0",
+                      currentStep > index
+                        ? "bg-primary-500 text-white"
+                        : "bg-gray-200 text-gray-400"
+                    )}
                   >
-                    Skip for now
-                  </Button>
-                </div>
-              </DisclosureContent>
-            </AccordionItem>
-            <AccordionItem
-              className="relative p-5 pr-[72px] border rounded-lg bg-white border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
-              value="item-2"
-            >
-              <div className="flex items-start gap-x-5">
-                <div className="size-8 rounded-full inline-flex items-center justify-center shrink-0 bg-primary-500 text-white">
-                  <Check className="size-[22.4px]" />
-                </div>
+                    {currentStep > index ? (
+                      <Check className="size-[22.4px]" />
+                    ) : (
+                      <span className="text-sm font-semibold">
+                        {index + 1}
+                      </span>
+                    )}
+                  </div>
 
-                <div className="flex-auto pt-[7px]">
-                  <h1 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
-                    Verify Your Company
-                  </h1>
-                  <p className="text-[11px] leading-6 mt-2 font-semibold text-gray-800/50">
-                    About 4 minutes
-                  </p>
-                </div>
+                  <div className="flex-auto pt-[7px]">
+                    <h1 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
+                      {stepDef.title}
+                    </h1>
+                    <p className="text-[11px] leading-6 mt-2 font-semibold text-gray-800/50">
+                      {stepDef.time}
+                    </p>
+                  </div>
 
-                <AccordionTrigger className="absolute right-5 top-5 focus-visible:outline-none size-8 inline-flex items-center justify-center shrink-0 text-gray-400">
-                  <ChevronDown className="size-5 transition duration-300 group-data-[state=open]/trigger:-rotate-180" />
-                </AccordionTrigger>
-              </div>
-              <DisclosureContent className="pt-2 pl-[52px]">
-                <div className="max-w-[540px]">
-                  <p className="text-[13px] leading-[15.73px] font-light text-dark-blue-400">
-                    Make your profile reflect your brand and connect with the
-                    right talent. Verifying your business details can increase
-                    your chances of attracting top freelancers by up to 40%.
-                  </p>
+                  <AccordionTrigger className="absolute right-5 top-5 focus-visible:outline-none size-8 inline-flex items-center justify-center shrink-0 text-gray-400">
+                    <ChevronDown className="size-5 transition duration-300 group-data-[state=open]/trigger:-rotate-180" />
+                  </AccordionTrigger>
                 </div>
+                <DisclosureContent className="pt-2 pl-[52px]">
+                  <div className="max-w-[540px]">
+                    <p className="text-[13px] leading-[15.73px] font-light text-dark-blue-400">
+                      {stepDef.description}
+                    </p>
+                  </div>
 
-                <div className="mt-6 flex items-center gap-x-2">
-                  <Button visual="gray" variant="outlined">
-                    Verify now
-                  </Button>
-                  <Button
-                    className="opacity-50 hover:opacity-100"
-                    visual="gray"
-                    variant="ghost"
-                  >
-                    Skip for now
-                  </Button>
-                </div>
-              </DisclosureContent>
-            </AccordionItem>
-            <AccordionItem
-              className="relative p-5 pr-[72px] border rounded-lg bg-white border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
-              value="item-3"
-            >
-              <div className="flex items-start gap-x-5">
-                <div className="size-8 rounded-full inline-flex items-center justify-center shrink-0 bg-primary-500 text-white">
-                  <Check className="size-[22.4px]" />
-                </div>
-
-                <div className="flex-auto pt-[7px]">
-                  <h1 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
-                    Create Your First Project
-                  </h1>
-                  <p className="text-[11px] leading-6 mt-2 font-semibold text-gray-800/50">
-                    About 10 minutes
-                  </p>
-                </div>
-
-                <AccordionTrigger className="absolute right-5 top-5 focus-visible:outline-none size-8 inline-flex items-center justify-center shrink-0 text-gray-400">
-                  <ChevronDown className="size-5 transition duration-300 group-data-[state=open]/trigger:-rotate-180" />
-                </AccordionTrigger>
-              </div>
-              <DisclosureContent className="pt-2 pl-[52px]">
-                <div className="max-w-[540px]">
-                  <p className="text-[13px] leading-[15.73px] font-light text-dark-blue-400">
-                    Make your profile reflect your brand and connect with the
-                    right talent. Verifying your business details can increase
-                    your chances of attracting top freelancers by up to 40%.
-                  </p>
-                </div>
-
-                <div className="mt-6 flex items-center gap-x-2">
-                  <Button visual="gray" variant="outlined">
-                    Verify now
-                  </Button>
-                  <Button
-                    className="opacity-50 hover:opacity-100"
-                    visual="gray"
-                    variant="ghost"
-                  >
-                    Skip for now
-                  </Button>
-                </div>
-              </DisclosureContent>
-            </AccordionItem>
+                  {currentStep <= index && (
+                    <div className="mt-6 flex items-center gap-x-2">
+                      <NextLink href={stepDef.ctaHref}>
+                        <Button visual="gray" variant="outlined">
+                          {stepDef.ctaLabel}
+                        </Button>
+                      </NextLink>
+                      <Button
+                        className="opacity-50 hover:opacity-100"
+                        visual="gray"
+                        variant="ghost"
+                        onClick={() => handleSkip(index)}
+                      >
+                        Skip for now
+                      </Button>
+                    </div>
+                  )}
+                </DisclosureContent>
+              </AccordionItem>
+            ))}
           </Accordion>
         </div>
       </TabsContent>
@@ -504,27 +528,27 @@ const RecentActivity = () => {
   )
 }
 
-const RightDrawer = () => {
+const RightDrawer = ({ profile }: { profile?: DashboardProfile | null }) => {
   return (
     <>
-      <RightSidebarUpPart />
+      <RightSidebarUpPart profile={profile} />
       <RightSidebarDownPart />
     </>
   )
 }
 
-const Content = () => {
+const Content = ({ profile }: { profile?: DashboardProfile | null }) => {
   const [isOpen, toggleIsOpen] = useToggle(false)
   return (
     <div className="flex-auto pt-3.5 px-3.5 md:pt-6 md:px-6 min-[1024px]:px-8 min-[1200px]:pl-[274px] min-[1024px]:pt-8 min-[1200px]:pr-[50px]">
       <div className="flex min-[1440px]:gap-x-8 justify-center overflow-hidden">
         <div className="xs:max-[1440px]:flex-auto min-[1440px]:max-w-[1024px] space-y-3 md:space-y-5 min-w-0">
-          <Welcome onOpenProfile={toggleIsOpen} />
-          <RecentActivity />
+          <Welcome onOpenProfile={toggleIsOpen} user={profile} />
+          <RecentActivity user={profile} />
           <RecentProjects />
         </div>
 
-        <RightSidebar />
+        <RightSidebar profile={profile} />
 
         <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
           <DialogContent
@@ -559,7 +583,7 @@ const Content = () => {
               className="w-full h-[calc(theme(size.full)-theme(size.12))]"
               scrollBar={<ScrollBar className="w-4 p-1" />}
             >
-              <RightDrawer />
+              <RightDrawer profile={profile} />
             </ScrollArea>
           </DialogContent>
         </Dialog>
@@ -587,9 +611,24 @@ const rightSidebarUpPartVariants = cva(
 const RightSidebarUpPart = ({
   className,
   variant,
-}: { className?: string } & VariantProps<
+  profile,
+}: { className?: string; profile?: DashboardProfile | null } & VariantProps<
   typeof rightSidebarUpPartVariants
 >) => {
+  const { user } = useAuth()
+  const displayUser = profile || user
+  const fullName = [displayUser?.firstName, displayUser?.lastName].filter(Boolean).join(" ") || "User"
+  const initials = [displayUser?.firstName?.[0], displayUser?.lastName?.[0]].filter(Boolean).join("").toUpperCase() || "U"
+  const username = displayUser?.username ? `@${displayUser.username}` : ""
+  const jobTitle = profile?.recentJobTitle || profile?.industry || profile?.userType || ""
+  const location = profile?.location || ""
+  const bio = profile?.bio || profile?.overview || ""
+  const interests: string[] = Array.isArray(profile?.lookingToWorkWith) ? profile.lookingToWorkWith : []
+  const rating = profile?.clientSuccessRating ?? null
+  const memberSince = displayUser?.createdAt
+    ? new Date(displayUser.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+    : ""
+
   return (
     <div
       className={cn(
@@ -602,97 +641,104 @@ const RightSidebarUpPart = ({
       <div className="border-b border-gray-200 pb-5">
         <div className="relative flex justify-center">
           <Avatar className="size-[100px]" size="2xl">
-            <AvatarImage src="/man.jpg" alt="Man" />
-            <AvatarFallback>M</AvatarFallback>
+            <AvatarImage src={displayUser?.avatarUrl || ""} alt={fullName} />
+            <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
-          <Badge
-            className="absolute -translate-x-1/2 left-1/2 top-full -mt-1 rounded-[4px] bg-primary-500 hover:bg-primary-500 text-white"
-            visual="primary"
-            size="lg"
-          >
-            <Star className="size-4 fill-white" />
-            5.0
-          </Badge>
+          {rating !== null && (
+            <Badge
+              className="absolute -translate-x-1/2 left-1/2 top-full -mt-1 rounded-[4px] bg-primary-500 hover:bg-primary-500 text-white"
+              visual="primary"
+              size="lg"
+            >
+              <Star className="size-4 fill-white" />
+              {rating.toFixed(1)}
+            </Badge>
+          )}
         </div>
 
-        <div className="mt-8">
+        <div className={rating !== null ? "mt-8" : "mt-4"}>
           <h1 className="text-base text-center leading-[19.36px] text-dark-blue-400 font-bold">
-            Christopher Torres
+            {fullName}
           </h1>
-          <p className="text-[13px] text-center leading-[15.73px] text-dark-blue-400">
-            @christhedesigner21
-          </p>
+          {username && (
+            <p className="text-[13px] text-center leading-[15.73px] text-dark-blue-400">
+              {username}
+            </p>
+          )}
         </div>
 
         <div className="mt-5">
-          <Button
-            className="w-full text-dark-blue-400 rounded-full"
-            size="md"
-            variant="outlined"
-          >
-            <Edit03 className="size-[15px]" /> Edit Profile
-          </Button>
+          <NextLink href="/complete-profile">
+            <Button
+              className="w-full text-dark-blue-400 rounded-full"
+              size="md"
+              variant="outlined"
+            >
+              <Edit03 className="size-[15px]" /> Edit Profile
+            </Button>
+          </NextLink>
         </div>
 
         <div className="mt-5 flex flex-col gap-y-2">
-          <div className="flex items-center gap-x-1">
-            <Briefcase className="size-[15px] text-dark-blue-400" />
-            <span className="text-[11px] leading-6 font-semibold text-dark-blue-400">
-              IT Consultant
-            </span>
-          </div>
-          <div className="flex items-center gap-x-1">
-            <MapPin className="size-[15px] text-dark-blue-400" />
-            <span className="text-[11px] leading-6 font-semibold text-dark-blue-400">
-              USA
-            </span>
-          </div>
-          <div className="flex items-center gap-x-1">
-            <Globe className="size-[15px] text-dark-blue-400" />
-            <span className="text-[11px] leading-6 font-semibold text-dark-blue-400">
-              mywebsite.com
-            </span>
-          </div>
+          {jobTitle && (
+            <div className="flex items-center gap-x-1">
+              <Briefcase className="size-[15px] text-dark-blue-400" />
+              <span className="text-[11px] leading-6 font-semibold text-dark-blue-400">
+                {jobTitle}
+              </span>
+            </div>
+          )}
+          {location && (
+            <div className="flex items-center gap-x-1">
+              <MapPin className="size-[15px] text-dark-blue-400" />
+              <span className="text-[11px] leading-6 font-semibold text-dark-blue-400">
+                {location}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="py-5 border-b border-gray-200">
-        <h1 className="text-sm leading-[16.94px] font-bold text-dark-blue-400">
-          About
-        </h1>
+      {(bio || interests.length > 0) && (
+        <div className="py-5 border-b border-gray-200">
+          {bio && (
+            <>
+              <h1 className="text-sm leading-[16.94px] font-bold text-dark-blue-400">
+                About
+              </h1>
+              <p className="mt-3 text-[13px] leading-[15.73px] text-dark-blue-400">
+                {bio}
+              </p>
+            </>
+          )}
 
-        <p className="mt-3 text-[13px] leading-[15.73px] text-dark-blue-400">
-          Lorem ipsum dolor sit amet consectetur. Eget mauris elit morbi tellus
-          morbi.
-        </p>
-
-        <div className="mt-5">
-          <h1 className="text-sm leading-[16.94px] font-bold text-dark-blue-400">
-            My Interests
-          </h1>
-
-          <div className="flex flex-wrap mt-3 gap-2">
-            <Badge size="md" visual="gray">
-              UX Design
-            </Badge>
-            <Badge size="md" visual="gray">
-              Marketing
-            </Badge>
-            <Badge size="md" visual="gray">
-              Graphic Design
-            </Badge>
-          </div>
+          {interests.length > 0 && (
+            <div className={bio ? "mt-5" : ""}>
+              <h1 className="text-sm leading-[16.94px] font-bold text-dark-blue-400">
+                My Interests
+              </h1>
+              <div className="flex flex-wrap mt-3 gap-2">
+                {interests.map((interest) => (
+                  <Badge key={interest} size="md" visual="gray">
+                    {interest}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
-      <div className="mt-5 flex justify-center gap-x-1.5">
-        <span className="text-xs leading-[14.52px] text-dark-blue-400">
-          Member since
-        </span>
-        <span className="text-xs leading-[14.52px] text-dark-blue-400 font-semibold">
-          Sep 2024
-        </span>
-      </div>
+      {memberSince && (
+        <div className="mt-5 flex justify-center gap-x-1.5">
+          <span className="text-xs leading-[14.52px] text-dark-blue-400">
+            Member since
+          </span>
+          <span className="text-xs leading-[14.52px] text-dark-blue-400 font-semibold">
+            {memberSince}
+          </span>
+        </div>
+      )}
     </div>
   )
 }
@@ -735,9 +781,9 @@ const RightSidebarDownPart = ({
             </span>
 
             <span className="text-[36.48px] font-bold leading-[44.15px] text-dark-blue-400">
-              1,540
+              0
               <span className="text-[24.32px] leading-[29.43px] text-dark-blue-400">
-                .96
+                .00
               </span>
             </span>
           </div>
@@ -747,15 +793,17 @@ const RightSidebarDownPart = ({
           </span>
         </div>
 
-        <Button
-          className="w-full mt-3.5 rounded-full"
-          size="md"
-          variant="outlined"
-          visual="gray"
-        >
-          <Plus className="size-[15px] text-gray-500" />
-          Add Funds
-        </Button>
+        <NextLink href="/add-funds">
+          <Button
+            className="w-full mt-3.5 rounded-full"
+            size="md"
+            variant="outlined"
+            visual="gray"
+          >
+            <Plus className="size-[15px] text-gray-500" />
+            Add Funds
+          </Button>
+        </NextLink>
       </div>
 
       <div className="mt-3">
@@ -765,7 +813,7 @@ const RightSidebarDownPart = ({
             <TabsTrigger value="Invoices">
               Invoices
               <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                3
+                0
               </span>
             </TabsTrigger>
           </TabsList>
@@ -773,7 +821,7 @@ const RightSidebarDownPart = ({
             <div className="px-5">
               <div className="py-1 flex items-center border-b border-gray-200 justify-between">
                 <span className="text-xs font-medium leading-[14.52px] text-dark-blue-400">
-                  2024
+                  {new Date().getFullYear()}
                 </span>
 
                 <div className="flex items-center gap-x-1">
@@ -786,143 +834,25 @@ const RightSidebarDownPart = ({
                 </div>
               </div>
             </div>
-            <ScrollArea
-              viewportClassName="max-h-[337px]"
-              scrollBar={<ScrollBar className="w-4 p-1" />}
-            >
-              <div className="px-5">
-                <div className="divide-gray-200 divide-y">
-                  <article className="flex items-start gap-x-3 last:border-b border-gray-200 py-5">
-                    <div className="border size-8 rounded-full bg-white border-gray-300 inline-flex shrink-0 justify-center items-center">
-                      <Video className="size-[15px] text-dark-blue-400" />
-                    </div>
-
-                    <div className="flex items-end justify-between flex-auto">
-                      <div className="flex flex-col gap-y-1">
-                        <h1 className="text-xs leading-[14.52px] font-semibold text-dark-blue-400">
-                          Video Editing
-                        </h1>
-                        <span className="inline-block text-[10px] font-medium leading-[12.1px] text-dark-blue-400">
-                          Full Payment - Invoice #34567
-                        </span>
-                        <span className="inline-block text-[10px] font-medium leading-[12.1px] text-dark-blue-400">
-                          Aug 30, 2024
-                        </span>
-                      </div>
-                      <span className="inline-block font-semibold text-base leading-[19.36px] text-dark-blue-400">
-                        + $200
-                      </span>
-                    </div>
-                  </article>
-                  <article className="flex items-start gap-x-3 last:border-b border-gray-200 py-5">
-                    <div className="border size-8 rounded-full bg-white border-gray-300 inline-flex shrink-0 justify-center items-center">
-                      <Video className="size-[15px] text-dark-blue-400" />
-                    </div>
-
-                    <div className="flex items-end justify-between flex-auto">
-                      <div className="flex flex-col gap-y-1">
-                        <h1 className="text-xs leading-[14.52px] font-semibold text-dark-blue-400">
-                          Video Editing
-                        </h1>
-                        <span className="inline-block text-[10px] font-medium leading-[12.1px] text-dark-blue-400">
-                          Full Payment - Invoice #34567
-                        </span>
-                        <span className="inline-block text-[10px] font-medium leading-[12.1px] text-dark-blue-400">
-                          Aug 30, 2024
-                        </span>
-                      </div>
-                      <span className="inline-block font-semibold text-base leading-[19.36px] text-dark-blue-400">
-                        + $200
-                      </span>
-                    </div>
-                  </article>
-                  <article className="flex items-start gap-x-3 last:border-b border-gray-200 py-5">
-                    <div className="border size-8 rounded-full bg-white border-gray-300 inline-flex shrink-0 justify-center items-center">
-                      <Video className="size-[15px] text-dark-blue-400" />
-                    </div>
-
-                    <div className="flex items-end justify-between flex-auto">
-                      <div className="flex flex-col gap-y-1">
-                        <h1 className="text-xs leading-[14.52px] font-semibold text-dark-blue-400">
-                          Video Editing
-                        </h1>
-                        <span className="inline-block text-[10px] font-medium leading-[12.1px] text-dark-blue-400">
-                          Full Payment - Invoice #34567
-                        </span>
-                        <span className="inline-block text-[10px] font-medium leading-[12.1px] text-dark-blue-400">
-                          Aug 30, 2024
-                        </span>
-                      </div>
-                      <span className="inline-block font-semibold text-base leading-[19.36px] text-dark-blue-400">
-                        + $200
-                      </span>
-                    </div>
-                  </article>
-                  <article className="flex items-start gap-x-3 last:border-b border-gray-200 py-5">
-                    <div className="border size-8 rounded-full bg-white border-gray-300 inline-flex shrink-0 justify-center items-center">
-                      <Video className="size-[15px] text-dark-blue-400" />
-                    </div>
-
-                    <div className="flex items-end justify-between flex-auto">
-                      <div className="flex flex-col gap-y-1">
-                        <h1 className="text-xs leading-[14.52px] font-semibold text-dark-blue-400">
-                          Video Editing
-                        </h1>
-                        <span className="inline-block text-[10px] font-medium leading-[12.1px] text-dark-blue-400">
-                          Full Payment - Invoice #34567
-                        </span>
-                        <span className="inline-block text-[10px] font-medium leading-[12.1px] text-dark-blue-400">
-                          Aug 30, 2024
-                        </span>
-                      </div>
-                      <span className="inline-block font-semibold text-base leading-[19.36px] text-dark-blue-400">
-                        + $200
-                      </span>
-                    </div>
-                  </article>
-                  <article className="flex items-start gap-x-3 last:border-b border-gray-200 py-5">
-                    <div className="border size-8 rounded-full bg-white border-gray-300 inline-flex shrink-0 justify-center items-center">
-                      <Video className="size-[15px] text-dark-blue-400" />
-                    </div>
-
-                    <div className="flex items-end justify-between flex-auto">
-                      <div className="flex flex-col gap-y-1">
-                        <h1 className="text-xs leading-[14.52px] font-semibold text-dark-blue-400">
-                          Video Editing
-                        </h1>
-                        <span className="inline-block text-[10px] font-medium leading-[12.1px] text-dark-blue-400">
-                          Full Payment - Invoice #34567
-                        </span>
-                        <span className="inline-block text-[10px] font-medium leading-[12.1px] text-dark-blue-400">
-                          Aug 30, 2024
-                        </span>
-                      </div>
-                      <span className="inline-block font-semibold text-base leading-[19.36px] text-dark-blue-400">
-                        + $200
-                      </span>
-                    </div>
-                  </article>
-                </div>
-              </div>
-            </ScrollArea>
-
-            <div className="py-3 border-t border-gray-200 px-5 flex items-center justify-center">
-              <Button variant="link" visual="gray">
-                View More
-              </Button>
+            <div className="px-5 py-10 text-center">
+              <p className="text-sm text-gray-400">No transactions yet</p>
             </div>
           </TabsContent>
-          <TabsContent value="Invoices"></TabsContent>
+          <TabsContent value="Invoices">
+            <div className="px-5 py-10 text-center">
+              <p className="text-sm text-gray-400">No invoices yet</p>
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
     </div>
   )
 }
 
-const RightSidebar = () => {
+const RightSidebar = ({ profile }: { profile?: DashboardProfile | null }) => {
   return (
     <div className="w-[322px] shrink-0 min-[1440px]:block hidden">
-      <RightSidebarUpPart variant="secondary" />
+      <RightSidebarUpPart variant="secondary" profile={profile} />
       <RightSidebarDownPart variant="secondary" />
     </div>
   )
@@ -977,6 +907,22 @@ const Footer = () => {
 export default function ClientDashboard() {
   const { user } = useAuth()
   const [showSecurityModal, setShowSecurityModal] = useState(false)
+  const [profile, setProfile] = useState<DashboardProfile | null>(null)
+
+  const fetchProfile = useCallback(async (userId: string) => {
+    try {
+      const res = await UserAPI.getProfile(userId)
+      setProfile(res.data)
+    } catch {
+      // Profile fetch failed — dashboard still works with basic user data
+    }
+  }, [])
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchProfile(user.id)
+    }
+  }, [user?.id, fetchProfile])
 
   useEffect(() => {
     const safeUser = user as {
@@ -1003,7 +949,7 @@ export default function ClientDashboard() {
       )}
       <AuthenticatedRoute>
         <LeftSidebar />
-        <Content />
+        <Content profile={profile} />
       </AuthenticatedRoute>
     </>
   )

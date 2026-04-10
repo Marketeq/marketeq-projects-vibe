@@ -2560,7 +2560,7 @@ const OutlineYourInterests = ({
       ...stepData,
       firstName: user?.firstName ?? stepData?.firstName,
       lastName: user?.lastName ?? stepData?.lastName,
-      avatarUrl: user?.avatarUrl ?? undefined,
+      avatarUrl: stepData?.avatarUrl ?? user?.avatarUrl ?? undefined,
       budget: values.budget,
       skills: values?.skillsLookingFor,
       industries: Object.entries(values?.industriesOrVerticals)
