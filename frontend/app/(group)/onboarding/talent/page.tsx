@@ -424,11 +424,7 @@ const IntroduceYourself = ({
 }
 
 const createYourUsernameFormSchema = z.object({
-  username: z
-    .string({ required_error: "Username must be entered" })
-    .min(3, "Please enter at least 3 character(s)")
-    .regex(USERNAME_PATTERN, USERNAME_RULE_MESSAGE)
-    .transform((val) => val.trim()),
+  username: optionalUsernameString,
 })
 
 type CreateYourUsernameFormValues = z.infer<typeof createYourUsernameFormSchema>
@@ -487,15 +483,10 @@ const CreateYourUsername = ({
   const onSubmit: SubmitHandler<CreateYourUsernameFormValues> = ({
     username,
   }) => {
-    if (!username?.trim()) {
-      setError("username", { type: "manual", message: "Username must be entered" })
-      return
-    }
     setStepData({
       ...stepData,
       username,
     })
-    toggleValidation(true)
     nextStep()
   }
   const setFormValue: UseFormSetValue<CreateYourUsernameFormValues> = (
@@ -511,7 +502,9 @@ const CreateYourUsername = ({
   const progress = ((currentStep + 1) / totalSteps) * 100
 
   const skip = () => {
-    setError("username", { type: "manual", message: "Username must be entered" })
+    toggleValidation(true)
+    const nextStepIndex = currentStep + 1
+    setStep(nextStepIndex)
   }
 
   const back = () => {
