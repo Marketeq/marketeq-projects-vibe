@@ -490,13 +490,7 @@ export const ImageEditor = ({
   const [dataUrl, setDataUrl] = useUncontrolledState<string | null>({
     defaultValue: null,
     onChange: (value) => {
-      if (!value) {
-        onValueChange?.(undefined)
-        return
-      }
-      if (acceptedFiles.length > 0) {
-        onValueChange?.(acceptedFiles)
-      }
+      value ? onValueChange?.(acceptedFiles) : onValueChange?.(undefined)
     },
   })
 
@@ -627,8 +621,8 @@ export const ImageEditor = ({
 
   return (
     <>
-      {/* Keep input mounted so open() works from any step/dialog state. */}
-      <div className="sr-only">
+      {/* Hidden file input — always in the DOM so open() works from any dialog */}
+      <div className="sr-only" {...getRootProps()}>
         <input {...getInputProps()} />
       </div>
 
@@ -657,7 +651,6 @@ export const ImageEditor = ({
           <div className="flex mt-5 justify-center">
             <div
               className="size-[160px] shrink-0 rounded-full bg-gray-100 flex items-center justify-center text-center"
-              {...getRootProps()}
             >
               <span className="text-[60px] leading-none text-gray-300 font-medium">
                 CH

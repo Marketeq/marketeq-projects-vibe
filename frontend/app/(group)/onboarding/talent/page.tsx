@@ -1998,13 +1998,23 @@ const ShowcaseYourTalent = ({
     )
   }, [industriesOptions, industriesQuery, selectedIndustries])
 
-  const addIndustryValue = (nextValue: string) => {
+  const addIndustryValue = async (nextValue: string) => {
     const value = nextValue.trim()
     if (!value) return
 
     const isKnownSuggestion = hasCaseInsensitiveExactMatch(industriesOptions, value)
     if (!isKnownSuggestion) {
-      void submitAutocompleteValue("industries", value)
+      const accepted = await submitAutocompleteValue("industries", value)
+      if (!accepted) {
+        setError("industriesWorkedWith", {
+          type: "manual",
+          message:
+            "This value is not a valid industry suggestion for this field.",
+        })
+        setIndustriesQuery("")
+        setIsIndustriesOpen(false)
+        return
+      }
     }
 
     clearErrors("industriesWorkedWith")
@@ -2251,14 +2261,28 @@ const ShowcaseYourTalent = ({
                                 setIsJobTitleOpen(false)
                               }
 
-                              applyValue()
+                              if (isKnownSuggestion) {
+                                applyValue()
+                                return
+                              }
 
-                              if (!isKnownSuggestion) {
-                                void submitAutocompleteValue(
+                              void (async () => {
+                                const accepted = await submitAutocompleteValue(
                                   "job_titles",
                                   finalValue
                                 )
-                              }
+                                if (!accepted) {
+                                  setError("recentJobTitle", {
+                                    type: "manual",
+                                    message:
+                                      "This value is not a valid job title suggestion for this field.",
+                                  })
+                                  setJobTitleQuery("")
+                                  setIsJobTitleOpen(false)
+                                  return
+                                }
+                                applyValue()
+                              })()
                             }}
                             invalid={hookFormHasError({
                               errors,
@@ -2736,21 +2760,6 @@ const toMinutes = (time?: string, dayPeriod?: string) => {
   return normalizedHours * 60 + minutesPart
 }
 
-const toTimeValue = (totalMinutes: number) => {
-  const normalizedMinutes = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60)
-  const hours24 = Math.floor(normalizedMinutes / 60)
-  const minutes = normalizedMinutes % 60
-  const dayPeriod = hours24 >= 12 ? "PM" : "AM"
-  const hours12 = hours24 % 12 || 12
-
-  return {
-    time: `${hours12.toString().padStart(2, "0")}:${minutes
-      .toString()
-      .padStart(2, "0")}`,
-    dayPeriod,
-  }
-}
-
 const setYourPreferencesFormSchema = z
   .object({
     projects: optionalStringArray,
@@ -2760,66 +2769,26 @@ const setYourPreferencesFormSchema = z
   .superRefine((values, ctx) => {
     if (values.yourAvailability !== "Custom") return
 
-    values.customAvailability?.forEach((day, dayIdx) => {
-      const slots = day.times ?? []
+    const hasInvalidRange = values.customAvailability?.some((day) =>
+      day.times?.some((time) => {
+        const startMinutes = toMinutes(time.startTime, time.startTimeDayPeriod)
+        const endMinutes = toMinutes(time.endTime, time.endTimeDayPeriod)
 
-      slots.forEach((slot, slotIdx) => {
-        const startMinutes = toMinutes(
-          slot.startTime,
-          slot.startTimeDayPeriod
-        )
-        const endMinutes = toMinutes(slot.endTime, slot.endTimeDayPeriod)
-
-        if (
+        return (
           startMinutes != null &&
           endMinutes != null &&
-          endMinutes <= startMinutes
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["customAvailability", dayIdx, "times", slotIdx],
-            message: "End time must be later than start time",
-          })
-          return
-        }
-
-        if (startMinutes == null || endMinutes == null) return
-
-        const overlapsExistingSlot = slots.some((otherSlot, otherSlotIdx) => {
-          if (otherSlotIdx >= slotIdx) return false
-
-          const otherStartMinutes = toMinutes(
-            otherSlot.startTime,
-            otherSlot.startTimeDayPeriod
-          )
-          const otherEndMinutes = toMinutes(
-            otherSlot.endTime,
-            otherSlot.endTimeDayPeriod
-          )
-
-          if (
-            otherStartMinutes == null ||
-            otherEndMinutes == null ||
-            otherEndMinutes <= otherStartMinutes
-          ) {
-            return false
-          }
-
-          return (
-            Math.max(startMinutes, otherStartMinutes) <
-            Math.min(endMinutes, otherEndMinutes)
-          )
-        })
-
-        if (overlapsExistingSlot) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["customAvailability", dayIdx, "times", slotIdx],
-            message: "This time overlaps another slot on the same day",
-          })
-        }
+          endMinutes < startMinutes
+        )
       })
-    })
+    )
+
+    if (hasInvalidRange) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["customAvailability"],
+        message: "End time cannot be earlier than start time",
+      })
+    }
   })
 
 type SetYourPreferencesFormValues = z.infer<typeof setYourPreferencesFormSchema>
@@ -2827,7 +2796,6 @@ type SetYourPreferencesFormValues = z.infer<typeof setYourPreferencesFormSchema>
 const CustomAvailabilityTimeSelector = ({
   label,
   value,
-  slotErrors,
   onValueChange,
   disabled,
   onToggle,
@@ -2847,7 +2815,6 @@ const CustomAvailabilityTimeSelector = ({
       endTimeDayPeriod: string
     }>
   ) => void
-  slotErrors?: Array<string | undefined>
   disabled?: boolean
   onToggle: (
     value: boolean,
@@ -2882,32 +2849,7 @@ const CustomAvailabilityTimeSelector = ({
   const isOn = disabled != null ? !disabled : true
 
   const add = () => {
-    setState((prev) => {
-      const previousSlot = prev.at(-1)
-      if (!previousSlot) return [...prev, defaultSlot]
-
-      const previousEndMinutes = toMinutes(
-        previousSlot.endTime,
-        previousSlot.endTimeDayPeriod
-      )
-
-      if (previousEndMinutes == null) {
-        return [...prev, defaultSlot]
-      }
-
-      const nextStart = toTimeValue(previousEndMinutes)
-      const nextEnd = toTimeValue(previousEndMinutes + 60)
-
-      return [
-        ...prev,
-        {
-          startTime: nextStart.time,
-          startTimeDayPeriod: nextStart.dayPeriod,
-          endTime: nextEnd.time,
-          endTimeDayPeriod: nextEnd.dayPeriod,
-        },
-      ]
-    })
+    setState((prev) => [...prev, defaultSlot])
   }
 
   const remove = (index: number) => {
@@ -2937,171 +2879,165 @@ const CustomAvailabilityTimeSelector = ({
       <div className="flex items-star gap-x-3">
         <div className="flex flex-col gap-y-3">
           {state.map((t, index) => (
-            <div key={index} className="flex flex-col gap-y-1.5">
-              <div className="inline-flex items-center gap-x-3">
-                <div className="flex items-center">
-                  <Select
-                    disabled={!isOn}
-                    value={t.startTime}
-                    onValueChange={(value) =>
-                      setState((prev) => {
-                        const nextState = prev
-                          .slice()
-                          .map((item, i) =>
-                            i === index ? { ...item, startTime: value } : item
-                          )
+            <div className="inline-flex items-center gap-x-3" key={index}>
+              <div className="flex items-center">
+                <Select
+                  disabled={!isOn}
+                  value={t.startTime}
+                  onValueChange={(value) =>
+                    setState((prev) => {
+                      const nextState = prev
+                        .slice()
+                        .map((item, i) =>
+                          i === index ? { ...item, startTime: value } : item
+                        )
 
-                        return nextState
-                      })
-                    }
+                      return nextState
+                    })
+                  }
+                >
+                  <SelectTrigger indicator={false} className="rounded-r-none">
+                    <SelectValue />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    <ScrollArea viewportClassName="max-h-[304px]">
+                      {TIMES.map((time, index) => (
+                        <SelectItem value={time} key={index}>
+                          {time}
+                        </SelectItem>
+                      ))}
+                    </ScrollArea>
+                  </SelectContent>
+                </Select>
+                <Select
+                  disabled={!isOn}
+                  value={t.startTimeDayPeriod}
+                  onValueChange={(value) =>
+                    setState((prev) => {
+                      const nextState = prev
+                        .slice()
+                        .map((item, i) =>
+                          i === index
+                            ? { ...item, startTimeDayPeriod: value }
+                            : item
+                        )
+
+                      return nextState
+                    })
+                  }
+                >
+                  <SelectTrigger
+                    indicator={false}
+                    className="rounded-l-none rounded-r-[5px] border-l-0"
                   >
-                    <SelectTrigger indicator={false} className="rounded-r-none">
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
 
-                    <SelectContent>
-                      <ScrollArea viewportClassName="max-h-[304px]">
-                        {TIMES.map((time, index) => (
-                          <SelectItem value={time} key={index}>
-                            {time}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    disabled={!isOn}
-                    value={t.startTimeDayPeriod}
-                    onValueChange={(value) =>
-                      setState((prev) => {
-                        const nextState = prev
-                          .slice()
-                          .map((item, i) =>
-                            i === index
-                              ? { ...item, startTimeDayPeriod: value }
-                              : item
-                          )
+                  <SelectContent>
+                    <ScrollArea viewportClassName="max-h-[304px]">
+                      {DAY_PERIODS.map((dayPeriod, index) => (
+                        <SelectItem value={dayPeriod} key={index}>
+                          {dayPeriod}
+                        </SelectItem>
+                      ))}
+                    </ScrollArea>
+                  </SelectContent>
+                </Select>
+              </div>
+              <span className="text-base leading-8 font-semibold text-gray-400">
+                to
+              </span>
+              <div className="flex items-center">
+                <Select
+                  disabled={!isOn}
+                  value={t.endTime}
+                  onValueChange={(value) =>
+                    setState((prev) => {
+                      const nextState = prev
+                        .slice()
+                        .map((item, i) =>
+                          i === index ? { ...item, endTime: value } : item
+                        )
 
-                        return nextState
-                      })
-                    }
+                      return nextState
+                    })
+                  }
+                >
+                  <SelectTrigger indicator={false} className="rounded-r-none">
+                    <SelectValue />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    <ScrollArea viewportClassName="max-h-[304px]">
+                      {TIMES.map((time, index) => (
+                        <SelectItem value={time} key={index}>
+                          {time}
+                        </SelectItem>
+                      ))}
+                    </ScrollArea>
+                  </SelectContent>
+                </Select>
+                <Select
+                  disabled={!isOn}
+                  value={t.endTimeDayPeriod}
+                  onValueChange={(value) =>
+                    setState((prev) => {
+                      const nextState = prev
+                        .slice()
+                        .map((item, i) =>
+                          i === index
+                            ? { ...item, endTimeDayPeriod: value }
+                            : item
+                        )
+
+                      return nextState
+                    })
+                  }
+                >
+                  <SelectTrigger
+                    indicator={false}
+                    className="rounded-l-none rounded-r-[5px] border-l-0"
                   >
-                    <SelectTrigger
-                      indicator={false}
-                      className="rounded-l-none rounded-r-[5px] border-l-0"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
 
-                    <SelectContent>
-                      <ScrollArea viewportClassName="max-h-[304px]">
-                        {DAY_PERIODS.map((dayPeriod, index) => (
-                          <SelectItem value={dayPeriod} key={index}>
-                            {dayPeriod}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <span className="text-base leading-8 font-semibold text-gray-400">
-                  to
-                </span>
-                <div className="flex items-center">
-                  <Select
-                    disabled={!isOn}
-                    value={t.endTime}
-                    onValueChange={(value) =>
-                      setState((prev) => {
-                        const nextState = prev
-                          .slice()
-                          .map((item, i) =>
-                            i === index ? { ...item, endTime: value } : item
-                          )
-
-                        return nextState
-                      })
-                    }
-                  >
-                    <SelectTrigger indicator={false} className="rounded-r-none">
-                      <SelectValue />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      <ScrollArea viewportClassName="max-h-[304px]">
-                        {TIMES.map((time, index) => (
-                          <SelectItem value={time} key={index}>
-                            {time}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    disabled={!isOn}
-                    value={t.endTimeDayPeriod}
-                    onValueChange={(value) =>
-                      setState((prev) => {
-                        const nextState = prev
-                          .slice()
-                          .map((item, i) =>
-                            i === index
-                              ? { ...item, endTimeDayPeriod: value }
-                              : item
-                          )
-
-                        return nextState
-                      })
-                    }
-                  >
-                    <SelectTrigger
-                      indicator={false}
-                      className="rounded-l-none rounded-r-[5px] border-l-0"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      <ScrollArea viewportClassName="max-h-[304px]">
-                        {DAY_PERIODS.map((dayPeriod, index) => (
-                          <SelectItem value={dayPeriod} key={index}>
-                            {dayPeriod}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {index > 0 ? (
-                  <IconButton
-                    className="rounded-full opacity-0 hover:opacity-100"
-                    visual="error"
-                    variant="ghost"
-                    size="md"
-                    type="button"
-                    onClick={() => remove(index)}
-                  >
-                    <Trash03 className="size-[15px]" />
-                  </IconButton>
-                ) : (
-                  <IconButton
-                    className="rounded-[5px] bg-white"
-                    variant="outlined"
-                    visual="gray"
-                    size="md"
-                    type="button"
-                    onClick={isOn ? add : noop}
-                    disabled={!isOn}
-                  >
-                    <Plus className="size-[15px]" />
-                  </IconButton>
-                )}
+                  <SelectContent>
+                    <ScrollArea viewportClassName="max-h-[304px]">
+                      {DAY_PERIODS.map((dayPeriod, index) => (
+                        <SelectItem value={dayPeriod} key={index}>
+                          {dayPeriod}
+                        </SelectItem>
+                      ))}
+                    </ScrollArea>
+                  </SelectContent>
+                </Select>
               </div>
 
-              {slotErrors?.[index] ? (
-                <ErrorMessage size="sm">{slotErrors[index]}</ErrorMessage>
-              ) : null}
+              {index > 0 ? (
+                <IconButton
+                  className="rounded-full opacity-0 hover:opacity-100"
+                  visual="error"
+                  variant="ghost"
+                  size="md"
+                  type="button"
+                  onClick={() => remove(index)}
+                >
+                  <Trash03 className="size-[15px]" />
+                </IconButton>
+              ) : (
+                <IconButton
+                  className="rounded-[5px] bg-white"
+                  variant="outlined"
+                  visual="gray"
+                  size="md"
+                  type="button"
+                  onClick={isOn ? add : noop}
+                  disabled={!isOn}
+                >
+                  <Plus className="size-[15px]" />
+                </IconButton>
+              )}
             </div>
           ))}
         </div>
@@ -3159,7 +3095,6 @@ const SetYourPreferences = ({
     handleSubmit,
   } = useForm<SetYourPreferencesFormValues>({
     resolver: zodResolver(setYourPreferencesFormSchema),
-    mode: "onChange",
     defaultValues: {
       projects: stepData?.projectTypes,
       yourAvailability: capitalize(
@@ -3195,17 +3130,22 @@ const SetYourPreferences = ({
       DEFAULT_CUSTOM_WORKING_DAYS.map((day) => ({
         day,
         times: DEFAULT_CUSTOM_TIME_SLOT,
-      })),
-      {
-        shouldValidate: true,
-        shouldDirty: true,
-        shouldTouch: true,
-      }
+      }))
     )
     hasInitializedCustomDefault.current = true
   }, [availability, customAvailability, setValue])
 
-  const buildStepDataFormData = (): FormData => {
+  const onSubmit: SubmitHandler<SetYourPreferencesFormValues> = ({
+    projects,
+    yourAvailability,
+    customAvailability,
+  }) => {
+    setIsLoading(true)
+
+    const availability: AVAILABILITY = yourAvailability
+      ?.replaceAll("-", "_")
+      ?.toUpperCase() as AVAILABILITY
+
     const formData = new FormData()
 
     if (stepData?.avatar instanceof File) {
@@ -3237,15 +3177,27 @@ const SetYourPreferences = ({
       formData.append("lookingToWorkWith", item)
     })
 
+    projects?.forEach((item) => {
+      formData.append("projectTypes", item)
+    })
+
     if (stepData?.isStudent != null) {
       formData.append("isStudent", stepData.isStudent.toString())
     }
 
-    return formData
-  }
+    if (availability) {
+      formData.append("availability", availability)
+    }
 
-  const submitTalent = (formData: FormData) => {
-    setIsLoading(true)
+    if (
+      availability === AVAILABILITY.CUSTOM &&
+      (customAvailability?.length || 0) > 0
+    ) {
+      formData.append(
+        "customAvailability",
+        JSON.stringify(customAvailability) || ""
+      )
+    }
 
     TalentAPI.CreateTalent(formData)
       .then((response) => {
@@ -3285,47 +3237,15 @@ const SetYourPreferences = ({
       })
   }
 
-  const onSubmit: SubmitHandler<SetYourPreferencesFormValues> = ({
-    projects,
-    yourAvailability,
-    customAvailability,
-  }) => {
-    const availability: AVAILABILITY = yourAvailability
-      ?.replaceAll("-", "_")
-      ?.toUpperCase() as AVAILABILITY
-
-    const formData = buildStepDataFormData()
-
-    projects?.forEach((item) => {
-      formData.append("projectTypes", item)
-    })
-
-    if (availability) {
-      formData.append("availability", availability)
-    }
-
-    if (
-      availability === AVAILABILITY.CUSTOM &&
-      (customAvailability?.length || 0) > 0
-    ) {
-      formData.append(
-        "customAvailability",
-        JSON.stringify(customAvailability) || ""
-      )
-    }
-
-    submitTalent(formData)
-  }
-
   const { totalSteps, currentStep } = useStepRootContext()
 
   const progress = ((currentStep + 1) / totalSteps) * 100
 
   const skip = async () => {
     try {
-      if (isLoading) return
-      const formData = buildStepDataFormData()
-      submitTalent(formData)
+      toggleValidation(true)
+      const nextStepIndex = currentStep + 1
+      setStep(nextStepIndex)
     } catch (error) {
       toast({
         title: "Failed to skip onboarding. Please try again.",
@@ -3361,21 +3281,13 @@ const SetYourPreferences = ({
       getValues("customAvailability")?.filter((item) => item?.day !== day) || []
 
     data?.push({ day, times })
-    setValue("customAvailability", data, {
-      shouldValidate: true,
-      shouldDirty: true,
-      shouldTouch: true,
-    })
+    setValue("customAvailability", data)
   }
 
   const handleCustomAvailabityDisable = (day: string) => {
     const data =
       getValues("customAvailability")?.filter((item) => item?.day !== day) || []
-    setValue("customAvailability", data, {
-      shouldValidate: true,
-      shouldDirty: true,
-      shouldTouch: true,
-    })
+    setValue("customAvailability", data)
   }
 
   return (
@@ -3455,10 +3367,9 @@ const SetYourPreferences = ({
               {availability === "Custom" && (
                 <div className="flex flex-col">
                   {days?.map(({ id, lable, disabled }) => {
-                    const dayIdx =
-                      customAvailability?.findIndex(({ day }) => day === lable) ??
-                      -1
-                    const dayValue = customAvailability?.[dayIdx]?.times as
+                    const dayValue = customAvailability?.find(
+                      ({ day }) => day === lable
+                    )?.times as
                       | Array<{
                           startTime: string
                           startTimeDayPeriod: string
@@ -3466,14 +3377,6 @@ const SetYourPreferences = ({
                           endTimeDayPeriod: string
                         }>
                       | undefined
-                    const slotErrors =
-                      dayIdx >= 0
-                        ? (
-                            errors.customAvailability?.[dayIdx]?.times as
-                              | Array<{ message?: string }>
-                              | undefined
-                          )?.map((slotError) => slotError?.message)
-                        : undefined
                     const isDayEnabled = !!dayValue?.length
 
                     return (
@@ -3482,7 +3385,6 @@ const SetYourPreferences = ({
                         label={lable}
                         disabled={!isDayEnabled && disabled}
                         value={dayValue?.length ? dayValue : undefined}
-                        slotErrors={slotErrors}
                         onValueChange={(value) => {
                           handleCustomAvailabity(lable, value)
                         }}
@@ -3496,6 +3398,16 @@ const SetYourPreferences = ({
                       />
                     )
                   })}
+
+                  <HookFormErrorMessage
+                    name="customAvailability"
+                    errors={errors}
+                    render={({ message }) => (
+                      <ErrorMessage size="sm" className="mt-2">
+                        {message}
+                      </ErrorMessage>
+                    )}
+                  />
                 </div>
               )}
             </div>
@@ -3522,11 +3434,10 @@ const SetYourPreferences = ({
                 type="button"
                 size="md"
                 onClick={skip}
-                disabled={isLoading}
               >
                 Skip
               </Button>
-              <Button disabled={isLoading || !isValid} size="md" visual="primary">
+              <Button disabled={isLoading} size="md" visual="primary">
                 {isLoading ? (
                   <Spinner
                     size={24}
@@ -3568,31 +3479,44 @@ const DoNext = ({
   }
 
   const handleFinish = async () => {
-    setIsLoading(true)
-
-    // Always mark onboarding as dismissed locally so AuthenticatedRoute won't bounce back
-    const finishedUser = {
-      ...(talentUser ?? user),
-      onboardingDismissed: true,
-      userType: "talent",
-    } as User
-    setUser(finishedUser)
-
-    // Persist to localStorage as a fallback in case the API call fails
-    try { window.localStorage.setItem("marketeq-onboarding-dismissed", "true") } catch {}
-
     try {
-      await UserAPI.handleSkip({ role: ROLE.TALENT })
-      const userResponse = await UserAPI.me()
-      if (userResponse?.data?.user) {
-        setUser(userResponse.data.user)
+      setIsLoading(true)
+      const response = await UserAPI.handleSkip({ role: ROLE.TALENT })
+
+      let nextUser = response?.data?.user as User | undefined
+      if (!nextUser) {
+        const fallbackUser = talentUser ?? user
+        if (fallbackUser) {
+          nextUser = {
+            ...fallbackUser,
+            onboardingDismissed: true,
+            userType: "talent",
+          }
+        }
       }
+
+      if (nextUser) {
+        setUser(nextUser)
+      }
+
+      let refreshedUser = nextUser
+      try {
+        const userResponse = await UserAPI.me()
+        if (userResponse?.data?.user) {
+          refreshedUser = userResponse.data.user
+          setUser(userResponse.data.user)
+        }
+      } catch (error) {
+        console.error("Failed to refresh user after onboarding", error)
+      }
+
+      router.push(getPostOnboardingRoute("/talent-dashboard", refreshedUser ?? talentUser ?? user))
     } catch (error) {
       console.error("Failed to complete onboarding", error)
+      // Show error toast if needed
+    } finally {
+      setIsLoading(false)
     }
-
-    setIsLoading(false)
-    router.push("/talent-dashboard")
   }
 
   return (
