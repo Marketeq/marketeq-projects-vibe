@@ -5,7 +5,7 @@ export class ProjectMapper {
   static toDomain(raw: ProjectEntity): Project {
     const project = new Project();
     project.id = raw.id;
-    project.strapiId = raw.strapiId;
+    project.cmsId = raw.cmsId;
     project.title = raw.title;
     project.subtitle = raw.subtitle;
     project.shortDescription = raw.shortDescription;
@@ -37,7 +37,7 @@ export class ProjectMapper {
       projectEntity.id = project.id;
     }
 
-    projectEntity.strapiId = project.strapiId ?? undefined;
+    projectEntity.cmsId = project.cmsId ?? undefined;
     projectEntity.title = project.title;
     projectEntity.subtitle = project.subtitle!;
     projectEntity.shortDescription = project.shortDescription!;

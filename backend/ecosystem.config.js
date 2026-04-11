@@ -41,7 +41,7 @@ module.exports = {
       watch: false,
       max_restarts: 10,
       restart_delay: 2000,
-      env: { PORT: 3003, NODE_ENV: 'development' },
+      env: { PORT: 3002, NODE_ENV: 'development' },
     },
     {
       name: 'listings-service',

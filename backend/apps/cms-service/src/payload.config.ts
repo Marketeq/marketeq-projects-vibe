@@ -17,6 +17,7 @@ import { FeatureFlags } from './collections/FeatureFlags';
 import { Media } from './collections/Media';
 import { Testimonials } from './collections/Testimonials';
 import { LandingPages } from './collections/LandingPages';
+import { Homepages } from './collections/Homepages';
 
 // Globals
 import { SiteSettings } from './globals/SiteSettings';
@@ -35,7 +36,11 @@ export default buildConfig({
     disable: process.env.PAYLOAD_ADMIN_DISABLE === 'true',
     bundler: webpackBundler(),
     webpack: (config) => {
-      // Prevent server-only modules from being bundled into admin UI
+      // Prevent server-only modules from being bundled into admin UI.
+      // NOTE: The `sass` package is a peer dep of sass-loader and must be
+      // installed for the default Payload webpack CSS/SCSS rule to compile
+      // node_modules/.scss files (e.g. @payloadcms/richtext-lexical). See
+      // package.json devDependencies.
       return {
         ...config,
         resolve: {
@@ -88,6 +93,7 @@ export default buildConfig({
     Media,
     Testimonials,
     LandingPages,
+    Homepages,
   ],
 
   globals: [

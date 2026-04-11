@@ -18,7 +18,7 @@ export class Project {
   @Column({ nullable: true })
   category: string;
 
-  @Column('text', { array: true, default: '{}' })
+  @Column('text', { array: true, default: [] })
   categories: string[];
 
   @Column('text', { array: true, default: [] })
@@ -30,19 +30,19 @@ export class Project {
   @Column('text', { array: true, default: [] })
   industry: string[];
 
-  @Column('text', { array: true, default: '{}' })
+  @Column('text', { array: true, default: [] })
   subcategories: string[];
 
-  @Column('text', { array: true, default: '{}' })
+  @Column('text', { array: true, default: [] })
   programmingLanguages: string[];
 
-  @Column('text', { array: true, default: '{}' })
+  @Column('text', { array: true, default: [] })
   developmentTech: string[];
 
-  @Column('text', { array: true, default: '{}' })
+  @Column('text', { array: true, default: [] })
   languages: string[];
 
-  @Column('text', { array: true, default: '{}' })
+  @Column('text', { array: true, default: [] })
   locations: string[];
 
   @Column('text', { array: true, default: [] })
@@ -54,7 +54,7 @@ export class Project {
   @Column({ nullable: true, type: 'text' })
   videoUrl: string;
 
-  @Column('text', { array: true, default: '{}' })
+  @Column('text', { array: true, default: [] })
   deliverables: string[];
 
   @Column('jsonb', { nullable: true, default: '[]' })
@@ -83,6 +83,24 @@ export class Project {
 
   @Column({ nullable: true })
   duration: string;
+
+  @Column({ type: 'decimal', precision: 3, scale: 1, default: 0 })
+  rating: number;
+
+  @Column({ type: 'int', default: 0 })
+  reviewCount: number;
+
+  @Column({ type: 'int', default: 0 })
+  completionsCount: number;
+
+  @Column({ type: 'int', default: 0 })
+  views90d: number;
+
+  @Column({ type: 'decimal', default: 0 })
+  adminBoost: number;
+
+  @Column({ type: 'boolean', default: false })
+  featured: boolean;
 
   @Column()
   createdBy: string;
