@@ -23,6 +23,16 @@ export class HomepageController {
   private static readonly VARIANT_MAX_LENGTH = 64;
   private static readonly VARIANT_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
+  /**
+   * GET /homepage/health — lightweight health probe.
+   * Returns 200 with `{ status, redis }` so liveness/readiness can verify
+   * the homepage module + Redis dependency without triggering an assembly.
+   */
+  @Get('health')
+  async getHealth() {
+    return this.homepageService.healthCheck()
+  }
+
   @Get()
   async getHomepage(
     @Req() req: Request,

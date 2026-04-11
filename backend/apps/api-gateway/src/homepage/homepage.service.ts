@@ -52,7 +52,7 @@ export class HomepageService {
 
   constructor(
     private readonly http: HttpService,
-    private readonly config: ConfigService,
+    config: ConfigService,
   ) {
     this.listingsUrl =
       config.get<string>('LISTINGS_SERVICE_URL') || 'http://localhost:3004';
@@ -89,13 +89,18 @@ export class HomepageService {
    */
   async getHomepage(options: GetHomepageOptions = {}): Promise<HomepagePayload> {
     const { variant, preview, previewToken } = options;
+    const startedAt = Date.now();
 
     // Preview mode — bypass cache, validate token
     if (preview) {
       if (!this.previewSecret || previewToken !== this.previewSecret) {
         throw new ForbiddenException('Invalid or missing preview token');
       }
-      return this.assembleHomepage(variant, true);
+      const payload = await this.assembleHomepage(variant, true);
+      this.logger.log(
+        `homepage assembled (preview, variant=${variant ?? 'default'}) in ${Date.now() - startedAt}ms`,
+      );
+      return payload;
     }
 
     // Check cache — use "default" when no variant to avoid empty-string collisions
@@ -104,6 +109,7 @@ export class HomepageService {
       try {
         const cached = await this.redis.get(cacheKey);
         if (cached) {
+          this.logger.debug(`homepage cache HIT (${cacheKey}) in ${Date.now() - startedAt}ms`);
           return JSON.parse(cached);
         }
       } catch (err: any) {
@@ -123,7 +129,24 @@ export class HomepageService {
       }
     }
 
+    this.logger.log(
+      `homepage cache MISS (${cacheKey}) — assembled in ${Date.now() - startedAt}ms`,
+    );
     return payload;
+  }
+
+  /** Lightweight health check — reports Redis connectivity. */
+  async healthCheck(): Promise<{ status: 'ok'; redis: 'up' | 'down' | 'disabled' }> {
+    let redisStatus: 'up' | 'down' | 'disabled' = 'disabled';
+    if (this.redis) {
+      try {
+        const pong = await this.redis.ping();
+        redisStatus = pong === 'PONG' ? 'up' : 'down';
+      } catch {
+        redisStatus = 'down';
+      }
+    }
+    return { status: 'ok', redis: redisStatus };
   }
 
   /**
@@ -169,13 +192,33 @@ export class HomepageService {
     const cmsConfig = cmsResult?.config ?? null;
     const cmsMeta = cmsResult?.meta ?? { title: 'Marketeq Home', slug: 'home', status: isDraft ? 'draft' as const : 'active' as const };
 
-    const hero: HomepageHero = cmsConfig?.hero ?? HOMEPAGE_HERO;
-    const sectionConfigs: SectionConfig[] = cmsConfig?.sections ?? HOMEPAGE_SECTIONS;
-    const popularTabs: CategoryRef[] = cmsConfig?.popularTabs ?? HOMEPAGE_POPULAR_TABS;
-    const moreCategoriesList: CategoryRef[] = cmsConfig?.moreCategoriesList ?? HOMEPAGE_MORE_CATEGORIES;
-    const talentNetworkCta: TalentNetworkCta = cmsConfig?.talentNetworkCta ?? HOMEPAGE_TALENT_CTA;
-    const footerNav: FooterNavColumn[] = cmsConfig?.footerNav ?? HOMEPAGE_FOOTER_NAV;
-    let seo: HomepageSeo = cmsConfig?.seo ?? HOMEPAGE_SEO;
+    // CMS is the source of truth. Static config only runs as an emergency
+    // fallback when the CMS is unreachable or has no published homepage.
+    // Log per-field misses so operators see which pieces of content the CMS
+    // is not yet providing.
+    const missingFromCms: string[] = [];
+    const hero: HomepageHero =
+      cmsConfig?.hero ?? (missingFromCms.push('hero'), HOMEPAGE_HERO);
+    const sectionConfigs: SectionConfig[] =
+      cmsConfig?.sections ?? (missingFromCms.push('sections'), HOMEPAGE_SECTIONS);
+    const popularTabs: CategoryRef[] =
+      cmsConfig?.popularTabs ?? (missingFromCms.push('popularTabs'), HOMEPAGE_POPULAR_TABS);
+    const moreCategoriesList: CategoryRef[] =
+      cmsConfig?.moreCategoriesList ??
+      (missingFromCms.push('moreCategoriesList'), HOMEPAGE_MORE_CATEGORIES);
+    const talentNetworkCta: TalentNetworkCta =
+      cmsConfig?.talentNetworkCta ??
+      (missingFromCms.push('talentNetworkCta'), HOMEPAGE_TALENT_CTA);
+    const footerNav: FooterNavColumn[] =
+      cmsConfig?.footerNav ?? (missingFromCms.push('footerNav'), HOMEPAGE_FOOTER_NAV);
+    let seo: HomepageSeo =
+      cmsConfig?.seo ?? (missingFromCms.push('seo'), HOMEPAGE_SEO);
+
+    if (missingFromCms.length > 0) {
+      this.logger.warn(
+        `CMS did not provide [${missingFromCms.join(', ')}] — falling back to static config. Seed the Homepages collection to fix.`,
+      );
+    }
 
     // Force noindex for preview/draft content so search engines don't index it
     if (isDraft) {
@@ -279,15 +322,60 @@ export class HomepageService {
   }
 
   private transformCmsHomepage(doc: any): CmsHomepageConfig {
-    const hero: HomepageHero | undefined = doc.hero?.headline
-      ? {
-          headline: doc.hero.headline,
-          subheadline: doc.hero.subheadline || '',
-          backgroundImage: (typeof doc.hero.backgroundImage === 'object' ? doc.hero.backgroundImage?.url : doc.hero.backgroundImage) || '/sending-emails.png',
-          ctaLabel: doc.hero.ctaLabel || 'Browse Projects',
-          ctaUrl: doc.hero.ctaUrl || '/c/development',
-        }
-      : undefined;
+    let hero: HomepageHero | undefined;
+    // Multi-slide hero (preferred) — CMS hero.slides array
+    if (Array.isArray(doc.hero?.slides) && doc.hero.slides.length > 0) {
+      hero = {
+        intervalMs: doc.hero.intervalMs || 7000,
+        slides: doc.hero.slides.map((s: any, idx: number) => {
+          // Resolution order: Media upload → imageUrl fallback → legacy
+          // backgroundImage → hardcoded default.
+          const resolvedImage =
+            (typeof s.image === 'object' ? s.image?.url : s.image) ||
+            s.imageUrl ||
+            (typeof s.backgroundImage === 'object' ? s.backgroundImage?.url : s.backgroundImage);
+          // Warn — but don't fail — when CMS slides are missing critical fields
+          // so authors can fix the data instead of silently shipping fallbacks.
+          const missing: string[] = [];
+          if (!s.title && !s.headline) missing.push('title');
+          if (!resolvedImage) missing.push('image');
+          if (!s.ctaUrl) missing.push('ctaUrl');
+          if (missing.length > 0) {
+            this.logger.warn(
+              `CMS hero slide ${idx} missing required fields: ${missing.join(', ')} — using defaults`,
+            );
+          }
+          return {
+            eyebrow: s.eyebrow || '',
+            title: s.title || s.headline || '',
+            description: s.description || s.subheadline || '',
+            ctaLabel: s.ctaLabel || 'Browse Projects',
+            ctaUrl: s.ctaUrl || '/c/development',
+            image: resolvedImage || '/sending-emails.png',
+            accent: s.accent,
+          };
+        }),
+      };
+    } else if (doc.hero?.headline) {
+      // Legacy single-slide hero — wrap in a slides array
+      const image =
+        (typeof doc.hero.backgroundImage === 'object'
+          ? doc.hero.backgroundImage?.url
+          : doc.hero.backgroundImage) || '/sending-emails.png';
+      hero = {
+        intervalMs: 7000,
+        slides: [
+          {
+            eyebrow: doc.hero.eyebrow || 'Featured',
+            title: doc.hero.headline,
+            description: doc.hero.subheadline || '',
+            ctaLabel: doc.hero.ctaLabel || 'Browse Projects',
+            ctaUrl: doc.hero.ctaUrl || '/c/development',
+            image,
+          },
+        ],
+      };
+    }
 
     const sections: SectionConfig[] | undefined = doc.sections?.length
       ? doc.sections.map((s: any) => ({
@@ -296,6 +384,14 @@ export class HomepageService {
           subtitle: s.subtitle || '',
           ctaLabel: s.ctaLabel,
           ctaUrl: s.ctaUrl,
+          tabs: Array.isArray(s.tabs) && s.tabs.length > 0
+            ? s.tabs.map((t: any) => ({
+                label: t.label,
+                slug: t.slug,
+                categoryFilter: t.categoryFilter || undefined,
+                kind: t.kind || undefined,
+              }))
+            : undefined,
           blocks: (s.blocks || []).map((b: any) => ({
             entity: b.entity,
             type: b.displayType || 'carousel',
@@ -303,6 +399,7 @@ export class HomepageService {
             limit: b.limit || 8,
             sort: b.sort || 'newest',
             categoryFilter: b.categoryFilter,
+            featuredOnly: b.featuredOnly === true,
           })),
         }))
       : undefined;
@@ -397,74 +494,50 @@ export class HomepageService {
   ): HomepageSection {
     const blocks: HomepageBlock[] = [];
 
-    for (const blockCfg of cfg.blocks) {
-      let pool: (ProjectCard | ServiceCard | TeamCard | TalentCard)[];
-
-      if (blockCfg.entity === 'projects') {
-        pool = allProjects.filter((p) => !usedIds.has(p.id));
-      } else if (blockCfg.entity === 'teams') {
-        pool = allTeams.filter((t) => !usedIds.has(t.id));
-      } else if (blockCfg.entity === 'talent') {
-        pool = allTalent.filter((t) => !usedIds.has(t.id));
-      } else {
-        pool = allServices.filter((s) => !usedIds.has(s.id));
+    // ── Tabbed sections: emit one block per (tab × blockCfg) combination ──
+    // Tabs reuse the section's first blockCfg as a template; the tab's
+    // categoryFilter / kind override the template values. Pinned items only
+    // apply to the default flow (untabbed) to avoid duplication.
+    if (cfg.tabs?.length) {
+      for (const tab of cfg.tabs) {
+        for (const blockCfg of cfg.blocks) {
+          const effectiveCfg = {
+            ...blockCfg,
+            categoryFilter: tab.categoryFilter ?? blockCfg.categoryFilter,
+            kind: tab.kind ?? blockCfg.kind,
+          };
+          const block = this.buildBlock(
+            cfg.key,
+            effectiveCfg,
+            allProjects,
+            allServices,
+            allTeams,
+            allTalent,
+            // Tabs do not consume usedIds globally — same item can appear under
+            // multiple tabs. Use a fresh set per tab.
+            new Set<string>(),
+            undefined,
+          );
+          block.key = `${cfg.key}-${tab.slug}-${blockCfg.entity}`;
+          block.tabSlug = tab.slug;
+          block.tabLabel = tab.label;
+          blocks.push(block);
+        }
       }
-
-      // Apply category filter if configured
-      if (blockCfg.categoryFilter) {
-        const cat = blockCfg.categoryFilter.toLowerCase();
-        pool = pool.filter((item) =>
-          'categories' in item && item.categories?.some((c: string) => c.toLowerCase() === cat),
+    } else {
+      for (const blockCfg of cfg.blocks) {
+        const block = this.buildBlock(
+          cfg.key,
+          blockCfg,
+          allProjects,
+          allServices,
+          allTeams,
+          allTalent,
+          usedIds,
+          pinnedItemIds,
         );
+        blocks.push(block);
       }
-
-      // ── Pinned items (hybrid mode) ──
-      // If section has pinned items, place them first and fill remaining
-      // slots with evaluated results. Pinned items excluded from evaluator pool.
-      type CardItem = ProjectCard | ServiceCard | TeamCard | TalentCard;
-      let pinnedItems: CardItem[] = [];
-      if (pinnedItemIds?.length) {
-        const pinSet = new Set(pinnedItemIds);
-        pinnedItems = pool.filter((item) => pinSet.has(item.id));
-        pool = pool.filter((item) => !pinSet.has(item.id));
-        pinnedItems.forEach((i) => usedIds.add(i.id));
-      }
-
-      const adjustedLimit = Math.max(0, blockCfg.limit - pinnedItems.length);
-
-      // ── Evaluate / rank by kind ──
-      let evaluated: CardItem[];
-      if (blockCfg.sort === 'random') {
-        evaluated = [...pool].sort(() => Math.random() - 0.5).slice(0, adjustedLimit);
-      } else {
-        evaluated = evaluateItems(pool as any[], blockCfg.kind, adjustedLimit) as CardItem[];
-      }
-
-      // Merge: pinned first, then evaluated
-      const items = [...pinnedItems, ...evaluated];
-      items.forEach((i) => usedIds.add(i.id));
-
-      // Carousel guard: downgrade to grid if insufficient items
-      const effectiveType =
-        blockCfg.type === 'carousel' && items.length < GRID_SIZE * CAROUSEL_MIN_PAGES
-          ? 'grid'
-          : blockCfg.type;
-
-      const totalAvailable = pinnedItems.length + pool.length;
-      const pageSize = blockCfg.limit;
-
-      blocks.push({
-        key: `${cfg.key}-${blockCfg.entity}`,
-        type: effectiveType,
-        entity: blockCfg.entity,
-        items,
-        pagination: {
-          page: 1,
-          pageSize,
-          totalPages: Math.ceil(totalAvailable / pageSize),
-          hasMore: totalAvailable > pageSize,
-        },
-      });
     }
 
     return {
@@ -474,6 +547,91 @@ export class HomepageService {
       ctaLabel: cfg.ctaLabel ?? null,
       ctaUrl: cfg.ctaUrl ?? null,
       blocks,
+    };
+  }
+
+  private buildBlock(
+    sectionKey: string,
+    blockCfg: SectionConfig['blocks'][number],
+    allProjects: ProjectCard[],
+    allServices: ServiceCard[],
+    allTeams: TeamCard[],
+    allTalent: TalentCard[],
+    usedIds: Set<string>,
+    pinnedItemIds: string[] | undefined,
+  ): HomepageBlock {
+    let pool: (ProjectCard | ServiceCard | TeamCard | TalentCard)[];
+
+    if (blockCfg.entity === 'projects') {
+      pool = allProjects.filter((p) => !usedIds.has(p.id));
+    } else if (blockCfg.entity === 'teams') {
+      pool = allTeams.filter((t) => !usedIds.has(t.id));
+    } else if (blockCfg.entity === 'talent') {
+      pool = allTalent.filter((t) => !usedIds.has(t.id));
+    } else {
+      pool = allServices.filter((s) => !usedIds.has(s.id));
+    }
+
+    // Apply category filter if configured
+    if (blockCfg.categoryFilter) {
+      const cat = blockCfg.categoryFilter.toLowerCase();
+      pool = pool.filter((item) =>
+        'categories' in item && item.categories?.some((c: string) => c.toLowerCase() === cat),
+      );
+    }
+
+    // Editorial curation: when featuredOnly is set, restrict the pool to
+    // items with `featured === true` (admin-curated). Used by spec §4.4.
+    if (blockCfg.featuredOnly) {
+      pool = pool.filter((item) => 'featured' in item && (item as ScoringFields).featured === true);
+    }
+
+    // ── Pinned items (hybrid mode) ──
+    // If section has pinned items, place them first and fill remaining
+    // slots with evaluated results. Pinned items excluded from evaluator pool.
+    type CardItem = ProjectCard | ServiceCard | TeamCard | TalentCard;
+    let pinnedItems: CardItem[] = [];
+    if (pinnedItemIds?.length) {
+      const pinSet = new Set(pinnedItemIds);
+      pinnedItems = pool.filter((item) => pinSet.has(item.id));
+      pool = pool.filter((item) => !pinSet.has(item.id));
+      pinnedItems.forEach((i) => usedIds.add(i.id));
+    }
+
+    const adjustedLimit = Math.max(0, blockCfg.limit - pinnedItems.length);
+
+    // ── Evaluate / rank by kind ──
+    let evaluated: CardItem[];
+    if (blockCfg.sort === 'random') {
+      evaluated = [...pool].sort(() => Math.random() - 0.5).slice(0, adjustedLimit);
+    } else {
+      evaluated = evaluateItems(pool as any[], blockCfg.kind, adjustedLimit) as CardItem[];
+    }
+
+    // Merge: pinned first, then evaluated
+    const items = [...pinnedItems, ...evaluated];
+    items.forEach((i) => usedIds.add(i.id));
+
+    // Carousel guard: downgrade to grid if insufficient items
+    const effectiveType =
+      blockCfg.type === 'carousel' && items.length < GRID_SIZE * CAROUSEL_MIN_PAGES
+        ? 'grid'
+        : blockCfg.type;
+
+    const totalAvailable = pinnedItems.length + pool.length;
+    const pageSize = blockCfg.limit;
+
+    return {
+      key: `${sectionKey}-${blockCfg.entity}`,
+      type: effectiveType,
+      entity: blockCfg.entity,
+      items,
+      pagination: {
+        page: 1,
+        pageSize,
+        totalPages: Math.ceil(totalAvailable / pageSize),
+        hasMore: totalAvailable > pageSize,
+      },
     };
   }
 

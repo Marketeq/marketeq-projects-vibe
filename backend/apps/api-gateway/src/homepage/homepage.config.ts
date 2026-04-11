@@ -15,12 +15,49 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const HOMEPAGE_HERO: HomepageHero = {
-  headline: 'Expert Tech Teams on Demand',
-  subheadline:
-    'Get your project done right with one of our vetted expert teams, fully customizable done-for-you services.',
-  backgroundImage: '/sending-emails.png',
-  ctaLabel: 'Browse Projects',
-  ctaUrl: '/c/development',
+  intervalMs: 7000,
+  slides: [
+    {
+      eyebrow: 'UI / UX Design',
+      title: 'UX / UI Experts on Demand',
+      description:
+        'Ship pixel-perfect product experiences with senior designers who embed with your team in days, not months.',
+      ctaLabel: 'Browse UX / UI experts',
+      ctaUrl: '/c/design/ui-ux-design',
+      image: '/sending-emails.png',
+      accent: 'from-[#1661F6]/40 via-transparent to-[#0B1C3A]/60',
+    },
+    {
+      eyebrow: 'AI & Machine Learning',
+      title: 'AI Specialists Who Ship',
+      description:
+        'From RAG pipelines to production ML — hire AI engineers who turn your data into revenue, not research papers.',
+      ctaLabel: 'Explore AI talent',
+      ctaUrl: '/c/development/ai-ml',
+      image: '/artificial-intelligence.jpeg',
+      accent: 'from-[#6E3DF6]/45 via-transparent to-[#0B1C3A]/65',
+    },
+    {
+      eyebrow: 'Cloud & DevOps',
+      title: 'Cloud & DevOps, Done Right',
+      description:
+        'Scale confidently with certified cloud architects — AWS, GCP, Azure, Kubernetes, and CI/CD built to last.',
+      ctaLabel: 'Find cloud engineers',
+      ctaUrl: '/c/development/cloud-devops',
+      image: '/clouds.png',
+      accent: 'from-[#0EA5E9]/40 via-transparent to-[#0B1C3A]/65',
+    },
+    {
+      eyebrow: 'Mobile Development',
+      title: 'Mobile Teams That Launch',
+      description:
+        'Native iOS, Android, and cross-platform apps built by teams with App Store and Play Store hits on their resume.',
+      ctaLabel: 'Meet mobile teams',
+      ctaUrl: '/c/development/mobile-development',
+      image: '/design-screens.png',
+      accent: 'from-[#F6953D]/35 via-transparent to-[#0B1C3A]/65',
+    },
+  ],
 };
 
 export const HOMEPAGE_SECTIONS: SectionConfig[] = [
@@ -29,28 +66,54 @@ export const HOMEPAGE_SECTIONS: SectionConfig[] = [
     title: 'Our Favorite Projects',
     subtitle:
       'Hand-picked projects from our top-rated experts across every category — see what teams are building right now.',
+    ctaLabel: 'View All',
+    ctaUrl: '/projects?featured=true',
     blocks: [
-      { entity: 'projects', type: 'carousel', limit: 12, kind: 'top_rated', sort: 'newest' },
+      // Editorial curation: only items with `featured = true`, ranked by top_rated
+      // among that featured pool. Matches spec 00-HP §4.4.
+      {
+        entity: 'projects',
+        type: 'carousel',
+        limit: 12,
+        kind: 'top_rated',
+        sort: 'newest',
+        featuredOnly: true,
+      },
     ],
   },
   {
     key: 'newest-additions',
     title: 'Newest Additions',
     subtitle:
-      'The latest projects and services added to the Marketeq marketplace this week.',
+      'The latest projects added to the Marketeq marketplace this week.',
+    ctaLabel: 'View More',
+    ctaUrl: '/projects?sort=newest',
     blocks: [
-      { entity: 'projects', type: 'grid', limit: 6, kind: 'newest', sort: 'newest' },
-      { entity: 'services', type: 'grid', limit: 6, kind: 'newest', sort: 'newest' },
+      // Spec §5.3: 3-column grid with 9 visible cards (3 rows). Projects only.
+      { entity: 'projects', type: 'grid', limit: 9, kind: 'newest', sort: 'newest' },
     ],
   },
   {
     key: 'most-popular',
     title: 'Most Popular Projects',
     subtitle:
-      'The projects and services generating the most interest from clients across the platform.',
+      'The projects generating the most interest from clients across the platform.',
+    ctaLabel: 'View More',
+    ctaUrl: '/projects?sort=popular',
+    tabs: [
+      { label: 'View All', slug: 'all' },
+      { label: 'Top Web Projects', slug: 'web', categoryFilter: 'web' },
+      { label: 'Top Mobile Projects', slug: 'mobile', categoryFilter: 'mobile' },
+      { label: 'Top Cloud Projects', slug: 'cloud', categoryFilter: 'cloud' },
+      {
+        label: 'Top Digital Marketing Projects',
+        slug: 'digital-marketing',
+        categoryFilter: 'digital-marketing',
+      },
+    ],
     blocks: [
-      { entity: 'projects', type: 'grid', limit: 6, kind: 'most_popular', sort: 'newest' },
-      { entity: 'services', type: 'grid', limit: 6, kind: 'most_popular', sort: 'newest' },
+      // Spec §6.5: same 3-column grid as Newest Additions (9 cards per tab).
+      { entity: 'projects', type: 'grid', limit: 9, kind: 'most_popular', sort: 'newest' },
     ],
   },
   {
@@ -67,26 +130,35 @@ export const HOMEPAGE_SECTIONS: SectionConfig[] = [
     title: 'Online Sales Funnels',
     subtitle:
       'High-converting funnels, landing pages, and lead capture systems built by proven growth experts.',
+    ctaLabel: 'View More Projects',
+    ctaUrl: '/c/marketing/sales-funnels',
     blocks: [
       { entity: 'projects', type: 'carousel', limit: 8, kind: 'newest', sort: 'newest' },
     ],
   },
   {
+    // Spec §7.1.2: "standard project card"
     key: 'customer-service',
     title: 'Customer Service Solutions',
     subtitle:
       'Help desks, chatbots, and support workflows designed to scale your customer experience.',
+    ctaLabel: 'View More Projects',
+    ctaUrl: '/c/customer-service',
     blocks: [
-      { entity: 'services', type: 'carousel', limit: 8, kind: 'newest', sort: 'newest' },
+      { entity: 'projects', type: 'carousel', limit: 8, kind: 'newest', sort: 'newest' },
     ],
   },
   {
+    // Spec §7.1.3 / §7.3: "service card — differs from project cards",
+    // monthly-pricing format (e.g. "$5,000/month").
     key: 'marketing-automation',
     title: 'Marketing Automation Campaigns',
     subtitle:
       'End-to-end automation workflows across email, SMS, and CRM that turn prospects into customers.',
+    ctaLabel: 'View More Services',
+    ctaUrl: '/c/marketing/automation',
     blocks: [
-      { entity: 'projects', type: 'carousel', limit: 8, kind: 'newest', sort: 'newest' },
+      { entity: 'services', type: 'carousel', limit: 8, kind: 'newest', sort: 'newest' },
     ],
   },
   {
@@ -94,6 +166,8 @@ export const HOMEPAGE_SECTIONS: SectionConfig[] = [
     title: 'Cloud Software Applications',
     subtitle:
       'Custom SaaS builds, internal tools, and cloud-native applications shipped by senior engineering teams.',
+    ctaLabel: 'View More Projects',
+    ctaUrl: '/c/development/cloud-software',
     blocks: [
       { entity: 'projects', type: 'carousel', limit: 8, kind: 'newest', sort: 'newest' },
     ],
@@ -103,6 +177,8 @@ export const HOMEPAGE_SECTIONS: SectionConfig[] = [
     title: 'Mobile Applications',
     subtitle:
       'Native and cross-platform iOS and Android apps designed and developed by expert mobile teams.',
+    ctaLabel: 'View More Projects',
+    ctaUrl: '/c/development/mobile-development',
     blocks: [
       { entity: 'projects', type: 'carousel', limit: 8, kind: 'newest', sort: 'newest' },
     ],
@@ -129,46 +205,61 @@ export const HOMEPAGE_MORE_CATEGORIES: CategoryRef[] = [
 ];
 
 export const HOMEPAGE_TALENT_CTA: TalentNetworkCta = {
-  headline: 'Join the Marketeq Talent Network',
+  headline: 'Marketeq Talent Network',
   description:
-    'Apply to join our network of pre-vetted experts and start getting matched with high-quality projects.',
-  ctaLabel: 'Apply as Talent',
+    'Want the freedom of working from home without competing with overseas rates? Join our national talent network and get a chance to work on exciting projects from top corporations and disruptive startups.',
+  ctaLabel: 'Join the talent network',
   ctaUrl: '/sign-up?role=talent',
 };
 
+// Footer columns mirror the spec (00-HP §10.1): About / Solutions /
+// Industries / Resources. URLs are best-effort defaults — wire to real
+// pages or override via CMS as those pages ship.
 export const HOMEPAGE_FOOTER_NAV: FooterNavColumn[] = [
   {
-    heading: 'For Clients',
+    heading: 'About',
     links: [
-      { label: 'Browse Projects', url: '/c/development' },
-      { label: 'Browse Services', url: '/c/design' },
-      { label: 'How It Works', url: '/how-it-works' },
-      { label: 'Enterprise', url: '/enterprise' },
-    ],
-  },
-  {
-    heading: 'For Talent',
-    links: [
-      { label: 'Apply as Talent', url: '/sign-up?role=talent' },
-      { label: 'Talent Dashboard', url: '/talent-dashboard' },
-      { label: 'Resources', url: '/resources' },
-    ],
-  },
-  {
-    heading: 'Company',
-    links: [
-      { label: 'About', url: '/about' },
-      { label: 'Blog', url: '/blog' },
+      { label: 'Why Marketeq?', url: '/about' },
       { label: 'Careers', url: '/careers' },
-      { label: 'Contact', url: '/contact' },
+      { label: 'Partnerships', url: '/partnerships' },
+      { label: 'Support', url: '/support' },
+      { label: 'Core Values', url: '/about#values' },
+      { label: 'Events', url: '/events' },
     ],
   },
   {
-    heading: 'Legal',
+    heading: 'Solutions',
     links: [
-      { label: 'Terms of Service', url: '/terms' },
-      { label: 'Privacy Policy', url: '/privacy' },
-      { label: 'Cookie Policy', url: '/cookies' },
+      { label: 'User Experience (UX)', url: '/c/design/ui-ux-design' },
+      { label: 'Interactive Prototyping', url: '/c/design/prototyping' },
+      { label: 'Mobile Development', url: '/c/development/mobile' },
+      { label: 'Software Engineering', url: '/c/development' },
+      { label: 'Digital Marketing', url: '/c/marketing/digital-marketing' },
+      { label: 'Growth Strategy', url: '/c/marketing/growth' },
+      { label: 'Q/A Testing', url: '/c/development/qa-testing' },
+    ],
+  },
+  {
+    heading: 'Industries',
+    links: [
+      { label: 'Logistics', url: '/industries/logistics' },
+      { label: 'Retail', url: '/industries/retail' },
+      { label: 'Government', url: '/industries/government' },
+      { label: 'Enterprise', url: '/industries/enterprise' },
+      { label: 'Fintech', url: '/industries/fintech' },
+      { label: 'Medical', url: '/industries/medical' },
+      { label: 'Marketing', url: '/industries/marketing' },
+    ],
+  },
+  {
+    heading: 'Resources',
+    links: [
+      { label: 'Help Center', url: '/help' },
+      { label: 'Video Library', url: '/resources/videos' },
+      { label: 'Articles', url: '/blog' },
+      { label: 'Inspiration', url: '/resources/inspiration' },
+      { label: 'Project Templates', url: '/resources/templates' },
+      { label: 'PartnerUp Offers', url: '/partnerships/offers' },
     ],
   },
 ];

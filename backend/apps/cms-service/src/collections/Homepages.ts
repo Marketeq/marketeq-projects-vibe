@@ -103,15 +103,61 @@ export const Homepages: CollectionConfig = {
     {
       name: 'hero',
       type: 'group',
-      admin: { description: 'Hero banner at the top of the homepage.' },
+      admin: {
+        description:
+          'Multi-slide hero carousel. Use the "slides" array to add each rotating slide.',
+      },
       fields: [
-        { name: 'headline', type: 'text', required: true },
-        { name: 'subheadline', type: 'textarea' },
         {
-          name: 'backgroundImage',
-          type: 'upload',
-          relationTo: 'media',
+          name: 'intervalMs',
+          type: 'number',
+          defaultValue: 7000,
+          min: 2000,
+          max: 30000,
+          admin: { description: 'Auto-advance interval in milliseconds (default 7000).' },
         },
+        {
+          name: 'slides',
+          type: 'array',
+          minRows: 1,
+          admin: { description: 'One entry per rotating hero slide.' },
+          fields: [
+            { name: 'eyebrow', type: 'text', admin: { description: 'Small label above the title (e.g. "UI / UX Design").' } },
+            { name: 'title', type: 'text', required: true },
+            { name: 'description', type: 'textarea' },
+            { name: 'ctaLabel', type: 'text' },
+            { name: 'ctaUrl', type: 'text' },
+            {
+              name: 'image',
+              type: 'upload',
+              relationTo: 'media',
+              admin: {
+                description:
+                  'Slide background image. Editors should upload one per slide. When empty, the `imageUrl` fallback below is used.',
+              },
+            },
+            {
+              name: 'imageUrl',
+              type: 'text',
+              admin: {
+                description:
+                  'Fallback URL/path used when no Media upload is attached. Useful for local dev and seeding.',
+              },
+            },
+            {
+              name: 'accent',
+              type: 'text',
+              admin: {
+                description:
+                  'Optional Tailwind gradient fragment (e.g. "from-[#1661F6]/40 via-transparent to-[#0B1C3A]/60").',
+              },
+            },
+          ],
+        },
+        // ── Legacy single-slide fields (backwards-compat) ──
+        { name: 'headline', type: 'text', admin: { description: 'Legacy single-slide fallback. Prefer the slides array above.' } },
+        { name: 'subheadline', type: 'textarea' },
+        { name: 'backgroundImage', type: 'upload', relationTo: 'media' },
         { name: 'ctaLabel', type: 'text' },
         { name: 'ctaUrl', type: 'text' },
       ],
@@ -141,8 +187,32 @@ export const Homepages: CollectionConfig = {
           hasMany: true,
           admin: {
             description: 'Hand-picked listings to pin at the top of this section. Only used when manualEnabled is true.',
-            condition: (data: any, siblingData: any) => siblingData?.manualEnabled === true,
+            condition: (_data: any, siblingData: any) => siblingData?.manualEnabled === true,
           },
+        },
+        {
+          name: 'tabs',
+          type: 'array',
+          admin: {
+            description:
+              'Optional pill tabs. When set, the section emits one block per tab (e.g. Most Popular: View All / Top Web / Top Mobile / ...).',
+          },
+          fields: [
+            { name: 'label', type: 'text', required: true },
+            { name: 'slug', type: 'text', required: true },
+            { name: 'categoryFilter', type: 'text' },
+            {
+              name: 'kind',
+              type: 'select',
+              options: [
+                { label: 'Newest', value: 'newest' },
+                { label: 'Top Rated', value: 'top_rated' },
+                { label: 'Trending', value: 'trending' },
+                { label: 'Most Popular', value: 'most_popular' },
+              ],
+              admin: { description: 'Optional per-tab ranking override. Leaves the parent block kind otherwise.' },
+            },
+          ],
         },
         {
           name: 'blocks',
@@ -155,6 +225,7 @@ export const Homepages: CollectionConfig = {
               options: [
                 { label: 'Projects', value: 'projects' },
                 { label: 'Services', value: 'services' },
+                { label: 'Teams', value: 'teams' },
                 { label: 'Talent', value: 'talent' },
               ],
             },
@@ -198,6 +269,15 @@ export const Homepages: CollectionConfig = {
               admin: { description: 'Display order within the block (after kind ranking).' },
             },
             { name: 'categoryFilter', type: 'text', admin: { description: 'Optional category slug to filter by.' } },
+            {
+              name: 'featuredOnly',
+              type: 'checkbox',
+              defaultValue: false,
+              admin: {
+                description:
+                  'Editorial curation: restrict the pool to listings with the "featured" admin flag set to true. Used by "Our Favorite Projects".',
+              },
+            },
           ],
         },
       ],

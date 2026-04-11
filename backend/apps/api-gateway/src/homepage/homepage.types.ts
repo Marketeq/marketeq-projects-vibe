@@ -24,6 +24,8 @@ export interface ProjectCard extends ScoringFields {
   skills: string[];
   tags: string[];
   createdAt: string;
+  /** URLs of collaborator avatars (team members on the project) */
+  collaborators?: string[];
 }
 
 /** Card shape returned for service listings */
@@ -86,6 +88,9 @@ export interface HomepageBlock {
   entity: 'projects' | 'services' | 'teams' | 'talent';
   items: (ProjectCard | ServiceCard | TeamCard | TalentCard)[];
   pagination?: BlockPagination;
+  /** When the section uses tabs, identifies which tab this block belongs to */
+  tabSlug?: string;
+  tabLabel?: string;
 }
 
 /** A homepage section containing one or more blocks */
@@ -98,13 +103,30 @@ export interface HomepageSection {
   blocks: HomepageBlock[];
 }
 
-/** Hero section */
-export interface HomepageHero {
-  headline: string;
-  subheadline: string;
-  backgroundImage: string;
+/** A single rotating slide inside the hero carousel */
+export interface HomepageHeroSlide {
+  eyebrow: string;
+  title: string;
+  description: string;
   ctaLabel: string;
   ctaUrl: string;
+  image: string;
+  /** Tailwind gradient fragment applied as a per-slide accent tint */
+  accent?: string;
+}
+
+/** Hero section — supports a multi-slide carousel via `slides` */
+export interface HomepageHero {
+  /** Multi-slide carousel content. Frontend rotates through these. */
+  slides: HomepageHeroSlide[];
+  /** Auto-rotation interval in milliseconds (default 7000) */
+  intervalMs?: number;
+  // ── Legacy single-slide fields (kept for CMS backwards-compat) ──
+  headline?: string;
+  subheadline?: string;
+  backgroundImage?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
 }
 
 /** Promotional banner — sourced from CMS HomepageBanner global */
@@ -175,12 +197,25 @@ export const GRID_SIZE = 4;
 
 // ── Section configuration (replaces CMS later) ─────────────────────────────
 
+export interface SectionTabConfig {
+  /** Display label shown in the pill tab */
+  label: string;
+  /** URL-safe identifier for the tab */
+  slug: string;
+  /** Optional category filter scoped to this tab */
+  categoryFilter?: string;
+  /** Optional ranking override for this tab (defaults to section's first block kind) */
+  kind?: 'newest' | 'top_rated' | 'trending' | 'most_popular';
+}
+
 export interface SectionConfig {
   key: string;
   title: string;
   subtitle: string;
   ctaLabel?: string;
   ctaUrl?: string;
+  /** Optional pill tabs — when set, the section produces one block per tab */
+  tabs?: SectionTabConfig[];
   blocks: {
     entity: 'projects' | 'services' | 'teams' | 'talent';
     type: 'grid' | 'carousel';
@@ -189,5 +224,8 @@ export interface SectionConfig {
     limit: number;
     sort: 'newest' | 'random';
     categoryFilter?: string;
+    /** When true, pre-filter the pool to items with `featured === true`
+     *  (admin/editorial curation flag). Used by "Our Favorite Projects". */
+    featuredOnly?: boolean;
   }[];
 }

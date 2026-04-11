@@ -17,6 +17,7 @@ export interface ProjectCard {
   views90d?: number
   adminBoost?: number
   featured?: boolean
+  collaborators?: string[]
 }
 
 export interface ServiceCard {
@@ -80,6 +81,8 @@ export interface HomepageBlock {
   entity: "projects" | "services" | "teams" | "talent"
   items: (ProjectCard | ServiceCard | TeamCard | TalentCard)[]
   pagination?: BlockPagination
+  tabSlug?: string
+  tabLabel?: string
 }
 
 export interface HomepageSection {
@@ -91,12 +94,25 @@ export interface HomepageSection {
   blocks: HomepageBlock[]
 }
 
-export interface HomepageHero {
-  headline: string
-  subheadline: string
-  backgroundImage: string
+export interface HomepageHeroSlide {
+  eyebrow: string
+  title: string
+  description: string
   ctaLabel: string
   ctaUrl: string
+  image: string
+  accent?: string
+}
+
+export interface HomepageHero {
+  slides: HomepageHeroSlide[]
+  intervalMs?: number
+  // Legacy single-slide fields (kept for CMS backwards-compat)
+  headline?: string
+  subheadline?: string
+  backgroundImage?: string
+  ctaLabel?: string
+  ctaUrl?: string
 }
 
 export interface HomepageBanner {
