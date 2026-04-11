@@ -35,6 +35,7 @@ import {
   Trash2,
   UploadCloud,
   X,
+  Loader,
 } from "@blend-metrics/icons"
 import {
   DropboxBrand,
@@ -45,6 +46,8 @@ import { DropdownMenuArrow } from "@radix-ui/react-dropdown-menu"
 import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
+import { decryptAES } from "@/src/crypto/e2ee"
+import { loadKey } from "@/src/crypto/storage"
 import { User } from "@/types/user"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
@@ -100,19 +103,19 @@ const LeftSidebar = ({
   setSelectedConversation,
   messagesByConversation,
 }: LeftSidebarProps) => {
-  const token =
-    typeof window !== "undefined" ? getAccessToken() : null
   const { pinnedChats, toggleShowPinnedIcon, showPinnedIcon, checkedChats } =
     useChatsContext()
 
   //getting the user id || can get other details later as required
   const currentUser = getCurrentUser()
   const currentUserId = currentUser?.id || ""
+  const token = getAccessToken()
 
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const token = getAccessToken()
+    if (!token) return
 
     const fetchConversations = async () => {
       try {
@@ -170,12 +173,32 @@ const LeftSidebar = ({
             }
 
             try {
-              const user = await apiFetch<{ username: string }>(
+              const user = await apiFetch<{ username: string; firstName?: string; lastName?: string }>(
                 `/users/${otherId}`,
                 { method: "GET", headers: { Authorization: `Bearer ${token}` } }
               )
 
-              return { ...conv, participantUsername: user.username }
+              const displayName = [user.firstName?.trim(), user.lastName?.trim()].filter(Boolean).join(" ") || user.username
+
+              // Decrypt last message preview if encrypted
+              let lastMessagePreview = ""
+              const lm = (conv as any).lastMessage
+              if (lm) {
+                if (lm.m_content) {
+                  lastMessagePreview = lm.m_content
+                } else if (lm.m_ciphertext) {
+                  try {
+                    const key = loadKey(conv.id)
+                    if (key) {
+                      lastMessagePreview = await decryptAES(lm.m_ciphertext, key)
+                    }
+                  } catch {
+                    lastMessagePreview = "Encrypted message"
+                  }
+                }
+              }
+
+              return { ...conv, participantUsername: displayName, lastMessagePreview }
             } catch (err) {
               console.warn(
                 `[LeftSidebar] failed to fetch user for ${otherId}`,
@@ -192,11 +215,13 @@ const LeftSidebar = ({
         setConversations(enriched)
       } catch (err) {
         console.error("[LeftSidebar] error fetching conversations:", err)
+      } finally {
+        setIsLoading(false)
       }
     }
 
     fetchConversations()
-  }, [currentUserId])
+  }, [currentUserId, token])
 
   return (
     <div className="w-[322px] shrink-0 border-r bg-white border-gray-200">
@@ -386,22 +411,33 @@ const LeftSidebar = ({
 
       <ScrollArea>
         <div className="flex flex-col">
-          {conversations.map((conv) => {
-            const otherId = getOtherParticipantId(conv, currentUserId)!
-            return (
-              <Chat
-                key={conv.id}
-                conversation={{
-                  ...conv,
-                  participantUsername: conv.participantUsername,
-                }}
-                currentUserId={currentUserId}
-                onClick={() => {
-                  setSelectedConversation(conv)
-                }}
-              />
-            )
-          })}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12 text-gray-400">
+              <Loader className="size-5 animate-spin" />
+            </div>
+          ) : conversations.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-400">
+              <Mail05 className="size-8 stroke-[1.5]" />
+              <p className="text-sm">No conversations yet</p>
+            </div>
+          ) : (
+            conversations.map((conv) => {
+              const otherId = getOtherParticipantId(conv, currentUserId)!
+              return (
+                <Chat
+                  key={conv.id}
+                  conversation={{
+                    ...conv,
+                    participantUsername: conv.participantUsername,
+                  }}
+                  currentUserId={currentUserId}
+                  onClick={() => {
+                    setSelectedConversation(conv)
+                  }}
+                />
+              )
+            })
+          )}
         </div>
       </ScrollArea>
     </div>

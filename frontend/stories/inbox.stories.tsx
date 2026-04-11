@@ -103,7 +103,7 @@ export const Bubble = ({
   const isMe = message.senderId === currentUser.id
   const senderName = isMe ? "You" : participantUsername || "Unknown"
   const senderUsername = isMe
-    ? "@" + currentUser.username
+    ? (currentUser.username ? "@" + currentUser.username : "")
     : "@" + participantUsername
 
   // Format timestamp
@@ -329,7 +329,7 @@ export const YourBubble = ({
   const isMe = message.senderId === currentUser.id
   const senderName = isMe ? "You" : participantUsername || "Unknown"
   const senderUsername = isMe
-    ? "@" + currentUser.username
+    ? (currentUser.username ? "@" + currentUser.username : "")
     : "@" + participantUsername
 
   // Format timestamp

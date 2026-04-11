@@ -235,9 +235,9 @@ export const UserDetail = ({
 
         <div className="flex gap-x-1.5 self-stretch items-end justify-between">
           <span className="group-data-[state=active]/chat:text-dark-blue-500 text-gray-500 text-[11px] line-clamp-2 leading-[13.31px] group-data-[state=active]/chat:font-medium">
-            Ad reprehenderit deserunt in qui ut esse magna ipsum fugiat qui
-            aliqua aliquip Lorem, ipsum dolor Lorem ipsum dolor sit, amet
-            consectetur adipisicing elit. Repudiandae, odit.
+            {(conversation as any).lastMessagePreview ||
+              ((conversation as any).lastMessage?.m_content) ||
+              ((conversation as any).lastMessage?.m_ciphertext ? "Encrypted message" : "No messages yet")}
           </span>
 
           <Favorite

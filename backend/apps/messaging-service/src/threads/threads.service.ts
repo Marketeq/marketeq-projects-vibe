@@ -12,11 +12,26 @@ export class ThreadsService {
   ) {}
 
   async getUserThreads(userId: string) {
-    return this.repo
+    const threads = await this.repo
       .createQueryBuilder('t')
       .where(':userId = ANY(t.participantIds)', { userId })
       .orderBy('t.updatedAt', 'DESC')
       .getMany();
+
+    // Attach the latest message to each thread
+    const enriched = await Promise.all(
+      threads.map(async (t) => {
+        const lastMessage = await this.repo.manager
+          .createQueryBuilder('messaging.messages', 'm')
+          .where('m."threadId" = :tid', { tid: t.id })
+          .andWhere('m.deleted = false')
+          .orderBy('m."createdAt"', 'DESC')
+          .limit(1)
+          .getRawOne();
+        return { ...t, lastMessage: lastMessage || null };
+      }),
+    );
+    return enriched;
   }
 
   async findOne(id: string) {
@@ -26,6 +41,17 @@ export class ThreadsService {
   }
 
   async create(participantIds: string[], isGroup = false, groupName?: string) {
+    // For 1:1 threads, find existing thread between the same participants
+    if (!isGroup && participantIds.length === 2) {
+      const existing = await this.repo
+        .createQueryBuilder('t')
+        .where('t.isGroup = false')
+        .andWhere(':a = ANY(t.participantIds)', { a: participantIds[0] })
+        .andWhere(':b = ANY(t.participantIds)', { b: participantIds[1] })
+        .getOne();
+      if (existing) return existing;
+    }
+
     const thread = this.repo.create({ participantIds, isGroup, groupName });
     return this.repo.save(thread);
   }

@@ -3,6 +3,7 @@
 import React, { useCallback, useMemo, useState } from "react"
 import { useEffect } from "react"
 import { ensureEncryptionKeysExist, importPrivateKey } from "@/src/crypto/keys"
+import { apiFetch } from "@/src/lib/api"
 import { getAccessToken } from "@/utils/auth"
 import { useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
@@ -99,6 +100,7 @@ export default function InboxRoot() {
   >({})
 
   const [token, setToken] = useState("")
+  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
   useEffect(() => {
     setToken(getAccessToken() || "")
   }, [])
@@ -106,6 +108,16 @@ export default function InboxRoot() {
   useEffect(() => {
     ;(async () => {
       if (!token) return
+
+      // 0) Fetch full user profile (includes username)
+      try {
+        const me = await apiFetch<any>("/user/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        setCurrentUserProfile(me)
+      } catch (err) {
+        console.error("Failed to fetch user profile", err)
+      }
 
       // 1) Ensure keypair exists, device registered, public key pushed
       await ensureEncryptionKeysExist()
@@ -145,9 +157,10 @@ export default function InboxRoot() {
           selectedConversation={selectedConversation}
           jwtToken={token}
           privateKey={privateKey}
+          currentUserProfile={currentUserProfile}
         />
 
-        <RightSidebar />
+        <RightSidebar selectedConversation={selectedConversation} jwtToken={token} />
       </div>
     </Inbox>
   )

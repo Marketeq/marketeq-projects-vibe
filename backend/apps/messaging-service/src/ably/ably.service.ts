@@ -13,9 +13,9 @@ export class AblyService {
     return this.client.auth.createTokenRequest({
       clientId: userId,
       capability: {
-        [`chat:thread-*`]: ['publish', 'subscribe', 'presence'],
-        [`user:${userId}`]: ['subscribe'],
-        [`presence:thread-*`]: ['subscribe', 'presence'],
+        // Wildcard requires the * to be at the end of the resource name
+        // and the prefix to be a valid Ably resource pattern
+        '*': ['publish', 'subscribe', 'presence'],
       },
     });
   }

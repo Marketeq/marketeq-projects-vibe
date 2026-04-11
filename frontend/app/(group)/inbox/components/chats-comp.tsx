@@ -102,12 +102,14 @@ interface ChatsProps {
   selectedConversation: Conversation | null
   jwtToken: string
   privateKey: CryptoKey | null
+  currentUserProfile?: any
 }
 
 export function Chats({
   selectedConversation,
   jwtToken,
   privateKey,
+  currentUserProfile,
 }: ChatsProps) {
   const [textareaValue, setTextareaValue] = useState("")
   const [uploadState, setUploadState] =
@@ -124,8 +126,13 @@ export function Chats({
 
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getCurrentUser>>(null)
   useEffect(() => {
-    setCurrentUser(getCurrentUser())
-  }, [])
+    const base = getCurrentUser()
+    if (base && currentUserProfile?.username) {
+      setCurrentUser({ ...base, username: currentUserProfile.username })
+    } else {
+      setCurrentUser(base)
+    }
+  }, [currentUserProfile])
 
   const handleEmojiSelect = (emoji: DataEmoji) => {
     const emojiChar = String.fromCodePoint(
@@ -528,24 +535,26 @@ export function Chats({
 
   if (!currentUser) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        Not logged in
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-400">
+        <Loader className="size-6 animate-spin" />
       </div>
     )
   }
 
   if (!selectedConversation) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        Select a conversation
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
+        <Mail05 className="size-10 stroke-[1.5]" />
+        <p className="text-sm font-medium">Select a conversation to start messaging</p>
       </div>
     )
   }
 
   if (!receiverUser) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        Loading user…
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-400">
+        <Loader className="size-6 animate-spin" />
+        <p className="text-sm">Loading conversation...</p>
       </div>
     )
   }
@@ -677,6 +686,12 @@ export function Chats({
           scrollBar={<ScrollBar className="w-4 p-1" />}
         >
           <div className="p-8 pb-[100px] grid gap-y-6">
+            {displayedMessages.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
+                <Send className="size-8 stroke-[1.5]" />
+                <p className="text-sm">No messages yet. Say hello!</p>
+              </div>
+            )}
             {displayedMessages.map((m, i) => (
               <div
                 key={i}
@@ -869,11 +884,12 @@ export function Chats({
                 ? "Add a message (optional)..."
                 : "Send message..."
             }
-            className="[field-sizing:content] h-auto pr-11 w-full"
+            className="pr-11 w-full resize-none py-1.5 leading-5 min-h-0 h-9 overflow-hidden"
+            rows={1}
             value={textareaValue}
             onChange={(e) => setTextareaValue(e.target.value)}
           />
-          <InputRightElement className="items-end pb-[13px]">
+          <InputRightElement className="items-center">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger
