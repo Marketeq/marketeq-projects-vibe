@@ -12,27 +12,28 @@ export function usePinnedMessages(convId: string, token: string) {
     if (!convId || !token) return
     ;(async () => {
       try {
-        const key = loadKey(convId)
-        if (!key) {
-          console.warn("No AES key for conversation", convId)
-          return
-        }
-
-        // 1) Fetch only pinned messages
+        // 1) Fetch all messages and filter pinned
         const data = await apiFetch<Message[]>(
-          `/api/messaging/conversations/${convId}/pinned`,
+          `/v1/messages/thread/${convId}`,
           {
             method: "GET",
             headers: { Authorization: `Bearer ${token}` },
           }
         )
 
-        // 2) Decrypt them
+        const pinned = data.filter((m: any) => m.isPinned || m.pinned)
+
+        // 2) Try to decrypt if key available, otherwise use content directly
+        let key: Uint8Array | null = null
+        try { key = loadKey(convId) } catch { /* no key cached */ }
+
         const decrypted = await Promise.all(
-          data.map(async (m) => ({
-            ...m,
-            content: await decryptAES(m.ciphertext, key),
-          }))
+          pinned.map(async (m) => {
+            if (key && (m as any).ciphertext) {
+              try { return { ...m, content: await decryptAES((m as any).ciphertext, key) } } catch { return m }
+            }
+            return m
+          })
         )
 
         setMessages(decrypted)

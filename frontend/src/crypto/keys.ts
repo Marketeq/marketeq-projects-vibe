@@ -1,4 +1,5 @@
 import { apiFetch } from "../../src/lib/api"
+import { getAccessToken } from "../../utils/auth"
 
 export async function generateKeyPair() {
   return await window.crypto.subtle.generateKey(
@@ -87,90 +88,57 @@ export async function loadPublicKey(): Promise<CryptoKey | null> {
   return pem ? await importPublicKey(pem) : null
 }
 
-// Updated ensureEncryptionKeysExist to include device logic
+// Ensures keypair exists, device is registered, and public key is pushed to messaging-service
 export async function ensureEncryptionKeysExist() {
-  const token = localStorage.getItem("token")
+  const token = getAccessToken()
   if (!token) {
-    console.error("No JWT token in localStorage, cannot register device")
+    console.error("No access token found, cannot register device")
     return
   }
+
+  let pubPem: string
 
   const existingPrivatePem = localStorage.getItem("privateKey")
   const existingDeviceId = localStorage.getItem("deviceId")
 
-  // If both a keypair AND a deviceId are already stored, we’re done.
   if (existingPrivatePem && existingDeviceId) {
-    console.log("Keys & device already registered:", existingDeviceId)
-    return
-  }
-
-  // 1) Generate a brand‑new RSA keypair
-
-  const { publicKey, privateKey } = await generateKeyPair()
-  const pubPem = await exportPublicKey(publicKey)
-  const privPem = await exportPrivateKey(privateKey)
-
-  // 2) Persist the private key locally so we can decrypt later
-  localStorage.setItem("privateKey", privPem)
-
-  // 3) Register this public key as a *new* device
-
-  const res = await apiFetch("/api/devices", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ publicKey: pubPem }),
-  })
-
-  if (!res.ok) {
-    console.error("Failed to register device", await res.text())
-    return
-  }
-  const { deviceId } = await res.json()
-
-  // 4) Persist your new deviceId so we don’t repeat this
-  localStorage.setItem("deviceId", deviceId)
-}
-
-export async function ensureKeysAndDevice() {
-  const jwt = localStorage.getItem("token")!
-  if (!jwt) throw new Error("Missing auth token")
-
-  const existingPrivPem = localStorage.getItem("privateKey")
-  const existingDevId = localStorage.getItem("deviceId")
-
-  // If we already have both, nothing to do
-  if (existingPrivPem && existingDevId) {
-    return
-  }
-
-  let privPem = existingPrivPem!
-  let pubPem: string
-
-  // 1) Make sure we have a keypair
-  const existing = localStorage.getItem("privateKey")
-  if (!existing) {
+    // Keys and device exist — just need to ensure messaging-service has the public key
+    pubPem = localStorage.getItem("publicKey") || ""
+    if (!pubPem) {
+      // Re-derive public key from private key is not possible, so skip
+      return
+    }
+  } else {
+    // 1) Generate a brand-new RSA keypair
     const { publicKey, privateKey } = await generateKeyPair()
     pubPem = await exportPublicKey(publicKey)
-    privPem = await exportPrivateKey(privateKey)
+    const privPem = await exportPrivateKey(privateKey)
 
-    // persist in browser
+    // 2) Persist keys locally
     localStorage.setItem("privateKey", privPem)
+    localStorage.setItem("publicKey", pubPem)
 
-    // push into legacy user.publicKey if it was never set:
-    //   GET current user to see if publicKey is missing
-    const me = await apiFetch<{ publicKey: string | null }>(
-      `/api/messaging/get-public-key`,
-      { headers: { Authorization: `Bearer ${jwt}` } }
-    )
-    if (!me.publicKey) {
-      await apiFetch("/api/messaging/public-key", {
+    // 3) Register this public key as a new device
+    try {
+      const deviceRes = await apiFetch<{ deviceId: string }>("/api/devices", {
         method: "POST",
-        headers: { Authorization: `Bearer ${jwt}` },
+        headers: { Authorization: `Bearer ${token}` },
         body: { publicKey: pubPem },
       })
+      localStorage.setItem("deviceId", deviceRes.deviceId)
+    } catch (err) {
+      console.error("Failed to register device", err)
     }
+  }
+
+  // 4) Always ensure messaging-service has the public key
+  try {
+    await apiFetch("/api/messaging/public-key", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: { publicKey: pubPem },
+    })
+  } catch (err) {
+    console.error("Failed to store public key in messaging-service", err)
   }
 }

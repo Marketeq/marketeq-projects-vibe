@@ -95,8 +95,11 @@ export const UserDetail = ({
     useChatsContext()
 
   //jwt token
-  const jwtToken =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null
+  const jwtToken = (() => {
+    if (typeof window === "undefined") return null
+    const Cookies = require("js-cookie")
+    return Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("token") || null
+  })()
 
   const [isPinned, setIsPinned] = useControllableState({
     defaultValue: false,

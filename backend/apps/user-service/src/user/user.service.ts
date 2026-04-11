@@ -253,6 +253,8 @@ export class UserService {
       Object.assign(existingById, {
         email: dto.email ?? existingById.email,
         role: resolvedRole ?? existingById.role,
+        ...(dto.firstName && { firstName: dto.firstName }),
+        ...(dto.lastName && { lastName: dto.lastName }),
         provider: dto.provider ?? existingById.provider ?? resolvedProvider,
         hasPassword: dto.hasPassword ?? existingById.hasPassword ?? resolvedHasPassword,
       });
@@ -286,6 +288,8 @@ export class UserService {
       email: dto.email,
       username: normalizedIncomingUsername ?? fallbackUsername,
       role: resolvedRole,
+      ...(dto.firstName && { firstName: dto.firstName }),
+      ...(dto.lastName && { lastName: dto.lastName }),
       provider: resolvedProvider,
       hasPassword: resolvedHasPassword,
     });

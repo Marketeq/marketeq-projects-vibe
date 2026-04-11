@@ -1,6 +1,8 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Req, Query, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Req, Query, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { MessagesService } from './messages.service';
+import { GatewayAuthGuard } from '../guards/gateway-auth.guard';
 
+@UseGuards(GatewayAuthGuard)
 @Controller('v1/messages')
 export class MessagesController {
   constructor(private readonly service: MessagesService) {}
@@ -16,8 +18,8 @@ export class MessagesController {
   }
 
   @Patch(':id')
-  edit(@Param('id') id: string, @Body('content') content: string, @Req() req: any) {
-    return this.service.edit(id, content, req.user?.id);
+  edit(@Param('id') id: string, @Body() body: { content?: string; ciphertext?: string }, @Req() req: any) {
+    return this.service.edit(id, body.content ?? '', req.user?.id, body.ciphertext);
   }
 
   @Delete(':id')
