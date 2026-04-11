@@ -66,6 +66,8 @@ interface ProjectLikeProps {
    * Use this when you need tooltips, custom images, or other complex behavior.
    */
   avatarsSlot?: React.ReactNode
+  /** Optional badge rendered over the media (e.g. "Service"). */
+  badge?: string
   /** Optional href override; if omitted, computed from kind + id. */
   href?: string
   mode?: ListingMode
@@ -111,6 +113,8 @@ interface TeamCardProps {
   projectCount?: number
   skills?: string[]
   memberAvatars?: string[]
+  /** Logo URLs rendered in the "Previous clients" row. */
+  previousClientLogos?: string[]
   href?: string
   favoriteSlot?: React.ReactNode
 }
@@ -171,6 +175,7 @@ function ProjectListingCard({
   status,
   collaborators,
   avatarsSlot,
+  badge,
   href,
   mode = "browse",
   onEdit,
@@ -203,6 +208,11 @@ function ProjectListingCard({
             <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
               <Briefcase className="size-10 text-gray-300" />
             </div>
+          )}
+          {badge && (
+            <span className="absolute top-2 right-2 inline-flex items-center rounded-md bg-dark-blue-400/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
+              {badge}
+            </span>
           )}
         </div>
 
@@ -319,6 +329,7 @@ function TeamListingCard({
   projectCount,
   skills,
   memberAvatars,
+  previousClientLogos,
   href,
   favoriteSlot,
 }: TeamCardProps) {
@@ -425,6 +436,28 @@ function TeamListingCard({
                 {skill}
               </Badge>
             ))}
+          </div>
+        )}
+
+        {previousClientLogos && previousClientLogos.length > 0 && (
+          <div className="mt-5">
+            <span className="block text-[11px] font-light text-dark-blue-400">
+              Previous clients
+            </span>
+            <div className="mt-2 flex items-center flex-wrap gap-3">
+              {previousClientLogos.map((logo, i) => (
+                <div
+                  key={i}
+                  className="size-[25px] rounded-full shrink-0 relative bg-gray-50 overflow-hidden flex items-center justify-center"
+                >
+                  <img
+                    src={logo}
+                    alt="Previous client"
+                    className="size-full object-contain"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
