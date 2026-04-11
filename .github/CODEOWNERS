@@ -1,0 +1,11 @@
+# Marketeq code owners
+#
+# Every pull request targeting a protected branch (dev-main, staging,
+# main-live) requires approval from the @Marketeq/code-review team
+# before it can be merged. See branch protection settings.
+#
+# The left-hand pattern is matched against changed files in the PR;
+# the last matching rule wins. Keep this file simple: the Code Review
+# team owns everything.
+
+* @Marketeq/code-review
