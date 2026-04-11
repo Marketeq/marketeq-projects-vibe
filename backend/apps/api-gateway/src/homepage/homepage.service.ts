@@ -194,25 +194,32 @@ export class HomepageService {
 
     // CMS is the source of truth. Static config only runs as an emergency
     // fallback when the CMS is unreachable or has no published homepage.
-    // Log per-field misses so operators see which pieces of content the CMS
-    // is not yet providing.
+    // Collect per-field misses so operators see which pieces of content the
+    // CMS is not yet providing.
     const missingFromCms: string[] = [];
-    const hero: HomepageHero =
-      cmsConfig?.hero ?? (missingFromCms.push('hero'), HOMEPAGE_HERO);
-    const sectionConfigs: SectionConfig[] =
-      cmsConfig?.sections ?? (missingFromCms.push('sections'), HOMEPAGE_SECTIONS);
-    const popularTabs: CategoryRef[] =
-      cmsConfig?.popularTabs ?? (missingFromCms.push('popularTabs'), HOMEPAGE_POPULAR_TABS);
-    const moreCategoriesList: CategoryRef[] =
-      cmsConfig?.moreCategoriesList ??
-      (missingFromCms.push('moreCategoriesList'), HOMEPAGE_MORE_CATEGORIES);
-    const talentNetworkCta: TalentNetworkCta =
-      cmsConfig?.talentNetworkCta ??
-      (missingFromCms.push('talentNetworkCta'), HOMEPAGE_TALENT_CTA);
-    const footerNav: FooterNavColumn[] =
-      cmsConfig?.footerNav ?? (missingFromCms.push('footerNav'), HOMEPAGE_FOOTER_NAV);
-    let seo: HomepageSeo =
-      cmsConfig?.seo ?? (missingFromCms.push('seo'), HOMEPAGE_SEO);
+    const pickCms = <T>(value: T | null | undefined, fallback: T, field: string): T => {
+      if (value == null) {
+        missingFromCms.push(field);
+        return fallback;
+      }
+      return value;
+    };
+
+    const hero = pickCms(cmsConfig?.hero, HOMEPAGE_HERO, 'hero');
+    const sectionConfigs = pickCms(cmsConfig?.sections, HOMEPAGE_SECTIONS, 'sections');
+    const popularTabs = pickCms(cmsConfig?.popularTabs, HOMEPAGE_POPULAR_TABS, 'popularTabs');
+    const moreCategoriesList = pickCms(
+      cmsConfig?.moreCategoriesList,
+      HOMEPAGE_MORE_CATEGORIES,
+      'moreCategoriesList',
+    );
+    const talentNetworkCta = pickCms(
+      cmsConfig?.talentNetworkCta,
+      HOMEPAGE_TALENT_CTA,
+      'talentNetworkCta',
+    );
+    const footerNav = pickCms(cmsConfig?.footerNav, HOMEPAGE_FOOTER_NAV, 'footerNav');
+    let seo = pickCms(cmsConfig?.seo, HOMEPAGE_SEO, 'seo');
 
     if (missingFromCms.length > 0) {
       this.logger.warn(
@@ -295,7 +302,15 @@ export class HomepageService {
         });
       }
 
-      if (!doc) return null;
+      if (!doc) {
+        // CMS reachable but no matching homepage document — distinct from
+        // an API/network error so operators can seed instead of debugging.
+        this.logger.warn(
+          `CMS returned no Homepages doc (variant=${variant ?? 'none'}, isDraft=${isDraft}). ` +
+            `Run 'npm run seed:homepage' in cms-service to create the default 'home' document.`,
+        );
+        return null;
+      }
 
       return {
         meta: {
@@ -306,7 +321,9 @@ export class HomepageService {
         config: this.transformCmsHomepage(doc),
       };
     } catch (err: any) {
-      this.logger.warn(`Failed to fetch homepage config from CMS: ${err.message}`);
+      this.logger.warn(
+        `CMS request failed for Homepages (variant=${variant ?? 'none'}): ${err.message}`,
+      );
       return null;
     }
   }
@@ -583,7 +600,17 @@ export class HomepageService {
     // Editorial curation: when featuredOnly is set, restrict the pool to
     // items with `featured === true` (admin-curated). Used by spec §4.4.
     if (blockCfg.featuredOnly) {
+      const beforeCount = pool.length;
       pool = pool.filter((item) => 'featured' in item && (item as ScoringFields).featured === true);
+      if (pool.length === 0 && beforeCount > 0) {
+        // Section will end up empty and get suppressed by assembleHomepage.
+        // Warn so operators can flag more items as featured in the CMS/DB.
+        this.logger.warn(
+          `section "${sectionKey}" block ${blockCfg.entity} featuredOnly=true — ` +
+            `0 of ${beforeCount} items matched. Section will be hidden. ` +
+            `Flag more ${blockCfg.entity} as featured to populate it.`,
+        );
+      }
     }
 
     // ── Pinned items (hybrid mode) ──
