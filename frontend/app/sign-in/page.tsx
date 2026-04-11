@@ -93,10 +93,26 @@ export default function SignIn() {
                 meResponse?.data
 
               if (profileUser && typeof profileUser === "object") {
-                nextUser = {
+                // Merge profileUser over nextUser, but never let a
+                // null/undefined `role`, `accountType`, or `userType`
+                // from /me clobber a truthy value from the auth-service
+                // login payload — otherwise the downstream
+                // resolveDashboardRoute() falls through to /onboarding.
+                const merged: Record<string, unknown> = {
                   ...nextUser,
                   ...profileUser,
                 }
+                const preserveIfMissing = [
+                  "role",
+                  "accountType",
+                  "userType",
+                ] as const
+                for (const key of preserveIfMissing) {
+                  if (merged[key] == null && (nextUser as any)?.[key] != null) {
+                    merged[key] = (nextUser as any)[key]
+                  }
+                }
+                nextUser = merged as typeof nextUser
               }
             }
           } catch {
