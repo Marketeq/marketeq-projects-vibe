@@ -1050,29 +1050,24 @@ export function TimeTrackerApp({
 
           {/* Single scroll container — everything scrolls together */}
           <div ref={scrollRef} onScroll={handleContentScroll} className="flex-1 overflow-y-auto">
-            {/* Running-state expanded header — height-animated for smooth idle↔running */}
-            <div
-              ref={isRunning && activeTask ? expandedHeaderRef : undefined}
-              className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
-              style={{
-                height: isRunning && activeTask ? (runningHeight || "auto") : 0,
-                opacity: isRunning && activeTask ? 1 : 0,
-              }}
-            >
-              <div ref={runningContentRef}>
-                <div className="px-4 pt-3 pb-2 relative z-10">
-                  <TaskSearch
-                    value={searchValue}
-                    onChange={setSearchValue}
-                    results={searchResults}
-                    defaultResults={defaultSearchResults}
-                    selectedResult={!activeTask || activeTaskCleared ? null : {
+            {/* Search bar — always visible, props change based on state */}
+            <div ref={expandedHeaderRef} className="px-4 pt-3 pb-2 relative z-10">
+              <TaskSearch
+                value={searchValue}
+                onChange={setSearchValue}
+                results={searchResults}
+                defaultResults={defaultSearchResults}
+                selectedResult={isRunning && activeTask
+                  ? (!activeTask || activeTaskCleared ? null : {
                       id: activeTask.taskId || "active",
                       taskName: activeTask.taskName,
                       contractName: activeTask.contractName,
                       clientHandle: activeTask.clientHandle,
-                    }}
-                    onSelect={(result) => {
+                    })
+                  : selectedTask
+                }
+                onSelect={isRunning && activeTask
+                  ? (result) => {
                       for (const day of days) {
                         for (const c of day.contracts) {
                           const task = c.tasks.find((t) => t.id === result.id)
@@ -1084,14 +1079,26 @@ export function TimeTrackerApp({
                         }
                       }
                       setSearchValue("")
-                    }}
-                    onClear={() => {
-                      setActiveTaskCleared(true)
-                      setSearchValue("")
-                    }}
-                    activeContractName={activeTask?.contractName}
-                  />
-                </div>
+                    }
+                  : handleSearchSelect
+                }
+                onClear={isRunning && activeTask
+                  ? () => { setActiveTaskCleared(true); setSearchValue("") }
+                  : handleSearchClear
+                }
+                activeContractName={isRunning && activeTask ? activeTask.contractName : undefined}
+              />
+            </div>
+
+            {/* Running-state controls + timer — height-animated for smooth idle↔running */}
+            <div
+              className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
+              style={{
+                height: isRunning && activeTask ? (runningHeight || "auto") : 0,
+                opacity: isRunning && activeTask ? 1 : 0,
+              }}
+            >
+              <div ref={runningContentRef}>
                 <div className="flex flex-col items-center py-3 gap-1 relative z-30">
                   <TimerControls
                     isRunning
@@ -1143,9 +1150,8 @@ export function TimeTrackerApp({
               </div>
             )}
 
-            {/* Idle-state expanded header (search + controls) — height-animated */}
+            {/* Idle-state controls — height-animated */}
             <div
-              ref={!isRunning ? expandedHeaderRef : undefined}
               className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
               style={{
                 height: !isRunning ? (idleHeight || "auto") : 0,
@@ -1153,17 +1159,6 @@ export function TimeTrackerApp({
               }}
             >
               <div ref={idleContentRef}>
-                <div className="px-4 pt-3 pb-2 relative z-10">
-                  <TaskSearch
-                    value={searchValue}
-                    onChange={setSearchValue}
-                    results={searchResults}
-                    defaultResults={defaultSearchResults}
-                    onSelect={handleSearchSelect}
-                    selectedResult={selectedTask}
-                    onClear={handleSearchClear}
-                  />
-                </div>
                 <div className="py-2 relative z-50">
                   <TimerControls countdown={countdown} noTaskSelected={!selectedTask} onStart={handleStart} onPause={handlePause} onStop={handleStop} onManualTime={() => setView("manual-time")} />
                 </div>
