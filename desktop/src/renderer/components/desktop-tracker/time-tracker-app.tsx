@@ -1051,7 +1051,7 @@ export function TimeTrackerApp({
           {/* Single scroll container — everything scrolls together */}
           <div ref={scrollRef} onScroll={handleContentScroll} className="flex-1 overflow-y-auto">
             {/* Search bar — always visible, props change based on state */}
-            <div ref={expandedHeaderRef} className="px-4 pt-3 pb-2 relative z-10">
+            <div ref={expandedHeaderRef} className="px-4 pt-3 pb-2 relative z-[100]">
               <TaskSearch
                 value={searchValue}
                 onChange={setSearchValue}
