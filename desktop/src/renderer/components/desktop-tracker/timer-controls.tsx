@@ -147,23 +147,42 @@ export function TimerControls({
           onClick={handleCenterClick}
           className={cn("flex flex-col items-center gap-1.5 group", isCounting && "cursor-default")}
         >
-            <div className="relative">
-              {/* Pulsing glow ring when actively tracking */}
+            <div className="relative flex items-center justify-center">
+              {/* Spinning gradient ring — Instagram-style, contained within bounds */}
               {isRunning && !isPaused && !isCounting && (
-                <span className="absolute inset-[-8px] rounded-full bg-primary-300 opacity-40 animate-ping" />
+                <div className="absolute inset-[-4px] rounded-full animate-glow-pulse">
+                  <div
+                    className="w-full h-full rounded-full animate-spin-gradient"
+                    style={{
+                      background: "conic-gradient(from 0deg, #306CFE, #779EFF, #C9D9FF, #5687FF, #2459DB, #306CFE)",
+                      mask: "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px))",
+                      WebkitMask: "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px))",
+                    }}
+                  />
+                </div>
               )}
-              {/* Expanding ring animation during countdown */}
+              {/* Countdown ring effect */}
               {isCounting && (
-                <span className="absolute inset-[-6px] rounded-full border-2 border-primary-400 opacity-60 animate-ping" />
+                <div className="absolute inset-[-4px] rounded-full">
+                  <div
+                    className="w-full h-full rounded-full animate-spin-gradient"
+                    style={{
+                      background: "conic-gradient(from 0deg, #306CFE, #779EFF, #E8EEFF, #5687FF, #306CFE)",
+                      mask: "radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px))",
+                      WebkitMask: "radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px))",
+                      animationDuration: "1.5s",
+                    }}
+                  />
+                </div>
               )}
               <div
                 className={cn(
                   "relative flex h-14 w-14 items-center justify-center rounded-full text-white transition-all",
                   "bg-primary-500",
                   isCounting
-                    ? "shadow-[0_0_30px_10px_rgba(48,108,254,0.5)] scale-110"
+                    ? "shadow-[0_0_20px_6px_rgba(48,108,254,0.35)] scale-110"
                     : isRunning && !isPaused
-                    ? "shadow-[0_0_24px_8px_rgba(48,108,254,0.45)] hover:bg-primary-600"
+                    ? "shadow-[0_0_16px_4px_rgba(48,108,254,0.3)] hover:bg-primary-600"
                     : "shadow-[0_4px_14px_rgba(48,108,254,0.4)] hover:bg-primary-600"
                 )}
               >

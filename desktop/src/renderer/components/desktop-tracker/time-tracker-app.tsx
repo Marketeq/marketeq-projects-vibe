@@ -220,6 +220,67 @@ function generateSeedDays(): DayGroup[] {
 
 const SEED_DAYS: DayGroup[] = generateSeedDays()
 
+// ─── Mini Header Tooltip Button ─────────────────────────────────────────────
+
+/** Button with portaled tooltip for minimized header icons */
+function MiniHeaderBtn({
+  onClick,
+  tooltip,
+  children,
+  className,
+}: {
+  onClick: () => void
+  tooltip: string
+  children: React.ReactNode
+  className?: string
+}) {
+  const [hovered, setHovered] = React.useState(false)
+  const ref = React.useRef<HTMLButtonElement>(null)
+  const [tipStyle, setTipStyle] = React.useState<React.CSSProperties>({ position: "fixed", visibility: "hidden" })
+  const tipRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    if (!hovered) return
+    const btn = ref.current
+    const tip = tipRef.current
+    if (!btn || !tip) return
+    const rect = btn.getBoundingClientRect()
+    const tipW = tip.offsetWidth
+    let left = rect.left + rect.width / 2 - tipW / 2
+    left = Math.max(12, Math.min(left, window.innerWidth - tipW - 12))
+    setTipStyle({
+      position: "fixed",
+      left,
+      top: rect.bottom + 6,
+      visibility: "visible",
+    })
+  }, [hovered])
+
+  return (
+    <>
+      <button
+        ref={ref}
+        onClick={onClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className={cn("shrink-0", className)}
+      >
+        {children}
+      </button>
+      {hovered && ReactDOM.createPortal(
+        <div
+          ref={tipRef}
+          className="px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs font-medium shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 whitespace-nowrap z-[400] pointer-events-none"
+          style={tipStyle}
+        >
+          {tooltip}
+        </div>,
+        document.body
+      )}
+    </>
+  )
+}
+
 // ─── Smooth Collapsible ─────────────────────────────────────────────────────
 
 function Collapsible({ open, children }: { open: boolean; children: React.ReactNode }) {
@@ -597,10 +658,11 @@ export function TimeTrackerApp({
     const el = scrollRef.current
     const header = expandedHeaderRef.current
     if (!el || !header) return
-    // Collapsed once the search bar + active controls section have scrolled out of view
-    const controlsHeight = isRunning ? (runningHeight || 0) : (idleHeight || 0)
+    // Measure the active controls section directly from DOM for accuracy
+    const controlsEl = isRunning ? runningContentRef.current : idleContentRef.current
+    const controlsHeight = controlsEl ? controlsEl.offsetHeight : 0
     setHeaderCollapsed(el.scrollTop >= header.offsetHeight + controlsHeight)
-  }, [isRunning, runningHeight, idleHeight])
+  }, [isRunning])
 
   // ── Derived ─────────────────────────────────────────────────────────────
   const hours = Math.floor(elapsed / 3600)
@@ -924,7 +986,7 @@ export function TimeTrackerApp({
       )}
     >
       {/* Header — always visible */}
-      <TrackerHeader onMenuClick={() => setView(view === "menu" ? "main" : "menu")} />
+      <TrackerHeader isMenuOpen={view === "menu"} onMenuClick={() => setView(view === "menu" ? "main" : "menu")} />
 
       {/* ── Account Menu View ────────────────────────────────────────── */}
       {view === "menu" && (
@@ -1139,21 +1201,25 @@ export function TimeTrackerApp({
                   }}
                 >
                   <div className="flex items-center gap-2.5">
-                    <button onClick={handlePause} className="shrink-0">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500 text-white shadow-sm">
+                    <MiniHeaderBtn onClick={handlePause} tooltip={isPaused ? "Resume Time" : "Pause Time"}>
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500 text-white shadow-sm hover:bg-primary-600 transition">
                         {isPaused ? (
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M8 5.14v13.72a1 1 0 001.5.86l11.04-6.86a1 1 0 000-1.72L9.5 4.28A1 1 0 008 5.14z" fill="currentColor"/></svg>
                         ) : (
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/></svg>
                         )}
                       </div>
-                    </button>
-                    <button onClick={() => {}} className="text-gray-400 hover:text-gray-600 shrink-0">
-                      <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    </button>
-                    <button onClick={handleStop} className="text-gray-400 hover:text-gray-600 shrink-0">
-                      <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="4" y="4" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/></svg>
-                    </button>
+                    </MiniHeaderBtn>
+                    <MiniHeaderBtn onClick={() => setView("manual-time")} tooltip="Manual Time">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition">
+                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </div>
+                    </MiniHeaderBtn>
+                    <MiniHeaderBtn onClick={handleStop} tooltip="Stop Time">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition">
+                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><rect x="4" y="4" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/></svg>
+                      </div>
+                    </MiniHeaderBtn>
                   </div>
                   <TimerDisplay hours={hours} minutes={minutes} seconds={seconds} size="sm" />
                 </div>
@@ -1189,17 +1255,21 @@ export function TimeTrackerApp({
                   }}
                 >
                   <div className="flex items-center gap-2.5">
-                    <button onClick={handleStart} className="shrink-0">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500 text-white shadow-sm">
+                    <MiniHeaderBtn onClick={handleStart} tooltip="Start Time">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500 text-white shadow-sm hover:bg-primary-600 transition">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M8 5.14v13.72a1 1 0 001.5.86l11.04-6.86a1 1 0 000-1.72L9.5 4.28A1 1 0 008 5.14z" fill="currentColor"/></svg>
                       </div>
-                    </button>
-                    <button onClick={() => {}} className="text-gray-400 hover:text-gray-600 shrink-0">
-                      <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    </button>
-                    <button onClick={handleStop} className="text-gray-400 hover:text-gray-600 shrink-0">
-                      <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="4" y="4" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/></svg>
-                    </button>
+                    </MiniHeaderBtn>
+                    <MiniHeaderBtn onClick={() => setView("manual-time")} tooltip="Manual Time">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition">
+                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </div>
+                    </MiniHeaderBtn>
+                    <MiniHeaderBtn onClick={handleStop} tooltip="Stop Time">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition">
+                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><rect x="4" y="4" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/></svg>
+                      </div>
+                    </MiniHeaderBtn>
                   </div>
                   <TimerDisplay hours={0} minutes={0} seconds={0} size="sm" />
                 </div>

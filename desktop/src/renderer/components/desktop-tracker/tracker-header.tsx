@@ -5,20 +5,26 @@ import { cn } from "@/utils/functions"
 
 interface TrackerHeaderProps {
   title?: string
+  isMenuOpen?: boolean
   onMenuClick?: () => void
   className?: string
 }
 
-function HamburgerIcon({ className }: { className?: string }) {
+/** Animated hamburger ↔ X icon using three CSS-transitioned spans */
+function MenuIcon({ open }: { open: boolean }) {
+  const bar = "block absolute left-0 w-full h-[1.5px] bg-current rounded-full transition-all duration-200 ease-in-out"
   return (
-    <svg className={className} width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
+    <div className="relative w-5 h-5 flex items-center justify-center">
+      <span className={cn(bar, open ? "top-[9px] rotate-45" : "top-[4px] rotate-0")} />
+      <span className={cn(bar, "top-[9px]", open ? "opacity-0 scale-x-0" : "opacity-100 scale-x-100")} />
+      <span className={cn(bar, open ? "top-[9px] -rotate-45" : "top-[14px] rotate-0")} />
+    </div>
   )
 }
 
 export function TrackerHeader({
   title = "Marketeq Time Tracker",
+  isMenuOpen = false,
   onMenuClick,
   className,
 }: TrackerHeaderProps) {
@@ -35,7 +41,7 @@ export function TrackerHeader({
         onClick={onMenuClick}
         className="text-gray-500 hover:text-gray-700 transition"
       >
-        <HamburgerIcon className="h-5 w-5" />
+        <MenuIcon open={isMenuOpen} />
       </button>
     </div>
   )
