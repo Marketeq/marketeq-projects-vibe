@@ -526,6 +526,29 @@ export function TimeTrackerApp({
   const [headerCollapsed, setHeaderCollapsed] = React.useState(false)
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const expandedHeaderRef = React.useRef<HTMLDivElement>(null)
+  const runningContentRef = React.useRef<HTMLDivElement>(null)
+  const idleContentRef = React.useRef<HTMLDivElement>(null)
+  const [runningHeight, setRunningHeight] = React.useState<number>(0)
+  const [idleHeight, setIdleHeight] = React.useState<number>(0)
+
+  // Measure running/idle header heights for smooth transitions
+  React.useEffect(() => {
+    const el = runningContentRef.current
+    if (!el) return
+    setRunningHeight(el.scrollHeight)
+    const ro = new ResizeObserver(() => setRunningHeight(el.scrollHeight))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [isRunning, activeTask])
+
+  React.useEffect(() => {
+    const el = idleContentRef.current
+    if (!el) return
+    setIdleHeight(el.scrollHeight)
+    const ro = new ResizeObserver(() => setIdleHeight(el.scrollHeight))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [isRunning])
 
   // New task form context
   const [newTaskContractId, setNewTaskContractId] = React.useState<string | undefined>()
@@ -1027,16 +1050,23 @@ export function TimeTrackerApp({
 
           {/* Single scroll container — everything scrolls together */}
           <div ref={scrollRef} onScroll={handleContentScroll} className="flex-1 overflow-y-auto">
-            {/* Running-state expanded header — scrolls away naturally */}
-            {isRunning && activeTask && (
-              <div ref={expandedHeaderRef} className="animate-fade-in">
+            {/* Running-state expanded header — height-animated for smooth idle↔running */}
+            <div
+              ref={isRunning && activeTask ? expandedHeaderRef : undefined}
+              className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
+              style={{
+                height: isRunning && activeTask ? (runningHeight || "auto") : 0,
+                opacity: isRunning && activeTask ? 1 : 0,
+              }}
+            >
+              <div ref={runningContentRef}>
                 <div className="px-4 pt-3 pb-2 relative z-10">
                   <TaskSearch
                     value={searchValue}
                     onChange={setSearchValue}
                     results={searchResults}
                     defaultResults={defaultSearchResults}
-                    selectedResult={activeTaskCleared ? null : {
+                    selectedResult={!activeTask || activeTaskCleared ? null : {
                       id: activeTask.taskId || "active",
                       taskName: activeTask.taskName,
                       contractName: activeTask.contractName,
@@ -1059,7 +1089,7 @@ export function TimeTrackerApp({
                       setActiveTaskCleared(true)
                       setSearchValue("")
                     }}
-                    activeContractName={activeTask.contractName}
+                    activeContractName={activeTask?.contractName}
                   />
                 </div>
                 <div className="flex flex-col items-center py-3 gap-1 relative z-30">
@@ -1076,7 +1106,7 @@ export function TimeTrackerApp({
                   <span className="text-sm text-gray-500 mt-1 animate-fade-in">Amount Earned {amountEarned}</span>
                 </div>
               </div>
-            )}
+            </div>
 
             {/* Running-state sticky collapsed bar — appears once scrolled past expanded header */}
             {isRunning && activeTask && (
@@ -1113,9 +1143,16 @@ export function TimeTrackerApp({
               </div>
             )}
 
-            {/* Idle-state expanded header (search + controls) — scrolls away naturally */}
-            {!isRunning && (
-              <div ref={!isRunning ? expandedHeaderRef : undefined}>
+            {/* Idle-state expanded header (search + controls) — height-animated */}
+            <div
+              ref={!isRunning ? expandedHeaderRef : undefined}
+              className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
+              style={{
+                height: !isRunning ? (idleHeight || "auto") : 0,
+                opacity: !isRunning ? 1 : 0,
+              }}
+            >
+              <div ref={idleContentRef}>
                 <div className="px-4 pt-3 pb-2 relative z-10">
                   <TaskSearch
                     value={searchValue}
@@ -1131,7 +1168,7 @@ export function TimeTrackerApp({
                   <TimerControls countdown={countdown} noTaskSelected={!selectedTask} onStart={handleStart} onPause={handlePause} onStop={handleStop} onManualTime={() => setView("manual-time")} />
                 </div>
               </div>
-            )}
+            </div>
 
             {/* Idle-state sticky collapsed bar — appears once scrolled past expanded header */}
             {!isRunning && (
