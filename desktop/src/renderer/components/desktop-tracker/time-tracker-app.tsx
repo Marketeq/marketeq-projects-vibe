@@ -13,6 +13,7 @@ import { DaySummary } from "./day-summary"
 import { ContractEntry, TaskEntry } from "./contract-entry"
 import { AccountMenu, MenuSection } from "./account-menu"
 import { NewTaskForm } from "./new-task-form"
+import { ManualTimeForm } from "./manual-time-form"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -41,7 +42,7 @@ interface TimeTrackerAppProps {
   className?: string
 }
 
-type View = "main" | "menu" | "new-task" | "all-tasks"
+type View = "main" | "menu" | "new-task" | "manual-time" | "all-tasks"
 
 /** Staggered fade-in wrapper — each child fades in with increasing delay */
 function StaggerIn({ children, stagger = 50 }: { children: React.ReactNode; stagger?: number }) {
@@ -491,6 +492,8 @@ export function TimeTrackerApp({
 
   const setView = React.useCallback((next: View) => {
     _setView((prev) => {
+      // Skip transition if staying on the same view
+      if (prev === next) return prev
       const isGoingBack = next === "main"
       setSlideDirection(isGoingBack ? "right" : "left")
       setViewTransition("enter")
@@ -647,7 +650,7 @@ export function TimeTrackerApp({
     },
     {
       items: [
-        { label: "Add Manual Time", shortcut: "\u2318M", onClick: () => { setView("main") } },
+        { label: "Add Manual Time", shortcut: "\u2318M", onClick: () => { setView("manual-time") } },
         { label: "Reports", shortcut: "\u2318R", onClick: () => openExternal("/time-tracking") },
       ],
     },
@@ -933,6 +936,30 @@ export function TimeTrackerApp({
         </div>
       )}
 
+      {/* ── Manual Time View ──────────────────────────────────────────── */}
+      {view === "manual-time" && (
+        <div
+          key={viewKey}
+          className="flex-1 overflow-hidden transition-[transform,opacity] duration-200 ease-out"
+          style={{
+            transform: viewTransition === "enter"
+              ? (slideDirection === "right" ? "translateX(-20px)" : "translateX(20px)")
+              : "translateX(0)",
+            opacity: viewTransition === "enter" ? 0 : 1,
+          }}
+        >
+          <ManualTimeForm
+            contracts={allContracts}
+            onCancel={() => setView("main")}
+            onSubmit={(data) => {
+              // TODO: wire to backend / local DB
+              console.log("Manual time submitted:", data)
+              setView("main")
+            }}
+          />
+        </div>
+      )}
+
       {/* ── All Tasks View ───────────────────────────────────────────── */}
       {view === "all-tasks" && (
         <div
@@ -1041,7 +1068,7 @@ export function TimeTrackerApp({
                     isPaused={isPaused}
                     onPause={handlePause}
                     onStop={handleStop}
-                    onManualTime={() => setView("new-task")}
+                    onManualTime={() => setView("manual-time")}
                   />
                   <div key={activeTask?.taskId || "timer"} className="mt-2 animate-fade-in">
                     <TimerDisplay hours={hours} minutes={minutes} seconds={seconds} size="lg" />
@@ -1101,7 +1128,7 @@ export function TimeTrackerApp({
                   />
                 </div>
                 <div className="py-2 relative z-50">
-                  <TimerControls countdown={countdown} noTaskSelected={!selectedTask} onStart={handleStart} onPause={handlePause} onStop={handleStop} onManualTime={() => setView("new-task")} />
+                  <TimerControls countdown={countdown} noTaskSelected={!selectedTask} onStart={handleStart} onPause={handlePause} onStop={handleStop} onManualTime={() => setView("manual-time")} />
                 </div>
               </div>
             )}
