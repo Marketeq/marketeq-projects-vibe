@@ -206,13 +206,13 @@ export function TimerControls({
     : "Start Time"
 
   return (
-    <div className={cn("flex items-center justify-center gap-5", className)}>
+    <div className={cn("flex items-end justify-center gap-5", className)}>
       {/* Manual Time */}
       <button
         onClick={onManualTime}
         className="flex flex-col items-center gap-1.5 group"
       >
-        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-gray-400 transition hover:border-gray-400 hover:text-gray-600">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-400 transition hover:border-gray-400 hover:text-gray-600">
           <ManualTimeIcon className="h-5 w-5" />
         </div>
         <span className="text-[10px] leading-3 text-gray-500 group-hover:text-gray-700">
@@ -237,7 +237,7 @@ export function TimerControls({
               )}
               <div
                 className={cn(
-                  "relative flex h-14 w-14 items-center justify-center rounded-full text-white transition-all",
+                  "relative flex h-[60px] w-[60px] items-center justify-center rounded-full text-white transition-all",
                   "bg-primary-500",
                   isCounting
                     ? "shadow-[0_0_24px_8px_rgba(48,108,254,0.4)] scale-110"
@@ -283,7 +283,7 @@ export function TimerControls({
           }}
           className="flex flex-col items-center gap-1.5 group"
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-gray-400 transition hover:border-gray-400 hover:text-gray-600">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-400 transition hover:border-gray-400 hover:text-gray-600">
             <StopIcon className="h-5 w-5" />
           </div>
           <span className="text-[10px] leading-3 text-gray-500 group-hover:text-gray-700">

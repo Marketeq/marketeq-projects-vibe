@@ -24,7 +24,7 @@ export function ActiveTrackingBar({
     <button
       onClick={onToggleCollapse}
       className={cn(
-        "flex items-center justify-between px-4 py-2.5 bg-gray-25 shrink-0 w-full hover:bg-gray-50 transition-colors",
+        "flex items-center justify-between px-4 py-2.5 bg-white shrink-0 w-full hover:bg-gray-25 transition-colors",
         className
       )}
     >

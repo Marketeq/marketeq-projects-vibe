@@ -31,7 +31,7 @@ export function TrackerHeader({
   return (
     <div
       className={cn(
-        "drag-region flex items-center justify-between pl-[78px] pr-4 py-3 border-b border-gray-100 bg-gray-50 shrink-0",
+        "drag-region flex items-center justify-between pl-[78px] pr-4 pt-3 pb-2 shrink-0",
         className
       )}
     >

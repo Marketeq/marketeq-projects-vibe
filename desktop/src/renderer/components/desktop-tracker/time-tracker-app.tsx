@@ -583,8 +583,9 @@ export function TimeTrackerApp({
   const [utcTime, setUtcTime] = React.useState(formatUtcTime())
   const [dateStr] = React.useState(formatDate())
 
-  // Header collapse — show minimized bar once expanded header scrolls out of view
+  // Header collapse — scroll-based OR manual (clicking date row chevron)
   const [headerCollapsed, setHeaderCollapsed] = React.useState(false)
+  const [headerManualCollapsed, setHeaderManualCollapsed] = React.useState(false)
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const expandedHeaderRef = React.useRef<HTMLDivElement>(null)
   const runningContentRef = React.useRef<HTMLDivElement>(null)
@@ -985,8 +986,8 @@ export function TimeTrackerApp({
         className
       )}
     >
-      {/* Header — always visible */}
-      <TrackerHeader isMenuOpen={view === "menu"} onMenuClick={() => setView(view === "menu" ? "main" : "menu")} />
+      {/* Top nav — always visible, white bg, no corner radius */}
+      <TrackerHeader isMenuOpen={view === "menu"} onMenuClick={() => setView(view === "menu" ? "main" : "menu")} className="bg-white" />
 
       {/* ── Account Menu View ────────────────────────────────────────── */}
       {view === "menu" && (
@@ -1089,144 +1090,138 @@ export function TimeTrackerApp({
             opacity: viewTransition === "enter" ? 0 : 1,
           }}
         >
-          {isRunning && activeTask ? (
-            <>
-              <ActiveTrackingBar
-                utcTime={utcTime}
-                isRecording={!isPaused}
-                label={isPaused ? "Paused" : "Tracking time..."}
-                collapsed={headerCollapsed}
-                onToggleCollapse={() => {
-                  if (scrollRef.current) {
-                    scrollRef.current.scrollTo({ top: headerCollapsed ? 0 : 300, behavior: "smooth" })
-                  }
-                }}
-              />
-
-            </>
-          ) : (
-            <>
-              <DateTimeBar
-                date={dateStr}
-                utcTime={utcTime}
-                collapsed={headerCollapsed}
-                onToggleCollapse={() => {
-                  if (scrollRef.current) {
-                    scrollRef.current.scrollTo({ top: headerCollapsed ? 0 : 300, behavior: "smooth" })
-                  }
-                }}
-              />
-
-            </>
-          )}
-
           {/* Single scroll container — everything scrolls together */}
           <div ref={scrollRef} onScroll={handleContentScroll} className="flex-1 overflow-y-auto">
-            {/* Search bar — always visible, props change based on state */}
-            <div ref={expandedHeaderRef} className="px-4 pt-3 pb-2 relative z-[100]">
-              <TaskSearch
-                value={searchValue}
-                onChange={setSearchValue}
-                results={searchResults}
-                defaultResults={defaultSearchResults}
-                selectedResult={isRunning && activeTask
-                  ? (!activeTask || activeTaskCleared ? null : {
-                      id: activeTask.taskId || "active",
-                      taskName: activeTask.taskName,
-                      contractName: activeTask.contractName,
-                      clientHandle: activeTask.clientHandle,
-                    })
-                  : selectedTask
-                }
-                onSelect={isRunning && activeTask
-                  ? (result) => {
-                      for (const day of days) {
-                        for (const c of day.contracts) {
-                          const task = c.tasks.find((t) => t.id === result.id)
-                          if (task) {
-                            setActiveTask({ taskName: task.name, contractName: c.name, contractId: c.id, clientHandle: c.clientHandle, taskId: task.id })
-                            setActiveTaskCleared(false)
-                            break
-                          }
-                        }
-                      }
-                      setSearchValue("")
-                    }
-                  : handleSearchSelect
-                }
-                onClear={isRunning && activeTask
-                  ? () => { setActiveTaskCleared(true); setSearchValue("") }
-                  : handleSearchClear
-                }
-                activeContractName={isRunning && activeTask ? activeTask.contractName : undefined}
-              />
-            </div>
-
-            {/* Running-state controls + timer — height-animated for smooth idle↔running */}
-            <div
-              className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
-              style={{
-                height: isRunning && activeTask ? (runningHeight || "auto") : 0,
-                opacity: isRunning && activeTask ? 1 : 0,
-              }}
-            >
-              <div ref={runningContentRef}>
-                <div className="flex flex-col items-center py-3 gap-1 relative z-30">
-                  <TimerControls
-                    isRunning
-                    isPaused={isPaused}
-                    onPause={handlePause}
-                    onStop={handleStop}
-                    onManualTime={() => setView("manual-time")}
-                  />
-                  <div key={activeTask?.taskId || "timer"} className="mt-2 animate-fade-in">
-                    <TimerDisplay hours={hours} minutes={minutes} seconds={seconds} size="lg" />
-                  </div>
-                  <span className="text-sm text-gray-500 mt-1 animate-fade-in">Amount Earned {amountEarned}</span>
+            {/* Header card — gray-100 bg, 8px radius: date bar + search + controls */}
+            <div ref={expandedHeaderRef} className="mx-2 bg-gray-100 rounded-lg overflow-hidden">
+              {/* Combined date/tracking row — single row that changes content based on state */}
+              <button
+                onClick={() => setHeaderManualCollapsed((v) => !v)}
+                className="flex items-center justify-between px-4 py-2.5 w-full bg-transparent hover:bg-gray-200/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  {isRunning && activeTask && !isPaused && (
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-error-500" />
+                    </span>
+                  )}
+                  <span className="text-xs font-medium text-dark-blue-400">
+                    {isRunning && activeTask ? "Tracking time..." : dateStr}
+                  </span>
                 </div>
-              </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-gray-500">{utcTime}</span>
+                  <svg
+                    className={cn(
+                      "h-3.5 w-3.5 text-gray-400 transition-transform duration-200",
+                      headerManualCollapsed && "rotate-180"
+                    )}
+                    viewBox="0 0 14 14"
+                    fill="none"
+                  >
+                    <path d="M3 9l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+              </button>
+              {/* Collapsible section: search + controls — toggled by date row chevron */}
+              <Collapsible open={!headerManualCollapsed}>
+                {/* Search bar */}
+                <div className="px-3 pt-2 pb-1 relative z-[100]">
+                  <TaskSearch
+                    value={searchValue}
+                    onChange={setSearchValue}
+                    results={searchResults}
+                    defaultResults={defaultSearchResults}
+                    selectedResult={isRunning && activeTask
+                      ? (!activeTask || activeTaskCleared ? null : {
+                          id: activeTask.taskId || "active",
+                          taskName: activeTask.taskName,
+                          contractName: activeTask.contractName,
+                          clientHandle: activeTask.clientHandle,
+                        })
+                      : selectedTask
+                    }
+                    onSelect={isRunning && activeTask
+                      ? (result) => {
+                          for (const day of days) {
+                            for (const c of day.contracts) {
+                              const task = c.tasks.find((t) => t.id === result.id)
+                              if (task) {
+                                setActiveTask({ taskName: task.name, contractName: c.name, contractId: c.id, clientHandle: c.clientHandle, taskId: task.id })
+                                setActiveTaskCleared(false)
+                                break
+                              }
+                            }
+                          }
+                          setSearchValue("")
+                        }
+                      : handleSearchSelect
+                    }
+                    onClear={isRunning && activeTask
+                      ? () => { setActiveTaskCleared(true); setSearchValue("") }
+                      : handleSearchClear
+                    }
+                    activeContractName={isRunning && activeTask ? activeTask.contractName : undefined}
+                  />
+                </div>
+
+                {/* Running-state controls + timer — height-animated */}
+                <div
+                  className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
+                  style={{
+                    height: isRunning && activeTask ? (runningHeight || "auto") : 0,
+                    opacity: isRunning && activeTask ? 1 : 0,
+                  }}
+                >
+                  <div ref={runningContentRef}>
+                    <div className="flex flex-col items-center py-3 gap-1 relative z-30">
+                      <TimerControls
+                        isRunning
+                        isPaused={isPaused}
+                        onPause={handlePause}
+                        onStop={handleStop}
+                        onManualTime={() => setView("manual-time")}
+                      />
+                      <div key={activeTask?.taskId || "timer"} className="mt-2 animate-fade-in">
+                        <TimerDisplay hours={hours} minutes={minutes} seconds={seconds} size="lg" />
+                      </div>
+                      <span className="text-xs text-gray-500 mt-1 animate-fade-in">Amount Earned {amountEarned}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Idle-state controls — height-animated */}
+                <div
+                  className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
+                  style={{
+                    height: !isRunning ? (idleHeight || "auto") : 0,
+                    opacity: !isRunning ? 1 : 0,
+                  }}
+                >
+                  <div ref={idleContentRef}>
+                    <div className="py-2 relative z-50">
+                      <TimerControls countdown={countdown} noTaskSelected={!selectedTask} onStart={handleStart} onPause={handlePause} onStop={handleStop} onManualTime={() => setView("manual-time")} />
+                    </div>
+                  </div>
+                </div>
+              </Collapsible>
             </div>
 
             {/* Running-state sticky collapsed bar — Figma Variant7 layout */}
             {isRunning && activeTask && (
               <div
                 className="sticky top-0 z-50 bg-white overflow-hidden transition-[height] duration-200 ease-out border-b border-gray-100"
-                style={{ height: headerCollapsed ? "auto" : 0 }}
+                style={{ height: (headerCollapsed || headerManualCollapsed) ? "auto" : 0 }}
               >
                 <div
                   className="transition-[transform,opacity] duration-200 ease-out"
                   style={{
-                    transform: headerCollapsed ? "translateY(0)" : "translateY(20px)",
-                    opacity: headerCollapsed ? 1 : 0,
+                    transform: (headerCollapsed || headerManualCollapsed) ? "translateY(0)" : "translateY(20px)",
+                    opacity: (headerCollapsed || headerManualCollapsed) ? 1 : 0,
                   }}
                 >
-                  {/* Row 1: Tracking status + UTC */}
-                  <ActiveTrackingBar
-                    utcTime={utcTime}
-                    isRecording={!isPaused}
-                    label={isPaused ? "Paused" : "Tracking time..."}
-                    collapsed={headerCollapsed}
-                    onToggleCollapse={() => {
-                      if (scrollRef.current) {
-                        scrollRef.current.scrollTo({ top: 0, behavior: "smooth" })
-                      }
-                    }}
-                  />
-
-                  {/* Row 2: Task chip */}
-                  <div className="px-4 py-1.5">
-                    <div className="flex items-center gap-2 h-9 rounded-lg border border-gray-200 bg-white px-3">
-                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-[10px] font-semibold text-gray-600 shrink-0">
-                        {activeTask.contractName.charAt(0)}
-                      </div>
-                      <span className="text-xs text-dark-blue-400 truncate flex-1">
-                        <span className="font-medium">{activeTask.taskName}</span>
-                        <span className="text-gray-400">, {activeTask.contractName}</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Row 3: Controls left, Timer + Earnings right */}
+                  {/* Controls left, Timer + Earnings right */}
                   <div className="flex items-center justify-between px-4 py-2">
                     {/* Controls */}
                     <div className="flex items-center gap-2">
@@ -1253,42 +1248,27 @@ export function TimeTrackerApp({
 
                     {/* Timer + Earnings */}
                     <div className="text-right">
-                      <p className="text-lg font-bold text-primary-500 tabular-nums leading-tight">
+                      <p className="text-lg font-bold text-dark-blue-400 tabular-nums leading-tight">
                         {String(hours).padStart(2, "0")}:{String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
                       </p>
-                      <p className="text-[10px] text-gray-400 leading-tight">Amount Earned {amountEarned}</p>
+                      <p className="text-[10px] text-dark-blue-400 leading-tight">Amount Earned {amountEarned}</p>
                     </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Idle-state controls — height-animated */}
-            <div
-              className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
-              style={{
-                height: !isRunning ? (idleHeight || "auto") : 0,
-                opacity: !isRunning ? 1 : 0,
-              }}
-            >
-              <div ref={idleContentRef}>
-                <div className="py-2 relative z-50">
-                  <TimerControls countdown={countdown} noTaskSelected={!selectedTask} onStart={handleStart} onPause={handlePause} onStop={handleStop} onManualTime={() => setView("manual-time")} />
-                </div>
-              </div>
-            </div>
-
             {/* Idle-state sticky collapsed bar — appears once scrolled past expanded header */}
             {!isRunning && (
               <div
                 className="sticky top-0 z-50 bg-white overflow-hidden transition-[height] duration-150 ease-out"
-                style={{ height: headerCollapsed ? 48 : 0 }}
+                style={{ height: (headerCollapsed || headerManualCollapsed) ? 48 : 0 }}
               >
                 <div
                   className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 transition-[transform,opacity] duration-150 ease-out"
                   style={{
-                    transform: headerCollapsed ? "translateY(0)" : "translateY(100%)",
-                    opacity: headerCollapsed ? 1 : 0,
+                    transform: (headerCollapsed || headerManualCollapsed) ? "translateY(0)" : "translateY(100%)",
+                    opacity: (headerCollapsed || headerManualCollapsed) ? 1 : 0,
                   }}
                 >
                   <div className="flex items-center gap-2.5">
