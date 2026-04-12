@@ -82,14 +82,14 @@ function DropdownItem({
       {/* Tooltip on hover during active tracking */}
       {activeContractName && hovered && (
         <div className={cn(
-          "absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1.5 rounded-md bg-dark-blue-400 text-white text-[10px] shadow-lg z-50 pointer-events-none leading-tight",
+          "absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-[10px] shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 z-50 pointer-events-none leading-tight",
           isDifferentContract ? "max-w-[180px] whitespace-normal text-center" : "whitespace-nowrap"
         )}>
           {isDifferentContract ? (
             <>
               You can only track one contract at a time.
               <br />
-              <span className="underline">Click here to switch contracts.</span>
+              <span className="text-primary-500 underline hover:text-primary-600 pointer-events-auto cursor-pointer">Click here</span> to switch contracts.
             </>
           ) : (
             "Switch to this task"
@@ -150,7 +150,7 @@ export function TaskSearch({
         {/* Dropdown when chip is clicked */}
         {isOpen && visibleResults.length > 0 && (
           <div
-            className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-gray-100 bg-white py-1 shadow-lg z-50 max-h-[200px] overflow-y-auto"
+            className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-gray-100 bg-white py-1 shadow-lg z-[300] max-h-[200px] overflow-y-auto"
             onWheel={(e) => e.stopPropagation()}
           >
             {visibleResults.map((result) => (
@@ -205,7 +205,7 @@ export function TaskSearch({
       {/* Dropdown results */}
       {isOpen && visibleResults.length > 0 && (
         <div
-          className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-gray-100 bg-white py-1 shadow-lg z-50 max-h-[200px] overflow-y-auto"
+          className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-gray-100 bg-white py-1 shadow-lg z-[300] max-h-[200px] overflow-y-auto"
           onWheel={(e) => e.stopPropagation()}
         >
           {visibleResults.map((result) => (

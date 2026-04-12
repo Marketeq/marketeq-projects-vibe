@@ -41,25 +41,26 @@ function FixedTooltip({
   wide?: boolean
 }) {
   const tipRef = React.useRef<HTMLDivElement>(null)
-  const [pos, setPos] = React.useState<{ top: number; left: number; below: boolean } | null>(null)
+  const [style, setStyle] = React.useState<React.CSSProperties>({ visibility: "hidden", position: "fixed" })
 
   React.useEffect(() => {
     const el = anchorRef.current
-    if (!el) return
+    const tip = tipRef.current
+    if (!el || !tip) return
     const rect = el.getBoundingClientRect()
+    const tipW = tip.offsetWidth
     const showBelow = rect.top < 60
-    let left = rect.left + rect.width / 2
-    // Clamp to window edges with 8px padding
-    const tipWidth = wide ? 208 : 160
-    left = Math.max(tipWidth / 2 + 8, Math.min(left, window.innerWidth - tipWidth / 2 - 8))
-    setPos({
+    // Center on anchor, then clamp 12px from screen edges
+    let left = rect.left + rect.width / 2 - tipW / 2
+    left = Math.max(12, Math.min(left, window.innerWidth - tipW - 12))
+    setStyle({
+      position: "fixed",
       left,
-      top: showBelow ? rect.bottom + 8 : rect.top - 8,
-      below: showBelow,
+      top: showBelow ? rect.bottom + 8 : rect.top - 8 - tip.offsetHeight,
+      visibility: "visible",
     })
   }, [anchorRef, wide])
 
-  if (!pos) return null
   return ReactDOM.createPortal(
     <div
       ref={tipRef}
@@ -67,11 +68,7 @@ function FixedTooltip({
         "fixed px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 pointer-events-none z-[200]",
         wide ? "w-52 whitespace-normal text-center leading-relaxed" : "whitespace-nowrap"
       )}
-      style={{
-        left: pos.left,
-        top: pos.top,
-        transform: pos.below ? "translateX(-50%)" : "translateX(-50%) translateY(-100%)",
-      }}
+      style={style}
     >
       {children}
     </div>,
@@ -87,31 +84,31 @@ function SwitchContractTooltip({
   anchorRef: React.RefObject<HTMLDivElement | null>
   onSwitch: () => void
 }) {
-  const [pos, setPos] = React.useState<{ top: number; left: number; below: boolean } | null>(null)
+  const tipRef = React.useRef<HTMLDivElement>(null)
+  const [style, setStyle] = React.useState<React.CSSProperties>({ visibility: "hidden", position: "fixed" })
 
   React.useEffect(() => {
     const el = anchorRef.current
-    if (!el) return
+    const tip = tipRef.current
+    if (!el || !tip) return
     const rect = el.getBoundingClientRect()
+    const tipW = tip.offsetWidth
     const showBelow = rect.top < 60
-    let left = rect.left + rect.width / 2
-    left = Math.max(112, Math.min(left, window.innerWidth - 112))
-    setPos({
+    let left = rect.left + rect.width / 2 - tipW / 2
+    left = Math.max(12, Math.min(left, window.innerWidth - tipW - 12))
+    setStyle({
+      position: "fixed",
       left,
-      top: showBelow ? rect.bottom + 6 : rect.top - 6,
-      below: showBelow,
+      top: showBelow ? rect.bottom + 6 : rect.top - 6 - tip.offsetHeight,
+      visibility: "visible",
     })
   }, [anchorRef])
 
-  if (!pos) return null
   return ReactDOM.createPortal(
     <div
+      ref={tipRef}
       className="fixed w-[210px] px-3 py-2.5 rounded-lg bg-white text-left text-xs shadow-[0_4px_16px_rgba(0,0,0,0.12)] border border-gray-100 z-[200]"
-      style={{
-        left: pos.left,
-        top: pos.top,
-        transform: pos.below ? "translateX(-50%)" : "translateX(-50%) translateY(-100%)",
-      }}
+      style={style}
     >
       <p className="text-dark-blue-400 leading-normal">
         You can only track one contract at a time.
@@ -173,15 +170,15 @@ function PlayWithTooltip({
           "transition shrink-0",
           disabled
             ? size === "sm"
-              ? "flex flex-col items-center gap-0.5 text-gray-200 cursor-not-allowed"
-              : "text-gray-200 cursor-not-allowed"
+              ? "flex flex-col items-center gap-0.5 text-gray-400 cursor-not-allowed"
+              : "text-gray-400 cursor-not-allowed"
             : size === "sm"
             ? "flex flex-col items-center gap-0.5 text-gray-400 hover:text-primary-500"
             : "text-gray-400 hover:text-primary-500"
         )}
       >
         <PlaySmallIcon className={size === "sm" ? "h-5 w-5" : "h-4 w-4"} />
-        {label && <span className={cn("text-[10px] leading-3", disabled ? "text-gray-200" : "text-gray-400")}>{label}</span>}
+        {label && <span className="text-[10px] leading-3 text-gray-400">{label}</span>}
       </button>
       {hovered && disabled && (
         <div onMouseEnter={show} onMouseLeave={hide}>
@@ -254,6 +251,32 @@ function Collapsible({ open, children }: { open: boolean; children: React.ReactN
       <div ref={innerRef}>
         {children}
       </div>
+    </div>
+  )
+}
+
+/** Progress bar with hover tooltip showing completion */
+function ProgressBarWithTooltip({ progress, duration }: { progress: number; duration: string }) {
+  const [hovered, setHovered] = React.useState(false)
+  const ref = React.useRef<HTMLDivElement>(null)
+  const pct = Math.min(progress, 100)
+
+  return (
+    <div
+      ref={ref}
+      className="w-full h-1 rounded-full bg-gray-100 overflow-hidden mt-1"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div
+        className="h-full rounded-full bg-primary-500"
+        style={{ width: `${pct}%` }}
+      />
+      {hovered && (
+        <FixedTooltip anchorRef={ref}>
+          {Math.round(pct)}% complete — {duration} tracked
+        </FixedTooltip>
+      )}
     </div>
   )
 }
@@ -380,12 +403,7 @@ export function ContractEntry({
                     <p className="text-xs text-gray-400 leading-4">{task.timeRange}</p>
                     {/* Progress bar — left-aligned under task name */}
                     {task.progress !== undefined && (
-                      <div className="w-full h-1 rounded-full bg-gray-100 overflow-hidden mt-1">
-                        <div
-                          className="h-full rounded-full bg-primary-500"
-                          style={{ width: `${Math.min(task.progress, 100)}%` }}
-                        />
-                      </div>
+                      <ProgressBarWithTooltip progress={task.progress} duration={task.duration} />
                     )}
                   </div>
 

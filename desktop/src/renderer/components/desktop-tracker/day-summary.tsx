@@ -23,29 +23,32 @@ function Tip({
   anchorRef: React.RefObject<HTMLElement | null>
   text: string
 }) {
-  const [pos, setPos] = React.useState<{ top: number; left: number; below: boolean } | null>(null)
+  const tipRef = React.useRef<HTMLDivElement>(null)
+  const [style, setStyle] = React.useState<React.CSSProperties>({ visibility: "hidden", position: "fixed" })
 
   React.useEffect(() => {
     const el = anchorRef.current
-    if (!el) return
+    const tip = tipRef.current
+    if (!el || !tip) return
     const rect = el.getBoundingClientRect()
+    const tipW = tip.offsetWidth
     const showBelow = rect.top < 50
-    setPos({
-      left: Math.max(80, Math.min(rect.left + rect.width / 2, window.innerWidth - 80)),
-      top: showBelow ? rect.bottom + 6 : rect.top - 6,
-      below: showBelow,
+    // Center on anchor, then clamp so tooltip is 12px from screen edges
+    let left = rect.left + rect.width / 2 - tipW / 2
+    left = Math.max(12, Math.min(left, window.innerWidth - tipW - 12))
+    setStyle({
+      position: "fixed",
+      left,
+      top: showBelow ? rect.bottom + 6 : rect.top - 6 - tip.offsetHeight,
+      visibility: "visible",
     })
-  }, [anchorRef])
+  }, [anchorRef, text])
 
-  if (!pos) return null
   return ReactDOM.createPortal(
     <div
+      ref={tipRef}
       className="fixed px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs font-medium shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 pointer-events-none z-[200] whitespace-nowrap"
-      style={{
-        left: pos.left,
-        top: pos.top,
-        transform: pos.below ? "translateX(-50%)" : "translateX(-50%) translateY(-100%)",
-      }}
+      style={style}
     >
       {text}
     </div>,

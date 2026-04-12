@@ -931,7 +931,7 @@ export function TimeTrackerApp({
             {/* Running-state expanded header — scrolls away naturally */}
             {isRunning && activeTask && (
               <div ref={expandedHeaderRef}>
-                <div className="px-4 pt-3 pb-2 relative z-20">
+                <div className="px-4 pt-3 pb-2 relative z-40">
                   <TaskSearch
                     value={searchValue}
                     onChange={setSearchValue}
@@ -1017,7 +1017,7 @@ export function TimeTrackerApp({
             {/* Idle-state expanded header (search + controls) — scrolls away naturally */}
             {!isRunning && (
               <div ref={!isRunning ? expandedHeaderRef : undefined}>
-                <div className="px-4 pt-3 pb-2 relative z-20">
+                <div className="px-4 pt-3 pb-2 relative z-40">
                   <TaskSearch
                     value={searchValue}
                     onChange={setSearchValue}
