@@ -1187,41 +1187,78 @@ export function TimeTrackerApp({
               </div>
             </div>
 
-            {/* Running-state sticky collapsed bar — appears once scrolled past expanded header */}
+            {/* Running-state sticky collapsed bar — Figma Variant7 layout */}
             {isRunning && activeTask && (
               <div
-                className="sticky top-0 z-50 bg-white overflow-hidden transition-[height] duration-150 ease-out"
-                style={{ height: headerCollapsed ? 48 : 0 }}
+                className="sticky top-0 z-50 bg-white overflow-hidden transition-[height] duration-200 ease-out border-b border-gray-100"
+                style={{ height: headerCollapsed ? "auto" : 0 }}
               >
                 <div
-                  className="flex items-center justify-between px-4 py-2.5 bg-gray-25 border-b border-gray-100 transition-[transform,opacity] duration-150 ease-out"
+                  className="transition-[transform,opacity] duration-200 ease-out"
                   style={{
-                    transform: headerCollapsed ? "translateY(0)" : "translateY(100%)",
+                    transform: headerCollapsed ? "translateY(0)" : "translateY(20px)",
                     opacity: headerCollapsed ? 1 : 0,
                   }}
                 >
-                  <div className="flex items-center gap-2.5">
-                    <MiniHeaderBtn onClick={handlePause} tooltip={isPaused ? "Resume Time" : "Pause Time"}>
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500 text-white shadow-sm hover:bg-primary-600 transition">
-                        {isPaused ? (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M8 5.14v13.72a1 1 0 001.5.86l11.04-6.86a1 1 0 000-1.72L9.5 4.28A1 1 0 008 5.14z" fill="currentColor"/></svg>
-                        ) : (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/></svg>
-                        )}
+                  {/* Row 1: Tracking status + UTC */}
+                  <ActiveTrackingBar
+                    utcTime={utcTime}
+                    isRecording={!isPaused}
+                    label={isPaused ? "Paused" : "Tracking time..."}
+                    collapsed={headerCollapsed}
+                    onToggleCollapse={() => {
+                      if (scrollRef.current) {
+                        scrollRef.current.scrollTo({ top: 0, behavior: "smooth" })
+                      }
+                    }}
+                  />
+
+                  {/* Row 2: Task chip */}
+                  <div className="px-4 py-1.5">
+                    <div className="flex items-center gap-2 h-9 rounded-lg border border-gray-200 bg-white px-3">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-[10px] font-semibold text-gray-600 shrink-0">
+                        {activeTask.contractName.charAt(0)}
                       </div>
-                    </MiniHeaderBtn>
-                    <MiniHeaderBtn onClick={() => setView("manual-time")} tooltip="Manual Time">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition">
-                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      </div>
-                    </MiniHeaderBtn>
-                    <MiniHeaderBtn onClick={handleStop} tooltip="Stop Time">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition">
-                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><rect x="4" y="4" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/></svg>
-                      </div>
-                    </MiniHeaderBtn>
+                      <span className="text-xs text-dark-blue-400 truncate flex-1">
+                        <span className="font-medium">{activeTask.taskName}</span>
+                        <span className="text-gray-400">, {activeTask.contractName}</span>
+                      </span>
+                    </div>
                   </div>
-                  <TimerDisplay hours={hours} minutes={minutes} seconds={seconds} size="sm" />
+
+                  {/* Row 3: Controls left, Timer + Earnings right */}
+                  <div className="flex items-center justify-between px-4 py-2">
+                    {/* Controls */}
+                    <div className="flex items-center gap-2">
+                      <MiniHeaderBtn onClick={handlePause} tooltip={isPaused ? "Resume Time" : "Pause Time"}>
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-500 text-white shadow-sm hover:bg-primary-600 transition">
+                          {isPaused ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M8 5.14v13.72a1 1 0 001.5.86l11.04-6.86a1 1 0 000-1.72L9.5 4.28A1 1 0 008 5.14z" fill="currentColor"/></svg>
+                          ) : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/></svg>
+                          )}
+                        </div>
+                      </MiniHeaderBtn>
+                      <MiniHeaderBtn onClick={() => setView("manual-time")} tooltip="Manual Time">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition">
+                          <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </div>
+                      </MiniHeaderBtn>
+                      <MiniHeaderBtn onClick={handleStop} tooltip="Stop Time">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition">
+                          <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><rect x="4" y="4" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/></svg>
+                        </div>
+                      </MiniHeaderBtn>
+                    </div>
+
+                    {/* Timer + Earnings */}
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-primary-500 tabular-nums leading-tight">
+                        {String(hours).padStart(2, "0")}:{String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
+                      </p>
+                      <p className="text-[10px] text-gray-400 leading-tight">Amount Earned {amountEarned}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
