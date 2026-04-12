@@ -4,6 +4,7 @@ import * as React from "react"
 import * as ReactDOM from "react-dom"
 import { cn } from "@/utils/functions"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui"
+import { useExclusiveTooltip } from "./tooltip-context"
 
 export interface TaskEntry {
   id: string
@@ -143,7 +144,7 @@ function PlayWithTooltip({
   size?: "sm" | "xs"
   label?: string
 }) {
-  const [hovered, setHovered] = React.useState(false)
+  const { active: hovered, claim: show, release: hide } = useExclusiveTooltip()
   const hideTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const ref = React.useRef<HTMLDivElement>(null)
   const disabled = isDifferentContract
@@ -154,16 +155,16 @@ function PlayWithTooltip({
     ? "Switch to this task"
     : null
 
-  const show = () => {
+  const enter = () => {
     if (hideTimeout.current) { clearTimeout(hideTimeout.current); hideTimeout.current = null }
-    setHovered(true)
+    show()
   }
-  const hide = () => {
-    hideTimeout.current = setTimeout(() => setHovered(false), 150)
+  const leave = () => {
+    hideTimeout.current = setTimeout(() => hide(), 150)
   }
 
   return (
-    <div ref={ref} className="relative shrink-0" onMouseEnter={show} onMouseLeave={hide}>
+    <div ref={ref} className="relative shrink-0" onMouseEnter={enter} onMouseLeave={leave}>
       <button
         onClick={(e) => { e.stopPropagation(); if (!disabled) onClick?.() }}
         className={cn(
@@ -181,8 +182,8 @@ function PlayWithTooltip({
         {label && <span className="text-[10px] leading-3 text-gray-400">{label}</span>}
       </button>
       {hovered && disabled && (
-        <div onMouseEnter={show} onMouseLeave={hide}>
-          <SwitchContractTooltip anchorRef={ref} onSwitch={() => { setHovered(false); onSwitchContract?.() }} />
+        <div onMouseEnter={enter} onMouseLeave={leave}>
+          <SwitchContractTooltip anchorRef={ref} onSwitch={() => { hide(); onSwitchContract?.() }} />
         </div>
       )}
       {hovered && !disabled && tooltipText && (
@@ -257,7 +258,7 @@ function Collapsible({ open, children }: { open: boolean; children: React.ReactN
 
 /** Progress bar with hover tooltip showing completion */
 function ProgressBarWithTooltip({ progress, duration }: { progress: number; duration: string }) {
-  const [hovered, setHovered] = React.useState(false)
+  const { active: hovered, claim, release } = useExclusiveTooltip()
   const ref = React.useRef<HTMLDivElement>(null)
   const pct = Math.min(progress, 100)
 
@@ -265,8 +266,8 @@ function ProgressBarWithTooltip({ progress, duration }: { progress: number; dura
     <div
       ref={ref}
       className="w-full h-1 rounded-full bg-gray-100 overflow-hidden mt-1"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={claim}
+      onMouseLeave={release}
     >
       <div
         className="h-full rounded-full bg-primary-500"
@@ -283,12 +284,12 @@ function ProgressBarWithTooltip({ progress, duration }: { progress: number; dura
 
 /** Add task button with styled tooltip */
 function AddTaskButton({ onClick, variant = "icon" }: { onClick: (e: React.MouseEvent) => void; variant?: "icon" | "inline" }) {
-  const [hovered, setHovered] = React.useState(false)
+  const { active: hovered, claim, release } = useExclusiveTooltip()
   const ref = React.useRef<HTMLDivElement>(null)
 
   if (variant === "inline") {
     return (
-      <div ref={ref} className="relative inline-block" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+      <div ref={ref} className="relative inline-block" onMouseEnter={claim} onMouseLeave={release}>
         <button
           onClick={onClick}
           className="inline-flex items-center gap-1.5 rounded-[5px] border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-xs hover:bg-gray-50 transition"
@@ -304,7 +305,7 @@ function AddTaskButton({ onClick, variant = "icon" }: { onClick: (e: React.Mouse
   }
 
   return (
-    <div ref={ref} className="shrink-0" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+    <div ref={ref} className="shrink-0" onMouseEnter={claim} onMouseLeave={release}>
       <button
         onClick={onClick}
         className="flex flex-col items-center gap-0.5 text-gray-400 hover:text-gray-600 transition"

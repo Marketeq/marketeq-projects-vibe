@@ -1139,7 +1139,7 @@ export function TimeTrackerApp({
             {days.map((day, dayIdx) => {
               const dayCollapsed = collapsedDays.has(dayIdx)
               return (
-                <div key={dayIdx} className="animate-stagger-in" style={{ animationDelay: `${dayIdx * 60}ms`, animationFillMode: "both" }}>
+                <div key={dayIdx} className="animate-stagger-in" style={{ animationDelay: `${dayIdx * 100}ms`, animationFillMode: "both" }}>
                   <DaySummary
                     label={day.label}
                     fullDate={day.fullDate}
@@ -1160,7 +1160,7 @@ export function TimeTrackerApp({
                   <Collapsible open={!dayCollapsed}>
                     <div className="px-2 pb-2 space-y-2">
                       {day.contracts.map((contract, cIdx) => (
-                        <div key={contract.id} id={`contract-${contract.id}`} className="animate-stagger-in" style={{ animationDelay: `${(dayIdx * 60) + (cIdx * 40)}ms`, animationFillMode: "both" }}>
+                        <div key={contract.id} id={`contract-${contract.id}`} className="animate-stagger-in" style={{ animationDelay: `${(dayIdx * 100) + (cIdx * 80)}ms`, animationFillMode: "both" }}>
                         <ContractEntry
                           contractId={contract.id}
                           contractName={contract.name}

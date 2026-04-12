@@ -3,6 +3,7 @@
 import * as React from "react"
 import * as ReactDOM from "react-dom"
 import { cn } from "@/utils/functions"
+import { useExclusiveTooltip } from "./tooltip-context"
 
 interface DaySummaryProps {
   label: string
@@ -72,9 +73,9 @@ export function DaySummary({
   ]
   const pct = total > 0 ? Math.min((tracked / total) * 100, 100) : 0
 
-  const [labelHovered, setLabelHovered] = React.useState(false)
+  const { active: labelHovered, claim: claimLabel, release: releaseLabel } = useExclusiveTooltip()
   const labelRef = React.useRef<HTMLSpanElement>(null)
-  const [barHovered, setBarHovered] = React.useState(false)
+  const { active: barHovered, claim: claimBar, release: releaseBar } = useExclusiveTooltip()
   const barRef = React.useRef<HTMLDivElement>(null)
 
   return (
@@ -88,8 +89,8 @@ export function DaySummary({
       <span
         ref={labelRef}
         className="text-[11px] font-semibold text-dark-blue-400 shrink-0 whitespace-nowrap"
-        onMouseEnter={() => setLabelHovered(true)}
-        onMouseLeave={() => setLabelHovered(false)}
+        onMouseEnter={claimLabel}
+        onMouseLeave={releaseLabel}
       >
         {label}
       </span>
@@ -99,8 +100,8 @@ export function DaySummary({
       <div
         ref={barRef}
         className="flex-1 h-1 rounded-full bg-gray-100 overflow-hidden min-w-[30px]"
-        onMouseEnter={() => setBarHovered(true)}
-        onMouseLeave={() => setBarHovered(false)}
+        onMouseEnter={claimBar}
+        onMouseLeave={releaseBar}
       >
         <div
           className="h-full rounded-full bg-primary-500 transition-all duration-500"

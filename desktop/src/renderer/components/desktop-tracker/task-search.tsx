@@ -3,6 +3,7 @@
 import * as React from "react"
 import { cn } from "@/utils/functions"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui"
+import { useExclusiveTooltip } from "./tooltip-context"
 
 export interface SearchResult {
   id: string
@@ -56,15 +57,15 @@ function DropdownItem({
   /** When set, enables tooltips: same contract → "Switch to this task", different → switch contracts warning */
   activeContractName?: string
 }) {
-  const [hovered, setHovered] = React.useState(false)
+  const { active: hovered, claim, release } = useExclusiveTooltip()
   const isDifferentContract = activeContractName ? result.contractName !== activeContractName : false
 
   return (
     <button
       onMouseDown={(e) => e.preventDefault()}
       onClick={() => onSelect(result)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={claim}
+      onMouseLeave={release}
       className="relative flex w-full items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 transition"
     >
       <Avatar size="xs">
