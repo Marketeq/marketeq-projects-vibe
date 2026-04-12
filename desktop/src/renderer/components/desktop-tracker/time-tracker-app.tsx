@@ -219,7 +219,7 @@ function Collapsible({ open, children }: { open: boolean; children: React.ReactN
   return (
     <div
       style={{ height: open ? height || "auto" : 0 }}
-      className="overflow-hidden transition-[height] duration-300 ease-in-out"
+      className="overflow-hidden transition-[height] duration-150 ease-in-out"
     >
       <div ref={innerRef}>{children}</div>
     </div>
@@ -655,8 +655,10 @@ export function TimeTrackerApp({
           const el = document.getElementById(`contract-${id}`)
           const container = scrollRef.current
           if (el && container) {
-            const cardTop = el.offsetTop
-            container.scrollTo({ top: cardTop, behavior: "smooth" })
+            const cardRect = el.getBoundingClientRect()
+            const containerRect = container.getBoundingClientRect()
+            const scrollTarget = container.scrollTop + (cardRect.top - containerRect.top) - 52 // 48px sticky header + 4px breathing room
+            container.scrollTo({ top: Math.max(0, scrollTarget), behavior: "smooth" })
           }
         }, 250)
       })
@@ -980,11 +982,11 @@ export function TimeTrackerApp({
             {/* Running-state sticky collapsed bar — appears once scrolled past expanded header */}
             {isRunning && activeTask && (
               <div
-                className="sticky top-0 z-50 bg-white overflow-hidden transition-[height] duration-300 ease-out"
+                className="sticky top-0 z-50 bg-white overflow-hidden transition-[height] duration-150 ease-out"
                 style={{ height: headerCollapsed ? 48 : 0 }}
               >
                 <div
-                  className="flex items-center justify-between px-4 py-2.5 bg-gray-25 border-b border-gray-100 transition-[transform,opacity] duration-300 ease-out"
+                  className="flex items-center justify-between px-4 py-2.5 bg-gray-25 border-b border-gray-100 transition-[transform,opacity] duration-150 ease-out"
                   style={{
                     transform: headerCollapsed ? "translateY(0)" : "translateY(100%)",
                     opacity: headerCollapsed ? 1 : 0,
@@ -1035,11 +1037,11 @@ export function TimeTrackerApp({
             {/* Idle-state sticky collapsed bar — appears once scrolled past expanded header */}
             {!isRunning && (
               <div
-                className="sticky top-0 z-50 bg-white overflow-hidden transition-[height] duration-300 ease-out"
+                className="sticky top-0 z-50 bg-white overflow-hidden transition-[height] duration-150 ease-out"
                 style={{ height: headerCollapsed ? 48 : 0 }}
               >
                 <div
-                  className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 transition-[transform,opacity] duration-300 ease-out"
+                  className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 transition-[transform,opacity] duration-150 ease-out"
                   style={{
                     transform: headerCollapsed ? "translateY(0)" : "translateY(100%)",
                     opacity: headerCollapsed ? 1 : 0,
