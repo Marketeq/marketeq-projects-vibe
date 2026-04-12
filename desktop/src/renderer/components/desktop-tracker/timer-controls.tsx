@@ -1,7 +1,9 @@
 "use client"
 
 import * as React from "react"
+import * as ReactDOM from "react-dom"
 import { cn } from "@/utils/functions"
+import { useExclusiveTooltip } from "./tooltip-context"
 
 interface TimerControlsProps {
   isRunning?: boolean
@@ -52,6 +54,37 @@ function StopIcon({ className }: { className?: string }) {
   )
 }
 
+/** Tooltip portaled to body — positioned above the anchor element, z-[400] */
+function PortaledTooltip({ anchorEl, children }: { anchorEl: HTMLElement; children: React.ReactNode }) {
+  const [style, setStyle] = React.useState<React.CSSProperties>({ position: "fixed", visibility: "hidden" })
+  const tipRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    const tip = tipRef.current
+    if (!tip) return
+    const rect = anchorEl.getBoundingClientRect()
+    const tipW = tip.offsetWidth
+    let left = rect.left + rect.width / 2 - tipW / 2
+    left = Math.max(12, Math.min(left, window.innerWidth - tipW - 12))
+    setStyle({
+      position: "fixed",
+      left,
+      top: rect.top - 8 - tip.offsetHeight,
+      visibility: "visible",
+    })
+  }, [anchorEl])
+
+  return (
+    <div
+      ref={tipRef}
+      className="px-3 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs font-medium shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 whitespace-nowrap z-[400] pointer-events-none animate-fade-in"
+      style={style}
+    >
+      {children}
+    </div>
+  )
+}
+
 export function TimerControls({
   isRunning = false,
   isPaused = false,
@@ -67,16 +100,21 @@ export function TimerControls({
   const [showNotRunningTip, setShowNotRunningTip] = React.useState(false)
   const tipTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const stopTipTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const centerBtnRef = React.useRef<HTMLDivElement>(null)
+  const stopBtnRef = React.useRef<HTMLDivElement>(null)
+  const noTaskTooltip = useExclusiveTooltip()
+  const notRunningTooltip = useExclusiveTooltip()
   const isCounting = countdown !== null
   const handleCenterClick = () => {
     if (isCounting) return
     if (isRunning) {
       onPause?.()
     } else if (noTaskSelected) {
-      // Flash the tooltip
+      // Flash the tooltip — claim exclusive slot
+      noTaskTooltip.claim()
       setShowNoTaskTip(true)
       if (tipTimeout.current) clearTimeout(tipTimeout.current)
-      tipTimeout.current = setTimeout(() => setShowNoTaskTip(false), 2500)
+      tipTimeout.current = setTimeout(() => { setShowNoTaskTip(false); noTaskTooltip.release() }, 2500)
     } else {
       onStart?.()
     }
@@ -104,7 +142,7 @@ export function TimerControls({
       </button>
 
       {/* Start / Pause / Resume (main action) — always blue per design */}
-      <div className="relative">
+      <div ref={centerBtnRef} className="relative">
         <button
           onClick={handleCenterClick}
           className={cn("flex flex-col items-center gap-1.5 group", isCounting && "cursor-default")}
@@ -142,24 +180,26 @@ export function TimerControls({
               {centerLabel}
             </span>
           </button>
-        {/* "Select a task first" tooltip — shown on click */}
-        {showNoTaskTip && (
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs font-medium shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 whitespace-nowrap z-50 animate-fade-in">
+        {/* "Select a task first" tooltip — portaled to escape stacking contexts */}
+        {showNoTaskTip && noTaskTooltip.active && centerBtnRef.current && ReactDOM.createPortal(
+          <PortaledTooltip anchorEl={centerBtnRef.current}>
             Please select a task first
-          </div>
+          </PortaledTooltip>,
+          document.body
         )}
       </div>
 
       {/* Stop Time — shows tooltip when clicked while not tracking */}
-      <div className="relative">
+      <div ref={stopBtnRef} className="relative">
         <button
           onClick={() => {
             if (isRunning) {
               onStop?.()
             } else {
+              notRunningTooltip.claim()
               setShowNotRunningTip(true)
               if (stopTipTimeout.current) clearTimeout(stopTipTimeout.current)
-              stopTipTimeout.current = setTimeout(() => setShowNotRunningTip(false), 2500)
+              stopTipTimeout.current = setTimeout(() => { setShowNotRunningTip(false); notRunningTooltip.release() }, 2500)
             }
           }}
           className="flex flex-col items-center gap-1.5 group"
@@ -171,10 +211,11 @@ export function TimerControls({
             Stop Time
           </span>
         </button>
-        {showNotRunningTip && (
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs font-medium shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 whitespace-nowrap z-50 animate-fade-in">
+        {showNotRunningTip && notRunningTooltip.active && stopBtnRef.current && ReactDOM.createPortal(
+          <PortaledTooltip anchorEl={stopBtnRef.current}>
             Tracker is not running
-          </div>
+          </PortaledTooltip>,
+          document.body
         )}
       </div>
     </div>

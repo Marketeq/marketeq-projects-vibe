@@ -278,7 +278,7 @@ function FixedTooltip({
   return ReactDOM.createPortal(
     <div
       className={cn(
-        "fixed px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 pointer-events-none z-[200]",
+        "fixed px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 pointer-events-none z-[400]",
         wide ? "w-52 whitespace-normal text-left leading-relaxed" : "whitespace-nowrap"
       )}
       style={{
@@ -314,7 +314,7 @@ function SwitchContractTip({
   if (!pos) return null
   return ReactDOM.createPortal(
     <div
-      className="fixed w-[210px] px-3 py-2.5 rounded-lg bg-white text-left text-xs shadow-[0_4px_16px_rgba(0,0,0,0.12)] border border-gray-100 z-[200]"
+      className="fixed w-[210px] px-3 py-2.5 rounded-lg bg-white text-left text-xs shadow-[0_4px_16px_rgba(0,0,0,0.12)] border border-gray-100 z-[400]"
       style={{ left: pos.left, top: pos.top, transform: pos.below ? "translateX(-50%)" : "translateX(-50%) translateY(-100%)" }}
     >
       <p className="text-dark-blue-400 leading-normal">You can only track one contract at a time.</p>
@@ -565,6 +565,10 @@ export function TimeTrackerApp({
   const [switchAlert, setSwitchAlert] = React.useState<string | null>(null)
   const switchAlertTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Floating alert for task creation
+  const [taskCreatedAlert, setTaskCreatedAlert] = React.useState<string | null>(null)
+  const taskCreatedTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // Manual time entry
   const [showManualTime, setShowManualTime] = React.useState(false)
 
@@ -588,14 +592,15 @@ export function TimeTrackerApp({
     }
   }, [isRunning, isPaused])
 
-  // ── Scroll handler — show minimized bar once expanded header scrolls away ──
+  // ── Scroll handler — show minimized bar once expanded header + controls scroll away ──
   const handleContentScroll = React.useCallback(() => {
     const el = scrollRef.current
     const header = expandedHeaderRef.current
     if (!el || !header) return
-    // Collapsed once the expanded header has scrolled out of view
-    setHeaderCollapsed(el.scrollTop >= header.offsetHeight)
-  }, [])
+    // Collapsed once the search bar + active controls section have scrolled out of view
+    const controlsHeight = isRunning ? (runningHeight || 0) : (idleHeight || 0)
+    setHeaderCollapsed(el.scrollTop >= header.offsetHeight + controlsHeight)
+  }, [isRunning, runningHeight, idleHeight])
 
   // ── Derived ─────────────────────────────────────────────────────────────
   const hours = Math.floor(elapsed / 3600)
@@ -892,6 +897,11 @@ export function TimeTrackerApp({
 
     setExpandedContracts((prev) => new Set(prev).add(data.contractId))
     setView("main")
+
+    // Show task created alert
+    setTaskCreatedAlert(data.taskName)
+    if (taskCreatedTimeout.current) clearTimeout(taskCreatedTimeout.current)
+    taskCreatedTimeout.current = setTimeout(() => setTaskCreatedAlert(null), 3000)
   }
 
   const handleSearchSelect = (result: SearchResult) => {
@@ -1266,6 +1276,22 @@ export function TimeTrackerApp({
             </svg>
             <span className="text-sm text-dark-blue-400">
               Contract switched to <span className="font-semibold">&ldquo;{switchAlert}&rdquo;</span>
+            </span>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Floating task-created alert — bottom-left */}
+      {taskCreatedAlert && ReactDOM.createPortal(
+        <div className="fixed bottom-4 left-4 z-[300] animate-fade-in">
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white shadow-[0_4px_20px_rgba(0,0,0,0.12)] border border-gray-100">
+            <svg className="h-4 w-4 text-success-500 shrink-0" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="text-sm text-dark-blue-400">
+              Task created <span className="font-semibold">&ldquo;{taskCreatedAlert}&rdquo;</span>
             </span>
           </div>
         </div>,

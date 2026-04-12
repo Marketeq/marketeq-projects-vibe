@@ -47,7 +47,10 @@ export function ManualTimeForm({
   const [endTime, setEndTime] = React.useState("10:00")
   const [notes, setNotes] = React.useState("")
   const [showDiscard, setShowDiscard] = React.useState(false)
+  const [touched, setTouched] = React.useState<Set<string>>(new Set())
   const maxNotes = 200
+
+  const markTouched = (field: string) => setTouched((prev) => new Set(prev).add(field))
 
   const selectedContract = contracts.find((c) => c.id === contractId)
   const hasUnsavedWork = notes.trim().length > 0
@@ -67,9 +70,18 @@ export function ManualTimeForm({
   const durationText = totalMinutes > 0
     ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`
     : "—"
+  const canSubmit = !!contractId && !!date && totalMinutes > 0 && notes.trim().length > 0
+
+  // Field errors — only shown after user interacts with each field
+  const errors = {
+    contract: touched.has("contract") && !contractId,
+    startTime: touched.has("endTime") && totalMinutes <= 0,
+    endTime: touched.has("endTime") && totalMinutes <= 0,
+    notes: touched.has("notes") && !notes.trim(),
+  }
 
   return (
-    <div className={cn("flex flex-col flex-1", className)}>
+    <div className={cn("flex flex-col flex-1 min-h-0 h-full", className)}>
       {/* Discard confirmation overlay */}
       {showDiscard && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -115,10 +127,12 @@ export function ManualTimeForm({
             Contract
           </label>
           <button
-            onClick={() => setShowDropdown(!showDropdown)}
+            onClick={() => { setShowDropdown(!showDropdown); markTouched("contract") }}
             className={cn(
               "flex h-11 w-full items-center justify-between rounded-[5px] border bg-white px-3.5 text-sm shadow-xs transition",
-              showDropdown
+              errors.contract
+                ? "border-error-300 ring-2 ring-error-50"
+                : showDropdown
                 ? "border-primary-300 ring-2 ring-primary-50"
                 : "border-gray-300 hover:border-gray-400"
             )}
@@ -137,10 +151,13 @@ export function ManualTimeForm({
                 </span>
               </div>
             ) : (
-              <span className="text-gray-500">Select Contract (optional)</span>
+              <span className="text-gray-500">Select Contract</span>
             )}
             <ChevronDownIcon className={cn("h-4 w-4 text-gray-400 shrink-0 ml-3 transition-transform", showDropdown && "rotate-180")} />
           </button>
+          {errors.contract && (
+            <p className="text-xs text-error-500 mt-1">Please select a contract</p>
+          )}
           {showDropdown && contracts.length > 0 && (
             <div className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-gray-100 bg-white py-1 shadow-lg z-10 max-h-[160px] overflow-y-auto">
               {contracts.map((c) => (
@@ -194,7 +211,13 @@ export function ManualTimeForm({
               type="time"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="h-11 w-full rounded-[5px] border border-gray-300 bg-white px-3.5 text-sm text-dark-blue-400 shadow-xs focus:border-primary-300 focus:ring-2 focus:ring-primary-50 focus-visible:outline-none"
+              onBlur={() => markTouched("endTime")}
+              className={cn(
+                "h-11 w-full rounded-[5px] border bg-white px-3.5 text-sm text-dark-blue-400 shadow-xs focus-visible:outline-none",
+                errors.startTime
+                  ? "border-error-300 focus:border-error-300 focus:ring-2 focus:ring-error-50"
+                  : "border-gray-300 focus:border-primary-300 focus:ring-2 focus:ring-primary-50"
+              )}
             />
           </div>
           <div className="flex-1">
@@ -205,10 +228,19 @@ export function ManualTimeForm({
               type="time"
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
-              className="h-11 w-full rounded-[5px] border border-gray-300 bg-white px-3.5 text-sm text-dark-blue-400 shadow-xs focus:border-primary-300 focus:ring-2 focus:ring-primary-50 focus-visible:outline-none"
+              onBlur={() => markTouched("endTime")}
+              className={cn(
+                "h-11 w-full rounded-[5px] border bg-white px-3.5 text-sm text-dark-blue-400 shadow-xs focus-visible:outline-none",
+                errors.endTime
+                  ? "border-error-300 focus:border-error-300 focus:ring-2 focus:ring-error-50"
+                  : "border-gray-300 focus:border-primary-300 focus:ring-2 focus:ring-primary-50"
+              )}
             />
           </div>
         </div>
+        {errors.endTime && (
+          <p className="text-xs text-error-500 -mt-3">Please enter a valid time range (end must be after start)</p>
+        )}
 
         {/* Duration display */}
         <div className="flex items-center justify-center py-1">
@@ -232,24 +264,33 @@ export function ManualTimeForm({
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value.slice(0, maxNotes))}
+            onBlur={() => markTouched("notes")}
             placeholder="What were you working on?"
             rows={3}
-            className="w-full rounded-[5px] border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-dark-blue-400 shadow-xs placeholder:text-gray-500 focus:border-primary-300 focus:ring-2 focus:ring-primary-50 focus-visible:outline-none resize-none"
+            className={cn(
+              "w-full rounded-[5px] border bg-white px-3.5 py-2.5 text-sm text-dark-blue-400 shadow-xs placeholder:text-gray-500 focus-visible:outline-none resize-none",
+              errors.notes
+                ? "border-error-300 focus:border-error-300 focus:ring-2 focus:ring-error-50"
+                : "border-gray-300 focus:border-primary-300 focus:ring-2 focus:ring-primary-50"
+            )}
           />
+          {errors.notes && (
+            <p className="text-xs text-error-500 mt-1">Please enter a description of your work</p>
+          )}
         </div>
       </div>
 
-      {/* Footer buttons */}
-      <div className="flex items-center justify-end gap-3 px-4 py-3 border-t border-gray-100 shrink-0">
+      {/* Footer buttons — small CTAs */}
+      <div className="flex items-center justify-end gap-2.5 px-4 py-3 border-t border-gray-100 shrink-0">
         <button
           type="button"
           onClick={handleCancel}
-          className="inline-flex items-center justify-center rounded-[5px] border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-xs hover:bg-gray-50 transition"
+          className="inline-flex items-center justify-center rounded-[5px] border border-gray-300 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-xs hover:bg-gray-50 transition"
         >
           Cancel
         </button>
         <button
-          disabled={totalMinutes <= 0}
+          disabled={!canSubmit}
           onClick={() => onSubmit?.({
             contractId: contractId || undefined,
             startTime: `${date}T${startTime}:00`,
@@ -257,8 +298,8 @@ export function ManualTimeForm({
             notes,
           })}
           className={cn(
-            "inline-flex items-center justify-center rounded-[5px] px-4 py-2.5 text-sm font-semibold text-white shadow-xs transition",
-            totalMinutes > 0
+            "inline-flex items-center justify-center rounded-[5px] px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition",
+            canSubmit
               ? "bg-primary-500 hover:bg-primary-600"
               : "bg-gray-300 cursor-not-allowed"
           )}

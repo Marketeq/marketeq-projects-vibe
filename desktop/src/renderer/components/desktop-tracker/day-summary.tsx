@@ -48,7 +48,7 @@ function Tip({
   return ReactDOM.createPortal(
     <div
       ref={tipRef}
-      className="fixed px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs font-medium shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 pointer-events-none z-[200] whitespace-nowrap"
+      className="fixed px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs font-medium shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 pointer-events-none z-[400] whitespace-nowrap"
       style={style}
     >
       {text}

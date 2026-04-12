@@ -55,7 +55,7 @@ export function NewTaskForm({ contracts = [], defaultContractId, onCancel, onCre
   }
 
   return (
-    <div className={cn("flex flex-col flex-1", className)}>
+    <div className={cn("flex flex-col flex-1 min-h-0 h-full", className)}>
       {/* Discard confirmation overlay */}
       {showDiscard && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -189,11 +189,11 @@ export function NewTaskForm({ contracts = [], defaultContractId, onCancel, onCre
         </div>
       </div>
 
-      {/* Footer buttons */}
-      <div className="flex items-center justify-end gap-3 px-4 py-3 border-t border-gray-100 shrink-0">
+      {/* Footer buttons — small CTAs, pinned bottom */}
+      <div className="flex items-center justify-end gap-2.5 px-4 py-3 border-t border-gray-100 shrink-0">
         <button
           onClick={handleCancel}
-          className="inline-flex items-center justify-center rounded-[5px] border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-xs hover:bg-gray-50 transition"
+          className="inline-flex items-center justify-center rounded-[5px] border border-gray-300 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-xs hover:bg-gray-50 transition"
         >
           Cancel
         </button>
@@ -201,7 +201,7 @@ export function NewTaskForm({ contracts = [], defaultContractId, onCancel, onCre
           disabled={!contractId || !taskName.trim()}
           onClick={() => onCreate?.({ contractId, taskName: taskName.trim(), notes })}
           className={cn(
-            "inline-flex items-center justify-center rounded-[5px] px-4 py-2.5 text-sm font-semibold text-white shadow-xs transition",
+            "inline-flex items-center justify-center rounded-[5px] px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition",
             contractId && taskName.trim()
               ? "bg-primary-500 hover:bg-primary-600"
               : "bg-gray-300 cursor-not-allowed"

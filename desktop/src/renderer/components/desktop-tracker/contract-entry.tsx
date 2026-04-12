@@ -66,7 +66,7 @@ function FixedTooltip({
     <div
       ref={tipRef}
       className={cn(
-        "fixed px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 pointer-events-none z-[200]",
+        "fixed px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 pointer-events-none z-[400]",
         wide ? "w-52 whitespace-normal text-left leading-relaxed" : "whitespace-nowrap"
       )}
       style={style}
@@ -108,7 +108,7 @@ function SwitchContractTooltip({
   return ReactDOM.createPortal(
     <div
       ref={tipRef}
-      className="fixed w-[210px] px-3 py-2.5 rounded-lg bg-white text-left text-xs shadow-[0_4px_16px_rgba(0,0,0,0.12)] border border-gray-100 z-[200]"
+      className="fixed w-[210px] px-3 py-2.5 rounded-lg bg-white text-left text-xs shadow-[0_4px_16px_rgba(0,0,0,0.12)] border border-gray-100 z-[400]"
       style={style}
     >
       <p className="text-dark-blue-400 leading-normal">
@@ -375,7 +375,7 @@ export function ContractEntry({
 
       {/* Animated task list */}
       <Collapsible open={isExpanded}>
-        <div className="border-t border-gray-100">
+        <div className="border-t border-gray-100 pb-3">
           {tasks.length === 0 ? (
             <div className="px-4 py-6 text-center">
               <p className="text-sm text-gray-400 mb-3">
