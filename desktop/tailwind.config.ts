@@ -128,21 +128,33 @@ const config: Config = {
           '0%': { opacity: '0', transform: 'translateY(16px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
-        spinGradient: {
+        spinRing: {
           '0%': { transform: 'rotate(0deg)' },
           '100%': { transform: 'rotate(360deg)' },
         },
-        glowPulse: {
-          '0%, 100%': { opacity: '0.6', transform: 'scale(1)' },
-          '50%': { opacity: '1', transform: 'scale(1.08)' },
+        spinRingReverse: {
+          '0%': { transform: 'rotate(360deg)' },
+          '100%': { transform: 'rotate(0deg)' },
+        },
+        breatheGlow: {
+          '0%, 100%': { opacity: '0.4', transform: 'scale(0.97)' },
+          '50%': { opacity: '0.9', transform: 'scale(1.06)' },
+        },
+        shimmer: {
+          '0%': { transform: 'rotate(0deg)', opacity: '0.7' },
+          '50%': { opacity: '1' },
+          '100%': { transform: 'rotate(360deg)', opacity: '0.7' },
         },
       },
       animation: {
         'scale-in': 'scaleIn 0.3s ease-out',
         'fade-in': 'fadeIn 0.5s ease-out',
         'stagger-in': 'staggerIn 0.25s ease-out',
-        'spin-gradient': 'spinGradient 2.5s linear infinite',
-        'glow-pulse': 'glowPulse 2s ease-in-out infinite',
+        'spin-ring': 'spinRing 1.8s linear infinite',
+        'spin-ring-slow': 'spinRing 3.5s linear infinite',
+        'spin-ring-reverse': 'spinRingReverse 2.8s linear infinite',
+        'breathe-glow': 'breatheGlow 2.5s ease-in-out infinite',
+        'shimmer': 'shimmer 1.2s ease-in-out infinite',
       },
     },
   },
