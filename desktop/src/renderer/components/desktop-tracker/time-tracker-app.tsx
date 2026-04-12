@@ -260,7 +260,7 @@ function FixedTooltip({
     <div
       className={cn(
         "fixed px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 pointer-events-none z-[200]",
-        wide ? "w-52 whitespace-normal text-center leading-relaxed" : "whitespace-nowrap"
+        wide ? "w-52 whitespace-normal text-left leading-relaxed" : "whitespace-nowrap"
       )}
       style={{
         left: pos.left,
@@ -1028,7 +1028,7 @@ export function TimeTrackerApp({
                     onClear={handleSearchClear}
                   />
                 </div>
-                <div className="py-2 relative z-30">
+                <div className="py-2 relative z-50">
                   <TimerControls countdown={countdown} noTaskSelected={!selectedTask} onStart={handleStart} onPause={handlePause} onStop={handleStop} onManualTime={() => setView("new-task")} />
                 </div>
               </div>

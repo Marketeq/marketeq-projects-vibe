@@ -82,8 +82,8 @@ function DropdownItem({
       {/* Tooltip on hover during active tracking */}
       {activeContractName && hovered && (
         <div className={cn(
-          "absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-[10px] shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 z-50 pointer-events-none leading-tight",
-          isDifferentContract ? "max-w-[180px] whitespace-normal text-center" : "whitespace-nowrap"
+          "absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 z-50 pointer-events-none leading-relaxed",
+          isDifferentContract ? "max-w-[180px] whitespace-normal text-left" : "whitespace-nowrap"
         )}>
           {isDifferentContract ? (
             <>
@@ -114,6 +114,19 @@ export function TaskSearch({
   className,
 }: TaskSearchProps) {
   const [isOpen, setIsOpen] = React.useState(false)
+  const wrapperRef = React.useRef<HTMLDivElement>(null)
+
+  // Close dropdown on click outside
+  React.useEffect(() => {
+    if (!isOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [isOpen])
 
   // Show search results if typing, otherwise show defaults when focused
   const visibleResults = value.trim() ? results : defaultResults
@@ -121,7 +134,7 @@ export function TaskSearch({
   // If a result is selected, show the chip style — clickable to re-open dropdown
   if (selectedResult) {
     return (
-      <div className={cn("relative", className)}>
+      <div ref={wrapperRef} className={cn("relative", className)}>
         <div
           onClick={() => setIsOpen(!isOpen)}
           className="flex h-11 w-full items-center gap-2 rounded-lg border border-primary-300 bg-white px-3 cursor-pointer"
@@ -171,7 +184,7 @@ export function TaskSearch({
   }
 
   return (
-    <div className={cn("relative", className)}>
+    <div ref={wrapperRef} className={cn("relative", className)}>
       <div className="relative">
         <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
         <input

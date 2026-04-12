@@ -66,7 +66,7 @@ function FixedTooltip({
       ref={tipRef}
       className={cn(
         "fixed px-2.5 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 pointer-events-none z-[200]",
-        wide ? "w-52 whitespace-normal text-center leading-relaxed" : "whitespace-nowrap"
+        wide ? "w-52 whitespace-normal text-left leading-relaxed" : "whitespace-nowrap"
       )}
       style={style}
     >
