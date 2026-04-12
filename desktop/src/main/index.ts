@@ -40,19 +40,26 @@ import { createFetchAuthHttpPort } from './services/auth/http-port';
 import { registerAuthIpc } from './services/auth/register-ipc';
 import { collectBroadcastTargets } from './ipc/timer';
 import { ipcMain } from 'electron';
+import { createOnboardingService } from './services/onboarding/onboarding-service';
+import { registerOnboardingIpc } from './services/onboarding/register-ipc';
 
 const isDev = !app.isPackaged;
 
 async function createMainWindow(): Promise<BrowserWindow> {
   const win = new BrowserWindow({
-    width: 480,
-    height: 720,
-    minWidth: 360,
-    minHeight: 540,
-    show: false,
-    title: 'Marketeq Time Tracker',
+    width: 340,
+    height: 580,
+    minWidth: 320,
+    minHeight: 480,
+    show: true,
+    title: 'Marketeq',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 14, y: 14 },
     webPreferences: {
-      preload: path.join(__dirname, '..', 'preload', 'preload', 'index.js'),
+      // `__dirname` at runtime is `dist/main/main/`, so we need three `..`
+      // jumps to reach `dist/preload/preload/index.js`:
+      //   dist/main/main -> dist/main -> dist -> dist/preload/preload/index.js
+      preload: path.join(__dirname, '..', '..', 'preload', 'preload', 'index.js'),
       contextIsolation: true,
       sandbox: false,
       nodeIntegration: false,
@@ -73,7 +80,12 @@ async function createMainWindow(): Promise<BrowserWindow> {
     await win.loadFile(rendererIndex);
   }
 
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    win.show();
+    win.focus();
+    win.moveTop();
+    app.dock?.bounce?.('informational');
+  });
   return win;
 }
 
@@ -153,6 +165,26 @@ async function bootstrap(): Promise<void> {
     logger.info('phase 5 auth service wired');
   } catch (err) {
     logger.error({ err }, 'failed to initialize auth service');
+  }
+
+  // --- Phase 6: onboarding wizard --------------------------------------
+  let detachOnboardingIpc: (() => void) | null = null;
+  try {
+    const db = initDatabase();
+    const repos = createRepos(db);
+    const onboardingService = createOnboardingService({
+      db,
+      logger,
+    });
+    detachOnboardingIpc = registerOnboardingIpc({
+      ipcMain,
+      logger,
+      service: onboardingService,
+      getBroadcastTargets: () => collectBroadcastTargets(),
+    });
+    logger.info('phase 6 onboarding service wired');
+  } catch (err) {
+    logger.error({ err }, 'failed to initialize onboarding service');
   }
 
   // --- Phase 3: capture pipeline ---------------------------------------
@@ -306,11 +338,24 @@ async function bootstrap(): Promise<void> {
       logger.warn({ err }, 'error while detaching auth ipc');
     }
     try {
+      detachOnboardingIpc?.();
+    } catch (err) {
+      logger.warn({ err }, 'error while detaching onboarding ipc');
+    }
+    try {
       timerService?.dispatch({ type: 'APP_QUIT' }).catch(() => undefined);
       timerService?.dispose();
       detachIpcHandlers?.();
     } catch (err) {
       logger.warn({ err }, 'error while stopping timer service');
+    }
+    // IMPORTANT: closeDatabase MUST be the last thing we do in shutdown,
+    // otherwise capture-supervisor / timer / sync-worker handlers above
+    // will try to persist state against a closed connection and throw.
+    try {
+      closeDatabase();
+    } catch (err) {
+      logger.warn({ err }, 'error while closing database on quit');
     }
   });
 
@@ -328,13 +373,12 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
-  try {
-    closeDatabase();
-  } catch (err) {
-    logger.warn({ err }, 'error while closing database on quit');
-  }
-});
+// NOTE: the `before-quit` handler that closes the DB is registered inside
+// `bootstrap()` AFTER the capture / sync / timer teardown steps. A module-level
+// handler here would fire BEFORE the bootstrap handler (Electron invokes
+// listeners in registration order, and module code runs before the async
+// bootstrap completes), causing a shutdown race where capture-supervisor
+// tries to persist permission-grant rows against an already-closed DB.
 
 void bootstrap().catch((err) => {
   logger.error({ err }, 'bootstrap failed');

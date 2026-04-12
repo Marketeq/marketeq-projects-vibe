@@ -46,6 +46,11 @@ const dtt = {
     ipcRenderer.invoke(IPC.ping, echo),
   listDbTables: (): Promise<string[]> => ipcRenderer.invoke(IPC.dbTablesList),
 
+  shell: {
+    openExternal: (url: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.shellOpenExternal, url),
+  },
+
   permissions: {
     check: (kind: PermissionKindShort): Promise<PermissionStatusShort> =>
       ipcRenderer.invoke(IPC.permissionsCheck, kind),

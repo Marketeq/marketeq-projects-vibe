@@ -1,72 +1,45 @@
 // src/renderer/App.tsx
+//
+// Phase 6 — Top-level router. Shows login → onboarding → tracker.
+
 /// <reference path="./dtt-bridge.d.ts" />
-import React, { useEffect, useState } from 'react';
-import type { AppInfo, PingResult } from '../shared/types';
+import React, { useEffect } from 'react';
+import { useAuthStore } from './stores/auth-store';
+import { useOnboardingStore } from './stores/onboarding-store';
+import { LoginView } from './views/LoginView';
+import { OnboardingView } from './views/onboarding/OnboardingView';
+import { TimeTrackerApp } from './components/desktop-tracker';
 
 export function App(): JSX.Element {
-  const [info, setInfo] = useState<AppInfo | null>(null);
-  const [pingResult, setPingResult] = useState<PingResult | null>(null);
-  const [tables, setTables] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const auth = useAuthStore();
+  const onboarding = useOnboardingStore();
 
   useEffect(() => {
-    window.dtt
-      .getAppInfo()
-      .then(setInfo)
-      .catch((e: unknown) => setError(String(e)));
-    window.dtt
-      .listDbTables()
-      .then(setTables)
-      .catch((e: unknown) => setError(String(e)));
-  }, []);
+    void auth.hydrate();
+    void onboarding.hydrate();
+  }, [auth, onboarding]);
 
-  const onPing = async () => {
-    try {
-      const r = await window.dtt.ping('hello from renderer');
-      setPingResult(r);
-    } catch (e) {
-      setError(String(e));
-    }
-  };
+  if (!auth.hydrated || !onboarding.hydrated) {
+    return (
+      <main className="flex h-screen items-center justify-center bg-white text-gray-400">
+        <p className="text-sm">Loading…</p>
+      </main>
+    );
+  }
+
+  if (!auth.isAuthenticated) {
+    return <LoginView />;
+  }
+
+  if (!onboarding.state.completed) {
+    return <OnboardingView />;
+  }
 
   return (
-    <main>
-      <h1>Marketeq Time Tracker</h1>
-      <p>Hello from Marketeq Time Tracker.</p>
-      {info ? (
-        <dl>
-          <dt>App version</dt>
-          <dd>{info.version}</dd>
-          <dt>Platform</dt>
-          <dd>{info.platform}</dd>
-          <dt>Schema version</dt>
-          <dd>{info.schemaVersion}</dd>
-        </dl>
-      ) : (
-        <p>Loading app info…</p>
-      )}
-      <section>
-        <h2>IPC round-trip test</h2>
-        <button type="button" onClick={onPing}>
-          Ping main process
-        </button>
-        {pingResult && (
-          <pre>{JSON.stringify(pingResult, null, 2)}</pre>
-        )}
-      </section>
-      <section>
-        <h2>Local DB tables ({tables.length})</h2>
-        <ul>
-          {tables.map((t) => (
-            <li key={t}>{t}</li>
-          ))}
-        </ul>
-      </section>
-      {error && (
-        <p style={{ color: 'tomato' }}>
-          <strong>Error:</strong> {error}
-        </p>
-      )}
-    </main>
+    <TimeTrackerApp
+      userName={auth.user?.displayName || auth.user?.email || 'Marketeq user'}
+      userEmail={auth.user?.email}
+      userId={auth.user?.id}
+    />
   );
 }

@@ -118,6 +118,9 @@ export interface DttBridgeGlobal {
   getAppInfo: () => Promise<AppInfo>;
   ping: (echo: string) => Promise<PingResult>;
   listDbTables: () => Promise<string[]>;
+  shell: {
+    openExternal: (url: string) => Promise<void>;
+  };
   timer: DttTimerBridge;
   capture: DttCaptureBridge;
   permissions: DttPermissionsBridge;
