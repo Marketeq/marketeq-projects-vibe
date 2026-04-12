@@ -54,6 +54,85 @@ function StopIcon({ className }: { className?: string }) {
   )
 }
 
+/* ── Inject keyframes once via a <style> tag ── */
+const RING_STYLES = `
+@keyframes dtt-spin { 0% { transform: rotate(0deg) } 100% { transform: rotate(360deg) } }
+@keyframes dtt-glow { 0%,100% { opacity:.5; transform:scale(.98) } 50% { opacity:1; transform:scale(1.04) } }
+@keyframes dtt-color-shift {
+  0%   { filter: hue-rotate(0deg) }
+  50%  { filter: hue-rotate(25deg) }
+  100% { filter: hue-rotate(0deg) }
+}
+`
+
+let stylesInjected = false
+function injectRingStyles() {
+  if (stylesInjected) return
+  stylesInjected = true
+  const el = document.createElement("style")
+  el.textContent = RING_STYLES
+  document.head.appendChild(el)
+}
+
+/** Instagram-style spinning gradient ring — 3 layers, all inline animations */
+function ActiveRing() {
+  React.useEffect(() => { injectRingStyles() }, [])
+  const ringMask = "radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px))"
+  return (
+    <>
+      {/* Breathing glow */}
+      <div
+        className="absolute rounded-full"
+        style={{
+          inset: -7,
+          background: "radial-gradient(circle, rgba(48,108,254,0.3) 55%, transparent 72%)",
+          animation: "dtt-glow 2.5s ease-in-out infinite",
+        }}
+      />
+      {/* Main gradient ring — continuous color band like Instagram stories */}
+      <div
+        className="absolute rounded-full"
+        style={{
+          inset: -5,
+          background: "conic-gradient(from 0deg, #306CFE, #5687FF, #98B6FF, #C9D9FF, #779EFF, #2459DB, #1948BD, #306CFE)",
+          mask: ringMask,
+          WebkitMask: ringMask,
+          animation: "dtt-spin 2s linear infinite, dtt-color-shift 4s ease-in-out infinite",
+        }}
+      />
+      {/* White gap ring — creates the 2px separation between ring and button */}
+      <div
+        className="absolute rounded-full bg-white"
+        style={{ inset: -2 }}
+      />
+    </>
+  )
+}
+
+/** Countdown spinning ring — faster, single arc */
+function CountdownRing() {
+  React.useEffect(() => { injectRingStyles() }, [])
+  const ringMask = "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px))"
+  return (
+    <>
+      <div
+        className="absolute rounded-full"
+        style={{
+          inset: -5,
+          background: "conic-gradient(from 0deg, #306CFE, #779EFF, #C9D9FF, #306CFE)",
+          mask: ringMask,
+          WebkitMask: ringMask,
+          animation: "dtt-spin 0.8s linear infinite",
+        }}
+      />
+      <div
+        className="absolute rounded-full bg-white"
+        style={{ inset: -2 }}
+      />
+    </>
+  )
+}
+
 /** Tooltip portaled to body — positioned above the anchor element, z-[400] */
 function PortaledTooltip({ anchorEl, children }: { anchorEl: HTMLElement; children: React.ReactNode }) {
   const [style, setStyle] = React.useState<React.CSSProperties>({ position: "fixed", visibility: "hidden" })
@@ -148,59 +227,13 @@ export function TimerControls({
           className={cn("flex flex-col items-center gap-1.5 group", isCounting && "cursor-default")}
         >
             <div className="relative flex items-center justify-center">
-              {/* ── Active tracking: multi-layer spinning ring effect ── */}
-              {isRunning && !isPaused && !isCounting && (<>
-                {/* Layer 1: Breathing glow backdrop */}
-                <div
-                  className="absolute inset-[-6px] rounded-full animate-breathe-glow"
-                  style={{ background: "radial-gradient(circle, rgba(48,108,254,0.25) 60%, transparent 70%)" }}
-                />
-                {/* Layer 2: Primary ring — fast spin, bright hot-spot that sweeps around */}
-                <div className="absolute inset-[-5px] rounded-full animate-spin-ring">
-                  <div
-                    className="w-full h-full rounded-full"
-                    style={{
-                      background: "conic-gradient(from 0deg, transparent 0%, #306CFE 10%, #779EFF 25%, #C9D9FF 35%, transparent 50%, #5687FF 65%, #2459DB 80%, #306CFE 90%, transparent 100%)",
-                      mask: "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px))",
-                      WebkitMask: "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px))",
-                    }}
-                  />
-                </div>
-                {/* Layer 3: Secondary ring — slower counter-rotation, softer colors */}
-                <div className="absolute inset-[-5px] rounded-full animate-spin-ring-reverse opacity-50">
-                  <div
-                    className="w-full h-full rounded-full"
-                    style={{
-                      background: "conic-gradient(from 180deg, transparent 0%, #98B6FF 15%, transparent 35%, #E8EEFF 55%, transparent 75%, #779EFF 90%, transparent 100%)",
-                      mask: "radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px))",
-                      WebkitMask: "radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px))",
-                    }}
-                  />
-                </div>
-                {/* Layer 4: Bright shimmer dot — fastest, creates the "traveling light" */}
-                <div className="absolute inset-[-5px] rounded-full animate-shimmer">
-                  <div
-                    className="w-full h-full rounded-full"
-                    style={{
-                      background: "conic-gradient(from 0deg, transparent 0%, transparent 42%, #fff 49%, #C9D9FF 51%, transparent 58%, transparent 100%)",
-                      mask: "radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px))",
-                      WebkitMask: "radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px))",
-                    }}
-                  />
-                </div>
-              </>)}
-              {/* ── Countdown: fast single ring ── */}
+              {/* ── Active tracking: Instagram-style gradient ring ── */}
+              {isRunning && !isPaused && !isCounting && (
+                <ActiveRing />
+              )}
+              {/* ── Countdown: fast spinning ring ── */}
               {isCounting && (
-                <div className="absolute inset-[-5px] rounded-full animate-spin-ring" style={{ animationDuration: "1s" }}>
-                  <div
-                    className="w-full h-full rounded-full"
-                    style={{
-                      background: "conic-gradient(from 0deg, transparent 0%, #306CFE 20%, #779EFF 40%, #E8EEFF 50%, transparent 60%, transparent 100%)",
-                      mask: "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px))",
-                      WebkitMask: "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px))",
-                    }}
-                  />
-                </div>
+                <CountdownRing />
               )}
               <div
                 className={cn(
@@ -209,7 +242,7 @@ export function TimerControls({
                   isCounting
                     ? "shadow-[0_0_24px_8px_rgba(48,108,254,0.4)] scale-110"
                     : isRunning && !isPaused
-                    ? "shadow-[0_0_20px_6px_rgba(48,108,254,0.25)] hover:bg-primary-600"
+                    ? "hover:bg-primary-600"
                     : "shadow-[0_4px_14px_rgba(48,108,254,0.4)] hover:bg-primary-600"
                 )}
               >
