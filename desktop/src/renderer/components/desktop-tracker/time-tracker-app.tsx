@@ -274,16 +274,52 @@ function FixedTooltip({
   )
 }
 
+/** Interactive switch-contract tooltip for AllTasksView */
+function SwitchContractTip({
+  anchorRef,
+  onSwitch,
+}: {
+  anchorRef: React.RefObject<HTMLDivElement | null>
+  onSwitch: () => void
+}) {
+  const [pos, setPos] = React.useState<{ top: number; left: number; below: boolean } | null>(null)
+  React.useEffect(() => {
+    const el = anchorRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const showBelow = rect.top < 60
+    let left = rect.left + rect.width / 2
+    left = Math.max(112, Math.min(left, window.innerWidth - 112))
+    setPos({ left, top: showBelow ? rect.bottom + 6 : rect.top - 6, below: showBelow })
+  }, [anchorRef])
+  if (!pos) return null
+  return ReactDOM.createPortal(
+    <div
+      className="fixed w-[210px] px-3 py-2.5 rounded-lg bg-white text-left text-xs shadow-[0_4px_16px_rgba(0,0,0,0.12)] border border-gray-100 z-[200]"
+      style={{ left: pos.left, top: pos.top, transform: pos.below ? "translateX(-50%)" : "translateX(-50%) translateY(-100%)" }}
+    >
+      <p className="text-dark-blue-400 leading-normal">You can only track one contract at a time.</p>
+      <button onClick={(e) => { e.stopPropagation(); onSwitch() }} className="mt-1 text-primary-500 font-medium hover:text-primary-600 hover:underline transition cursor-pointer">
+        Switch contracts
+      </button>
+    </div>,
+    document.body
+  )
+}
+
 function AllTasksPlayButton({
   onClick,
   contractId,
   activeContractId,
+  onSwitchContract,
 }: {
   onClick: () => void
   contractId: string
   activeContractId?: string | null
+  onSwitchContract?: () => void
 }) {
   const [hovered, setHovered] = React.useState(false)
+  const hideTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const ref = React.useRef<HTMLDivElement>(null)
   const isTracking = !!activeContractId
   const isSameContract = activeContractId === contractId
@@ -296,8 +332,11 @@ function AllTasksPlayButton({
     ? "Switch to this task"
     : null
 
+  const show = () => { if (hideTimeout.current) { clearTimeout(hideTimeout.current); hideTimeout.current = null }; setHovered(true) }
+  const hide = () => { hideTimeout.current = setTimeout(() => setHovered(false), 150) }
+
   return (
-    <div ref={ref} className="relative shrink-0" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+    <div ref={ref} className="relative shrink-0" onMouseEnter={show} onMouseLeave={hide}>
       <button
         onClick={() => { if (!disabled) onClick() }}
         className={cn(
@@ -311,11 +350,9 @@ function AllTasksPlayButton({
         </svg>
       </button>
       {hovered && disabled && (
-        <FixedTooltip anchorRef={ref} wide>
-          You can only track one contract at a time.
-          <br />
-          Click here to switch contracts.
-        </FixedTooltip>
+        <div onMouseEnter={show} onMouseLeave={hide}>
+          <SwitchContractTip anchorRef={ref} onSwitch={() => { setHovered(false); onSwitchContract?.() }} />
+        </div>
       )}
       {hovered && !disabled && tooltipText && (
         <FixedTooltip anchorRef={ref}>
@@ -331,11 +368,13 @@ function AllTasksView({
   onBack,
   onPlayTask,
   activeContractId,
+  onSwitchContract,
 }: {
   days: DayGroup[]
   onBack: () => void
   onPlayTask: (taskId: string, contractId: string) => void
   activeContractId?: string | null
+  onSwitchContract?: (contractId: string) => void
 }) {
   const [filter, setFilter] = React.useState("")
 
@@ -360,7 +399,7 @@ function AllTasksView({
     <>
       {/* Search bar with back arrow */}
       <div className="flex items-center gap-2.5 px-4 py-3 shrink-0">
-        <button onClick={onBack} className="text-gray-500 hover:text-gray-700 transition shrink-0">
+        <button onClick={onBack} className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-dark-blue-400 transition shrink-0">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
             <path d="M12.5 15l-5-5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -406,6 +445,7 @@ function AllTasksView({
                 onClick={() => onPlayTask(task.id, task.contractId)}
                 contractId={task.contractId}
                 activeContractId={activeContractId}
+                onSwitchContract={() => onSwitchContract?.(task.contractId)}
               />
             </div>
           ))
@@ -447,11 +487,10 @@ export function TimeTrackerApp({
   const [utcTime, setUtcTime] = React.useState(formatUtcTime())
   const [dateStr] = React.useState(formatDate())
 
-  // Header collapse
+  // Header collapse — show minimized bar once expanded header scrolls out of view
   const [headerCollapsed, setHeaderCollapsed] = React.useState(false)
   const scrollRef = React.useRef<HTMLDivElement>(null)
-  const collapsibleRef = React.useRef<HTMLDivElement>(null)
-  const [collapsibleHeight, setCollapsibleHeight] = React.useState<number>(0)
+  const expandedHeaderRef = React.useRef<HTMLDivElement>(null)
 
   // New task form context
   const [newTaskContractId, setNewTaskContractId] = React.useState<string | undefined>()
@@ -463,6 +502,10 @@ export function TimeTrackerApp({
   const [countdown, setCountdown] = React.useState<number | null>(null)
   const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
   const pendingStartRef = React.useRef<(() => void) | null>(null)
+
+  // Floating alert for contract switch
+  const [switchAlert, setSwitchAlert] = React.useState<string | null>(null)
+  const switchAlertTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Manual time entry
   const [showManualTime, setShowManualTime] = React.useState(false)
@@ -487,33 +530,13 @@ export function TimeTrackerApp({
     }
   }, [isRunning, isPaused])
 
-  // ── Measure collapsible section height ──────────────────────────────────
-  React.useEffect(() => {
-    const el = collapsibleRef.current
-    if (!el) return
-    const ro = new ResizeObserver(([entry]) => {
-      setCollapsibleHeight(entry.contentRect.height)
-    })
-    ro.observe(el)
-    setCollapsibleHeight(el.scrollHeight)
-    return () => ro.disconnect()
-  }, [])
-
-  // ── Scroll-to-collapse header ───────────────────────────────────────────
+  // ── Scroll handler — show minimized bar once expanded header scrolls away ──
   const handleContentScroll = React.useCallback(() => {
     const el = scrollRef.current
-    if (!el) return
-    setHeaderCollapsed(el.scrollTop > 30)
-  }, [])
-
-  // Forward wheel events from anywhere in the window to the scroll container
-  const handleWheel = React.useCallback((e: React.WheelEvent) => {
-    const el = scrollRef.current
-    if (!el) return
-    // Only forward if the wheel target is outside the scroll container
-    if (!el.contains(e.target as Node)) {
-      el.scrollTop += e.deltaY
-    }
+    const header = expandedHeaderRef.current
+    if (!el || !header) return
+    // Collapsed once the expanded header has scrolled out of view
+    setHeaderCollapsed(el.scrollTop >= header.offsetHeight)
   }, [])
 
   // ── Derived ─────────────────────────────────────────────────────────────
@@ -618,12 +641,26 @@ export function TimeTrackerApp({
   // ── Actions ─────────────────────────────────────────────────────────────
 
   const toggleContract = (id: string) => {
+    const isOpening = !expandedContracts.has(id)
     setExpandedContracts((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
+    // Single scroll: pin the card at the top, ensuring header is at least collapsed
+    if (isOpening) {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const el = document.getElementById(`contract-${id}`)
+          const container = scrollRef.current
+          if (el && container) {
+            const cardTop = el.offsetTop
+            container.scrollTo({ top: cardTop, behavior: "smooth" })
+          }
+        }, 250)
+      })
+    }
   }
 
   const startTimerImmediate = (taskName: string, contractName: string, contractId: string, taskId?: string, clientHandle?: string) => {
@@ -750,6 +787,23 @@ export function TimeTrackerApp({
     }
   }
 
+  const handleSwitchContract = (contractId: string) => {
+    // Stop current tracking, switch to new contract, start immediately
+    for (const day of days) {
+      const c = day.contracts.find((co) => co.id === contractId)
+      if (c) {
+        const taskName = c.tasks.length > 0 ? c.tasks[0].name : "General work"
+        const taskId = c.tasks.length > 0 ? c.tasks[0].id : undefined
+        startTimerImmediate(taskName, c.name, c.id, taskId, c.clientHandle)
+        // Show floating alert
+        setSwitchAlert(c.name)
+        if (switchAlertTimeout.current) clearTimeout(switchAlertTimeout.current)
+        switchAlertTimeout.current = setTimeout(() => setSwitchAlert(null), 3000)
+        return
+      }
+    }
+  }
+
   const handleAddTask = (contractId: string) => {
     setNewTaskContractId(contractId)
     setView("new-task")
@@ -794,7 +848,6 @@ export function TimeTrackerApp({
 
   return (
     <div
-      onWheel={handleWheel}
       className={cn(
         "w-full h-screen bg-white overflow-hidden flex flex-col relative",
         className
@@ -833,6 +886,7 @@ export function TimeTrackerApp({
           onBack={() => setView("main")}
           onPlayTask={(taskId, contractId) => handlePlayTask(taskId, contractId)}
           activeContractId={activeTask?.contractId || null}
+          onSwitchContract={handleSwitchContract}
         />
       )}
 
@@ -846,72 +900,96 @@ export function TimeTrackerApp({
                 isRecording={!isPaused}
                 label={isPaused ? "Paused" : "Tracking time..."}
                 collapsed={headerCollapsed}
-                onToggleCollapse={() => setHeaderCollapsed((c) => !c)}
+                onToggleCollapse={() => {
+                  if (scrollRef.current) {
+                    scrollRef.current.scrollTo({ top: headerCollapsed ? 0 : 300, behavior: "smooth" })
+                  }
+                }}
               />
 
-              {/* Expanded: locked search + timer controls + large display */}
-              <div
-                style={{
-                  height: headerCollapsed ? 0 : collapsibleHeight || "auto",
-                  opacity: headerCollapsed ? 0 : 1,
+            </>
+          ) : (
+            <>
+              <DateTimeBar
+                date={dateStr}
+                utcTime={utcTime}
+                collapsed={headerCollapsed}
+                onToggleCollapse={() => {
+                  if (scrollRef.current) {
+                    scrollRef.current.scrollTo({ top: headerCollapsed ? 0 : 300, behavior: "smooth" })
+                  }
                 }}
-                className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
-              >
-                <div ref={collapsibleRef}>
-                  {/* Active task search bar — can switch tasks without stopping */}
-                  <div className="px-4 pt-3 pb-2 relative z-20">
-                    <TaskSearch
-                      value={searchValue}
-                      onChange={setSearchValue}
-                      results={searchResults}
-                      defaultResults={defaultSearchResults}
-                      selectedResult={activeTaskCleared ? null : {
-                        id: activeTask.taskId || "active",
-                        taskName: activeTask.taskName,
-                        contractName: activeTask.contractName,
-                        clientHandle: activeTask.clientHandle,
-                      }}
-                      onSelect={(result) => {
-                        // Switch active task without stopping the timer
-                        for (const day of days) {
-                          for (const c of day.contracts) {
-                            const task = c.tasks.find((t) => t.id === result.id)
-                            if (task) {
-                              setActiveTask({ taskName: task.name, contractName: c.name, contractId: c.id, clientHandle: c.clientHandle, taskId: task.id })
-                              setActiveTaskCleared(false)
-                              break
-                            }
+              />
+
+            </>
+          )}
+
+          {/* Single scroll container — everything scrolls together */}
+          <div ref={scrollRef} onScroll={handleContentScroll} className="flex-1 overflow-y-auto">
+            {/* Running-state expanded header — scrolls away naturally */}
+            {isRunning && activeTask && (
+              <div ref={expandedHeaderRef}>
+                <div className="px-4 pt-3 pb-2 relative z-20">
+                  <TaskSearch
+                    value={searchValue}
+                    onChange={setSearchValue}
+                    results={searchResults}
+                    defaultResults={defaultSearchResults}
+                    selectedResult={activeTaskCleared ? null : {
+                      id: activeTask.taskId || "active",
+                      taskName: activeTask.taskName,
+                      contractName: activeTask.contractName,
+                      clientHandle: activeTask.clientHandle,
+                    }}
+                    onSelect={(result) => {
+                      for (const day of days) {
+                        for (const c of day.contracts) {
+                          const task = c.tasks.find((t) => t.id === result.id)
+                          if (task) {
+                            setActiveTask({ taskName: task.name, contractName: c.name, contractId: c.id, clientHandle: c.clientHandle, taskId: task.id })
+                            setActiveTaskCleared(false)
+                            break
                           }
                         }
-                        setSearchValue("")
-                      }}
-                      onClear={() => {
-                        setActiveTaskCleared(true)
-                        setSearchValue("")
-                      }}
-                      activeContractName={activeTask.contractName}
-                    />
+                      }
+                      setSearchValue("")
+                    }}
+                    onClear={() => {
+                      setActiveTaskCleared(true)
+                      setSearchValue("")
+                    }}
+                    activeContractName={activeTask.contractName}
+                  />
+                </div>
+                <div className="flex flex-col items-center py-3 gap-1 relative z-30">
+                  <TimerControls
+                    isRunning
+                    isPaused={isPaused}
+                    onPause={handlePause}
+                    onStop={handleStop}
+                    onManualTime={() => setView("new-task")}
+                  />
+                  <div key={activeTask?.taskId || "timer"} className="mt-2 animate-fade-in">
+                    <TimerDisplay hours={hours} minutes={minutes} seconds={seconds} size="lg" />
                   </div>
-
-                  <div className="flex flex-col items-center py-3 gap-1">
-                    <TimerControls
-                      isRunning
-                      isPaused={isPaused}
-                      onPause={handlePause}
-                      onStop={handleStop}
-                      onManualTime={() => setView("new-task")}
-                    />
-                    <div key={activeTask?.taskId || "timer"} className="mt-2 animate-fade-in">
-                      <TimerDisplay hours={hours} minutes={minutes} seconds={seconds} size="lg" />
-                    </div>
-                    <span className="text-sm text-gray-500 mt-1 animate-fade-in">Amount Earned {amountEarned}</span>
-                  </div>
+                  <span className="text-sm text-gray-500 mt-1 animate-fade-in">Amount Earned {amountEarned}</span>
                 </div>
               </div>
+            )}
 
-              {/* Collapsed: compact inline timer */}
-              {headerCollapsed && (
-                <div className="flex items-center justify-between px-4 py-2 bg-gray-25 border-b border-gray-100 shrink-0">
+            {/* Running-state sticky collapsed bar — appears once scrolled past expanded header */}
+            {isRunning && activeTask && (
+              <div
+                className="sticky top-0 z-50 bg-white overflow-hidden transition-[height] duration-300 ease-out"
+                style={{ height: headerCollapsed ? 48 : 0 }}
+              >
+                <div
+                  className="flex items-center justify-between px-4 py-2.5 bg-gray-25 border-b border-gray-100 transition-[transform,opacity] duration-300 ease-out"
+                  style={{
+                    transform: headerCollapsed ? "translateY(0)" : "translateY(100%)",
+                    opacity: headerCollapsed ? 1 : 0,
+                  }}
+                >
                   <div className="flex items-center gap-2.5">
                     <button onClick={handlePause} className="shrink-0">
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500 text-white shadow-sm">
@@ -931,50 +1009,42 @@ export function TimeTrackerApp({
                   </div>
                   <TimerDisplay hours={hours} minutes={minutes} seconds={seconds} size="sm" />
                 </div>
-              )}
-            </>
-          ) : (
-            <>
-              <DateTimeBar
-                date={dateStr}
-                utcTime={utcTime}
-                collapsed={headerCollapsed}
-                onToggleCollapse={() => setHeaderCollapsed((c) => !c)}
-              />
+              </div>
+            )}
 
-              {/* Expanded: full search + timer controls */}
-              <div
-                style={{
-                  height: headerCollapsed ? 0 : collapsibleHeight || "auto",
-                  opacity: headerCollapsed ? 0 : 1,
-                }}
-                className={cn(
-                  "transition-[height,opacity] duration-300 ease-in-out",
-                  headerCollapsed ? "overflow-hidden" : "overflow-visible"
-                )}
-              >
-                <div ref={collapsibleRef}>
-                  <div className="px-4 pt-3 pb-2 relative z-20">
-                    <TaskSearch
-                      value={searchValue}
-                      onChange={setSearchValue}
-                      results={searchResults}
-                      defaultResults={defaultSearchResults}
-                      onSelect={handleSearchSelect}
-                      selectedResult={selectedTask}
-                      onClear={handleSearchClear}
-                    />
-                  </div>
-
-                  <div className="py-2">
-                    <TimerControls countdown={countdown} noTaskSelected={!selectedTask} onStart={handleStart} onPause={handlePause} onStop={handleStop} onManualTime={() => setView("new-task")} />
-                  </div>
+            {/* Idle-state expanded header (search + controls) — scrolls away naturally */}
+            {!isRunning && (
+              <div ref={!isRunning ? expandedHeaderRef : undefined}>
+                <div className="px-4 pt-3 pb-2 relative z-20">
+                  <TaskSearch
+                    value={searchValue}
+                    onChange={setSearchValue}
+                    results={searchResults}
+                    defaultResults={defaultSearchResults}
+                    onSelect={handleSearchSelect}
+                    selectedResult={selectedTask}
+                    onClear={handleSearchClear}
+                  />
+                </div>
+                <div className="py-2 relative z-30">
+                  <TimerControls countdown={countdown} noTaskSelected={!selectedTask} onStart={handleStart} onPause={handlePause} onStop={handleStop} onManualTime={() => setView("new-task")} />
                 </div>
               </div>
+            )}
 
-              {/* Collapsed: compact inline with play + timer */}
-              {headerCollapsed && (
-                <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 shrink-0">
+            {/* Idle-state sticky collapsed bar — appears once scrolled past expanded header */}
+            {!isRunning && (
+              <div
+                className="sticky top-0 z-50 bg-white overflow-hidden transition-[height] duration-300 ease-out"
+                style={{ height: headerCollapsed ? 48 : 0 }}
+              >
+                <div
+                  className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 transition-[transform,opacity] duration-300 ease-out"
+                  style={{
+                    transform: headerCollapsed ? "translateY(0)" : "translateY(100%)",
+                    opacity: headerCollapsed ? 1 : 0,
+                  }}
+                >
                   <div className="flex items-center gap-2.5">
                     <button onClick={handleStart} className="shrink-0">
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500 text-white shadow-sm">
@@ -990,12 +1060,8 @@ export function TimeTrackerApp({
                   </div>
                   <TimerDisplay hours={0} minutes={0} seconds={0} size="sm" />
                 </div>
-              )}
-            </>
-          )}
-
-          {/* Scrollable content area */}
-          <div ref={scrollRef} onScroll={handleContentScroll} className="flex-1 overflow-y-auto">
+              </div>
+            )}
             {days.map((day, dayIdx) => {
               const dayCollapsed = collapsedDays.has(dayIdx)
               return (
@@ -1020,8 +1086,8 @@ export function TimeTrackerApp({
                   <Collapsible open={!dayCollapsed}>
                     <div className="px-2 pb-2 space-y-2">
                       {day.contracts.map((contract) => (
+                        <div key={contract.id} id={`contract-${contract.id}`}>
                         <ContractEntry
-                          key={contract.id}
                           contractId={contract.id}
                           contractName={contract.name}
                           clientHandle={contract.clientHandle}
@@ -1034,7 +1100,9 @@ export function TimeTrackerApp({
                           onAddTask={() => handleAddTask(contract.id)}
                           onPlay={() => handlePlayContract(contract.id)}
                           onPlayTask={(taskId) => handlePlayTask(taskId)}
+                          onSwitchContract={() => handleSwitchContract(contract.id)}
                         />
+                        </div>
                       ))}
                     </div>
                   </Collapsible>
@@ -1053,6 +1121,22 @@ export function TimeTrackerApp({
             </button>
           </div>
         </>
+      )}
+
+      {/* Floating contract-switch alert — bottom-left */}
+      {switchAlert && ReactDOM.createPortal(
+        <div className="fixed bottom-4 left-4 z-[300] animate-fade-in">
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white shadow-[0_4px_20px_rgba(0,0,0,0.12)] border border-gray-100">
+            <svg className="h-4 w-4 text-success-500 shrink-0" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="text-sm text-dark-blue-400">
+              Contract switched to <span className="font-semibold">&ldquo;{switchAlert}&rdquo;</span>
+            </span>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )

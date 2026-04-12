@@ -64,7 +64,9 @@ export function TimerControls({
   className,
 }: TimerControlsProps) {
   const [showNoTaskTip, setShowNoTaskTip] = React.useState(false)
+  const [showNotRunningTip, setShowNotRunningTip] = React.useState(false)
   const tipTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stopTipTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const isCounting = countdown !== null
   const handleCenterClick = () => {
     if (isCounting) return
@@ -148,18 +150,33 @@ export function TimerControls({
         )}
       </div>
 
-      {/* Stop Time */}
-      <button
-        onClick={onStop}
-        className="flex flex-col items-center gap-1.5 group"
-      >
-        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-gray-400 transition hover:border-gray-400 hover:text-gray-600">
-          <StopIcon className="h-5 w-5" />
-        </div>
-        <span className="text-[10px] leading-3 text-gray-500 group-hover:text-gray-700">
-          Stop Time
-        </span>
-      </button>
+      {/* Stop Time — shows tooltip when clicked while not tracking */}
+      <div className="relative">
+        <button
+          onClick={() => {
+            if (isRunning) {
+              onStop?.()
+            } else {
+              setShowNotRunningTip(true)
+              if (stopTipTimeout.current) clearTimeout(stopTipTimeout.current)
+              stopTipTimeout.current = setTimeout(() => setShowNotRunningTip(false), 2500)
+            }
+          }}
+          className="flex flex-col items-center gap-1.5 group"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-gray-400 transition hover:border-gray-400 hover:text-gray-600">
+            <StopIcon className="h-5 w-5" />
+          </div>
+          <span className="text-[10px] leading-3 text-gray-500 group-hover:text-gray-700">
+            Stop Time
+          </span>
+        </button>
+        {showNotRunningTip && (
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 rounded-md bg-white text-dark-blue-400 text-xs font-medium shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-gray-100 whitespace-nowrap z-50 animate-fade-in">
+            Tracker is not running
+          </div>
+        )}
+      </div>
     </div>
   )
 }

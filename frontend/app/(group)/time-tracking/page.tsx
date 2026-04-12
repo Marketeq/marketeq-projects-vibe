@@ -1147,8 +1147,17 @@ function ScreenshotDetailsDialog({
 //   doc 30 — Auto-Update & Release Channels  (GitHub releases feed)
 //   doc 41 — In-App Help, Empty States & Onboarding Copy
 
-// Current stable release (updated at build time from GitHub releases)
-const DTT_VERSION = "1.0.0"
+// Stable download URLs. The underlying repo is a dedicated release-only repo
+// (Marketeq/desktop-time-tracker) so the main codebase stays private while
+// /releases/latest/download/<file> remains publicly downloadable.
+//
+// Filenames are intentionally versionless so these URLs never break across
+// version bumps — GitHub redirects `/releases/latest/download/<file>` to the
+// current release asset. This is the same pattern Obsidian, Standard Notes,
+// and Linear use.
+//
+// electron-builder artifactName in desktop/electron-builder.yml MUST stay in
+// sync with these filenames (doc 29 §1.1).
 const DTT_RELEASES_BASE = "https://github.com/Marketeq/desktop-time-tracker/releases/latest/download"
 
 type DesktopPlatform = "mac-arm64" | "mac-x64" | "win-x64" | "win-arm64"
@@ -1160,43 +1169,45 @@ interface PlatformOption {
   fileName: string
   fileSize: string
   downloadUrl: string
+  available: boolean
 }
 
-// Artifact names follow electron-builder config from doc 29 §1.1:
-//   mac:  "Desktop Time Tracker-${version}-${arch}.dmg"
-//   win:  "Desktop Time Tracker-Setup-${version}-${arch}.exe"
 const platformOptions: Record<DesktopPlatform, PlatformOption> = {
   "mac-arm64": {
     value: "mac-arm64",
     os: "mac",
     label: "macOS — Apple Silicon (M1/M2/M3)",
-    fileName: `Desktop Time Tracker-${DTT_VERSION}-arm64.dmg`,
-    fileSize: "118.2 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Desktop-Time-Tracker-${DTT_VERSION}-arm64.dmg`,
+    fileName: "Marketeq-mac-arm64.dmg",
+    fileSize: "99.5 MB",
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-mac-arm64.dmg`,
+    available: true,
   },
   "mac-x64": {
     value: "mac-x64",
     os: "mac",
     label: "macOS — Intel",
-    fileName: `Desktop Time Tracker-${DTT_VERSION}-x64.dmg`,
-    fileSize: "124.6 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Desktop-Time-Tracker-${DTT_VERSION}-x64.dmg`,
+    fileName: "Marketeq-mac-x64.dmg",
+    fileSize: "104.9 MB",
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-mac-x64.dmg`,
+    available: true,
   },
   "win-x64": {
     value: "win-x64",
     os: "windows",
-    label: "Windows 10/11 — 64-bit",
-    fileName: `Desktop Time Tracker-Setup-${DTT_VERSION}-x64.exe`,
-    fileSize: "96.8 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Desktop-Time-Tracker-Setup-${DTT_VERSION}-x64.exe`,
+    label: "Windows 10/11 — 64-bit (coming soon)",
+    fileName: "Marketeq-Setup-win-x64.exe",
+    fileSize: "—",
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Setup-win-x64.exe`,
+    available: false,
   },
   "win-arm64": {
     value: "win-arm64",
     os: "windows",
-    label: "Windows 10/11 — ARM64",
-    fileName: `Desktop Time Tracker-Setup-${DTT_VERSION}-arm64.exe`,
-    fileSize: "94.3 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Desktop-Time-Tracker-Setup-${DTT_VERSION}-arm64.exe`,
+    label: "Windows 10/11 — ARM64 (coming soon)",
+    fileName: "Marketeq-Setup-win-arm64.exe",
+    fileSize: "—",
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Setup-win-arm64.exe`,
+    available: false,
   },
 }
 
@@ -1246,29 +1257,45 @@ function DownloadDesktopTrackerDialog({
   }, [open])
 
   const triggerDownload = () => {
-    // In production this would navigate to the GitHub releases asset URL
-    // to start the browser download. We avoid creating <a> elements here
-    // and just surface a toast + flip the "started" flag for the fallback.
+    if (!selected.available) {
+      toast({
+        title: `${selected.label.replace(" (coming soon)", "")} coming soon`,
+        description:
+          "Windows builds will be published once the Windows build host is available.",
+      })
+      return
+    }
+    // Navigate to the GitHub releases asset URL. The browser treats the 302
+    // redirect chain as a normal file download without leaving the page.
     setDownloadStarted(true)
     toast({
       title: "Download started",
       description: `${selected.fileName} is downloading to your Downloads folder.`,
     })
+    if (typeof window !== "undefined") {
+      window.location.href = selected.downloadUrl
+    }
   }
 
-  // Auto-start the download when the dialog opens (per flowchart Step 2)
+  // Auto-start the download when the dialog opens (per flowchart Step 2).
+  // Only for platforms whose installers actually exist — otherwise we'd
+  // send the user into a 404 without their consent.
   useEffect(() => {
     if (!open || downloadStarted) return
+    if (!selected.available) return
     const t = setTimeout(() => {
       setDownloadStarted(true)
       toast({
         title: "Download started",
         description: `${selected.fileName} is downloading to your Downloads folder.`,
       })
+      if (typeof window !== "undefined") {
+        window.location.href = selected.downloadUrl
+      }
     }, 400)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, selected.available])
 
   const otherOsPlatform: DesktopPlatform = isMac ? "win-x64" : "mac-arm64"
 
@@ -1320,8 +1347,8 @@ function DownloadDesktopTrackerDialog({
                   macOS — Apple Silicon (M1/M2/M3)
                 </SelectItem>
                 <SelectItem value="mac-x64">macOS — Intel</SelectItem>
-                <SelectItem value="win-x64">Windows 10/11 — 64-bit</SelectItem>
-                <SelectItem value="win-arm64">Windows 10/11 — ARM64</SelectItem>
+                <SelectItem value="win-x64">Windows 10/11 — 64-bit (coming soon)</SelectItem>
+                <SelectItem value="win-arm64">Windows 10/11 — ARM64 (coming soon)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1341,7 +1368,7 @@ function DownloadDesktopTrackerDialog({
                 {selected.fileName}
               </div>
               <div className="text-xs text-gray-500">
-                v{DTT_VERSION}  {selected.fileSize}  Stable channel
+                {selected.fileSize}  Stable channel
               </div>
             </div>
             <Button
@@ -1378,7 +1405,7 @@ function DownloadDesktopTrackerDialog({
               {(isMac
                 ? [
                     "Open the downloaded .dmg file",
-                    'Drag "Desktop Time Tracker" into your Applications folder',
+                    'Drag "Marketeq" into your Applications folder',
                     "Launch the app and sign in with your Marketeq account",
                     "Grant Screen Recording, Accessibility, and Notification permissions when prompted",
                   ]

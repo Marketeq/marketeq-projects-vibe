@@ -26,6 +26,7 @@ export interface ContractEntryProps {
   onAddTask?: () => void
   onPlay?: () => void
   onPlayTask?: (taskId: string) => void
+  onSwitchContract?: () => void
   className?: string
 }
 
@@ -78,9 +79,59 @@ function FixedTooltip({
   )
 }
 
+/** Interactive tooltip for "switch contracts" — stays open while hovering tooltip itself */
+function SwitchContractTooltip({
+  anchorRef,
+  onSwitch,
+}: {
+  anchorRef: React.RefObject<HTMLDivElement | null>
+  onSwitch: () => void
+}) {
+  const [pos, setPos] = React.useState<{ top: number; left: number; below: boolean } | null>(null)
+
+  React.useEffect(() => {
+    const el = anchorRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const showBelow = rect.top < 60
+    let left = rect.left + rect.width / 2
+    left = Math.max(112, Math.min(left, window.innerWidth - 112))
+    setPos({
+      left,
+      top: showBelow ? rect.bottom + 6 : rect.top - 6,
+      below: showBelow,
+    })
+  }, [anchorRef])
+
+  if (!pos) return null
+  return ReactDOM.createPortal(
+    <div
+      className="fixed w-[210px] px-3 py-2.5 rounded-lg bg-white text-left text-xs shadow-[0_4px_16px_rgba(0,0,0,0.12)] border border-gray-100 z-[200]"
+      style={{
+        left: pos.left,
+        top: pos.top,
+        transform: pos.below ? "translateX(-50%)" : "translateX(-50%) translateY(-100%)",
+      }}
+    >
+      <p className="text-dark-blue-400 leading-normal">
+        You can only track one contract at a time.
+      </p>
+      <button
+        onClick={(e) => { e.stopPropagation(); onSwitch() }}
+        className="mt-1 text-primary-500 font-medium hover:text-primary-600 hover:underline transition cursor-pointer"
+      >
+        Switch contracts
+      </button>
+
+    </div>,
+    document.body
+  )
+}
+
 /** Play button with hover tooltip — context-aware */
 function PlayWithTooltip({
   onClick,
+  onSwitchContract,
   isSameContract,
   isDifferentContract,
   isTracking,
@@ -88,6 +139,7 @@ function PlayWithTooltip({
   label,
 }: {
   onClick?: () => void
+  onSwitchContract?: () => void
   isSameContract: boolean
   isDifferentContract: boolean
   isTracking: boolean
@@ -95,6 +147,7 @@ function PlayWithTooltip({
   label?: string
 }) {
   const [hovered, setHovered] = React.useState(false)
+  const hideTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const ref = React.useRef<HTMLDivElement>(null)
   const disabled = isDifferentContract
 
@@ -104,8 +157,16 @@ function PlayWithTooltip({
     ? "Switch to this task"
     : null
 
+  const show = () => {
+    if (hideTimeout.current) { clearTimeout(hideTimeout.current); hideTimeout.current = null }
+    setHovered(true)
+  }
+  const hide = () => {
+    hideTimeout.current = setTimeout(() => setHovered(false), 150)
+  }
+
   return (
-    <div ref={ref} className="relative shrink-0" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+    <div ref={ref} className="relative shrink-0" onMouseEnter={show} onMouseLeave={hide}>
       <button
         onClick={(e) => { e.stopPropagation(); if (!disabled) onClick?.() }}
         className={cn(
@@ -123,11 +184,9 @@ function PlayWithTooltip({
         {label && <span className={cn("text-[10px] leading-3", disabled ? "text-gray-200" : "text-gray-400")}>{label}</span>}
       </button>
       {hovered && disabled && (
-        <FixedTooltip anchorRef={ref} wide>
-          You can only track one contract at a time.
-          <br />
-          Click here to switch contracts.
-        </FixedTooltip>
+        <div onMouseEnter={show} onMouseLeave={hide}>
+          <SwitchContractTooltip anchorRef={ref} onSwitch={() => { setHovered(false); onSwitchContract?.() }} />
+        </div>
       )}
       {hovered && !disabled && tooltipText && (
         <FixedTooltip anchorRef={ref}>
@@ -248,6 +307,7 @@ export function ContractEntry({
   onAddTask,
   onPlay,
   onPlayTask,
+  onSwitchContract,
   className,
 }: ContractEntryProps) {
   const isTracking = !!activeContractId
@@ -280,6 +340,7 @@ export function ContractEntry({
 
         <PlayWithTooltip
           onClick={() => onPlay?.()}
+          onSwitchContract={onSwitchContract}
           isSameContract={isSameContract}
           isDifferentContract={isDifferentContract}
           isTracking={isTracking}
@@ -334,6 +395,7 @@ export function ContractEntry({
 
                   <PlayWithTooltip
                     onClick={() => onPlayTask?.(task.id)}
+                    onSwitchContract={onSwitchContract}
                     isSameContract={isSameContract}
                     isDifferentContract={isDifferentContract}
                     isTracking={isTracking}
