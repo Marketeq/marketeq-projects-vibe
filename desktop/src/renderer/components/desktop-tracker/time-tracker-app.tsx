@@ -1029,7 +1029,7 @@ export function TimeTrackerApp({
           <div ref={scrollRef} onScroll={handleContentScroll} className="flex-1 overflow-y-auto">
             {/* Running-state expanded header — scrolls away naturally */}
             {isRunning && activeTask && (
-              <div ref={expandedHeaderRef}>
+              <div ref={expandedHeaderRef} className="animate-fade-in">
                 <div className="px-4 pt-3 pb-2 relative z-10">
                   <TaskSearch
                     value={searchValue}
