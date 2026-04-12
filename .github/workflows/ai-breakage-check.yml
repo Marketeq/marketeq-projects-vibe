@@ -1,0 +1,222 @@
+name: AI Breakage Detector
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  detect:
+    name: Regression risk analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install jq + ripgrep
+        run: sudo apt-get update -y && sudo apt-get install -y jq ripgrep
+
+      - name: Build analysis context
+        id: ctx
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        shell: bash
+        run: |
+          set -e
+          git fetch origin "$BASE_REF" --depth=1 || true
+          BASE_SHA=$(git rev-parse "origin/$BASE_REF")
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+
+          # The raw diff (cap at 80KB to stay inside prompt limits)
+          git diff "$BASE_SHA"...HEAD -- \
+            '*.ts' '*.tsx' '*.js' '*.jsx' '*.json' \
+            ':!**/package-lock.json' ':!**/yarn.lock' ':!**/pnpm-lock.yaml' \
+            ':!**/dist/**' ':!**/build/**' ':!**/.next/**' \
+            > /tmp/pr.diff || true
+          head -c 80000 /tmp/pr.diff > /tmp/pr.diff.trim
+
+          # Identify changed TS/TSX files
+          git diff --name-only --diff-filter=AM "$BASE_SHA"...HEAD -- '*.ts' '*.tsx' \
+            > /tmp/changed.txt || true
+
+          # Extract exported symbols from the BASE version of each changed file
+          # (this is what callers currently rely on — if the PR changes or
+          # removes any of these, we want Claude to scrutinize it)
+          : > /tmp/symbols.txt
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            git show "$BASE_SHA:$f" 2>/dev/null | \
+              grep -oE 'export (default )?(async )?(function|class|const|let|interface|type|enum) [A-Za-z_][A-Za-z0-9_]*' | \
+              awk '{print $NF}' >> /tmp/symbols.txt || true
+          done < /tmp/changed.txt
+          sort -u /tmp/symbols.txt > /tmp/symbols.unique.txt || true
+
+          # For each exported symbol, find the files that import or reference
+          # it OUTSIDE the changed file set — those are the callers at risk
+          : > /tmp/callers.txt
+          while IFS= read -r sym; do
+            [ -z "$sym" ] && continue
+            rg -l --type ts --type tsx -w "$sym" 2>/dev/null | \
+              grep -vxFf /tmp/changed.txt >> /tmp/callers.txt || true
+          done < /tmp/symbols.unique.txt
+          sort -u /tmp/callers.txt | head -n 40 > /tmp/callers.unique.txt || true
+
+          # Grab the first 200 lines of each caller for Claude's context
+          : > /tmp/caller-snippets.txt
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            [ -f "$f" ] || continue
+            echo "===== FILE: $f =====" >> /tmp/caller-snippets.txt
+            head -n 200 "$f" >> /tmp/caller-snippets.txt
+            echo "" >> /tmp/caller-snippets.txt
+          done < /tmp/callers.unique.txt
+          head -c 80000 /tmp/caller-snippets.txt > /tmp/caller-snippets.trim
+
+          # Persist stats for the prompt
+          {
+            echo "CHANGED_COUNT=$(wc -l < /tmp/changed.txt | tr -d ' ')"
+            echo "SYMBOL_COUNT=$(wc -l < /tmp/symbols.unique.txt | tr -d ' ')"
+            echo "CALLER_COUNT=$(wc -l < /tmp/callers.unique.txt | tr -d ' ')"
+          } > /tmp/stats.env
+          cat /tmp/stats.env
+
+      - name: Ask Claude to detect regressions
+        id: claude
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        shell: bash
+        run: |
+          set -e
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY secret not set — skipping AI breakage check"
+            echo "status=skipped" >> "$GITHUB_OUTPUT"
+            echo "body=AI breakage check skipped — \`ANTHROPIC_API_KEY\` secret not configured." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          DIFF=$(cat /tmp/pr.diff.trim)
+          CALLERS=$(cat /tmp/caller-snippets.trim)
+          SYMBOLS=$(cat /tmp/symbols.unique.txt)
+
+          PROMPT=$(jq -n \
+            --arg title "$PR_TITLE" \
+            --arg body "$PR_BODY" \
+            --arg base "$BASE_REF" \
+            --arg diff "$DIFF" \
+            --arg symbols "$SYMBOLS" \
+            --arg callers "$CALLERS" \
+            '{
+              model: "claude-sonnet-4-6",
+              max_tokens: 4096,
+              messages: [{
+                role: "user",
+                content: (
+                  "You are the Regression Detector for the Marketeq freelance marketplace repo (Next.js frontend + NestJS backend). Your ONLY job is to find places where this pull request silently breaks code that was working before.\n\n" +
+                  "The biggest recurring bug class in this repo is: Dev A fixes something, Dev B opens a PR that touches the same file or a shared dependency, Dev B's PR lands and silently overwrites or contradicts Dev A's fix. You must catch this before it merges.\n\n" +
+                  "PR Title: " + $title + "\n" +
+                  "Base branch: " + $base + "\n" +
+                  "PR Description:\n" + $body + "\n\n" +
+                  "=== DIFF (truncated to 80KB) ===\n```\n" + $diff + "\n```\n\n" +
+                  "=== EXPORTED SYMBOLS FROM CHANGED FILES (base version, before the PR) ===\n" + $symbols + "\n\n" +
+                  "=== FIRST 200 LINES OF FILES THAT IMPORT THOSE SYMBOLS (callers at risk) ===\n" + $callers + "\n\n" +
+                  "Analyze the diff against the caller snippets and answer these questions explicitly:\n\n" +
+                  "1. Does this PR change any exported symbol signature, prop type, function argument, return type, API response shape, DTO, or entity column that a caller still expects in the old form? For each break, name the symbol, the caller file, and the line.\n\n" +
+                  "2. Does this PR remove, rename, or inline any exported symbol that callers still reference? For each, name the symbol and the caller.\n\n" +
+                  "3. Does this PR rewrite any file that currently contains a fix, guard, null check, error handler, or early return — and does the rewrite preserve that logic verbatim? If ANY safety check or bug fix is removed in the rewrite, flag it — even if the new code looks clean.\n\n" +
+                  "4. Does this PR touch profile loading logic in any way? (files: talent-profile/page.tsx, client-profile/page.tsx, edit-profile-modals.tsx, auth.tsx, src/lib/api/user.ts). If yes, does the PR description contain the four-point confirmation from SOP §1.3?\n\n" +
+                  "5. Does this PR touch authentication or local dev login (sign-in/page.tsx, sign-up/page.tsx, contexts/auth.tsx, src/lib/api/auth.ts, middleware.ts, backend/apps/auth-service/**, backend/libs/shared/src/guards/**, backend/libs/shared/src/decorators/**, any .env.example file)? Per SOP §1.8 local dev login is FROZEN — developers rely on it working against a fresh local .env. If any of these files are touched, does the PR description contain the four-point login confirmation from SOP §1.8? If not, this is an automatic BLOCK. Additionally, verify the new code still handles the edge cases the old code handled (OAuth callbacks, token refresh, session expiry, guard decorators, dev-mode bypass).\n\n" +
+                  "6. Does this PR touch onboarding (frontend/app/(group)/onboarding/**, talent-step pages)? If yes, does it preserve every existing form validation, error state, and field?\n\n" +
+                  "7. Are there any CSS/Tailwind class changes that could visually break shared components (buttons, modals, cards, navbar)?\n\n" +
+                  "8. Does the PR change any shared utility function (frontend/lib/**, frontend/src/lib/**, backend/libs/**)? If yes, read every caller before approving.\n\n" +
+                  "Respond in this EXACT format:\n\n" +
+                  "## Verdict\n" +
+                  "One of: **SAFE** | **RISKY — NEEDS MANUAL VERIFICATION** | **BLOCK — LIKELY REGRESSION**\n\n" +
+                  "## Regression Risks Found\n" +
+                  "For each risk, use this bullet format:\n" +
+                  "- 🔥 **<severity>** — <file>:<line> — <symbol or behavior at risk>. <one-sentence explanation of why this could break existing functionality>. Caller affected: `<path>`.\n\n" +
+                  "If none, write: No regression risks detected in the diff or caller snippets analyzed.\n\n" +
+                  "## What I Could Not Verify\n" +
+                  "List anything you would need additional files to confirm (e.g., 'could not verify callers of useSession outside the 200-line window'). Be specific.\n\n" +
+                  "## Reviewer Action Required\n" +
+                  "A numbered list of exactly what a human reviewer must manually check before merging. Be concrete. Reference file paths.\n\n" +
+                  "Be paranoid. Prefer false positives over false negatives. If you are uncertain, flag it. Do not approve a PR you cannot prove is safe."
+                )
+              }]
+            }')
+
+          RESPONSE=$(curl -sS https://api.anthropic.com/v1/messages \
+            -H "content-type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$PROMPT")
+
+          TEXT=$(echo "$RESPONSE" | jq -r '.content[0].text // empty')
+          if [ -z "$TEXT" ]; then
+            echo "Claude API call failed or returned empty:"
+            echo "$RESPONSE" | head -c 2000
+            echo "status=error" >> "$GITHUB_OUTPUT"
+            {
+              echo "body<<AI_EOF"
+              echo "## ⚠️ AI Breakage Detector — error"
+              echo ""
+              echo "The Claude API call failed or returned empty. A human reviewer must manually verify this PR does not break existing code before merging. See SOP §3.3 (Breaking-change analysis)."
+              echo "AI_EOF"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Decide pass/fail from the verdict line
+          if echo "$TEXT" | grep -qi 'BLOCK — LIKELY REGRESSION'; then
+            STATUS=fail
+          elif echo "$TEXT" | grep -qi 'RISKY — NEEDS MANUAL VERIFICATION'; then
+            STATUS=warn
+          else
+            STATUS=pass
+          fi
+
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          {
+            echo "body<<AI_EOF"
+            echo "## 🔍 AI Breakage Detector"
+            echo ""
+            echo "_Automated regression-risk analysis by Claude Sonnet 4.6. Reads the PR diff plus callers of every exported symbol the PR changes, looking specifically for silent overwrites of working code. See SOP §14._"
+            echo ""
+            echo "$TEXT"
+            echo ""
+            echo "---"
+            echo "🤖 Automated by [Claude Code](https://claude.com/claude-code) — not a substitute for manual review"
+            echo "AI_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post / update breakage comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BODY: ${{ steps.claude.outputs.body }}
+        run: |
+          [ -z "$BODY" ] && exit 0
+          MARKER="<!-- ai-breakage-comment -->"
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -n1)
+          FULL_BODY="${MARKER}"$'\n'"${BODY}"
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/${EXISTING}" -f body="$FULL_BODY"
+          else
+            gh pr comment "$PR_NUMBER" --body "$FULL_BODY"
+          fi
+
+      - name: Fail on likely regression
+        if: steps.claude.outputs.status == 'fail'
+        run: |
+          echo "AI Breakage Detector flagged this PR as BLOCK — LIKELY REGRESSION."
+          echo "See the PR comment for details."
+          exit 1

@@ -3,6 +3,25 @@
 This file is automatically loaded by every Claude Code session and agent working in this repo.
 Read this before doing anything else.
 
+## 🛑 Code Review SOP (MANDATORY reading before any PR work)
+
+**Every Claude Code session in this repo must read and follow `docs/CODE_REVIEW_SOP.md` before opening, reviewing, or merging any pull request.** The SOP defines:
+
+- The non-negotiable rules (no overriding existing code, no touching profile loading or login-frozen files without the four-point confirmation, incremental changes only, Render detached from `dev-main`, env-driven login config)
+- The seven-point review checklist
+- The only approved merge procedure (`gh pr merge <N> --squash --delete-branch` then verify)
+- The block-comment template for failing PRs
+- The exact Claude CLI prompt to use for reviews (§10)
+
+**Automated enforcement that runs on every PR:**
+1. `.github/workflows/sop-check.yml` — mechanical SOP checker (secrets, junk files, off-limits login/profile files, env template branch mismatch, hardcoded login values, entity without migration, Render coupling on dev-main, oversized PRs, `@ts-ignore` without justification). Blocks the PR on any violation.
+2. `.github/workflows/ai-breakage-check.yml` — Claude Sonnet 4.6 regression detector. Reads the diff + callers of every changed symbol and specifically hunts for silent overwrites of working code. Blocks the PR if it detects likely regression.
+3. `.github/workflows/gitleaks.yml` — secret scanning on every PR.
+4. `.github/workflows/code-review.yml` — AI code review on every PR to `dev-main`, `staging`, `main-live`.
+5. `.github/CODEOWNERS` — directory-scoped ownership, auto-requests the right reviewers on every PR.
+
+If you are reviewing a PR via Claude CLI, use the prompt in §10 of the SOP verbatim.
+
 ## What This Project Is
 Marketeq is a freelance marketplace platform (similar to Upwork/Fiverr) built with:
 - **Backend**: NestJS monorepo with microservices at `/backend/apps/`
