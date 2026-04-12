@@ -3,14 +3,14 @@
   "framework": "nextjs",
   "git": {
     "deploymentEnabled": {
-      "dev-main": false,
       "feat/*": false,
       "fix/*": false,
       "chore/*": false,
       "refactor/*": false,
       "agent/*": false,
+      "dev-main": true,
       "staging": true,
-      "main-live": true
+      "live-mvp": true
     }
   }
 }

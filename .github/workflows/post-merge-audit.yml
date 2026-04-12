@@ -11,7 +11,7 @@ name: Post-Merge SOP Audit
 
 on:
   push:
-    branches: [dev-main, staging, main-live]
+    branches: [dev-main, staging, live-mvp]
 
 permissions:
   contents: write

@@ -2,7 +2,9 @@
 
 **Owner:** @CTorres9800
 **Reviewer of record:** Claude Code (on behalf of @CTorres9800)
-**Applies to:** every PR targeting `dev-main`, `staging`, or `main-live`
+**Applies to:** every PR targeting `dev-main`, `staging`, or `live-mvp`
+
+**Companion doc:** `docs/DEVOPS_SOP.md` owns all deployment, branch topology, env template, and QA promotion rules. This document stays focused on code review. Do not add deployment rules here.
 **Last updated:** 2026-04-11
 
 This is the single source of truth for how pull requests are reviewed, merged, and cleaned up in this repository. Nothing in this document is optional. If any step cannot be completed, the PR **does not merge**.
@@ -42,142 +44,55 @@ If a PR modifies any of the above, the author must confirm **in writing in the P
 
 Without all four confirmations, block the PR.
 
-### 1.8 Local dev login is FROZEN
-Once local development login is working against a fresh `.env` / `.env.example` setup, **nobody changes it without CTO approval**. Developers must not have to re-fix the login flow every time they pull `dev-main`. This rule exists because every regression in this area has cost the team half a day of debugging.
+### 1.4 Login files are FROZEN — four-point confirmation required
+Once local login works against a fresh `.env.local` copied from `frontend/.env.local.example`, **no PR changes the login path without explicit CTO sign-off**. Per the repo-wide rule: *if login works locally, it should not be broken on dev, staging, or anywhere else*. The only way this is possible is if the code is environment-agnostic and reads every value from `process.env.*` — which is the invariant `docs/DEVOPS_SOP.md` §6 owns.
 
-**Frozen files:**
-- `frontend/app/sign-in/page.tsx`
-- `frontend/app/sign-up/page.tsx`
-- `frontend/contexts/auth.tsx`
-- `frontend/src/lib/api/auth.ts`
-- `frontend/middleware.ts`
-- `backend/apps/auth-service/**` (any file)
-- `backend/libs/shared/src/guards/**`
-- `backend/libs/shared/src/decorators/**`
-- `.env.example`, `frontend/.env.example`, `backend/.env.example`
+**Review-side rules this SOP enforces:**
 
-Any PR modifying any of the above must include **all four** of the following confirmation sentences, **verbatim**, in the PR description. The mechanical SOP check (`.github/workflows/sop-check.yml`) will fail the PR if any sentence is missing:
+- **Frozen files** (any change to any of these triggers the four-point confirmation below):
+  - `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
+  - `frontend/contexts/auth.tsx`
+  - `frontend/src/lib/api/auth.ts`
+  - `frontend/middleware.ts`
+  - `backend/apps/auth-service/**`
+  - `backend/libs/shared/src/guards/**`, `backend/libs/shared/src/decorators/**`
+  - Any of the six frozen env templates: `frontend/.env.{local,staging,production}.example`, `backend/.env.{local,staging,production}.example`
 
-1. `local dev login on the frontend still works against a fresh .env`
-2. `backend JWT signing, verification, and guards are unchanged`
-3. `manual QA was performed locally with a client account and a talent account`
-4. `no credentials, keys, or secrets are committed in this PR`
+- **Four-point local confirmation** — required verbatim in the PR description of any PR to `dev-main` touching any frozen file:
+  1. `local dev login on the frontend still works against a fresh .env`
+  2. `backend JWT signing, verification, and guards are unchanged`
+  3. `manual QA was performed locally with a client account and a talent account`
+  4. `no credentials, keys, or secrets are committed in this PR`
 
-Without all four, block the PR. If the author can't honestly make all four claims, the login-touching changes must be removed from the PR.
+- Staging and production templates have their own four-point confirmations (see `docs/DEVOPS_SOP.md` §5.1) and must target the matching branch (`staging` or `live-mvp`).
 
-**Automatic enforcement on every PR touching login-frozen files:**
-- The PR is automatically labeled `login-touched` by `.github/workflows/sop-check.yml`.
-- A 🚨 **LOGIN TOUCHED** comment is posted on the PR, even if the four-point confirmation is present — reviewers cannot miss that the login path was modified.
-- The CTO (@CTorres9800) is auto-requested as a reviewer on top of the normal CODEOWNERS request.
-- The goal is stated plainly: **fix login once, never again.** Every regression of the local login flow is a failure of this rule and a reason to revert the responsible PR immediately.
+- **No hardcoded env values** in login code. Block any PR that adds a literal `*.onrender.com` URL, a literal `sameSite:` / `secure:` flag, a literal CORS origin string, or a literal JWT secret inside the frozen files. All values come from `process.env.*`.
 
-### 1.10 Environment-aware login (env-driven, never hardcoded)
-Login behavior is different on local vs. Vercel+Render because of cookies (`SameSite`, `Secure`), CORS origin allowlists, backend URLs, and JWT verification. Previously this caused the recurring failure mode: a developer "fixes local login" by hardcoding a value that only works locally, which silently breaks login on Vercel/Render (or vice versa).
+- `sop-check.yml` auto-labels frozen-file PRs `login-touched`, posts a 🚨 LOGIN TOUCHED sticky comment, and auto-requests @CTorres9800.
 
-**The rule:** login code must never hardcode environment-specific values. It reads them from env vars. There are exactly **three frozen env templates**, one per environment:
+**The bidirectional invariant (said plainly, because this is the real pain):**
 
-| Template | Used for | Expected values |
-|---|---|---|
-| `frontend/.env.local.example` | Local dev on `dev-main` | `NEXT_PUBLIC_BACKEND_URL=http://localhost:3002/api`, `NEXT_PUBLIC_COOKIE_SAMESITE=lax`, `NEXT_PUBLIC_COOKIE_SECURE=false`, `NEXT_PUBLIC_AUTH_MODE=dev` |
-| `frontend/.env.staging.example` | Vercel Preview + Render staging | `NEXT_PUBLIC_BACKEND_URL=https://<staging>.onrender.com/api`, `NEXT_PUBLIC_COOKIE_SAMESITE=none`, `NEXT_PUBLIC_COOKIE_SECURE=true`, `NEXT_PUBLIC_AUTH_MODE=staging` |
-| `frontend/.env.production.example` | Vercel Production + Render live | `NEXT_PUBLIC_BACKEND_URL=https://<prod>.onrender.com/api`, `NEXT_PUBLIC_COOKIE_SAMESITE=none`, `NEXT_PUBLIC_COOKIE_SECURE=true`, `NEXT_PUBLIC_AUTH_MODE=production` |
+> If login works locally, a PR must not break login on Vercel dev / staging / live.
+> If login works on Vercel dev / staging / live, a PR must not break login locally.
+> "Fixing" login in one environment by hardcoding a value that only works there is **the bug**, not the fix.
 
-Equivalent `backend/.env.*.example` files cover the backend side (CORS origins, JWT issuer, cookie domain, `NODE_ENV`).
+Every login regression in this repo's history has been a violation of this invariant: someone changed a hardcoded cookie flag, or a hardcoded backend URL, or a hardcoded CORS origin, in one environment to make that environment work — and silently broke the others. The only code that satisfies the invariant is code that reads every environment-specific value from `process.env.*` and has **zero** literals for URLs, cookie flags, CORS origins, or JWT material in the frozen files. This is what `sop-check.yml` blocks, in both directions, on every PR.
 
-**Hard constraints:**
+**Everything else about the login/env topology — Render wiring, Vercel deploy gating, env template ownership, branch-to-template mapping — lives in `docs/DEVOPS_SOP.md`. Do not duplicate those rules here.**
 
-1. Login code (`frontend/app/sign-in/page.tsx`, `frontend/contexts/auth.tsx`, `frontend/src/lib/api/auth.ts`, `frontend/middleware.ts`, `backend/apps/auth-service/**`) **must not contain hardcoded URLs, cookie flag values, CORS origin strings, or JWT key material**. All of these must come from `process.env.*`.
-2. A PR that modifies `frontend/.env.local.example` must carry the §1.8 four-point login confirmation for **local**.
-3. A PR that modifies `frontend/.env.staging.example` or `backend/.env.staging.example` must carry a four-point confirmation for **staging** (see below) and must target the `staging` branch, not `dev-main`.
-4. A PR that modifies `frontend/.env.production.example` or `backend/.env.production.example` must target `main-live` and carry a four-point confirmation for **production**.
-5. The three template pairs are independent. Modifying the local template never affects staging or prod; modifying staging never affects local or prod. If a PR modifies more than one template at once, block it and ask the author to split.
-
-**Staging four-point confirmation (required in PR description of any PR to `staging` that touches login or `*.staging.example`):**
-1. `staging login on Vercel preview still works against the staging Render backend`
-2. `staging cookie SameSite/Secure flags are unchanged`
-3. `staging CORS origin allowlist is unchanged`
-4. `manual QA was performed against the staging Render deployment with a client account and a talent account`
-
-**Production four-point confirmation (required in PR description of any PR to `main-live` that touches login or `*.production.example`):**
-1. `production login on Vercel production still works against the production Render backend`
-2. `production cookie SameSite/Secure flags are unchanged`
-3. `production CORS origin allowlist is unchanged`
-4. `manual QA was performed against the production Render deployment with a client account and a talent account`
-
-**Why this rule exists:** "fix login once, never again" only works if local, staging, and production each have their own frozen template that nobody is allowed to touch without explicit CTO sign-off. The login code itself is environment-agnostic — it just reads env vars. A developer fixing their local issue cannot accidentally break production, and vice versa.
-
-### 1.9 `dev-main` and local dev MUST be detached from Render
-Local development and the `dev-main` branch must run **entirely against a local backend** — never against a Render deployment. Render is a deployment target for `staging` and `main-live` only.
-
-**Why this rule exists:** if `dev-main` or any developer's local `.env` points at a Render URL, a single broken Render deploy makes every developer unable to work locally until the deploy is fixed. That is an unacceptable coupling and has caused team-wide outages.
-
-**Hard constraints enforced on every PR to `dev-main`:**
-
-1. `frontend/.env.example`, `backend/.env.example`, and root `.env.example` must **not** contain any `*.onrender.com` URL for backend targets. Backend URLs in these files must point at localhost (e.g. `http://localhost:3002/api`).
-2. `NEXT_PUBLIC_BACKEND_URL` in any `.env.example` must resolve to a localhost URL, not a Render URL.
-3. `render.yaml` must not list `dev-main` (or any `dev-*` branch) under any service's `branch:` field. Only `staging` and `main-live` are valid deploy branches.
-4. No new `render.yaml` services may be added in a PR targeting `dev-main` — `render.yaml` changes only merge through a `staging` → `main-live` promotion.
-5. No PR targeting `dev-main` may add Render CLI calls, Render webhook wiring, or `render deploy` commands to CI workflows that run on `dev-main`.
-
-The mechanical SOP check (`.github/workflows/sop-check.yml`) will scan for these violations on every PR and block the merge. Human reviewers must also treat any of these as automatic blocks, regardless of how small the change looks.
-
-**Promotion workflow (the only approved path for Render-connected changes):**
-
-```
-feature/xyz  →  dev-main  (local-only, no Render)
-                   ↓ (QA green-lights)
-                staging    (deploys to Render staging environment)
-                   ↓ (QA + CTO approval)
-               main-live   (deploys to Render production)
-```
-
-A developer who needs to test a feature against Render does it on the `staging` branch after `dev-main` merge, not by wiring `dev-main` to Render.
-
-### 1.11 `dev-main` and feature branches do NOT deploy to Vercel
-Only `staging` and `main-live` deploy to Vercel. `dev-main` and every feature branch targeting `dev-main` are **local-only**. This mirrors SOP §1.9 (no Render coupling) and extends it: no Vercel coupling either. The reason is identical — if `dev-main` deploys to Vercel, developers will "fix" the login flow in a way that works on Vercel but breaks locally (or vice versa), and every login fix becomes a regression risk for both environments.
-
-**Enforced by:**
-- `frontend/vercel.json` with `git.deploymentEnabled` explicitly set to `false` for `dev-main`, `feat/*`, `fix/*`, `chore/*`, `refactor/*`, `agent/*` and `true` only for `staging` and `main-live`.
-- `.github/workflows/sop-check.yml` blocks any PR targeting `dev-main` that modifies `vercel.json`.
-- Vercel dashboard (manual, CTO-only): Production Branch = `main-live`; all non-`staging`/non-`main-live` preview deploys disabled.
-
-**Stakeholder demo workflow:** if a stakeholder wants to see a preview URL for unreleased work, the answer is "merge it to `staging` first." Do not create ad-hoc demo branches that deploy to Vercel — they reintroduce the exact bug class this rule prevents.
-
-### 1.12 QA works on `staging` only — never `dev-main`
-Role separation by branch:
-
-| Role | Branches they touch | Branches they NEVER touch |
-|---|---|---|
-| **Developers** | feature branches → `dev-main` | `staging`, `main-live` |
-| **QA** | `staging` → `main-live` | `dev-main`, feature branches |
-| **CTO (@CTorres9800)** | all branches, all merges | — |
-
-**Workflow:**
-1. Developers build and test features locally on feature branches, merge to `dev-main` after passing review + CI.
-2. When a `dev-main` milestone is ready for QA, the CTO (or a trusted promoter) fast-forwards or cherry-picks the relevant commits into `staging`.
-3. QA tests on `staging` (deployed to Render staging + Vercel staging preview).
-4. When QA signs off, `staging` promotes to `main-live`, which deploys to Render production + Vercel production.
-
-**Enforced by:**
-- CODEOWNERS: `staging`-only branches (via path-based rules where applicable) require QA team review.
-- Convention: QA is never added as a reviewer on PRs targeting `dev-main`. If QA is tagged on a `dev-main` PR, the PR is misrouted and should be closed and re-opened against `staging` after the `dev-main` PR has merged.
-- Branch promotion is a CTO action, not a QA action. QA does not open PRs from `dev-main` → `staging`.
-
-**Why this rule exists:** giving QA access to `dev-main` inevitably means QA tries to "help" by pushing small fixes to unstable feature work. Those fixes collide with in-flight developer work and cause regressions. Keep the branches cleanly separated by role.
-
-### 1.4 Incremental changes only
+### 1.5 Incremental changes only
 - No mega-PRs that mix unrelated concerns (e.g., "fix login" should not also include a CSS refactor).
 - If a PR contains unrelated changes, request that the author split it.
 
-### 1.5 Repo must stay private
+### 1.6 Repo must stay private
 - Do not publish, make public, or fork this repo publicly as part of a review.
 - The repo may be temporarily toggled public only for Vercel free-tier deploy workarounds by the owner — never by a reviewer.
 
-### 1.6 Never silently switch branches during review
+### 1.7 Never silently switch branches during review
 - If reviewing on a local checkout requires switching branches, tell the user first.
 - After pushing any review commit, **stay on that branch** until the user acknowledges. Do not `git checkout` elsewhere silently.
 
-### 1.7 Always verify before declaring done
+### 1.8 Always verify before declaring done
 - "Merged" means: squash-merge landed on `dev-main`, branch deleted, and a sanity check that `dev-main` still builds.
 - Do not tell the user a PR is merged until `gh pr view N --json state,mergedAt` returns `"MERGED"`.
 
@@ -414,11 +329,8 @@ Two contributors independently touch the same file — or touch different files 
 
 **This is the bug class the AI Breakage Detector (§9.6) and directory-scoped CODEOWNERS exist to catch.** Every reviewer must also manually apply §3.3 and specifically compare the full new version of each changed file against the `dev-main` version to verify no existing fix was lost in a rewrite.
 
-### 8.10 Broken local login after a merge
-A PR modifies `sign-in/page.tsx`, `contexts/auth.tsx`, `auth-service`, or a guard decorator. The feature work is fine for the author's local setup but breaks local login for everyone else who pulls `dev-main` — typically because a new env var is required, a guard decorator changed, or a token-refresh code path was rewritten. Per SOP §1.8, local dev login is **frozen**: fix it once, never again. PRs touching login-frozen files are automatically labeled `login-touched`, post a sentinel comment, and auto-request CTO review.
-
-### 8.11 `dev-main` coupled to Render
-A PR points `NEXT_PUBLIC_BACKEND_URL` at a Render URL, or adds `dev-main` to `render.yaml`, or wires a Render deploy hook into a `dev-main` CI workflow. Result: when the Render deploy fails, every developer loses the ability to work locally until someone fixes the deploy. Per SOP §1.9, Render only connects on `staging` and `main-live`.
+### 8.10 Broken login after a cross-environment "fix" (the #2 recurring bug)
+A PR modifies `sign-in/page.tsx`, `contexts/auth.tsx`, `auth-service`, or a guard decorator to "fix login" in one environment. The feature work is fine for the author's environment but silently breaks login in the others — typically because the fix hardcoded a cookie flag, a backend URL, a CORS origin, or a JWT setting that only works in the author's environment. Every instance of this bug in the repo's history has been a violation of the bidirectional invariant in §1.4: *fixing login in any one environment must never break any other environment*. PRs touching login-frozen files are automatically labeled `login-touched`, post a sentinel comment, and auto-request CTO review. `sop-check.yml` also fails the PR on any hardcoded URL, cookie flag, CORS origin, or JWT secret in a frozen file.
 
 ---
 
@@ -429,7 +341,7 @@ GitHub's classic branch protection, rulesets, and native push protection **all r
 ### 9.1 Gitleaks secret scanning — **ENFORCED**
 - **Workflow:** `.github/workflows/gitleaks.yml`
 - **Config:** `.gitleaks.toml` (extends default ruleset + adds PEM private-key and `.env` file rules)
-- **Triggers:** every PR to any branch, plus every push to `dev-main`, `staging`, `main-live`
+- **Triggers:** every PR to any branch, plus every push to `dev-main`, `staging`, `live-mvp`
 - **Behavior:** fails the check if any committed secret is detected. Reviewer **must not merge** a PR with a failed gitleaks check, regardless of the author or urgency.
 - **Why it matters:** this is our replacement for GHAS push protection. It would have caught PR #37's private key commit automatically.
 
@@ -458,7 +370,7 @@ This prevents developers from accidentally staging key material. It does not sto
 
 ### 9.4 AI Code Review workflow — **ENFORCED (advisory)**
 - **File:** `.github/workflows/code-review.yml`
-- **Triggers:** PRs targeting `dev-main`, `staging`, or `main-live`
+- **Triggers:** PRs targeting `dev-main`, `staging`, or `live-mvp`
 - **Behavior:** posts an AI-generated review comment using Claude Sonnet 4.6. Treat its findings as a second opinion, not as authoritative.
 
 ### 9.6 Mechanical SOP Checker — **ENFORCED (blocking)**
@@ -469,17 +381,16 @@ This prevents developers from accidentally staging key material. It does not sto
   - Embedded PEM private-key headers in any added file
   - Root-level `package.json` / `package-lock.json` / `yarn.lock`
   - Off-limits profile files touched without the four-point confirmation (§1.3)
-  - Off-limits login files touched without the four-point login confirmation (§1.8)
+  - Off-limits login files touched without the four-point login confirmation (§1.4)
+  - Any hardcoded URL, cookie flag, CORS origin, or JWT secret inside a frozen login file — bidirectional (§1.4)
   - TypeORM entity changes without a matching migration
-  - Render URLs in any `.env.example` on PRs targeting `dev-main` (§1.9)
-  - `render.yaml` changes on PRs targeting `dev-main` (§1.9)
-  - Render CLI / webhook wiring in `dev-main` CI workflows (§1.9)
+  - Env template branch mismatches — `*.local.example` only on `dev-main`, `*.staging.example` only on `staging`, `*.production.example` only on `live-mvp` (see `docs/DEVOPS_SOP.md` §5.2)
   - Junk files (`.DS_Store`, `dist/`, `build/`, `node_modules/`, `.next/`)
   - Raw `throw new Error()` in backend code
   - `--no-verify` or `gh pr merge --admin` in scripts
   - Oversized PRs (>2000 lines) without `[EPIC]` prefix
   - New `@ts-ignore` without a `-- justification` comment
-- **Login sentinel:** if any login-frozen file is touched, the workflow also auto-labels the PR `login-touched`, auto-requests @CTorres9800 as a reviewer, and posts a sticky 🚨 LOGIN TOUCHED comment regardless of confirmation status. See §1.8.
+- **Login sentinel:** if any login-frozen file is touched, the workflow also auto-labels the PR `login-touched`, auto-requests @CTorres9800 as a reviewer, and posts a sticky 🚨 LOGIN TOUCHED comment regardless of confirmation status. See §1.4.
 
 ### 9.7 AI Breakage Detector — **ENFORCED (blocking)**
 - **File:** `.github/workflows/ai-breakage-check.yml`
@@ -501,7 +412,7 @@ This prevents developers from accidentally staging key material. It does not sto
 
 ### 9.9 Post-Merge SOP Audit + Auto-Revert — **ENFORCED (post-hoc, binding)**
 - **File:** `.github/workflows/post-merge-audit.yml`
-- **Triggers:** `push` event on `dev-main`, `staging`, `main-live` (i.e., fires the moment a merge lands)
+- **Triggers:** `push` event on `dev-main`, `staging`, `live-mvp` (i.e., fires the moment a merge lands)
 - **Behavior:** this is the keystone enforcement on the free plan. Since GitHub won't technically block a merge despite a red check, this workflow catches the bypass **after the merge** and undoes it automatically.
   1. Finds the PR associated with the push
   2. Reads the status of every required check (`Enforce Code Review SOP`, `Regression risk analysis`, `Scan for committed secrets`) via `gh pr view --json statusCheckRollup`
@@ -520,7 +431,7 @@ Applied via `gh api -X PATCH repos/Marketeq/marketeq-projects-vibe`:
 These are enforced by GitHub itself. Developers cannot bypass them without admin UI access.
 
 ### 9.11 Vercel deploy gating — **ENFORCED (server-side via Vercel)**
-`frontend/vercel.json` sets `git.deploymentEnabled` to `false` for `dev-main` and all feature branch patterns and `true` only for `staging` and `main-live`. Vercel honors this file on every push, so `dev-main` cannot be accidentally deployed. Per SOP §1.11.
+`frontend/vercel.json` disables preview deployments for feature branch patterns (`feat/*`, `fix/*`, `chore/*`, `refactor/*`, `agent/*`) and leaves `dev-main`, `staging`, and `live-mvp` enabled — each of those is the production branch of its own Vercel project. Full topology in `docs/DEVOPS_SOP.md` §2.
 
 ### 9.12 What is NOT technically blockable on free org plan
 The following require GitHub Team or higher and are therefore unavailable today:
@@ -715,7 +626,7 @@ Analyze the diff against the caller snippets and answer these questions explicit
 2. Does this PR remove, rename, or inline any exported symbol that callers still reference?
 3. Does this PR rewrite any file that currently contains a fix, guard, null check, error handler, or early return — and does the rewrite preserve that logic verbatim?
 4. Does this PR touch profile loading logic? If yes, does the PR description contain the four-point confirmation from SOP §1.3?
-5. Does this PR touch authentication or local dev login? If yes, does the PR description contain the four-point login confirmation from SOP §1.8?
+5. Does this PR touch authentication or local dev login? If yes, does the PR description contain the four-point login confirmation from SOP §1.4?
 6. Does this PR touch onboarding? If yes, does it preserve every existing form validation, error state, and field?
 7. Are there any CSS/Tailwind class changes that could visually break shared components?
 8. Does the PR change any shared utility function? If yes, read every caller before approving.
@@ -727,73 +638,9 @@ Full prompt source lives in `.github/workflows/ai-breakage-check.yml`.
 
 ---
 
-## 16. QA Promotion SOP (`dev-main` → `staging` → `main-live`)
-
-Per SOP §1.12, QA never works on `dev-main`. The only approved interaction is running sanctioned promotion scripts. Both scripts enforce the rules and cannot easily be bypassed.
-
-### 16.1 Role separation reminder
-
-| Role | May edit `dev-main`? | May edit `staging`? | May edit `main-live`? | May run promotion scripts? |
-|---|---|---|---|---|
-| Developer | ✅ (via PR) | ❌ | ❌ | ❌ |
-| QA | ❌ | ✅ (via PR + scripts) | ❌ | ✅ |
-| CTO | ✅ (all branches) | ✅ (all branches) | ✅ (all branches) | ✅ |
-
-### 16.2 Promoting `dev-main` → `staging` (developer work → QA testing)
-
-QA runs `./scripts/qa-promote-dev-to-staging.sh`. The script:
-
-1. Verifies your working tree is clean and you're authenticated to `gh`
-2. Fetches `origin`
-3. Verifies both `dev-main` and `staging` exist remotely
-4. Shows you how many commits `dev-main` is ahead of `staging`
-5. Checks out `staging` and merges `dev-main` with this explicit strategy:
-   - `staging` WINS on conflict for `frontend/.env.staging.example`, `backend/.env.staging.example`, `frontend/.env.production.example`, `backend/.env.production.example`, `frontend/vercel.json`, `render.yaml`
-   - `dev-main` wins for everything else
-6. Runs `gitleaks` on the merged result. Aborts if secrets are detected.
-7. Pushes `staging` to `origin`
-8. Opens a GitHub issue labeled `qa-round` with a QA checklist covering the critical flows
-
-**QA never edits files during this process.** If the script fails (merge conflicts outside the protected files), QA reports back to the CTO. The CTO resolves the conflicts or asks the developer to rebase their work.
-
-### 16.3 Promoting `staging` → `main-live` (QA sign-off → production)
-
-After QA testing on `staging` is complete and signed off, QA runs `./scripts/qa-promote-staging-to-live.sh`. The script:
-
-1. Same preflight + fetch
-2. Shows every commit being promoted
-3. Requires QA to type `PROMOTE TO PRODUCTION` literally (no silent confirmation)
-4. Checks out `main-live` and merges `staging` with this strategy:
-   - `main-live` WINS on conflict for `frontend/.env.production.example`, `backend/.env.production.example`, `frontend/vercel.json`, `render.yaml`
-5. Runs `gitleaks`
-6. Pushes `main-live` (triggers Render production + Vercel production deploys)
-7. Creates an annotated git tag `release-YYYY-MM-DD-HHMM` and a GitHub Release
-
-### 16.4 What QA is NOT allowed to do
-
-- Edit any file on `dev-main` directly
-- Open a PR whose base is `dev-main`
-- Run the promotion script while `dev-main` has failing CI
-- Promote `staging` → `main-live` without the full QA checklist signed off in the tracking issue
-- Force-push `staging` or `main-live`
-- Manually merge `dev-main` into `staging` without the script (the script has the environment-aware merge strategy — a manual merge will overwrite staging's env templates)
-
-If QA needs to stop a promotion that already pushed, they contact the CTO immediately and do not attempt to revert themselves.
-
-### 16.5 Failure modes
-
-| Failure | Cause | Action |
-|---|---|---|
-| Script exits with "working tree is dirty" | QA has uncommitted local changes | QA must stash or discard them before promoting |
-| Merge conflicts in non-protected files | Developer and QA both touched the same file | Contact CTO — developer needs to rebase |
-| `gitleaks` fails | A secret was committed on `dev-main` | **DO NOT PUSH.** Run `git reset --hard origin/staging`. File an urgent issue. CTO must fix the leak on `dev-main` first. |
-| Post-merge audit auto-reverts the promotion | Required checks failed on the `dev-main` commits | CTO reviews the revert PR. Developer fixes the failing checks. |
-
----
-
 ## 13. Revision Log
 
 | Date | Change |
 |---|---|
 | 2026-04-11 | Initial document. Captures the review rules, block-comment format, branch rules enforceable on the free org plan, and the exact Claude CLI prompt used for reviews. |
-| 2026-04-11 | Added §1.8 Local dev login is FROZEN, §1.9 dev-main detached from Render, §1.10 Env-driven login config + three frozen templates, §1.11 dev-main does not deploy to Vercel, §1.12 QA role separation. Added §8.9 silent regression, §8.10 broken local login, §8.11 dev-main Render coupling as historical bug entries. Added §9.6 mechanical SOP checker, §9.7 AI Breakage Detector, §9.8 directory-scoped CODEOWNERS, §9.9 post-merge audit + auto-revert, §9.10 repo-level merge settings, §9.11 Vercel deploy gating, §9.12 what's not blockable on free plan. Added §14 regression prevention architecture, §15 AI breakage prompt, §16 QA promotion SOP. |
+| 2026-04-11 | Split devops concerns into `docs/DEVOPS_SOP.md`. This doc is now code-review-only. Removed former §1.8/§1.9/§1.10/§1.11/§1.12 (now consolidated in DEVOPS_SOP §3–§8) and kept only the §1.4 "login files are frozen" rule as a review-side concern with the bidirectional invariant stated plainly. Removed former §16 QA promotion SOP (moved to DEVOPS_SOP §7). Renamed production branch `main-live` → `live-mvp` throughout (actual branch name on origin). Added §14 regression prevention architecture and §15 AI breakage prompt (both review concerns, kept). |

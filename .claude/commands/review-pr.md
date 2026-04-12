@@ -4,7 +4,7 @@ description: Do a full Code Review SOP review of a pull request and merge only i
 argument-hint: <PR number>
 ---
 
-Review pull request #$ARGUMENTS against dev-main using the SOP at `docs/CODE_REVIEW_SOP.md`. Do a full code review and only merge the branch if it passes every one of the following checks.
+Review pull request #$ARGUMENTS using the SOPs at `docs/CODE_REVIEW_SOP.md` and `docs/DEVOPS_SOP.md`. Do a full code review and only merge the branch if it passes every one of the following checks.
 
 1. `gh pr view $ARGUMENTS --json mergeable,mergeStateStatus,headRefName,baseRefName,title,state,author,body,files` shows state: OPEN and mergeable: MERGEABLE. If CONFLICTING or DIRTY, block with a comment and stop.
 
@@ -16,7 +16,7 @@ Review pull request #$ARGUMENTS against dev-main using the SOP at `docs/CODE_REV
 
 5. Run the seven-point checklist from §3 of the SOP:
    (1) Security — no committed secrets, private keys, open-auth bugs, SQL injection, XSS, missing JWT guards, or unscoped CORS.
-   (2) Off-limits files — profile loading (SOP §1.3), login-frozen (SOP §1.8), env templates (SOP §1.10). If any are touched, require the appropriate four-point confirmation. If missing, block.
+   (2) Off-limits files — profile loading (SOP §1.3), login-frozen (SOP §1.4), env templates (DEVOPS_SOP §5). If any are touched, require the appropriate four-point confirmation. If missing, block. The bidirectional invariant applies: login working in one environment cannot be achieved by breaking it in another.
    (3) Breaking-change analysis — function signatures, API shapes, entity columns, removed files/props, renamed imports, shared components, preserved bug fixes.
    (4) Repo conventions — no root-level package.json, entity changes require migrations, DTOs use class-validator, inter-service via RabbitMQ, R2Service for storage, no stubs, no .DS_Store or dist/.
    (5) Standards — no new any types, no @ts-ignore without a reason, NestJS exceptions for errors, correct useEffect deps, correct Next.js route group placement.
@@ -27,7 +27,7 @@ Review pull request #$ARGUMENTS against dev-main using the SOP at `docs/CODE_REV
 
 7. Confirm the CODEOWNERS team review has been requested and, by SOP convention, treat it as required.
 
-8. Verify the PR does not couple dev-main to Render (SOP §1.9) or Vercel (SOP §1.11). No Render URLs in .env.example, no render.yaml or vercel.json changes on dev-main.
+8. Verify that login code in the diff reads URLs, cookie flags, and CORS origins from `process.env.*` only — zero hardcoded environment-specific values. Per SOP §1.4 and DEVOPS_SOP §6, the same committed code must run in local, dev, staging, and live with only env vars differing. Also verify no `*.onrender.com` URL has been committed into `.env.local.example`.
 
 If every check passes, merge with `gh pr merge $ARGUMENTS --squash --delete-branch`.
 

@@ -98,7 +98,7 @@ jobs:
             fi
           fi
 
-          # --- Section 3b: Off-limits local dev login files (SOP §1.8) ---
+          # --- Section 3b: Off-limits login-frozen files (SOP §1.4) ---
           LOGIN_HIT=0
           while IFS= read -r f; do
             case "$f" in
@@ -110,9 +110,12 @@ jobs:
               backend/apps/auth-service/*|\
               backend/libs/shared/src/guards/*|\
               backend/libs/shared/src/decorators/*|\
-              .env.example|\
-              frontend/.env.example|\
-              backend/.env.example)
+              frontend/.env.local.example|\
+              frontend/.env.staging.example|\
+              frontend/.env.production.example|\
+              backend/.env.local.example|\
+              backend/.env.staging.example|\
+              backend/.env.production.example)
                 LOGIN_HIT=1 ;;
             esac
           done <<< "$CHANGED_FILES"
@@ -132,7 +135,7 @@ jobs:
               fi
             done
             if [ "$LOGIN_OK" = "0" ]; then
-              add "⚠️ **Off-limits local-dev-login files touched** without the four-point login confirmation in the PR description. Per SOP §1.8, local dev login is frozen. Add all four confirmation sentences verbatim to the PR description **or** remove the login-touching changes from this PR."
+              add "⚠️ **Off-limits login files touched** without the four-point login confirmation in the PR description. Per SOP §1.4, login code is frozen and must preserve the bidirectional invariant (works locally → must not break on dev/staging/live; works on dev/staging/live → must not break locally). Add all four confirmation sentences verbatim to the PR description **or** remove the login-touching changes from this PR."
             fi
           fi
 
@@ -176,55 +179,17 @@ jobs:
             add "📦 **Oversized PR** — $DIFF_LINE_COUNT lines changed. Split into smaller PRs or prefix the title with \`[EPIC]\` and justify in the description. See SOP §1.4."
           fi
 
-          # --- Section 7a: vercel.json changes on dev-main (SOP §1.11) ---
-          if [ "$BASE_REF" = "dev-main" ]; then
-            VERCEL_CHANGED=0
-            while IFS= read -r f; do
-              case "$f" in
-                vercel.json|*/vercel.json) VERCEL_CHANGED=1 ;;
-              esac
-            done <<< "$CHANGED_FILES"
-            if [ "$VERCEL_CHANGED" = "1" ]; then
-              add "🔥 **\`vercel.json\` modified on a PR targeting \`dev-main\`** — per SOP §1.11, dev-main does not deploy to Vercel. vercel.json changes must target \`staging\`. Re-target this PR."
-            fi
+          # --- Section 7a: Render URLs in .env.local.example (DEVOPS_SOP §4, §5) ---
+          # Local dev must run the backend locally, never against Render. This check
+          # runs on PRs targeting any branch so committed templates stay clean.
+          RENDER_IN_LOCAL_ENV=$(git diff "$BASE_SHA"...HEAD -- \
+            'frontend/.env.local.example' 'backend/.env.local.example' 2>/dev/null | \
+            grep -E '^\+[^+].*onrender\.com' || true)
+          if [ -n "$RENDER_IN_LOCAL_ENV" ]; then
+            add "🔥 **Render URL committed into \`.env.local.example\`** — per DEVOPS_SOP §4 and §5, local development must run the backend locally (\`http://localhost:*\`). Local templates must never point at \`*.onrender.com\`. A developer may connect to Render on their own machine, but committed \`.env.local.example\` templates must not enable it."
           fi
 
-          # --- Section 8a: Render coupling on dev-main (SOP §1.9) ---
-          if [ "$BASE_REF" = "dev-main" ]; then
-            # Any .env.example change that introduces a Render URL → block
-            RENDER_IN_ENV=$(git diff "$BASE_SHA"...HEAD -- \
-              '.env.example' '**/.env.example' 'frontend/.env.example' 'backend/.env.example' 2>/dev/null | \
-              grep -E '^\+[^+].*onrender\.com' || true)
-            if [ -n "$RENDER_IN_ENV" ]; then
-              add "🔥 **Render URL introduced into a .env.example on a PR targeting dev-main** — per SOP §1.9, local dev and dev-main must be detached from Render. Backend URLs in .env.example must point at localhost. Move this change to a PR targeting \`staging\`."
-            fi
-
-            # render.yaml changes on dev-main
-            RENDER_YAML_CHANGED=0
-            while IFS= read -r f; do
-              case "$f" in
-                render.yaml|render.yml|backend/render.yaml|backend/render.yml)
-                  RENDER_YAML_CHANGED=1 ;;
-              esac
-            done <<< "$CHANGED_FILES"
-            if [ "$RENDER_YAML_CHANGED" = "1" ]; then
-              add "🔥 **\`render.yaml\` modified in a PR targeting dev-main** — per SOP §1.9, render.yaml changes must go through a PR targeting \`staging\`, never \`dev-main\`. Re-target this PR."
-            fi
-
-            # render.yaml listing dev-main (or dev-*) as a deploy branch — check the current file state
-            if [ -f render.yaml ] && grep -E '^\s*branch:\s*dev-(main|[A-Za-z0-9_-]+)' render.yaml >/dev/null 2>&1; then
-              add "🔥 **\`render.yaml\` lists a \`dev-*\` branch under \`branch:\`** — per SOP §1.9, only \`staging\` and \`main-live\` may deploy to Render. Remove the dev-\* branch from render.yaml."
-            fi
-
-            # CI workflows adding render deploy commands on dev-main
-            RENDER_IN_WORKFLOW=$(git diff "$BASE_SHA"...HEAD -- '.github/workflows/**' 2>/dev/null | \
-              grep -E '^\+[^+].*(render deploy|api\.render\.com|RENDER_API_KEY|onrender\.com)' || true)
-            if [ -n "$RENDER_IN_WORKFLOW" ]; then
-              add "🔥 **CI workflow change adds Render wiring on a PR targeting dev-main** — per SOP §1.9, dev-main CI must not call Render. Move to a PR targeting \`staging\`."
-            fi
-          fi
-
-          # --- Section 8b: Hardcoded login values in login code (SOP §1.10) ---
+          # --- Section 8b: Hardcoded login values in login code (SOP §1.4) ---
           LOGIN_CODE_FILES=(
             "frontend/app/sign-in/page.tsx"
             "frontend/app/sign-up/page.tsx"
@@ -238,7 +203,7 @@ jobs:
                 grep -E '^\+[^+]' | \
                 grep -E '(https?://[^" )]*onrender\.com|sameSite:\s*["'"'"'](lax|none|strict)["'"'"']|secure:\s*(true|false)|http://localhost:[0-9]+)' || true)
               if [ -n "$HARDCODED" ]; then
-                add "🔥 **Hardcoded environment-specific value in \`$lf\`** — login code must read URLs, cookie flags, and auth mode from \`process.env.*\` only. See SOP §1.10. Move hardcoded values into \`.env.*.example\` templates and read them via env vars."
+                add "🔥 **Hardcoded environment-specific value in \`$lf\`** — login code must read URLs, cookie flags, and auth mode from \`process.env.*\` only. See SOP §1.4 and DEVOPS_SOP §6. Fixing login in one environment by hardcoding a value that only works there **is the bug**. Move hardcoded values into the appropriate \`.env.*.example\` template and read them via env vars so local, dev, staging, and live all stay in sync."
               fi
             fi
           done
@@ -251,12 +216,12 @@ jobs:
                   grep -E '^\+[^+]' | \
                   grep -E '(https?://[^" )]*onrender\.com|sameSite:\s*["'"'"'](lax|none|strict)["'"'"']|secure:\s*(true|false)|origin:\s*["'"'"']http)' || true)
                 if [ -n "$HARDCODED" ]; then
-                  add "🔥 **Hardcoded environment-specific value in \`$f\`** — backend auth code must read CORS origins, cookie flags, and JWT issuer from \`process.env.*\` only. See SOP §1.10."
+                  add "🔥 **Hardcoded environment-specific value in \`$f\`** — backend auth code must read CORS origins, cookie flags, and JWT issuer from \`process.env.*\` only. See SOP §1.4 and DEVOPS_SOP §6. The same committed code must work in local, dev, staging, and live with only env vars differing."
                 fi ;;
             esac
           done <<< "$CHANGED_FILES"
 
-          # --- Section 8c: Env template branch mismatch (SOP §1.10) ---
+          # --- Section 8c: Env template branch mismatch (DEVOPS_SOP §5) ---
           touches_local=0
           touches_staging=0
           touches_prod=0
@@ -271,18 +236,18 @@ jobs:
           # Cannot touch multiple templates at once
           total=$((touches_local + touches_staging + touches_prod))
           if [ "$total" -gt 1 ]; then
-            add "🔥 **PR modifies more than one \`.env.*.example\` template at once** — per SOP §1.10, the local, staging, and production templates are independent and must be changed in separate PRs."
+            add "🔥 **PR modifies more than one \`.env.*.example\` template at once** — per DEVOPS_SOP §5, the local, staging, and production templates are independent and must be changed in separate PRs."
           fi
 
           # Template must match target branch
           if [ "$touches_staging" = "1" ] && [ "$BASE_REF" != "staging" ]; then
-            add "🔥 **\`.env.staging.example\` modified on a PR targeting \`$BASE_REF\`** — staging template changes must target the \`staging\` branch. See SOP §1.10."
+            add "🔥 **\`.env.staging.example\` modified on a PR targeting \`$BASE_REF\`** — staging template changes must target the \`staging\` branch. See DEVOPS_SOP §5."
           fi
-          if [ "$touches_prod" = "1" ] && [ "$BASE_REF" != "main-live" ]; then
-            add "🔥 **\`.env.production.example\` modified on a PR targeting \`$BASE_REF\`** — production template changes must target the \`main-live\` branch. See SOP §1.10."
+          if [ "$touches_prod" = "1" ] && [ "$BASE_REF" != "live-mvp" ]; then
+            add "🔥 **\`.env.production.example\` modified on a PR targeting \`$BASE_REF\`** — production template changes must target the \`live-mvp\` branch. See DEVOPS_SOP §5."
           fi
           if [ "$touches_local" = "1" ] && [ "$BASE_REF" != "dev-main" ]; then
-            add "🔥 **\`.env.local.example\` modified on a PR targeting \`$BASE_REF\`** — local template changes must target the \`dev-main\` branch. See SOP §1.10."
+            add "🔥 **\`.env.local.example\` modified on a PR targeting \`$BASE_REF\`** — local template changes must target the \`dev-main\` branch. See DEVOPS_SOP §5."
           fi
 
           # --- Section 9: New @ts-ignore without justification ---
@@ -337,7 +302,7 @@ jobs:
           BODY=$(cat <<'COMMENT'
 ## 🚨 LOGIN TOUCHED — sentinel notice
 
-This PR modifies one or more files in the **login-frozen** set (SOP §1.8):
+This PR modifies one or more files in the **login-frozen** set (SOP §1.4):
 
 - `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
 - `frontend/contexts/auth.tsx`, `frontend/src/lib/api/auth.ts`, `frontend/middleware.ts`
@@ -345,7 +310,7 @@ This PR modifies one or more files in the **login-frozen** set (SOP §1.8):
 - `backend/libs/shared/src/guards/**`, `backend/libs/shared/src/decorators/**`
 - `*.env.example`
 
-**Rule:** local dev login is fixed once and never again. Every regression here costs the whole team time.
+**Rule:** login is fixed once and stays fixed, bidirectionally. If login works locally it must not break on dev/staging/live. If login works on dev/staging/live it must not break locally. "Fixing" login in one environment by hardcoding a value that only works there **is the bug**, not the fix. Every regression here costs the whole team time.
 
 **Mandatory reviewer checklist before approval:**
 
@@ -358,7 +323,7 @@ This PR modifies one or more files in the **login-frozen** set (SOP §1.8):
 7. Confirm both accounts reach their dashboards without intervention
 8. If any step fails, request changes and do not merge
 
-The PR description must also contain the four-point login confirmation from SOP §1.8. If it does not, this PR is automatically blocked by the SOP check.
+The PR description must also contain the four-point login confirmation from SOP §1.4. If it does not, this PR is automatically blocked by the SOP check.
 
 CTO (@CTorres9800) has been auto-requested as a reviewer on this PR.
 

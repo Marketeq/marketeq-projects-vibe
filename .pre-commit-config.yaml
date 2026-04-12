@@ -27,7 +27,7 @@ repos:
       - id: check-yaml
       - id: check-json
       - id: no-commit-to-branch
-        args: ['--branch', 'dev-main', '--branch', 'staging', '--branch', 'main-live']
+        args: ['--branch', 'dev-main', '--branch', 'staging', '--branch', 'live-mvp']
 
   - repo: local
     hooks:

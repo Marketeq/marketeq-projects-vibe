@@ -3,9 +3,9 @@
 # QA Promotion Script — dev-main → staging
 # ============================================================================
 # This is the ONLY approved way for QA to pull developer work from
-# dev-main into staging for testing. Per Code Review SOP §1.12 and §16,
-# QA never edits dev-main, never tests on dev-main, and never opens PRs
-# touching dev-main directly.
+# dev-main into staging for testing. Per DEVOPS_SOP §7, QA never edits
+# dev-main, never tests on dev-main, and never opens PRs touching dev-main
+# directly. Use this script to promote green-lit dev-main work into staging.
 #
 # What this script does:
 #   1. Verifies your local repo is clean and your git identity is set
@@ -24,7 +24,7 @@
 #   - Touch dev-main in any way
 #   - Force-push anything
 #   - Skip safety checks
-#   - Promote further to main-live (use qa-promote-staging-to-live.sh)
+#   - Promote further to live-mvp (use qa-promote-staging-to-live.sh)
 #
 # Usage:
 #   ./scripts/qa-promote-dev-to-staging.sh [--dry-run]

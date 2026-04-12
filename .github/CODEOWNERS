@@ -13,9 +13,11 @@
 *                                                   @Marketeq/code-review
 
 # ----- CRITICAL: authentication, login, session -----
-# Per SOP §1.8 "Local dev login is frozen" — these files define the
-# login flow that developers rely on locally. Changes here require
-# CTO review and the four-point confirmation from SOP §1.8.
+# Per SOP §1.4 "Login code is frozen" — these files define the
+# login flow across local, dev, staging, and live. Changes here require
+# CTO review and the four-point confirmation from SOP §1.4. The
+# bidirectional invariant applies: fixing login in one environment must
+# never break it in another.
 /frontend/app/sign-in/                              @CTorres9800 @Marketeq/code-review
 /frontend/app/sign-up/                              @CTorres9800 @Marketeq/code-review
 /frontend/contexts/auth.tsx                         @CTorres9800 @Marketeq/code-review
@@ -51,11 +53,16 @@
 /.github/                                           @CTorres9800 @Marketeq/code-review
 /render.yaml                                        @CTorres9800 @Marketeq/code-review
 /vercel.json                                        @CTorres9800 @Marketeq/code-review
-/.env.example                                       @CTorres9800 @Marketeq/code-review
-/frontend/.env.example                              @CTorres9800 @Marketeq/code-review
-/backend/.env.example                               @CTorres9800 @Marketeq/code-review
+/frontend/.env.local.example                        @CTorres9800 @Marketeq/code-review
+/frontend/.env.staging.example                      @CTorres9800 @Marketeq/code-review
+/frontend/.env.production.example                   @CTorres9800 @Marketeq/code-review
+/backend/.env.local.example                         @CTorres9800 @Marketeq/code-review
+/backend/.env.staging.example                       @CTorres9800 @Marketeq/code-review
+/backend/.env.production.example                    @CTorres9800 @Marketeq/code-review
 /docs/CODE_REVIEW_SOP.md                            @CTorres9800 @Marketeq/code-review
 /docs/CODE_REVIEW_SOP.docx                          @CTorres9800 @Marketeq/code-review
+/docs/DEVOPS_SOP.md                                 @CTorres9800 @Marketeq/code-review
+/docs/DEVOPS_SOP.docx                               @CTorres9800 @Marketeq/code-review
 
 # ----- Backend services -----
 /backend/apps/user-service/                         @Marketeq/code-review
