@@ -43,6 +43,24 @@ interface TimeTrackerAppProps {
 
 type View = "main" | "menu" | "new-task" | "all-tasks"
 
+/** Staggered fade-in wrapper — each child fades in with increasing delay */
+function StaggerIn({ children, stagger = 50 }: { children: React.ReactNode; stagger?: number }) {
+  const items = React.Children.toArray(children)
+  return (
+    <>
+      {items.map((child, i) => (
+        <div
+          key={i}
+          className="animate-stagger-in"
+          style={{ animationDelay: `${i * stagger}ms`, animationFillMode: "both" }}
+        >
+          {child}
+        </div>
+      ))}
+    </>
+  )
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function formatDate() {
@@ -466,7 +484,21 @@ export function TimeTrackerApp({
   className,
 }: TimeTrackerAppProps) {
   // ── State ───────────────────────────────────────────────────────────────
-  const [view, setView] = React.useState<View>("main")
+  const [view, _setView] = React.useState<View>("main")
+  const [viewKey, setViewKey] = React.useState(0)
+  const [viewTransition, setViewTransition] = React.useState<"enter" | "idle">("idle")
+  const [slideDirection, setSlideDirection] = React.useState<"left" | "right">("left")
+
+  const setView = React.useCallback((next: View) => {
+    _setView((prev) => {
+      const isGoingBack = next === "main"
+      setSlideDirection(isGoingBack ? "right" : "left")
+      setViewTransition("enter")
+      setViewKey((k) => k + 1)
+      setTimeout(() => setViewTransition("idle"), 200)
+      return next
+    })
+  }, [])
   const [days, setDays] = React.useState<DayGroup[]>(initialDays || SEED_DAYS)
   const [expandedContracts, setExpandedContracts] = React.useState<Set<string>>(new Set())
   const [collapsedDays, setCollapsedDays] = React.useState<Set<number>>(new Set())
@@ -860,7 +892,16 @@ export function TimeTrackerApp({
 
       {/* ── Account Menu View ────────────────────────────────────────── */}
       {view === "menu" && (
-        <div className="flex-1 overflow-y-auto">
+        <div
+          key={viewKey}
+          className="flex-1 overflow-y-auto transition-[transform,opacity] duration-200 ease-out"
+          style={{
+            transform: viewTransition === "enter"
+              ? (slideDirection === "right" ? "translateX(-20px)" : "translateX(20px)")
+              : "translateX(0)",
+            opacity: viewTransition === "enter" ? 0 : 1,
+          }}
+        >
           <AccountMenu
             name={userName}
             email={userEmail}
@@ -873,28 +914,59 @@ export function TimeTrackerApp({
 
       {/* ── New Task View ────────────────────────────────────────────── */}
       {view === "new-task" && (
-        <NewTaskForm
-          contracts={allContracts}
-          defaultContractId={newTaskContractId}
-          onCancel={() => setView("main")}
-          onCreate={handleCreateTask}
-        />
+        <div
+          key={viewKey}
+          className="flex-1 overflow-hidden transition-[transform,opacity] duration-200 ease-out"
+          style={{
+            transform: viewTransition === "enter"
+              ? (slideDirection === "right" ? "translateX(-20px)" : "translateX(20px)")
+              : "translateX(0)",
+            opacity: viewTransition === "enter" ? 0 : 1,
+          }}
+        >
+          <NewTaskForm
+            contracts={allContracts}
+            defaultContractId={newTaskContractId}
+            onCancel={() => setView("main")}
+            onCreate={handleCreateTask}
+          />
+        </div>
       )}
 
       {/* ── All Tasks View ───────────────────────────────────────────── */}
       {view === "all-tasks" && (
-        <AllTasksView
-          days={days}
-          onBack={() => setView("main")}
-          onPlayTask={(taskId, contractId) => handlePlayTask(taskId, contractId)}
-          activeContractId={activeTask?.contractId || null}
-          onSwitchContract={handleSwitchContract}
-        />
+        <div
+          key={viewKey}
+          className="flex-1 overflow-hidden transition-[transform,opacity] duration-200 ease-out"
+          style={{
+            transform: viewTransition === "enter"
+              ? (slideDirection === "right" ? "translateX(-20px)" : "translateX(20px)")
+              : "translateX(0)",
+            opacity: viewTransition === "enter" ? 0 : 1,
+          }}
+        >
+          <AllTasksView
+            days={days}
+            onBack={() => setView("main")}
+            onPlayTask={(taskId, contractId) => handlePlayTask(taskId, contractId)}
+            activeContractId={activeTask?.contractId || null}
+            onSwitchContract={handleSwitchContract}
+          />
+        </div>
       )}
 
       {/* ── Main View ────────────────────────────────────────────────── */}
       {view === "main" && (
-        <>
+        <div
+          key={viewKey}
+          className="flex-1 flex flex-col overflow-hidden transition-[transform,opacity] duration-200 ease-out"
+          style={{
+            transform: viewTransition === "enter"
+              ? (slideDirection === "right" ? "translateX(-20px)" : "translateX(20px)")
+              : "translateX(0)",
+            opacity: viewTransition === "enter" ? 0 : 1,
+          }}
+        >
           {isRunning && activeTask ? (
             <>
               <ActiveTrackingBar
@@ -931,7 +1003,7 @@ export function TimeTrackerApp({
             {/* Running-state expanded header — scrolls away naturally */}
             {isRunning && activeTask && (
               <div ref={expandedHeaderRef}>
-                <div className="px-4 pt-3 pb-2 relative z-40">
+                <div className="px-4 pt-3 pb-2 relative z-10">
                   <TaskSearch
                     value={searchValue}
                     onChange={setSearchValue}
@@ -1017,7 +1089,7 @@ export function TimeTrackerApp({
             {/* Idle-state expanded header (search + controls) — scrolls away naturally */}
             {!isRunning && (
               <div ref={!isRunning ? expandedHeaderRef : undefined}>
-                <div className="px-4 pt-3 pb-2 relative z-40">
+                <div className="px-4 pt-3 pb-2 relative z-10">
                   <TaskSearch
                     value={searchValue}
                     onChange={setSearchValue}
@@ -1067,7 +1139,7 @@ export function TimeTrackerApp({
             {days.map((day, dayIdx) => {
               const dayCollapsed = collapsedDays.has(dayIdx)
               return (
-                <div key={dayIdx}>
+                <div key={dayIdx} className="animate-stagger-in" style={{ animationDelay: `${dayIdx * 60}ms`, animationFillMode: "both" }}>
                   <DaySummary
                     label={day.label}
                     fullDate={day.fullDate}
@@ -1087,8 +1159,8 @@ export function TimeTrackerApp({
 
                   <Collapsible open={!dayCollapsed}>
                     <div className="px-2 pb-2 space-y-2">
-                      {day.contracts.map((contract) => (
-                        <div key={contract.id} id={`contract-${contract.id}`}>
+                      {day.contracts.map((contract, cIdx) => (
+                        <div key={contract.id} id={`contract-${contract.id}`} className="animate-stagger-in" style={{ animationDelay: `${(dayIdx * 60) + (cIdx * 40)}ms`, animationFillMode: "both" }}>
                         <ContractEntry
                           contractId={contract.id}
                           contractName={contract.name}
@@ -1122,7 +1194,7 @@ export function TimeTrackerApp({
               View All Tasks
             </button>
           </div>
-        </>
+        </div>
       )}
 
       {/* Floating contract-switch alert — bottom-left */}
