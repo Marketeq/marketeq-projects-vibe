@@ -1,11 +1,72 @@
-# Marketeq code owners
+# Marketeq code owners — directory-scoped
 #
-# Every pull request targeting a protected branch (dev-main, staging,
-# main-live) requires approval from the @Marketeq/code-review team
-# before it can be merged. See branch protection settings.
+# The last matching rule wins. Every PR automatically requests review
+# from the owners listed for every file it touches. Because the repo is
+# on the free GitHub org plan, these reviews are auto-requested but not
+# technically required (classic branch protection is paywalled). SOP §9
+# treats all CODEOWNER reviews as mandatory by convention.
 #
-# The left-hand pattern is matched against changed files in the PR;
-# the last matching rule wins. Keep this file simple: the Code Review
-# team owns everything.
+# If you need to add a new owner, open a PR against this file and tag
+# @Marketeq/code-review.
 
-* @Marketeq/code-review
+# ----- Default owner for everything -----
+*                                                   @Marketeq/code-review
+
+# ----- CRITICAL: authentication, login, session -----
+# Per SOP §1.4 "Login code is frozen" — these files define the
+# login flow across local, dev, staging, and live. Changes here require
+# CTO review and the four-point confirmation from SOP §1.4. The
+# bidirectional invariant applies: fixing login in one environment must
+# never break it in another.
+/frontend/app/sign-in/                              @CTorres9800 @Marketeq/code-review
+/frontend/app/sign-up/                              @CTorres9800 @Marketeq/code-review
+/frontend/contexts/auth.tsx                         @CTorres9800 @Marketeq/code-review
+/frontend/src/lib/api/auth.ts                       @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/                         @CTorres9800 @Marketeq/code-review
+/backend/libs/shared/src/guards/                    @CTorres9800 @Marketeq/code-review
+/backend/libs/shared/src/decorators/                @CTorres9800 @Marketeq/code-review
+
+# ----- CRITICAL: profile data loading -----
+# Per SOP §1.3 "Profile Data Loading — NEVER Break".
+/frontend/app/(group)/(group)/talent-profile/       @CTorres9800 @Marketeq/code-review
+/frontend/app/(group)/(group)/client-profile/       @CTorres9800 @Marketeq/code-review
+/frontend/components/edit-profile-modals.tsx        @CTorres9800 @Marketeq/code-review
+/frontend/src/lib/api/user.ts                       @CTorres9800 @Marketeq/code-review
+
+# ----- CRITICAL: onboarding -----
+# Every onboarding regression has broken the funnel for new users.
+/frontend/app/(group)/onboarding/                   @CTorres9800 @Marketeq/code-review
+
+# ----- CRITICAL: publish-project flow (save & exit) -----
+/frontend/app/publish-project/                      @CTorres9800 @Marketeq/code-review
+
+# ----- CRITICAL: top-level layout and header -----
+/frontend/app/top-most-header.tsx                   @CTorres9800 @Marketeq/code-review
+/frontend/app/layout.tsx                            @CTorres9800 @Marketeq/code-review
+/frontend/middleware.ts                             @CTorres9800 @Marketeq/code-review
+
+# ----- Shared UI components -----
+/frontend/components/listing-card.tsx               @Marketeq/code-review
+/frontend/components/ui/                            @Marketeq/code-review
+
+# ----- Infrastructure, CI, deployment -----
+/.github/                                           @CTorres9800 @Marketeq/code-review
+/render.yaml                                        @CTorres9800 @Marketeq/code-review
+/vercel.json                                        @CTorres9800 @Marketeq/code-review
+/frontend/.env.local.example                        @CTorres9800 @Marketeq/code-review
+/frontend/.env.staging.example                      @CTorres9800 @Marketeq/code-review
+/frontend/.env.production.example                   @CTorres9800 @Marketeq/code-review
+/backend/.env.local.example                         @CTorres9800 @Marketeq/code-review
+/backend/.env.staging.example                       @CTorres9800 @Marketeq/code-review
+/backend/.env.production.example                    @CTorres9800 @Marketeq/code-review
+/docs/CODE_REVIEW_SOP.md                            @CTorres9800 @Marketeq/code-review
+/docs/CODE_REVIEW_SOP.docx                          @CTorres9800 @Marketeq/code-review
+/docs/DEVOPS_SOP.md                                 @CTorres9800 @Marketeq/code-review
+/docs/DEVOPS_SOP.docx                               @CTorres9800 @Marketeq/code-review
+
+# ----- Backend services -----
+/backend/apps/user-service/                         @Marketeq/code-review
+/backend/apps/listings-service/                     @Marketeq/code-review
+/backend/apps/checkout-service/                     @Marketeq/code-review
+/backend/apps/messaging-service/                    @Marketeq/code-review
+/backend/apps/notification-service/                 @Marketeq/code-review
