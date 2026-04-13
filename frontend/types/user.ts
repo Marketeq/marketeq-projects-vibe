@@ -23,6 +23,7 @@ export type User = {
   provider: AUTH_PROVIDERS
   hasPassword?: boolean
   twoFactorEnabled?: boolean
+  twoFactorMethod?: 'totp' | 'sms' | null
   socialId?: string | null
   emailVerified: boolean
   onboardingDismissed: boolean

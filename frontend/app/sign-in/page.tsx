@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { resolveDashboardRoute, useAuth } from "@/contexts/auth"
 import UnauthenticatedRoute from "@/hoc/UnauthenticatedRoute"
@@ -55,9 +55,19 @@ export default function SignIn() {
   const [isDevLoading, setIsDevLoading] = useState(false)
   const [twoFactorRequired, setTwoFactorRequired] = useState(false)
   const [partialToken, setPartialToken] = useState("")
+  const [twoFactorMethod, setTwoFactorMethod] = useState<string>("totp")
   const [twoFactorCode, setTwoFactorCode] = useState("")
   const [isVerifying2FA, setIsVerifying2FA] = useState(false)
   const [useBackupCode, setUseBackupCode] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => Math.max(0, prev - 1))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [resendCooldown])
+
   const redirectTarget = searchParams.get("redirect")
   const nextRoute =
     redirectTarget && redirectTarget.startsWith("/") && !redirectTarget.startsWith("//")
@@ -83,9 +93,6 @@ export default function SignIn() {
     setIsVerifying2FA(true)
     try {
       const res = await AuthAPI.VerifyTwoFactor({ code: twoFactorCode, partialToken })
-      console.log("[2FA] VerifyTwoFactor response:", res?.data)
-      console.log("[2FA] Access token in response:", !!res?.data?.access_token)
-
       if (res?.data?.access_token) {
         Cookies.set("access_token", res.data.access_token, { path: "/" })
         if (res.data.refresh_token) {
@@ -95,14 +102,9 @@ export default function SignIn() {
           Cookies.set("session_id", res.data.sessionId, { path: "/" })
         }
 
-        // Verify tokens were set before proceeding
-        console.log("[2FA] Token in cookie after set:", Cookies.get("access_token") ? "✓" : "✗")
-
         let nextUser = res.data.user
         try {
-          console.log("[2FA] Calling UserAPI.me() with token in cookie")
           const meResponse = await UserAPI.me()
-          console.log("[2FA] UserAPI.me() success:", meResponse?.status)
           if (meResponse?.status === 200) {
             const profileUser =
               meResponse?.data?.user ??
@@ -113,8 +115,7 @@ export default function SignIn() {
               nextUser = { ...nextUser, ...profileUser }
             }
           }
-        } catch (meError: any) {
-          console.log("[2FA] UserAPI.me() error:", meError?.response?.status, meError?.message)
+        } catch {
           // fall back to auth payload
         }
 
@@ -126,16 +127,26 @@ export default function SignIn() {
         router.push(destination)
         reset()
       } else {
-        console.log("[2FA] No access_token in response. Response:", res?.data)
         toast({ title: "Invalid response from server", variant: "destructive" })
       }
     } catch (err: any) {
-      console.log("[2FA] VerifyTwoFactor error:", err?.response?.status, err?.response?.data)
       const msg = err?.response?.data?.message || "Invalid verification code"
       toast({ title: msg, variant: "destructive" })
       setTwoFactorCode("")
     } finally {
       setIsVerifying2FA(false)
+    }
+  }
+
+  const handleResendLoginCode = async () => {
+    if (resendCooldown > 0) return
+    try {
+      await AuthAPI.ResendTwoFactorCode({ partialToken })
+      setResendCooldown(60)
+      toast({ title: "Verification code resent" })
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "Failed to resend code"
+      toast({ title: msg, variant: "destructive" })
     }
   }
 
@@ -146,7 +157,11 @@ export default function SignIn() {
       .then(async (response) => {
         if (response?.status === 200 && response?.data?.requiresTwoFactor) {
           setPartialToken(response.data.partialToken)
+          setTwoFactorMethod(response.data.twoFactorMethod ?? "totp")
           setTwoFactorRequired(true)
+          if (response.data.twoFactorMethod === "sms") {
+            setResendCooldown(60)
+          }
           setIsLoading(false)
           return
         }
@@ -259,7 +274,9 @@ export default function SignIn() {
             <p className="text-center text-base mt-2 leading-[19.36px] font-light text-dark-blue-400">
               {useBackupCode
                 ? "Enter one of your backup codes"
-                : "Enter the 6-digit code from your authenticator app"}
+                : twoFactorMethod === "sms"
+                  ? "We sent a verification code to your phone"
+                  : "Enter the 6-digit code from your authenticator app"}
             </p>
 
             <div className="mt-10 space-y-6">
@@ -325,6 +342,19 @@ export default function SignIn() {
                 )}
               </Button>
 
+              {twoFactorMethod === "sms" && !useBackupCode && (
+                <p className="text-sm text-center text-gray-500">
+                  Not seeing the code?{" "}
+                  {resendCooldown > 0 ? (
+                    <span className="text-gray-400">Resend in {resendCooldown}s</span>
+                  ) : (
+                    <button type="button" onClick={handleResendLoginCode} className="text-primary-500 hover:underline font-medium">
+                      Resend
+                    </button>
+                  )}
+                </p>
+              )}
+
               <div className="text-center">
                 <button
                   type="button"
@@ -334,7 +364,9 @@ export default function SignIn() {
                     setTwoFactorCode("")
                   }}
                 >
-                  {useBackupCode ? "Use authenticator app instead" : "Use a backup code"}
+                  {useBackupCode
+                    ? twoFactorMethod === "sms" ? "Use SMS code instead" : "Use authenticator app instead"
+                    : "Use a backup code"}
                 </button>
               </div>
 

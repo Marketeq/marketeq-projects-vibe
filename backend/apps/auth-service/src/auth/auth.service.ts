@@ -54,13 +54,14 @@ type AuthUserPayload = {
   provider?: string;
   hasPassword?: boolean;
   twoFactorEnabled?: boolean;
+  twoFactorMethod?: string | null;
   firstName?: string;
   lastName?: string;
 };
 
 type LoginResult =
   | (JwtPair & { sessionId: string; user: AuthUserPayload })
-  | { requiresTwoFactor: true; partialToken: string };
+  | { requiresTwoFactor: true; partialToken: string; twoFactorMethod: string };
 
 type SyncRetryItem = {
   payload: SyncUserProfilePayload;
@@ -119,7 +120,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   private serializeUser(
-    user: Pick<User, 'id' | 'username' | 'email' | 'provider' | 'hasPassword' | 'twoFactorEnabled'>,
+    user: Pick<User, 'id' | 'username' | 'email' | 'provider' | 'hasPassword' | 'twoFactorEnabled'> & { twoFactorMethod?: string | null },
     extra?: Pick<AuthUserPayload, 'firstName' | 'lastName'>,
   ): AuthUserPayload {
     return {
@@ -129,6 +130,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       provider: user.provider,
       hasPassword: user.hasPassword,
       twoFactorEnabled: user.twoFactorEnabled ?? false,
+      twoFactorMethod: user.twoFactorMethod ?? null,
       ...(extra ?? {}),
     };
   }
@@ -306,7 +308,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   async login(dto: LoginDto, userAgent = '', ipAddress = ''): Promise<LoginResult> {
     const user = await this.userRepository.findOne({
       where: { email: dto.email },
-      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled'],
+      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorMethod'],
     });
 
     if (!user) throw new UnauthorizedException('Invalid credentials');
@@ -315,8 +317,18 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     if (!isMatch) throw new UnauthorizedException('Invalid credentials');
 
     if (user.twoFactorEnabled) {
+      const method = user.twoFactorMethod ?? 'totp';
       const partialToken = await this.issuePartialToken(user);
-      return { requiresTwoFactor: true, partialToken };
+
+      if (method === 'sms') {
+        try {
+          await this.sendLoginTwoFactorCode(user.id);
+        } catch (err) {
+          this.logger.error(`Failed to send login SMS OTP for ${user.email}: ${(err as Error)?.message}`);
+        }
+      }
+
+      return { requiresTwoFactor: true, partialToken, twoFactorMethod: method };
     }
 
     await this.syncUserProfile(user);
@@ -933,25 +945,37 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return { secret, qrCodeDataUrl };
   }
 
-  async enableTwoFactor(userId: string, code: string) {
+  async enableTwoFactor(userId: string, code: string, method: 'totp' | 'sms' = 'totp') {
     const user = await this.userRepository.findOne({
       where: { id: userId },
-      select: ['id', 'email', 'username', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorSecret'],
+      select: ['id', 'email', 'username', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorSecret', 'twoFactorOtpCode', 'twoFactorOtpExpiresAt'],
     });
 
     if (!user) throw new UnauthorizedException('Invalid user');
     if (user.twoFactorEnabled) {
       throw new BadRequestException('Two-factor authentication is already enabled');
     }
-    if (!user.twoFactorSecret) {
-      throw new BadRequestException('Generate a 2FA secret first');
-    }
 
-    const secret = this.decryptSecret(user.twoFactorSecret);
-    const result = otplib.verifySync({ token: code, secret });
-    const isValid = result.valid;
-    if (!isValid) {
-      throw new BadRequestException('Invalid verification code');
+    if (method === 'totp') {
+      if (!user.twoFactorSecret) {
+        throw new BadRequestException('Generate a 2FA secret first');
+      }
+      const secret = this.decryptSecret(user.twoFactorSecret);
+      const result = otplib.verifySync({ token: code, secret });
+      if (!result.valid) {
+        throw new BadRequestException('Invalid verification code');
+      }
+    } else {
+      if (!user.twoFactorOtpCode || !user.twoFactorOtpExpiresAt) {
+        throw new BadRequestException('Generate an SMS code first');
+      }
+      if (new Date() > user.twoFactorOtpExpiresAt) {
+        throw new BadRequestException('Verification code has expired. Please request a new one.');
+      }
+      const storedCode = this.decryptSecret(user.twoFactorOtpCode);
+      if (storedCode !== code) {
+        throw new BadRequestException('Invalid verification code');
+      }
     }
 
     const backupCodes = this.generateBackupCodes();
@@ -961,7 +985,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     await this.userRepository.update(userId, {
       twoFactorEnabled: true,
+      twoFactorMethod: method,
       twoFactorBackupCodes: JSON.stringify(hashedCodes),
+      twoFactorOtpCode: null as any,
+      twoFactorOtpExpiresAt: null as any,
     });
 
     try {
@@ -978,7 +1005,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   async disableTwoFactor(userId: string, code: string) {
     const user = await this.userRepository.findOne({
       where: { id: userId },
-      select: ['id', 'email', 'username', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorSecret', 'twoFactorBackupCodes'],
+      select: ['id', 'email', 'username', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorMethod', 'twoFactorSecret', 'twoFactorBackupCodes', 'twoFactorOtpCode', 'twoFactorOtpExpiresAt'],
     });
 
     if (!user) throw new UnauthorizedException('Invalid user');
@@ -986,7 +1013,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Two-factor authentication is not enabled');
     }
 
-    const isValid = await this.validateTwoFactorCode(user, code);
+    const method = user.twoFactorMethod ?? 'totp';
+    let isValid: boolean;
+
+    if (method === 'sms') {
+      isValid = await this.validateSmsOtpCode(user as any, code);
+    } else {
+      isValid = await this.validateTwoFactorCode(user, code);
+    }
+
     if (!isValid) {
       throw new BadRequestException('Invalid verification code');
     }
@@ -995,6 +1030,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       twoFactorEnabled: false,
       twoFactorSecret: null as any,
       twoFactorBackupCodes: null as any,
+      twoFactorMethod: null as any,
+      twoFactorPhone: null as any,
+      twoFactorOtpCode: null as any,
+      twoFactorOtpExpiresAt: null as any,
+      twoFactorOtpSentAt: null as any,
     });
 
     try {
@@ -1025,14 +1065,22 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     const user = await this.userRepository.findOne({
       where: { id: payload.sub },
-      select: ['id', 'email', 'username', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorSecret', 'twoFactorBackupCodes'],
+      select: ['id', 'email', 'username', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorMethod', 'twoFactorSecret', 'twoFactorBackupCodes', 'twoFactorOtpCode', 'twoFactorOtpExpiresAt'],
     });
 
     if (!user || !user.twoFactorEnabled) {
       throw new UnauthorizedException('Invalid or expired verification token');
     }
 
-    const isValid = await this.validateTwoFactorCode(user, code);
+    const method = user.twoFactorMethod ?? 'totp';
+    let isValid: boolean;
+
+    if (method === 'sms') {
+      isValid = await this.validateSmsOtpCode(user as any, code);
+    } else {
+      isValid = await this.validateTwoFactorCode(user, code);
+    }
+
     if (!isValid) {
       throw new BadRequestException('Invalid verification code');
     }
@@ -1074,6 +1122,139 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return { backupCodes };
   }
 
+  async generateSmsTwoFactor(userId: string, phone: string) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'twoFactorEnabled'],
+    });
+
+    if (!user) throw new UnauthorizedException('Invalid user');
+    if (user.twoFactorEnabled) {
+      throw new BadRequestException('Two-factor authentication is already enabled');
+    }
+
+    const code = this.generateOtpCode();
+    const encrypted = this.encryptSecret(code);
+
+    await this.userRepository.update(userId, {
+      twoFactorPhone: phone,
+      twoFactorOtpCode: encrypted,
+      twoFactorOtpExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      twoFactorOtpSentAt: new Date(),
+    });
+
+    try {
+      await this.brevoService.sendTwoFactorSms(phone, code);
+    } catch (err) {
+      throw new BadRequestException((err as Error)?.message || 'Failed to send SMS verification code');
+    }
+
+    return { codeSent: true };
+  }
+
+  async resendTwoFactorCode(userId: string) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'twoFactorPhone', 'twoFactorOtpSentAt'],
+    });
+
+    if (!user || !user.twoFactorPhone) {
+      throw new BadRequestException('No phone number configured for SMS 2FA');
+    }
+
+    if (user.twoFactorOtpSentAt && Date.now() - user.twoFactorOtpSentAt.getTime() < 60_000) {
+      throw new BadRequestException('Please wait 60 seconds before requesting a new code');
+    }
+
+    const code = this.generateOtpCode();
+    const encrypted = this.encryptSecret(code);
+
+    await this.userRepository.update(userId, {
+      twoFactorOtpCode: encrypted,
+      twoFactorOtpExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      twoFactorOtpSentAt: new Date(),
+    });
+
+    try {
+      await this.brevoService.sendTwoFactorSms(user.twoFactorPhone, code);
+    } catch (err) {
+      throw new BadRequestException((err as Error)?.message || 'Failed to send SMS verification code');
+    }
+
+    return { codeSent: true };
+  }
+
+  async sendLoginTwoFactorCode(userId: string) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'twoFactorPhone', 'twoFactorMethod', 'twoFactorOtpSentAt'],
+    });
+
+    if (!user || !user.twoFactorPhone) {
+      throw new BadRequestException('No phone number configured for SMS 2FA');
+    }
+
+    if (user.twoFactorOtpSentAt && Date.now() - user.twoFactorOtpSentAt.getTime() < 60_000) {
+      return { codeSent: true };
+    }
+
+    const code = this.generateOtpCode();
+    const encrypted = this.encryptSecret(code);
+
+    await this.userRepository.update(userId, {
+      twoFactorOtpCode: encrypted,
+      twoFactorOtpExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      twoFactorOtpSentAt: new Date(),
+    });
+
+    try {
+      await this.brevoService.sendTwoFactorSms(user.twoFactorPhone, code);
+    } catch (err) {
+      throw new BadRequestException((err as Error)?.message || 'Failed to send SMS verification code');
+    }
+
+    return { codeSent: true };
+  }
+
+  private generateOtpCode(): string {
+    const num = Math.floor(100000 + Math.random() * 900000);
+    return num.toString();
+  }
+
+  private async validateSmsOtpCode(
+    user: Pick<User, 'twoFactorOtpCode' | 'twoFactorOtpExpiresAt' | 'twoFactorBackupCodes'> & { id: string },
+    code: string,
+  ): Promise<boolean> {
+    if (user.twoFactorOtpCode && user.twoFactorOtpExpiresAt) {
+      if (new Date() > user.twoFactorOtpExpiresAt) {
+        return false;
+      }
+      const storedCode = this.decryptSecret(user.twoFactorOtpCode);
+      if (storedCode === code) {
+        await this.userRepository.update(user.id, {
+          twoFactorOtpCode: null as any,
+          twoFactorOtpExpiresAt: null as any,
+        });
+        return true;
+      }
+    }
+
+    if (!user.twoFactorBackupCodes) return false;
+
+    const hashedCodes: string[] = JSON.parse(user.twoFactorBackupCodes);
+    for (let i = 0; i < hashedCodes.length; i++) {
+      if (await bcrypt.compare(code, hashedCodes[i])) {
+        hashedCodes.splice(i, 1);
+        await this.userRepository.update(user.id, {
+          twoFactorBackupCodes: JSON.stringify(hashedCodes),
+        });
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   private async validateTwoFactorCode(
     user: Pick<User, 'twoFactorSecret' | 'twoFactorBackupCodes'> & { id: string },
     code: string,
@@ -1100,6 +1281,19 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     return false;
+  }
+
+  async verifyPartialToken(partialToken: string): Promise<string> {
+    let payload: { sub?: string; type?: string };
+    try {
+      payload = await this.jwtService.verifyAsync(partialToken, { algorithms: ['RS256'] });
+    } catch {
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+    if (!payload?.sub || payload.type !== '2fa-pending') {
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+    return payload.sub;
   }
 
   private async issuePartialToken(user: { id: string; email: string }): Promise<string> {

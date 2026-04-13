@@ -11,6 +11,7 @@ import {
   Put,
   Query,
   Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -29,7 +30,7 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { LinkedInLoginDto } from './dto/linkedin-login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { VerifyTwoFactorDto, TwoFactorVerifyLoginDto } from './dto/two-factor.dto';
+import { VerifyTwoFactorDto, TwoFactorVerifyLoginDto, GenerateSmsTwoFactorDto, ResendTwoFactorDto } from './dto/two-factor.dto';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 const extractRequestMeta = (req: Request) => ({
@@ -210,7 +211,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   enableTwoFactor(@Req() req: Request, @Body() dto: VerifyTwoFactorDto) {
     const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
-    return this.authService.enableTwoFactor(userId, dto.code);
+    return this.authService.enableTwoFactor(userId, dto.code, dto.method ?? 'totp');
   }
 
   @ApiOperation({ summary: 'Disable 2FA' })
@@ -223,19 +224,36 @@ export class AuthController {
     return this.authService.disableTwoFactor(userId, dto.code);
   }
 
+  @ApiOperation({ summary: 'Generate and send SMS 2FA code during setup' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/generate-sms')
+  @HttpCode(HttpStatus.OK)
+  generateSmsTwoFactor(@Req() req: Request, @Body() dto: GenerateSmsTwoFactorDto) {
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.generateSmsTwoFactor(userId, dto.phone);
+  }
+
+  @ApiOperation({ summary: 'Resend 2FA SMS code (setup or login)' })
+  @Post('2fa/resend')
+  @HttpCode(HttpStatus.OK)
+  async resendTwoFactorCode(@Req() req: Request, @Body() dto: ResendTwoFactorDto) {
+    if (dto.partialToken) {
+      const userId = await this.authService.verifyPartialToken(dto.partialToken);
+      return this.authService.resendTwoFactorCode(userId);
+    }
+
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    if (!userId) throw new UnauthorizedException('Authentication required');
+    return this.authService.resendTwoFactorCode(userId);
+  }
+
   @ApiOperation({ summary: 'Verify 2FA code during login' })
   @Post('2fa/verify')
   @HttpCode(HttpStatus.OK)
   async verifyTwoFactor(@Body() dto: TwoFactorVerifyLoginDto, @Req() req: Request) {
     const { userAgent, ipAddress } = extractRequestMeta(req);
-    const result = await this.authService.verifyTwoFactorLogin(dto.partialToken, dto.code, userAgent, ipAddress);
-    console.log('[2FA/verify] Response:', {
-      hasAccessToken: !!result.access_token,
-      hasRefreshToken: !!result.refresh_token,
-      hasSessionId: !!result.sessionId,
-      hasUser: !!result.user,
-    });
-    return result;
+    return this.authService.verifyTwoFactorLogin(dto.partialToken, dto.code, userAgent, ipAddress);
   }
 
   @ApiOperation({ summary: 'Regenerate backup codes' })

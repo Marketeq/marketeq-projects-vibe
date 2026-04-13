@@ -859,7 +859,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                     src={user?.avatarUrl ?? ""}
                     alt={user?.firstName ?? "User"}
                   />
-                  <AvatarFallback>
+                  <AvatarFallback suppressHydrationWarning>
                     {user?.firstName?.[0]?.toUpperCase()}
                   </AvatarFallback>
                 </Avatar>

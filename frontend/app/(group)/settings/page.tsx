@@ -313,7 +313,9 @@ export default function SettingsPage() {
                       <p className="text-sm font-medium text-dark-blue-400">Two-Factor Authentication</p>
                       <p className="text-xs text-gray-500">
                         {user?.twoFactorEnabled
-                          ? "Authenticator app enabled"
+                          ? user?.twoFactorMethod === "sms"
+                            ? "SMS verification enabled"
+                            : "Authenticator app enabled"
                           : "Add an extra layer of security to your account"}
                       </p>
                     </div>

@@ -58,8 +58,16 @@ export const AuthAPI = {
     return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/generate`, {})
   },
 
-  EnableTwoFactor: (data: { code: string }) => {
+  EnableTwoFactor: (data: { code: string; method?: string }) => {
     return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/enable`, data)
+  },
+
+  GenerateSmsTwoFactor: (data: { phone: string }) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/generate-sms`, data)
+  },
+
+  ResendTwoFactorCode: (data: { partialToken?: string }) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/resend`, data)
   },
 
   DisableTwoFactor: (data: { code: string }) => {
