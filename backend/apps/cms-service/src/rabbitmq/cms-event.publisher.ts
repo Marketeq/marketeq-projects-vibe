@@ -79,7 +79,7 @@ export class CmsEventPublisher {
         await channel.assertExchange(EXCHANGE, 'topic', { durable: true });
         await channel.assertExchange(EXCHANGE_DLX, 'fanout', { durable: true });
 
-        // Declare consumer queue and bind to exchange so messages are routed
+        // Category sync queue
         const QUEUE = 'cms.category.category';
         const DLQ = `${QUEUE}.dlq`;
         await channel.assertQueue(QUEUE, {
@@ -106,6 +106,17 @@ export class CmsEventPublisher {
         await channel.assertQueue(TP_DLQ, { durable: true });
         await channel.bindQueue(TP_QUEUE, EXCHANGE, 'talent-profile.*');
         await channel.bindQueue(TP_DLQ, EXCHANGE_DLX, '');
+
+        // Homepage cache invalidation queue
+        const HP_QUEUE = 'api-gateway.homepage';
+        const HP_DLQ = `${HP_QUEUE}.dlq`;
+        await channel.assertQueue(HP_QUEUE, {
+          durable: true,
+          arguments: { 'x-dead-letter-exchange': EXCHANGE_DLX },
+        });
+        await channel.assertQueue(HP_DLQ, { durable: true });
+        await channel.bindQueue(HP_QUEUE, EXCHANGE, 'homepage.*');
+        await channel.bindQueue(HP_DLQ, EXCHANGE_DLX, '');
       },
     });
 
@@ -135,6 +146,11 @@ export class CmsEventPublisher {
   async publishTalentProfileDeleted(event: Omit<TalentProfileDeletedEvent, 'event'>): Promise<void> {
     const payload: TalentProfileDeletedEvent = { event: 'talent-profile.deleted', ...event };
     await this.publishWithRetry('talent-profile.deleted', payload);
+  }
+
+  /** Publish any event with a custom routing key. Used by collection hooks. */
+  async publishWithRoutingKey(routingKey: string, payload: unknown): Promise<void> {
+    return this.publishWithRetry(routingKey, payload);
   }
 
   private async publishWithRetry(routingKey: string, payload: unknown): Promise<void> {

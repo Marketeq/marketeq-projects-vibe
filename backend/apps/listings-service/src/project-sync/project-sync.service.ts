@@ -10,17 +10,17 @@ export class ProjectSyncService {
     private readonly projectRepository: ProjectRepository,
   ) {}
 
-  async syncFromStrapi(dto: ProjectSyncDto): Promise<void> {
+  async syncFromCms(dto: ProjectSyncDto): Promise<void> {
     try {
       const id = String(dto.id);
 
-      // Find existing project by strapiId
+      // Find existing project by cmsId
       const existingProject = await this.projectRepository.findOne({
-        strapiId: id,
+        cmsId: id,
       });
 
       const payload = {
-        strapiId: id,
+        cmsId: id,
         title: dto.title,
         subtitle: null,
         shortDescription: dto.summary || '',
@@ -38,7 +38,7 @@ export class ProjectSyncService {
         projectDatePublished: dto.publishedAt
           ? new Date(dto.publishedAt)
           : null,
-        userId: 'strapi-sync',
+        userId: 'cms-sync',
         status: dto.status || 'pending_review',
       };
 
@@ -53,7 +53,7 @@ export class ProjectSyncService {
         });
       }
 
-      this.logger.log(`✅ Project synced: ${project?.id} (Strapi ID: ${dto.id})`);
+      this.logger.log(`Project synced: ${project?.id} (CMS ID: ${dto.id})`);
     } catch (error) {
       this.logger.error(`Failed to sync project ${dto.id}: ${(error as Error).message}`);
       throw error;

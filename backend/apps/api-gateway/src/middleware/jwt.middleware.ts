@@ -18,6 +18,8 @@ const PUBLIC_EXACT_ROUTES = new Set([
   '/auth/dev-login',
   '/auth/forgot-password',
   '/auth/reset-password',
+  '/homepage',
+  '/homepage/health',
   '/search',
   '/autocomplete',
   '/suggestions',

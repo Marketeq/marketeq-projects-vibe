@@ -19,6 +19,9 @@ type DashboardResolvableUser = {
   userType?: string | null
   accountType?: string | null
   role?: string | null
+  onboardingDismissed?: boolean | null
+  onboardedAt?: string | Date | null
+  hasCompletedOnboarding?: boolean | null
 }
 
 export const resolveDashboardRole = (
@@ -59,6 +62,19 @@ export const resolveDashboardRoute = (
   }
 
   if (dashboardRole === ROLE.CLIENT) {
+    return "/client-dashboard"
+  }
+
+  // Returning users who have already completed/dismissed onboarding must
+  // never be bounced back to /onboarding just because the /me payload is
+  // missing role/accountType/userType. Default them to client-dashboard
+  // — the account switcher can flip them to talent if needed.
+  const hasCompletedOnboarding =
+    user?.hasCompletedOnboarding === true ||
+    user?.onboardingDismissed === true ||
+    user?.onboardedAt != null
+
+  if (hasCompletedOnboarding) {
     return "/client-dashboard"
   }
 

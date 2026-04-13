@@ -3,7 +3,7 @@ name: AI Code Review
 on:
   pull_request:
     types: [opened, synchronize]
-    branches: [staging, main-live]
+    branches: [staging, live-mvp]
 
 permissions:
   contents: read

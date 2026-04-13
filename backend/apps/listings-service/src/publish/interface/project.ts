@@ -2,7 +2,7 @@ import { Exclude } from 'class-transformer';
 
 export class Project {
   id?: string;
-  strapiId?: string | null;
+  cmsId?: string | null;
 
   @Exclude({ toPlainOnly: true })
   title: string;

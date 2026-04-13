@@ -14,9 +14,9 @@ export class ProjectSyncController {
     @Headers('authorization') authHeader: string,
   ) {
     // Check authorization header
-    const expectedToken = process.env.STRAPI_SYNC_TOKEN;
+    const expectedToken = process.env.CMS_SYNC_TOKEN;
     if (!expectedToken) {
-      this.logger.error('STRAPI_SYNC_TOKEN not configured');
+      this.logger.error('CMS_SYNC_TOKEN not configured');
       throw new UnauthorizedException('Sync token not configured');
     }
 
@@ -27,8 +27,8 @@ export class ProjectSyncController {
     }
 
     try {
-      await this.projectSyncService.syncFromStrapi(projectData);
-      this.logger.log(`✅ Project synced successfully: ${projectData.id}`);
+      await this.projectSyncService.syncFromCms(projectData);
+      this.logger.log(`Project synced successfully: ${projectData.id}`);
       return { status: 'ok', message: 'Project synced successfully' };
     } catch (error) {
       this.logger.error(`Failed to sync project: ${(error as any).message}`);
