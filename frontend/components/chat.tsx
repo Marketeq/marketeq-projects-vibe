@@ -146,7 +146,10 @@ export const UserDetail = ({
             showCheckbox && "hidden"
           )}
         >
-          <AvatarImage src="/man.jpg" alt="Man" />
+          <AvatarImage
+            src={(conversation as any).participantAvatarUrl || undefined}
+            alt={conversation.participantUsername || "User"}
+          />
           <AvatarFallbackIcon />
         </Avatar>
         <div

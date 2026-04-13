@@ -34,7 +34,6 @@ import {
   File,
   Image03,
   Info,
-  Loader,
   Mail05,
   MoreHorizontal,
   Pin02,
@@ -93,10 +92,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import { useFileUpload } from "../hooks/use-file-upload"
 import { addParticipantToGroup } from "../hooks/use-group-encryption"
 import { useMessages } from "../hooks/use-messages"
 import { useSendMessage } from "../hooks/use-send-message"
+import { ForwardMessageDialog } from "./forward-message-dialog"
 
 interface ChatsProps {
   selectedConversation: Conversation | null
@@ -123,6 +124,13 @@ export function Chats({
   const [pinnedMsgs, setPinnedMsgs] = useState<Message[]>([])
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [forwardOpen, setForwardOpen] = useState(false)
+  const [forwardTarget, setForwardTarget] = useState<Message | null>(null)
+
+  const handleOpenForward = useCallback((msg: Message) => {
+    setForwardTarget(msg)
+    setForwardOpen(true)
+  }, [])
 
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getCurrentUser>>(null)
   useEffect(() => {
@@ -221,8 +229,9 @@ export function Chats({
     }
   }, [fetchedMsgs])
 
-  const displayedMessages =
+  const displayedMessages = (
     selectedTab === "Messages" ? localMsgs : pinnedMsgs
+  ).filter((m) => !m.isDeleted && !(m as any).deleted)
 
   // 3) subscribe to Ably for real-time incoming
   // subscribe to Ably for real-time updates
@@ -536,7 +545,7 @@ export function Chats({
   if (!currentUser) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-400">
-        <Loader className="size-6 animate-spin" />
+        <Spinner size={28} strokeWidth={3} />
       </div>
     )
   }
@@ -553,7 +562,7 @@ export function Chats({
   if (!receiverUser) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-400">
-        <Loader className="size-6 animate-spin" />
+        <Spinner size={28} strokeWidth={3} />
         <p className="text-sm">Loading conversation...</p>
       </div>
     )
@@ -606,10 +615,17 @@ export function Chats({
             </div>
             <div className="inline-flex items-center gap-x-2">
               <span className="text-sm text-dark-blue-400">Active now</span>
-              <span className="inline-block h-4 w-px bg-gray-300" />
-              <span className="text-sm text-dark-blue-400">
-                {receiverUser.role}
-              </span>
+              {(receiverUser as any).recentJobTitle ||
+              ((receiverUser as any).jobTitles &&
+                (receiverUser as any).jobTitles[0]) ? (
+                <>
+                  <span className="inline-block h-4 w-px bg-gray-300" />
+                  <span className="text-sm text-dark-blue-400">
+                    {(receiverUser as any).recentJobTitle ||
+                      (receiverUser as any).jobTitles[0]}
+                  </span>
+                </>
+              ) : null}
             </div>
           </div>
         </div>
@@ -625,7 +641,17 @@ export function Chats({
             }}
           >
             <ToggleGroupItem value="Messages">Messages</ToggleGroupItem>
-            <ToggleGroupItem value="Pinned">Pinned</ToggleGroupItem>
+            <ToggleGroupItem value="Pinned">
+              Pinned
+              {(() => {
+                const count = localMsgs.filter((m) => m.pinned || m.isPinned).length
+                return count > 0 ? (
+                  <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] font-semibold bg-gray-300 text-gray-800 rounded-full">
+                    {count}
+                  </span>
+                ) : null
+              })()}
+            </ToggleGroupItem>
           </ToggleGroupRoot>
 
           <div className="flex items-center gap-x-1">
@@ -705,17 +731,18 @@ export function Chats({
                   <Bubble
                     message={m}
                     currentUser={currentUser}
-                    participantUsername={
-                      receiverUser.username ?? "Unknown User"
-                    }
+                    participantUsername={receiverUser.username ?? ""}
+                    participantName={fullName}
+                    onForward={handleOpenForward}
                   />
                 ) : (
                   <YourBubble
                     message={m}
                     currentUser={currentUser}
-                    participantUsername={
-                      receiverUser.username ?? "Unknown User"
-                    }
+                    onForward={handleOpenForward}
+                    participantName={fullName}
+                    participantUsername={receiverUser.username ?? ""}
+                    participantAvatarUrl={receiverUser.avatarUrl ?? undefined}
                   />
                 )}
               </div>
@@ -903,7 +930,7 @@ export function Chats({
                   }
                 >
                   {isUploading ? (
-                    <Loader className="size-[18px] animate-spin" />
+                    <Spinner size={18} strokeWidth={3} />
                   ) : (
                     <Send className="size-[18px]" />
                   )}
@@ -922,6 +949,16 @@ export function Chats({
           </InputRightElement>
         </InputGroup>
       </div>
+
+      <ForwardMessageDialog
+        open={forwardOpen}
+        onOpenChange={setForwardOpen}
+        message={forwardTarget}
+        currentUserId={currentUser.id}
+        currentUserProfile={currentUserProfile}
+        receiverUser={receiverUser}
+        privateKey={privateKey}
+      />
     </div>
   )
 }

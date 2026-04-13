@@ -35,8 +35,8 @@ import {
   Trash2,
   UploadCloud,
   X,
-  Loader,
 } from "@blend-metrics/icons"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import {
   DropboxBrand,
   GoogleDrive1Brand,
@@ -173,7 +173,7 @@ const LeftSidebar = ({
             }
 
             try {
-              const user = await apiFetch<{ username: string; firstName?: string; lastName?: string }>(
+              const user = await apiFetch<{ username: string; firstName?: string; lastName?: string; avatarUrl?: string }>(
                 `/users/${otherId}`,
                 { method: "GET", headers: { Authorization: `Bearer ${token}` } }
               )
@@ -198,7 +198,7 @@ const LeftSidebar = ({
                 }
               }
 
-              return { ...conv, participantUsername: displayName, lastMessagePreview }
+              return { ...conv, participantUsername: displayName, participantAvatarUrl: user.avatarUrl, lastMessagePreview } as any
             } catch (err) {
               console.warn(
                 `[LeftSidebar] failed to fetch user for ${otherId}`,
@@ -413,7 +413,7 @@ const LeftSidebar = ({
         <div className="flex flex-col">
           {isLoading ? (
             <div className="flex items-center justify-center py-12 text-gray-400">
-              <Loader className="size-5 animate-spin" />
+              <Spinner size={24} strokeWidth={3} />
             </div>
           ) : conversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-400">
