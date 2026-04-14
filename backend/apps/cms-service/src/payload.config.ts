@@ -18,6 +18,7 @@ import { Media } from './collections/Media';
 import { Testimonials } from './collections/Testimonials';
 import { LandingPages } from './collections/LandingPages';
 import { Homepages } from './collections/Homepages';
+import { Projects } from './collections/Projects';
 
 // Globals
 import { SiteSettings } from './globals/SiteSettings';
@@ -94,6 +95,7 @@ export default buildConfig({
     Testimonials,
     LandingPages,
     Homepages,
+    Projects,
   ],
 
   globals: [

@@ -5,6 +5,10 @@ import {
   isEditor,
   readPublishedOrCmsUser,
 } from '../access/roles';
+import {
+  syncProjectToListings,
+  deleteProjectFromListings,
+} from '../hooks/afterChange/syncProjects';
 
 /**
  * Projects — dedicated CMS collection for the "Projects" listing type.
@@ -474,9 +478,7 @@ export const Projects: CollectionConfig = {
   ],
 
   hooks: {
-    afterChange: [
-      // CmsEventPublisher will be wired in a follow-up task (RMQ-01).
-      // Stub left intentionally empty so collection compiles standalone.
-    ],
+    afterChange: [syncProjectToListings],
+    afterDelete: [deleteProjectFromListings],
   },
 }
