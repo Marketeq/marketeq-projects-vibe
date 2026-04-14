@@ -2675,6 +2675,21 @@ const toMinutes = (time?: string, dayPeriod?: string) => {
   return normalizedHours * 60 + minutesPart
 }
 
+const toTimeValue = (totalMinutes: number) => {
+  const normalizedMinutes = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60)
+  const hours24 = Math.floor(normalizedMinutes / 60)
+  const minutes = normalizedMinutes % 60
+  const dayPeriod = hours24 >= 12 ? "PM" : "AM"
+  const hours12 = hours24 % 12 || 12
+
+  return {
+    time: `${hours12.toString().padStart(2, "0")}:${minutes
+      .toString()
+      .padStart(2, "0")}`,
+    dayPeriod,
+  }
+}
+
 const setYourPreferencesFormSchema = z
   .object({
     projects: optionalStringArray,
@@ -2684,26 +2699,66 @@ const setYourPreferencesFormSchema = z
   .superRefine((values, ctx) => {
     if (values.yourAvailability !== "Custom") return
 
-    const hasInvalidRange = values.customAvailability?.some((day) =>
-      day.times?.some((time) => {
-        const startMinutes = toMinutes(time.startTime, time.startTimeDayPeriod)
-        const endMinutes = toMinutes(time.endTime, time.endTimeDayPeriod)
+    values.customAvailability?.forEach((day, dayIdx) => {
+      const slots = day.times ?? []
 
-        return (
+      slots.forEach((slot, slotIdx) => {
+        const startMinutes = toMinutes(
+          slot.startTime,
+          slot.startTimeDayPeriod
+        )
+        const endMinutes = toMinutes(slot.endTime, slot.endTimeDayPeriod)
+
+        if (
           startMinutes != null &&
           endMinutes != null &&
-          endMinutes < startMinutes
-        )
-      })
-    )
+          endMinutes <= startMinutes
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["customAvailability", dayIdx, "times", slotIdx],
+            message: "End time must be later than start time",
+          })
+          return
+        }
 
-    if (hasInvalidRange) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["customAvailability"],
-        message: "End time cannot be earlier than start time",
+        if (startMinutes == null || endMinutes == null) return
+
+        const overlapsExistingSlot = slots.some((otherSlot, otherSlotIdx) => {
+          if (otherSlotIdx >= slotIdx) return false
+
+          const otherStartMinutes = toMinutes(
+            otherSlot.startTime,
+            otherSlot.startTimeDayPeriod
+          )
+          const otherEndMinutes = toMinutes(
+            otherSlot.endTime,
+            otherSlot.endTimeDayPeriod
+          )
+
+          if (
+            otherStartMinutes == null ||
+            otherEndMinutes == null ||
+            otherEndMinutes <= otherStartMinutes
+          ) {
+            return false
+          }
+
+          return (
+            Math.max(startMinutes, otherStartMinutes) <
+            Math.min(endMinutes, otherEndMinutes)
+          )
+        })
+
+        if (overlapsExistingSlot) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["customAvailability", dayIdx, "times", slotIdx],
+            message: "This time overlaps another slot on the same day",
+          })
+        }
       })
-    }
+    })
   })
 
 type SetYourPreferencesFormValues = z.infer<typeof setYourPreferencesFormSchema>
@@ -2711,6 +2766,7 @@ type SetYourPreferencesFormValues = z.infer<typeof setYourPreferencesFormSchema>
 const CustomAvailabilityTimeSelector = ({
   label,
   value,
+  slotErrors,
   onValueChange,
   disabled,
   onToggle,
@@ -2730,6 +2786,7 @@ const CustomAvailabilityTimeSelector = ({
       endTimeDayPeriod: string
     }>
   ) => void
+  slotErrors?: Array<string | undefined>
   disabled?: boolean
   onToggle: (
     value: boolean,
@@ -2764,7 +2821,32 @@ const CustomAvailabilityTimeSelector = ({
   const isOn = disabled != null ? !disabled : true
 
   const add = () => {
-    setState((prev) => [...prev, defaultSlot])
+    setState((prev) => {
+      const previousSlot = prev.at(-1)
+      if (!previousSlot) return [...prev, defaultSlot]
+
+      const previousEndMinutes = toMinutes(
+        previousSlot.endTime,
+        previousSlot.endTimeDayPeriod
+      )
+
+      if (previousEndMinutes == null) {
+        return [...prev, defaultSlot]
+      }
+
+      const nextStart = toTimeValue(previousEndMinutes)
+      const nextEnd = toTimeValue(previousEndMinutes + 60)
+
+      return [
+        ...prev,
+        {
+          startTime: nextStart.time,
+          startTimeDayPeriod: nextStart.dayPeriod,
+          endTime: nextEnd.time,
+          endTimeDayPeriod: nextEnd.dayPeriod,
+        },
+      ]
+    })
   }
 
   const remove = (index: number) => {
@@ -2794,165 +2876,171 @@ const CustomAvailabilityTimeSelector = ({
       <div className="flex items-star gap-x-3">
         <div className="flex flex-col gap-y-3">
           {state.map((t, index) => (
-            <div className="inline-flex items-center gap-x-3" key={index}>
-              <div className="flex items-center">
-                <Select
-                  disabled={!isOn}
-                  value={t.startTime}
-                  onValueChange={(value) =>
-                    setState((prev) => {
-                      const nextState = prev
-                        .slice()
-                        .map((item, i) =>
-                          i === index ? { ...item, startTime: value } : item
-                        )
+            <div key={index} className="flex flex-col gap-y-1.5">
+              <div className="inline-flex items-center gap-x-3">
+                <div className="flex items-center">
+                  <Select
+                    disabled={!isOn}
+                    value={t.startTime}
+                    onValueChange={(value) =>
+                      setState((prev) => {
+                        const nextState = prev
+                          .slice()
+                          .map((item, i) =>
+                            i === index ? { ...item, startTime: value } : item
+                          )
 
-                      return nextState
-                    })
-                  }
-                >
-                  <SelectTrigger indicator={false} className="rounded-r-none">
-                    <SelectValue />
-                  </SelectTrigger>
-
-                  <SelectContent>
-                    <ScrollArea viewportClassName="max-h-[304px]">
-                      {TIMES.map((time, index) => (
-                        <SelectItem value={time} key={index}>
-                          {time}
-                        </SelectItem>
-                      ))}
-                    </ScrollArea>
-                  </SelectContent>
-                </Select>
-                <Select
-                  disabled={!isOn}
-                  value={t.startTimeDayPeriod}
-                  onValueChange={(value) =>
-                    setState((prev) => {
-                      const nextState = prev
-                        .slice()
-                        .map((item, i) =>
-                          i === index
-                            ? { ...item, startTimeDayPeriod: value }
-                            : item
-                        )
-
-                      return nextState
-                    })
-                  }
-                >
-                  <SelectTrigger
-                    indicator={false}
-                    className="rounded-l-none rounded-r-[5px] border-l-0"
+                        return nextState
+                      })
+                    }
                   >
-                    <SelectValue />
-                  </SelectTrigger>
+                    <SelectTrigger indicator={false} className="rounded-r-none">
+                      <SelectValue />
+                    </SelectTrigger>
 
-                  <SelectContent>
-                    <ScrollArea viewportClassName="max-h-[304px]">
-                      {DAY_PERIODS.map((dayPeriod, index) => (
-                        <SelectItem value={dayPeriod} key={index}>
-                          {dayPeriod}
-                        </SelectItem>
-                      ))}
-                    </ScrollArea>
-                  </SelectContent>
-                </Select>
-              </div>
-              <span className="text-base leading-8 font-semibold text-gray-400">
-                to
-              </span>
-              <div className="flex items-center">
-                <Select
-                  disabled={!isOn}
-                  value={t.endTime}
-                  onValueChange={(value) =>
-                    setState((prev) => {
-                      const nextState = prev
-                        .slice()
-                        .map((item, i) =>
-                          i === index ? { ...item, endTime: value } : item
-                        )
+                    <SelectContent>
+                      <ScrollArea viewportClassName="max-h-[304px]">
+                        {TIMES.map((time, index) => (
+                          <SelectItem value={time} key={index}>
+                            {time}
+                          </SelectItem>
+                        ))}
+                      </ScrollArea>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    disabled={!isOn}
+                    value={t.startTimeDayPeriod}
+                    onValueChange={(value) =>
+                      setState((prev) => {
+                        const nextState = prev
+                          .slice()
+                          .map((item, i) =>
+                            i === index
+                              ? { ...item, startTimeDayPeriod: value }
+                              : item
+                          )
 
-                      return nextState
-                    })
-                  }
-                >
-                  <SelectTrigger indicator={false} className="rounded-r-none">
-                    <SelectValue />
-                  </SelectTrigger>
-
-                  <SelectContent>
-                    <ScrollArea viewportClassName="max-h-[304px]">
-                      {TIMES.map((time, index) => (
-                        <SelectItem value={time} key={index}>
-                          {time}
-                        </SelectItem>
-                      ))}
-                    </ScrollArea>
-                  </SelectContent>
-                </Select>
-                <Select
-                  disabled={!isOn}
-                  value={t.endTimeDayPeriod}
-                  onValueChange={(value) =>
-                    setState((prev) => {
-                      const nextState = prev
-                        .slice()
-                        .map((item, i) =>
-                          i === index
-                            ? { ...item, endTimeDayPeriod: value }
-                            : item
-                        )
-
-                      return nextState
-                    })
-                  }
-                >
-                  <SelectTrigger
-                    indicator={false}
-                    className="rounded-l-none rounded-r-[5px] border-l-0"
+                        return nextState
+                      })
+                    }
                   >
-                    <SelectValue />
-                  </SelectTrigger>
+                    <SelectTrigger
+                      indicator={false}
+                      className="rounded-l-none rounded-r-[5px] border-l-0"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
 
-                  <SelectContent>
-                    <ScrollArea viewportClassName="max-h-[304px]">
-                      {DAY_PERIODS.map((dayPeriod, index) => (
-                        <SelectItem value={dayPeriod} key={index}>
-                          {dayPeriod}
-                        </SelectItem>
-                      ))}
-                    </ScrollArea>
-                  </SelectContent>
-                </Select>
+                    <SelectContent>
+                      <ScrollArea viewportClassName="max-h-[304px]">
+                        {DAY_PERIODS.map((dayPeriod, index) => (
+                          <SelectItem value={dayPeriod} key={index}>
+                            {dayPeriod}
+                          </SelectItem>
+                        ))}
+                      </ScrollArea>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <span className="text-base leading-8 font-semibold text-gray-400">
+                  to
+                </span>
+                <div className="flex items-center">
+                  <Select
+                    disabled={!isOn}
+                    value={t.endTime}
+                    onValueChange={(value) =>
+                      setState((prev) => {
+                        const nextState = prev
+                          .slice()
+                          .map((item, i) =>
+                            i === index ? { ...item, endTime: value } : item
+                          )
+
+                        return nextState
+                      })
+                    }
+                  >
+                    <SelectTrigger indicator={false} className="rounded-r-none">
+                      <SelectValue />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      <ScrollArea viewportClassName="max-h-[304px]">
+                        {TIMES.map((time, index) => (
+                          <SelectItem value={time} key={index}>
+                            {time}
+                          </SelectItem>
+                        ))}
+                      </ScrollArea>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    disabled={!isOn}
+                    value={t.endTimeDayPeriod}
+                    onValueChange={(value) =>
+                      setState((prev) => {
+                        const nextState = prev
+                          .slice()
+                          .map((item, i) =>
+                            i === index
+                              ? { ...item, endTimeDayPeriod: value }
+                              : item
+                          )
+
+                        return nextState
+                      })
+                    }
+                  >
+                    <SelectTrigger
+                      indicator={false}
+                      className="rounded-l-none rounded-r-[5px] border-l-0"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      <ScrollArea viewportClassName="max-h-[304px]">
+                        {DAY_PERIODS.map((dayPeriod, index) => (
+                          <SelectItem value={dayPeriod} key={index}>
+                            {dayPeriod}
+                          </SelectItem>
+                        ))}
+                      </ScrollArea>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {index > 0 ? (
+                  <IconButton
+                    className="rounded-full opacity-0 hover:opacity-100"
+                    visual="error"
+                    variant="ghost"
+                    size="md"
+                    type="button"
+                    onClick={() => remove(index)}
+                  >
+                    <Trash03 className="size-[15px]" />
+                  </IconButton>
+                ) : (
+                  <IconButton
+                    className="rounded-[5px] bg-white"
+                    variant="outlined"
+                    visual="gray"
+                    size="md"
+                    type="button"
+                    onClick={isOn ? add : noop}
+                    disabled={!isOn}
+                  >
+                    <Plus className="size-[15px]" />
+                  </IconButton>
+                )}
               </div>
 
-              {index > 0 ? (
-                <IconButton
-                  className="rounded-full opacity-0 hover:opacity-100"
-                  visual="error"
-                  variant="ghost"
-                  size="md"
-                  type="button"
-                  onClick={() => remove(index)}
-                >
-                  <Trash03 className="size-[15px]" />
-                </IconButton>
-              ) : (
-                <IconButton
-                  className="rounded-[5px] bg-white"
-                  variant="outlined"
-                  visual="gray"
-                  size="md"
-                  type="button"
-                  onClick={isOn ? add : noop}
-                  disabled={!isOn}
-                >
-                  <Plus className="size-[15px]" />
-                </IconButton>
-              )}
+              {slotErrors?.[index] ? (
+                <ErrorMessage size="sm">{slotErrors[index]}</ErrorMessage>
+              ) : null}
             </div>
           ))}
         </div>
@@ -3010,6 +3098,7 @@ const SetYourPreferences = ({
     handleSubmit,
   } = useForm<SetYourPreferencesFormValues>({
     resolver: zodResolver(setYourPreferencesFormSchema),
+    mode: "onChange",
     defaultValues: {
       projects: stepData?.projectTypes,
       yourAvailability: capitalize(
@@ -3045,7 +3134,12 @@ const SetYourPreferences = ({
       DEFAULT_CUSTOM_WORKING_DAYS.map((day) => ({
         day,
         times: DEFAULT_CUSTOM_TIME_SLOT,
-      }))
+      })),
+      {
+        shouldValidate: true,
+        shouldDirty: true,
+        shouldTouch: true,
+      }
     )
     hasInitializedCustomDefault.current = true
   }, [availability, customAvailability, setValue])
@@ -3196,13 +3290,21 @@ const SetYourPreferences = ({
       getValues("customAvailability")?.filter((item) => item?.day !== day) || []
 
     data?.push({ day, times })
-    setValue("customAvailability", data)
+    setValue("customAvailability", data, {
+      shouldValidate: true,
+      shouldDirty: true,
+      shouldTouch: true,
+    })
   }
 
   const handleCustomAvailabityDisable = (day: string) => {
     const data =
       getValues("customAvailability")?.filter((item) => item?.day !== day) || []
-    setValue("customAvailability", data)
+    setValue("customAvailability", data, {
+      shouldValidate: true,
+      shouldDirty: true,
+      shouldTouch: true,
+    })
   }
 
   return (
@@ -3282,9 +3384,10 @@ const SetYourPreferences = ({
               {availability === "Custom" && (
                 <div className="flex flex-col">
                   {days?.map(({ id, lable, disabled }) => {
-                    const dayValue = customAvailability?.find(
-                      ({ day }) => day === lable
-                    )?.times as
+                    const dayIdx =
+                      customAvailability?.findIndex(({ day }) => day === lable) ??
+                      -1
+                    const dayValue = customAvailability?.[dayIdx]?.times as
                       | Array<{
                           startTime: string
                           startTimeDayPeriod: string
@@ -3292,6 +3395,14 @@ const SetYourPreferences = ({
                           endTimeDayPeriod: string
                         }>
                       | undefined
+                    const slotErrors =
+                      dayIdx >= 0
+                        ? (
+                            errors.customAvailability?.[dayIdx]?.times as
+                              | Array<{ message?: string }>
+                              | undefined
+                          )?.map((slotError) => slotError?.message)
+                        : undefined
                     const isDayEnabled = !!dayValue?.length
 
                     return (
@@ -3300,6 +3411,7 @@ const SetYourPreferences = ({
                         label={lable}
                         disabled={!isDayEnabled && disabled}
                         value={dayValue?.length ? dayValue : undefined}
+                        slotErrors={slotErrors}
                         onValueChange={(value) => {
                           handleCustomAvailabity(lable, value)
                         }}
@@ -3313,16 +3425,6 @@ const SetYourPreferences = ({
                       />
                     )
                   })}
-
-                  <HookFormErrorMessage
-                    name="customAvailability"
-                    errors={errors}
-                    render={({ message }) => (
-                      <ErrorMessage size="sm" className="mt-2">
-                        {message}
-                      </ErrorMessage>
-                    )}
-                  />
                 </div>
               )}
             </div>
@@ -3352,7 +3454,7 @@ const SetYourPreferences = ({
               >
                 Skip
               </Button>
-              <Button disabled={isLoading} size="md" visual="primary">
+              <Button disabled={isLoading || !isValid} size="md" visual="primary">
                 {isLoading ? (
                   <Spinner
                     size={24}
