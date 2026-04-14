@@ -1,0 +1,153 @@
+name: Login Change Gate
+
+# Dedicated gate for login/auth files on dev-main.
+# This workflow exists because GitHub branch protection and rulesets
+# require a paid plan on private repos. It acts as a hard block:
+# any PR targeting dev-main that touches login files MUST have explicit
+# repo-owner approval before it can pass CI.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    branches: [dev-main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  login-gate:
+    name: "Login files are RESTRICTED — repo owner approval required"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for login file changes
+        id: check
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch origin "$BASE_REF" --depth=1 || true
+          BASE_SHA=$(git rev-parse "origin/$BASE_REF")
+          CHANGED=$(git diff --name-only "$BASE_SHA"...HEAD)
+
+          # Login-frozen file patterns
+          LOGIN_FILES=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              frontend/app/sign-in/*|\
+              frontend/app/sign-up/*|\
+              frontend/contexts/auth.tsx|\
+              frontend/service/http/auth.ts|\
+              frontend/src/lib/api/auth.ts|\
+              frontend/hoc/AuthenticatedRoute.tsx|\
+              frontend/hoc/UnauthenticatedRoute.tsx|\
+              frontend/middleware.ts|\
+              frontend/app/forgot-password/*|\
+              frontend/app/reset-password/*|\
+              frontend/components/auth/*|\
+              backend/apps/auth-service/*|\
+              backend/apps/user-service/src/guards/*|\
+              backend/apps/api-gateway/src/proxy/proxy.service.ts|\
+              backend/libs/shared/src/guards/*|\
+              backend/libs/shared/src/decorators/*)
+                LOGIN_FILES="${LOGIN_FILES}${f}"$'\n' ;;
+            esac
+          done <<< "$CHANGED"
+
+          if [ -n "$LOGIN_FILES" ]; then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "files<<EOF"
+              echo "$LOGIN_FILES"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Block PR if login files changed without owner approval
+        if: steps.check.outputs.hit == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          FILES: ${{ steps.check.outputs.files }}
+        run: |
+          # Check if repo owner has approved this PR
+          OWNER_APPROVED=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews" \
+            --jq '[.[] | select(.user.login == "CTorres9800" and .state == "APPROVED")] | length')
+
+          if [ "$OWNER_APPROVED" -gt 0 ]; then
+            echo "✅ Repo owner (@CTorres9800) has approved this PR. Login gate passes."
+            exit 0
+          fi
+
+          # Post / update the gate comment
+          MARKER="<!-- login-gate-comment -->"
+          FILE_LIST=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            FILE_LIST="${FILE_LIST}- \`${f}\`"$'\n'
+          done <<< "$FILES"
+
+          BODY=$(cat <<COMMENT
+          ${MARKER}
+          ## 🚫 BLOCKED — Login files are restricted on \`dev-main\`
+
+          This PR modifies login/auth files that are **frozen** on the \`dev-main\` branch:
+
+          ${FILE_LIST}
+
+          ### Why is this blocked?
+
+          Login is working on local dev. Changes to these files have broken login multiple times in the past. To protect the working state:
+
+          - **All changes to login/auth files require explicit approval from the repo owner (@CTorres9800)**
+          - This check will keep failing until @CTorres9800 submits an "Approved" review on this PR
+          - Re-push or re-run this workflow after approval to pass the gate
+
+          ### What to do
+
+          1. If this PR intentionally changes login: request review from @CTorres9800 and wait for approval
+          2. If this PR should NOT touch login: remove the login file changes from this branch and push again
+          3. Login fixes for staging/live are handled on their respective branches with separate rules
+
+          ---
+          🤖 Enforced by [Login Change Gate](.github/workflows/login-gate.yml)
+          COMMENT
+          )
+
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -n1)
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/${EXISTING}" -f body="$BODY"
+          else
+            gh pr comment "$PR_NUMBER" --body "$BODY"
+          fi
+
+          # Request owner review
+          gh api -X POST "repos/${{ github.repository }}/pulls/${PR_NUMBER}/requested_reviewers" \
+            -f "reviewers[]=CTorres9800" || true
+
+          # Label it
+          gh api -X POST "repos/${{ github.repository }}/issues/${PR_NUMBER}/labels" \
+            -f "labels[]=login-restricted" || true
+
+          echo ""
+          echo "============================================="
+          echo "  BLOCKED: Login files are restricted."
+          echo "  Changes to login/auth require approval"
+          echo "  from @CTorres9800 (repo owner)."
+          echo "============================================="
+          echo ""
+          echo "Modified login files:"
+          echo "$FILES"
+          exit 1
+
+      - name: Pass — no login files touched
+        if: steps.check.outputs.hit == 'false'
+        run: echo "✅ No login/auth files modified. Gate passes."

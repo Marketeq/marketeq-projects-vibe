@@ -100,6 +100,121 @@ const newListingOptions = [
   },
 ]
 
+// Unsplash fallback images (stable IDs, hotlink-friendly `w=800` variant).
+// Used to fill in featured images for draft listings that were saved without
+// a selected image — publish-project strips File objects on autosave, so we
+// assign a deterministic image here based on the draft id.
+const FALLBACK_IMAGES = [
+  "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=60", // team collaborating
+  "https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=800&q=60", // team meeting
+  "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?auto=format&fit=crop&w=800&q=60", // team working at desk
+  "https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&w=800&q=60", // standup
+  "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=800&q=60", // whiteboard strategy
+  "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=800&q=60", // collaborative work
+  "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=800&q=60", // devs at computers
+  "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=800&q=60", // design team
+]
+
+// Team-oriented placeholder titles used when a draft has no title yet.
+const FALLBACK_TITLES = [
+  "Cross-Functional Delivery Squad",
+  "Full-Stack Product Pod",
+  "Design + Engineering Sprint Team",
+  "Growth & Marketing Retainer Team",
+  "Mobile App Delivery Squad",
+  "AI Integration Team",
+  "DevOps & Platform Engineering Pod",
+  "Brand & Website Sprint Team",
+]
+
+// Deterministic picker — same draft id always gets the same image/title.
+function pickFromList<T>(list: T[], key: string): T {
+  let hash = 0
+  for (let i = 0; i < key.length; i += 1) {
+    hash = (hash * 31 + key.charCodeAt(i)) | 0
+  }
+  return list[Math.abs(hash) % list.length]
+}
+
+// Seed listings for team-oriented projects and services. These demonstrate
+// the kinds of work that are designed to be delivered by multiple team members
+// collaborating together (squads, pods, agencies) rather than a single
+// freelancer. They always appear on /my-listings alongside the user's drafts.
+const TEAM_SEED_LISTINGS: Listing[] = [
+  {
+    id: "seed-team-product-launch",
+    title: "Cross-Functional Product Launch Squad",
+    type: "project",
+    status: "Active",
+    category: "Product",
+    description:
+      "Assemble a PM, designer, full-stack devs, and growth marketer to take a SaaS product from beta to public launch in 10 weeks.",
+    budget: "$45,000 budget",
+    duration: "10 week engagement",
+    mediaUrl: "/meeting-1.jpeg",
+  },
+  {
+    id: "seed-team-design-system",
+    title: "Design System & Component Library Pod",
+    type: "project",
+    status: "Active",
+    category: "Design",
+    description:
+      "A 4-person team of product designers and frontend engineers builds a Figma design system + React component library for your brand.",
+    budget: "$28,000 budget",
+    duration: "8 week engagement",
+    mediaUrl: "/working-2.jpeg",
+  },
+  {
+    id: "seed-team-ai-integration",
+    title: "AI Integration & ML Ops Team",
+    type: "project",
+    status: "Active",
+    category: "AI / ML",
+    description:
+      "ML engineers, data scientists, and a backend lead integrate an LLM workflow into your product with evals, guardrails, and observability.",
+    budget: "$62,000 budget",
+    duration: "12 week engagement",
+    mediaUrl: "/artificial-intelligence.jpeg",
+  },
+  {
+    id: "seed-team-growth-retainer",
+    title: "Full-Stack Growth Marketing Retainer",
+    type: "service",
+    status: "Active",
+    category: "Marketing",
+    description:
+      "A growth lead, paid media specialist, content strategist, and SEO engineer run your acquisition funnel end-to-end each month.",
+    budget: "$12,500 / month",
+    duration: "Rolling monthly retainer",
+    mediaUrl: "/working-3.jpeg",
+  },
+  {
+    id: "seed-team-mobile-app",
+    title: "iOS + Android App Delivery Team",
+    type: "service",
+    status: "Active",
+    category: "Mobile",
+    description:
+      "A shipped-together pod of iOS, Android, and backend engineers (plus a QA lead) delivers new app features on a 2-week sprint cadence.",
+    budget: "$18,000 / sprint",
+    duration: "2 week sprints",
+    mediaUrl: "/working-1.jpeg",
+  },
+  {
+    id: "seed-team-brand-sprint",
+    title: "Brand Identity & Website Sprint Team",
+    type: "service",
+    status: "Active",
+    category: "Branding",
+    description:
+      "A brand strategist, visual designer, copywriter, and webflow developer deliver a full brand refresh and marketing site in 6 weeks.",
+    budget: "$22,000 flat",
+    duration: "6 week sprint",
+    mediaUrl: "/meeting-2.jpeg",
+  },
+]
+
 function formatBudget(p: any): string {
   if (p.budget) return `$${Number(p.budget).toLocaleString()} budget`
   if (p.priceMin && p.priceMax)
@@ -196,13 +311,26 @@ export default function MyListingsPage() {
                   : d?.status === "needs_update"
                     ? "Needs Update"
                     : "Draft"
+            const draftId = d?.id || key
+            // publish-project strips File-typed featured images on autosave,
+            // so drafts almost always come back with no mediaUrl. Fall back
+            // to a deterministic Unsplash team image so every card shows one.
+            const draftMediaUrl =
+              d?.media?.featuredImageUrl ||
+              d?.media?.coverImageUrl ||
+              pickFromList(FALLBACK_IMAGES, draftId)
+            const draftTitle =
+              info?.title && info.title.trim().length > 0
+                ? info.title
+                : pickFromList(FALLBACK_TITLES, draftId)
             all.push({
-              id: d?.id || key,
-              title: info?.title || "Untitled",
+              id: draftId,
+              title: draftTitle,
               type: "project",
               status: statusLabel,
               category: firstCategory,
               description: info?.shortDescription || info?.fullDescription,
+              mediaUrl: draftMediaUrl,
               budget: formatBudget(info),
               duration: formatDuration({
                 duration: scope?.[0]?.rows?.[0]?.duration
@@ -217,7 +345,10 @@ export default function MyListingsPage() {
         }
       }
 
-      setListings(all)
+      // Always surface the team-oriented seed listings FIRST so users see
+      // the fully-populated examples (title + image + description) before
+      // any of their in-progress drafts.
+      setListings([...TEAM_SEED_LISTINGS, ...all])
     } catch (error) {
       console.error("Failed to fetch listings:", error)
     } finally {
