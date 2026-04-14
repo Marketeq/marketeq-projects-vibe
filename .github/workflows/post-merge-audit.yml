@@ -90,7 +90,7 @@ EOF
           fi
 
       - name: Fail loudly on direct push to protected branch
-        if: steps.pr.outputs.number == ''
+        if: steps.pr.outputs.number == '' && github.actor != 'CTorres9800'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -113,6 +113,10 @@ A commit was pushed to a protected branch without going through a pull request. 
 EOF
 )"
           exit 1
+
+      - name: Pass — repo owner direct push
+        if: steps.pr.outputs.number == '' && github.actor == 'CTorres9800'
+        run: echo "✅ Direct push by repo owner (@CTorres9800). Audit skipped."
 
       - name: Check status of required checks on merged PR
         id: checks
