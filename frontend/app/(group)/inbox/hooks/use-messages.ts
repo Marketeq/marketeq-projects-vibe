@@ -16,22 +16,28 @@ import type { Message } from "@/types/message"
  */
 export function useMessages(convId: string, token: string, keyReady?: boolean) {
   const [messages, setMessages] = useState<Message[]>([])
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!convId || !token) return
+    setMessages([])
+    if (!convId || !token) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    const ac = new AbortController()
     ;(async () => {
       try {
-        // 1) fetch messages
         const data = await apiFetch<Message[]>(
           `/v1/messages/thread/${convId}`,
           {
             method: "GET",
             headers: { Authorization: `Bearer ${token}` },
+            signal: ac.signal,
           }
         )
+        if (ac.signal.aborted) return
 
-        // 2) decrypt ciphertext. Never display server-sent plaintext as fallback —
-        //    if decryption fails or no key, show a placeholder so broken state is visible.
         let key: Uint8Array | null = null
         try {
           key = loadKey(convId)
@@ -41,13 +47,8 @@ export function useMessages(convId: string, token: string, keyReady?: boolean) {
 
         const decrypted = await Promise.all(
           data.map(async (m) => {
-            if (!m.ciphertext) {
-              // legacy plaintext-only row (pre-E2EE); render as-is
-              return m
-            }
-            if (!key) {
-              return { ...m, content: "🔒 Encrypted message" }
-            }
+            if (!m.ciphertext) return m
+            if (!key) return { ...m, content: "🔒 Encrypted message" }
             try {
               return { ...m, content: await decryptAES(m.ciphertext, key) }
             } catch {
@@ -56,12 +57,17 @@ export function useMessages(convId: string, token: string, keyReady?: boolean) {
           })
         )
 
+        if (ac.signal.aborted) return
         setMessages(decrypted)
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.name === "AbortError") return
         console.error("useMessages error:", err)
+      } finally {
+        if (!ac.signal.aborted) setLoading(false)
       }
     })()
+    return () => ac.abort()
   }, [convId, token, keyReady])
 
-  return messages
+  return { messages, loading }
 }

@@ -122,6 +122,7 @@ export function Chats({
     "Messages"
   )
   const [pinnedMsgs, setPinnedMsgs] = useState<Message[]>([])
+  const pinnedFetchRef = useRef<AbortController | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [forwardOpen, setForwardOpen] = useState(false)
@@ -156,27 +157,34 @@ export function Chats({
   useEffect(() => {
     setKeyReady(false)
     if (!selectedConversation || !privateKey) return
+    const ac = new AbortController()
+    const convId = selectedConversation.id
     ;(async () => {
       try {
         const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-          `/api/messaging/conversations/${selectedConversation.id}/key?isGroup=${selectedConversation.isGroup}`,
-          { headers: { Authorization: `Bearer ${jwtToken}` } }
+          `/api/messaging/conversations/${convId}/key?isGroup=${selectedConversation.isGroup}`,
+          {
+            headers: { Authorization: `Bearer ${jwtToken}` },
+            signal: ac.signal,
+          }
         )
+        if (ac.signal.aborted) return
 
-        // decrypt with your RSA privateKey → ArrayBuffer
         const privatePem = await exportPrivateKey(privateKey)
         const rawBuf = await decryptWithPrivateKey(encryptedKey, privatePem)
+        if (ac.signal.aborted) return
 
-        // store base64 so loadKey() can find it
         const arr = new Uint8Array(rawBuf)
         const b64 = btoa(String.fromCharCode(...arr))
-        saveKey(selectedConversation.id, b64)
+        saveKey(convId, b64)
         setKeyReady(true)
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.name === "AbortError") return
         console.error("Failed to unwrap conversation key", err)
-        setKeyReady(true) // still allow messages to render (plaintext fallback)
+        if (!ac.signal.aborted) setKeyReady(true)
       }
     })()
+    return () => ac.abort()
   }, [selectedConversation, privateKey, jwtToken])
 
   //below logic to add new user to a group chat //need to add button for it once user-service can be called to add users
@@ -220,11 +228,12 @@ export function Chats({
   const [bottomRef, { height }] = useMeasure<HTMLDivElement>()
 
   // 2) fetch & decrypt messages
-  const fetchedMsgs = useMessages(
+  const { messages: fetchedMsgs, loading: messagesLoading } = useMessages(
     selectedConversation ? selectedConversation.id : "",
     jwtToken,
     keyReady
   )
+  const isSwitching = messagesLoading || !keyReady
 
   // 2.1) local messages state for optimistic updates
   const [localMsgs, setLocalMsgs] = useState<Message[]>([])
@@ -465,22 +474,28 @@ export function Chats({
     setSelectedTab(tab)
 
     if (tab === "Pinned") {
+      if (!selectedConversation) return
+      pinnedFetchRef.current?.abort()
+      const ac = new AbortController()
+      pinnedFetchRef.current = ac
+      const convId = selectedConversation.id
+      setPinnedMsgs([])
       try {
-        if (!selectedConversation) return
         const allMsgs = await apiFetch<Message[]>(
-          `/v1/messages/thread/${selectedConversation.id}`,
+          `/v1/messages/thread/${convId}`,
           {
             headers: { Authorization: `Bearer ${jwtToken}` },
+            signal: ac.signal,
           }
         )
+        if (ac.signal.aborted) return
         const pinned = allMsgs.filter((m) => m.pinned || m.isPinned)
 
-        // Decrypt pinned messages — never display server plaintext as fallback
         let key: Uint8Array | null = null
-        try { key = loadKey(selectedConversation.id) } catch { /* no key */ }
+        try { key = loadKey(convId) } catch { /* no key */ }
         const decrypted = await Promise.all(
           pinned.map(async (m) => {
-            if (!m.ciphertext) return m // legacy plaintext row
+            if (!m.ciphertext) return m
             if (!key) return { ...m, content: "🔒 Encrypted message" }
             try {
               return { ...m, content: await decryptAES(m.ciphertext, key) }
@@ -489,8 +504,10 @@ export function Chats({
             }
           })
         )
+        if (ac.signal.aborted) return
         setPinnedMsgs(decrypted)
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.name === "AbortError") return
         console.error("Failed to fetch pinned messages", err)
       }
     }
@@ -617,9 +634,8 @@ export function Chats({
           <div className="flex flex-col gap-y-1">
             <div className="inline-flex items-center gap-x-1">
               <span className="text-lg font-semibold text-dark-blue-400">
-                {receiverUser.firstName}
+                {fullName}
               </span>
-              <span className="text-base text-dark-blue-400">{fullName}</span>
             </div>
             <div className="inline-flex items-center gap-x-2">
               <span className="text-sm text-dark-blue-400">Active now</span>
@@ -720,13 +736,19 @@ export function Chats({
           scrollBar={<ScrollBar className="w-4 p-1" />}
         >
           <div className="p-8 pb-[100px] grid gap-y-6">
-            {displayedMessages.length === 0 && (
+            {isSwitching && (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
+                <Spinner size={24} strokeWidth={3} />
+                <p className="text-sm">Loading messages...</p>
+              </div>
+            )}
+            {!isSwitching && displayedMessages.length === 0 && (
               <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
                 <Send className="size-8 stroke-[1.5]" />
                 <p className="text-sm">No messages yet. Say hello!</p>
               </div>
             )}
-            {displayedMessages.map((m, i) => (
+            {!isSwitching && displayedMessages.map((m, i) => (
               <div
                 key={i}
                 className={`flex ${
