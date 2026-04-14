@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { AuthAPI } from "@/service/http/auth"
 import Cookies from "js-cookie"
+import { Monitor01, Smartphone, Tablet01 } from "@blend-metrics/icons"
 import {
   Badge,
   Button,
@@ -18,6 +19,11 @@ import {
 type SessionData = {
   id: string
   userAgent: string
+  browserName?: string | null
+  browserVersion?: string | null
+  osName?: string | null
+  osVersion?: string | null
+  deviceType?: string | null
   ipAddress: string
   createdAt: string
   lastActiveAt: string
@@ -31,10 +37,8 @@ function parseUserAgent(ua: string): { browser: string; os: string; isMobile: bo
 
   if (!ua || ua.length === 0) return { browser, os, isMobile }
 
-  // Detect mobile first
   isMobile = /iPhone|iPad|iPod|Android|Mobile|Windows Phone/i.test(ua)
 
-  // Browser detection (order matters)
   if (/Edg(?:e)?\//.test(ua)) browser = "Edge"
   else if (/OPR\/|Opera\//.test(ua)) browser = "Opera"
   else if (/Chrome\//.test(ua) && !/Edg|Edge/i.test(ua)) browser = "Chrome"
@@ -42,7 +46,6 @@ function parseUserAgent(ua: string): { browser: string; os: string; isMobile: bo
   else if (/Firefox\//.test(ua)) browser = "Firefox"
   else if (/MSIE|Trident/.test(ua)) browser = "Internet Explorer"
 
-  // OS detection (order matters)
   if (/Windows NT/.test(ua)) os = "Windows"
   else if (/Mac OS X/.test(ua)) os = "macOS"
   else if (/Linux/.test(ua) && !/Android/.test(ua)) os = "Linux"
@@ -51,6 +54,30 @@ function parseUserAgent(ua: string): { browser: string; os: string; isMobile: bo
   else if (/Windows Phone/.test(ua)) os = "Windows Phone"
 
   return { browser, os, isMobile }
+}
+
+type IconComponent = React.ComponentType<React.SVGProps<SVGSVGElement>>
+
+function getSessionDisplay(session: SessionData): { label: string; Icon: IconComponent } {
+  if (session.browserName || session.osName) {
+    const browser = session.browserVersion
+      ? `${session.browserName} ${session.browserVersion}`
+      : session.browserName ?? "Browser"
+    const os = session.osVersion
+      ? `${session.osName} ${session.osVersion}`
+      : session.osName ?? "Device"
+    const Icon: IconComponent =
+      session.deviceType === "mobile" ? Smartphone
+        : session.deviceType === "tablet" ? Tablet01
+        : Monitor01
+    return { label: `${browser} on ${os}`, Icon }
+  }
+
+  const { browser, os, isMobile } = parseUserAgent(session.userAgent)
+  return {
+    label: `${browser} on ${os}`,
+    Icon: isMobile ? Smartphone : Monitor01,
+  }
 }
 
 function formatIpAddress(ip: string): string {
@@ -165,19 +192,19 @@ export default function ActiveSessionsModal({ onClose }: ActiveSessionsModalProp
         ) : (
           <div className="mt-2 max-h-80 space-y-3 overflow-y-auto pr-1">
             {sessions.map((session) => {
-              const { browser, os, isMobile } = parseUserAgent(session.userAgent)
+              const { label, Icon } = getSessionDisplay(session)
               return (
                 <div
                   key={session.id}
-                  className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3"
+                  className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
+                    session.isCurrent ? "border-green-200 bg-green-50/50" : "border-gray-200"
+                  }`}
                 >
                   <div className="flex items-center gap-x-3 min-w-0">
-                    <span className="text-lg shrink-0">
-                      {isMobile ? "\u{1F4F1}" : "\u{1F5A5}"}
-                    </span>
+                    <Icon className="size-5 shrink-0 text-gray-500" />
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-dark-blue-400 truncate">
-                        {browser} on {os}
+                        {label}
                       </p>
                       <p className="text-xs text-gray-500 truncate">
                         {formatIpAddress(session.ipAddress)} &middot; {relativeTime(session.lastActiveAt)}

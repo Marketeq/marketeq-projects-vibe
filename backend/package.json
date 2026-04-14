@@ -64,6 +64,7 @@
     "@nestjs/swagger": "^11.2.6",
     "@types/bcryptjs": "^2.4.6",
     "@types/sanitize-html": "^2.16.1",
+    "@types/ua-parser-js": "^0.7.39",
     "amqp-connection-manager": "^4.1.14",
     "amqplib": "^0.10.3",
     "bad-words": "^4.0.0",
@@ -78,6 +79,7 @@
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.0",
     "sanitize-html": "^2.17.2",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "ua-parser-js": "^2.0.9"
   }
 }

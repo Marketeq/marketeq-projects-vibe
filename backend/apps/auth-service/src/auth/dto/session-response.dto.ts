@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class SessionResponseDto {
   @ApiProperty()
@@ -6,6 +6,21 @@ export class SessionResponseDto {
 
   @ApiProperty()
   userAgent: string;
+
+  @ApiPropertyOptional()
+  browserName?: string | null;
+
+  @ApiPropertyOptional()
+  browserVersion?: string | null;
+
+  @ApiPropertyOptional()
+  osName?: string | null;
+
+  @ApiPropertyOptional()
+  osVersion?: string | null;
+
+  @ApiPropertyOptional()
+  deviceType?: string | null;
 
   @ApiProperty()
   ipAddress: string;

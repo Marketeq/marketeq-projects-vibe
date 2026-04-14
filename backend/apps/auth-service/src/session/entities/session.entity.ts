@@ -22,6 +22,21 @@ export class Session {
   @Column({ default: '' })
   userAgent: string;
 
+  @Column({ nullable: true })
+  browserName: string;
+
+  @Column({ nullable: true })
+  browserVersion: string;
+
+  @Column({ nullable: true })
+  osName: string;
+
+  @Column({ nullable: true })
+  osVersion: string;
+
+  @Column({ nullable: true })
+  deviceType: string;
+
   @Column({ default: '' })
   ipAddress: string;
 

@@ -17,6 +17,7 @@ import * as bcrypt from 'bcryptjs';
 import axios from 'axios';
 import * as otplib from 'otplib';
 import * as QRCode from 'qrcode';
+import { UAParser } from 'ua-parser-js';
 import type { StringValue } from 'ms';
 
 import { BrevoService } from '../brevo/brevo.service';
@@ -886,6 +887,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       .map((s) => ({
         id: s.id,
         userAgent: s.userAgent,
+        browserName: s.browserName ?? null,
+        browserVersion: s.browserVersion ?? null,
+        osName: s.osName ?? null,
+        osVersion: s.osVersion ?? null,
+        deviceType: s.deviceType ?? null,
         ipAddress: s.ipAddress,
         createdAt: s.createdAt.toISOString(),
         lastActiveAt: s.lastActiveAt.toISOString(),
@@ -1351,11 +1357,23 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const expiresMs = this.parseExpiresInMs(expiresInStr);
     const expiresAt = new Date(Date.now() + expiresMs);
 
+    const parser = new UAParser(params.userAgent);
+    const browser = parser.getBrowser();
+    const os = parser.getOS();
+    const device = parser.getDevice();
+
     await this.sessionRepository.save({
       id: params.id,
       userId: params.userId,
       refreshTokenHash: hash,
       userAgent: params.userAgent,
+      browserName: browser.name ?? null,
+      browserVersion: browser.major ?? null,
+      osName: os.name ?? null,
+      osVersion: os.version ?? null,
+      deviceType: device.type === 'mobile' ? 'mobile'
+        : device.type === 'tablet' ? 'tablet'
+        : 'desktop',
       ipAddress: params.ipAddress,
       expiresAt,
     });
