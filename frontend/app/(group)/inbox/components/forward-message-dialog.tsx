@@ -10,7 +10,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  Textarea,
 } from "@/components/ui"
 import { apiFetch } from "@/src/lib/api"
 import { encryptAES } from "@/src/crypto/e2ee"

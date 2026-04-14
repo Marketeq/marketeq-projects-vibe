@@ -111,15 +111,16 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
     )
   }
 
-  const fullName = user
-    ? [user.firstName?.trim(), user.lastName?.trim()].filter(Boolean).join(" ") || user.username || "Unknown"
-    : "Loading..."
-  const username = user?.username || ""
-  const avatarUrl = user?.avatarUrl
+  const fullName =
+    [user.firstName?.trim(), user.lastName?.trim()].filter(Boolean).join(" ") ||
+    user.username ||
+    "Unknown"
+  const username = user.username || ""
+  const avatarUrl = user.avatarUrl
   const initials = fullName.charAt(0).toUpperCase()
-  const rate = user?.rateMin && user?.rateMax ? `$${user.rateMin} - $${user.rateMax}` : null
-  const availability = user?.availability || user?.customAvailability
-  const memberSince = user?.createdAt ? new Date(user.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : null
+  const rate = user.rateMin && user.rateMax ? `$${user.rateMin} - $${user.rateMax}` : null
+  const availability = user.availability || user.customAvailability
+  const memberSince = user.createdAt ? new Date(user.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : null
 
   return (
     <div className="w-[300px] bg-white flex flex-col shrink-0 pt-10 pb-6 px-5 border-l border-gray-200">

@@ -204,8 +204,8 @@ export async function ensureEncryptionKeysExist(userId?: string) {
       const privPem = await decryptWithKEK(encryptedPrivateKey, kek)
       localStorage.setItem("privateKey", privPem)
 
-      // Derive public key by importing private + re-exporting
-      const privKey = await importPrivateKey(privPem)
+      // Validate private key imports cleanly (throws on malformed PEM)
+      await importPrivateKey(privPem)
       // We can't derive public from private with WebCrypto, so fetch from server
       const { publicKey: serverPubKey } = await apiFetch<{ publicKey: string }>(
         "/api/messaging/get-public-key",

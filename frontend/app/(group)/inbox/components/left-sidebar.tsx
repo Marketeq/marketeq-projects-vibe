@@ -453,7 +453,6 @@ const LeftSidebar = ({
             </div>
           ) : (
             conversations.map((conv) => {
-              const otherId = getOtherParticipantId(conv, currentUserId)!
               return (
                 <Chat
                   key={conv.id}

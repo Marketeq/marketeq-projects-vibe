@@ -8292,7 +8292,7 @@ function Default() {
                         const token = getAccessToken()
                         if (!currentUser?.id || !profile?.id || currentUser.id === profile.id) return
                         try {
-                          const thread = await apiFetch<{ id: string }>("/v1/threads", {
+                          await apiFetch<{ id: string }>("/v1/threads", {
                             method: "POST",
                             headers: token ? { Authorization: `Bearer ${token}` } : {},
                             body: { participantIds: [currentUser.id, profile.id], isGroup: false },
