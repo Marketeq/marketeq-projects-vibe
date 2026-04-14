@@ -585,6 +585,9 @@ export class ProjectSyncService {
           ? `<${tag} style="${alignStyle}">${children}</${tag}>`
           : `<${tag}>${children}</${tag}>`;
       }
+    }
+    return null;
+  }
 
       case 'list': {
         const listType = n.listType;
