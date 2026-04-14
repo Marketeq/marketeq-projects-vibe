@@ -487,9 +487,14 @@ export const ImageEditor = ({
             }
       },
     })
+  const shouldNotifyValueChangeRef = useRef(true)
   const [dataUrl, setDataUrl] = useUncontrolledState<string | null>({
     defaultValue: null,
     onChange: (value) => {
+      if (!shouldNotifyValueChangeRef.current) {
+        shouldNotifyValueChangeRef.current = true
+        return
+      }
       value ? onValueChange?.(acceptedFiles) : onValueChange?.(undefined)
     },
   })
@@ -499,6 +504,7 @@ export const ImageEditor = ({
   useEffect(() => {
     if (defaultDataUrl && !defaultDataUrlApplied.current) {
       defaultDataUrlApplied.current = true
+      shouldNotifyValueChangeRef.current = false
       setDataUrl(defaultDataUrl)
     }
   }, [defaultDataUrl, setDataUrl])
@@ -622,7 +628,7 @@ export const ImageEditor = ({
   return (
     <>
       {/* Hidden file input — always in the DOM so open() works from any dialog */}
-      <div className="sr-only" {...getRootProps()}>
+      <div className="sr-only">
         <input {...getInputProps()} />
       </div>
 
@@ -659,7 +665,10 @@ export const ImageEditor = ({
           </div>
 
           <div className="mt-8">
-            <div className="border border-gray-200  rounded-[4px] py-4 px-6">
+            <div
+              className="border border-gray-200 rounded-[4px] py-4 px-6"
+              {...getRootProps()}
+            >
               <span className="block text-sm leading-5 text-center text-gray-600">
                 <button
                   className="font-semibold transition duration-300 text-dark-blue-400 hover:underline focus-visible:outline-none"
