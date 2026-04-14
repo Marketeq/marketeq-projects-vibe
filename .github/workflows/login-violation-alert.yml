@@ -1,0 +1,167 @@
+name: Login Violation Alert
+
+# Runs AFTER a push to dev-main (i.e., after a merge).
+# If login/auth files were changed without proper approval,
+# opens an issue and tags the developer who pushed.
+
+on:
+  push:
+    branches: [dev-main]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-login-violation:
+    name: Check for unauthorized login file changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect login file changes in this push
+        id: detect
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+
+          LOGIN_FILES=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              frontend/app/sign-in/*|\
+              frontend/app/sign-up/*|\
+              frontend/contexts/auth.tsx|\
+              frontend/service/http/auth.ts|\
+              frontend/src/lib/api/auth.ts|\
+              frontend/hoc/AuthenticatedRoute.tsx|\
+              frontend/hoc/UnauthenticatedRoute.tsx|\
+              frontend/middleware.ts|\
+              frontend/app/forgot-password/*|\
+              frontend/app/reset-password/*|\
+              frontend/components/auth/*|\
+              backend/apps/auth-service/*|\
+              backend/apps/user-service/src/guards/*|\
+              backend/apps/api-gateway/src/proxy/proxy.service.ts|\
+              backend/libs/shared/src/guards/*|\
+              backend/libs/shared/src/decorators/*)
+                LOGIN_FILES="${LOGIN_FILES}${f}"$'\n' ;;
+            esac
+          done <<< "$CHANGED"
+
+          if [ -n "$LOGIN_FILES" ]; then
+            echo "violation=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "files<<EOF"
+              echo "$LOGIN_FILES"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "violation=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check if this was an approved change
+        if: steps.detect.outputs.violation == 'true'
+        id: approval
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          # Find the PR that was merged for this commit
+          PR_NUMBER=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/pulls" \
+            --jq '.[0].number // empty' 2>/dev/null || echo "")
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            echo "pr_number=none" >> "$GITHUB_OUTPUT"
+            echo "No associated PR found — direct push to dev-main"
+            exit 0
+          fi
+
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+          # Check if CTorres9800 approved the PR
+          OWNER_APPROVED=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews" \
+            --jq '[.[] | select(.user.login == "CTorres9800" and .state == "APPROVED")] | length' 2>/dev/null || echo "0")
+
+          if [ "$OWNER_APPROVED" -gt 0 ]; then
+            echo "approved=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open violation issue
+        if: steps.detect.outputs.violation == 'true' && steps.approval.outputs.approved == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FILES: ${{ steps.detect.outputs.files }}
+          PR_NUMBER: ${{ steps.approval.outputs.pr_number }}
+          PUSHER: ${{ github.actor }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          FILE_LIST=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            FILE_LIST="${FILE_LIST}- \`${f}\`"$'\n'
+          done <<< "$FILES"
+
+          if [ "$PR_NUMBER" = "none" ]; then
+            PR_REF="Direct push (no PR) — commit ${COMMIT_SHA:0:8}"
+          else
+            PR_REF="PR #${PR_NUMBER}"
+          fi
+
+          TITLE="🚨 Login branch rule violated by @${PUSHER} — ${PR_REF}"
+
+          BODY=$(cat <<ISSUE_EOF
+          ## Login Branch Rule Violation
+
+          **Developer:** @${PUSHER}
+          **Commit:** [\`${COMMIT_SHA:0:8}\`](https://github.com/${{ github.repository }}/commit/${COMMIT_SHA})
+          **Source:** ${PR_REF}
+          **Branch:** \`dev-main\`
+
+          ### What happened
+
+          Login/auth files were merged into \`dev-main\` **without repo owner approval** from @CTorres9800. This violates the login branch rule.
+
+          ### Files changed
+
+          ${FILE_LIST}
+
+          ### Why this matters
+
+          Login is frozen on \`dev-main\`. Every past regression in these files broke login for all users and required emergency fixes. Changes to login/auth files require:
+
+          1. Explicit approval from @CTorres9800
+          2. The four-point login confirmation in the PR description
+          3. The \`login-gate\` CI check to pass
+
+          ### Required action
+
+          @${PUSHER} — you must do one of the following within 24 hours:
+
+          1. **Get retroactive approval**: Ask @CTorres9800 to review commit [\`${COMMIT_SHA:0:8}\`](https://github.com/${{ github.repository }}/commit/${COMMIT_SHA}) and confirm login still works locally for both client and talent accounts
+          2. **Revert the change**: Open a PR that reverts only the login file changes from this commit
+
+          If login is confirmed broken, this becomes a P0 incident.
+
+          ---
+          🤖 Detected by [Login Violation Alert](.github/workflows/login-violation-alert.yml)
+          ISSUE_EOF
+          )
+
+          gh issue create \
+            --title "$TITLE" \
+            --body "$BODY" \
+            --assignee "$PUSHER" \
+            --label "login-restricted,urgent"
+
+          echo ""
+          echo "============================================="
+          echo "  VIOLATION: Login files changed on dev-main"
+          echo "  without repo owner approval."
+          echo "  Issue created and assigned to @${PUSHER}"
+          echo "============================================="
