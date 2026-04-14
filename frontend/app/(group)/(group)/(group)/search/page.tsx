@@ -72,7 +72,12 @@ import {
   Toggle,
   inputVariants,
 } from "@/components/ui"
-import { Sidebar } from "./sidebar"
+import {
+  Sidebar,
+  SidebarServices,
+  SidebarTalent,
+  SidebarTeams,
+} from "./sidebar"
 
 const GRID_LAYOUT = "GRID"
 const LIST_LAYOUT = "LIST"
@@ -418,6 +423,22 @@ function Search() {
     }
   }, [backendCategory])
 
+  // Render the correct sidebar variant for the active category
+  const renderSidebar = (sidebarClassName?: string) => {
+    switch (backendCategory) {
+      case "services":
+        return <SidebarServices className={sidebarClassName} />
+      case "talent":
+        return <SidebarTalent className={sidebarClassName} />
+      case "teams":
+        return <SidebarTeams className={sidebarClassName} />
+      case "projects":
+      case "all":
+      default:
+        return <Sidebar className={sidebarClassName} />
+    }
+  }
+
   // Build the list that will actually be rendered — real hits when available,
   // placeholders of the same kind otherwise so the grid isn't empty.
   const rendered: SearchHit[] =
@@ -446,7 +467,7 @@ function Search() {
             className="h-full"
             scrollBar={<ScrollBar className="w-4 p-1" />}
           >
-            <Sidebar className="block w-full px-5" />
+            {renderSidebar("block w-full px-5")}
           </ScrollArea>
           <div className="h-12 absolute border-t border-gray-200 bg-white bottom-0 inset-x-0 flex items-center justify-between pl-3.5 p-1">
             <Button
@@ -490,7 +511,7 @@ function Search() {
       */}
 
       <div className="lg:p-[50px] lg:flex gap-x-[50px]">
-        <Sidebar />
+        {renderSidebar()}
 
         <div className="flex-auto">
           {/* Contextual search banner — appears directly above the results count. */}
