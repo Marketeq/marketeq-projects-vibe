@@ -101,6 +101,16 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @ValidateNested({ each: true })
   @Validate(HasNoOverlappingCustomAvailabilityConstraint)
   @Transform(({ value }) => {
+    const toDto = (obj: any): CustomAvailabilityDto => {
+      const dto = new CustomAvailabilityDto();
+      dto.day = obj?.day;
+      dto.startTime = obj?.startTime;
+      dto.startTimeDayPeriod = obj?.startTimeDayPeriod;
+      dto.endTime = obj?.endTime;
+      dto.endTimeDayPeriod = obj?.endTimeDayPeriod;
+      return dto;
+    };
+
     const parseValue = (raw: any): any[] => {
       if (typeof raw === 'string') {
         try {
@@ -120,16 +130,18 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
       if (!entry || typeof entry !== 'object') return [];
 
       if (Array.isArray(entry.times)) {
-        return entry.times.map((slot: any) => ({
-          day: entry.day,
-          startTime: slot?.startTime,
-          startTimeDayPeriod: slot?.startTimeDayPeriod,
-          endTime: slot?.endTime,
-          endTimeDayPeriod: slot?.endTimeDayPeriod,
-        }));
+        return entry.times.map((slot: any) =>
+          toDto({
+            day: entry.day,
+            startTime: slot?.startTime,
+            startTimeDayPeriod: slot?.startTimeDayPeriod,
+            endTime: slot?.endTime,
+            endTimeDayPeriod: slot?.endTimeDayPeriod,
+          }),
+        );
       }
 
-      return [entry];
+      return [toDto(entry)];
     });
   })
   @Type(() => CustomAvailabilityDto)
