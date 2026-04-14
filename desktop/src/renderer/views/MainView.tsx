@@ -2,9 +2,10 @@
 //
 // Phase 6 — Main window UI per doc 04 §5.4 + doc 19 §1/§2.
 //
-// Driven entirely by existing zustand stores (timer, sync, capture, auth,
-// onboarding). No domain logic lives here — the view only dispatches via
-// the stores' actions.
+// Driven entirely by existing zustand stores (timer, sync, capture, auth).
+// No domain logic lives here — the view only dispatches via the stores'
+// actions. Render is idempotent against out-of-order events because the
+// snapshot is always the source of truth.
 
 /// <reference path="../dtt-bridge.d.ts" />
 import React, { useEffect, useMemo, useState } from 'react';
@@ -84,7 +85,9 @@ function ActivityGraph(): JSX.Element {
   }, []);
 
   const bars = useMemo(() => {
-    const arr = new Array<ActivitySample | null>(30).fill(null);
+    const arr: Array<ActivitySample | null> = new Array<ActivitySample | null>(
+      30,
+    ).fill(null);
     samples.slice(-30).forEach((s, i) => {
       arr[i] = s;
     });
@@ -93,9 +96,7 @@ function ActivityGraph(): JSX.Element {
 
   return (
     <div className="activity-graph" aria-label={COPY.main.activity}>
-      <div className="label" style={{ fontSize: 11, color: '#6b7284' }}>
-        {COPY.main.activity}
-      </div>
+      <div className="label">{COPY.main.activity}</div>
       <div className="bars">
         {bars.map((b, i) => (
           <div
@@ -128,7 +129,11 @@ function ScreenshotsStrip(): JSX.Element {
       ) : (
         <div className="thumbs">
           {shots.map((s) => (
-            <div key={s.id} className="thumb" title={new Date(s.takenAt).toLocaleTimeString()} />
+            <div
+              key={s.id}
+              className="thumb"
+              title={new Date(s.takenAt).toLocaleTimeString()}
+            />
           ))}
         </div>
       )}
@@ -155,7 +160,10 @@ export function MainView(): JSX.Element {
     try {
       switch (state) {
         case 'Idle':
-          await timer.startTimer({ contractId: 'default', taskId: 'default' });
+          await timer.startTimer({
+            contractId: 'default',
+            taskId: 'default',
+          });
           break;
         case 'Running':
           await timer.pauseTimer();
@@ -189,7 +197,7 @@ export function MainView(): JSX.Element {
   async function onBreak(kind: 'paid' | 'unpaid') {
     try {
       await timer.startBreak({
-        kind: kind === 'paid' ? 'paid' : 'unpaid',
+        kind,
         durationSec: 15 * 60,
       });
     } catch (err) {

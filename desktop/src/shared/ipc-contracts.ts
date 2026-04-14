@@ -98,6 +98,9 @@ export const IPC = {
   windowShow: 'window:show',
   windowHide: 'window:hide',
   windowQuit: 'window:quit',
+
+  // --- Shell helpers ---
+  shellOpenExternal: 'shell:open-external',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
