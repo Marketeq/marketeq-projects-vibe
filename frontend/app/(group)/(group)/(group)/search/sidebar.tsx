@@ -724,6 +724,173 @@ const ProjectType = () => {
   )
 }
 
+/* ─── Reusable checkbox group ─────────────────────────────────────────── */
+
+const CheckboxGroup = ({
+  title,
+  options,
+}: {
+  title: string
+  options: string[]
+}) => (
+  <div className="space-y-5 py-5">
+    <div className="flex items-center justify-between">
+      <span className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
+        {title}
+      </span>
+    </div>
+    <div className="space-y-3">
+      {options.map((opt) => {
+        const id = `${title}-${opt}`.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        return (
+          <div key={id} className="flex items-center gap-x-3.5">
+            <Checkbox id={id} />
+            <Label
+              htmlFor={id}
+              className="font-normal text-[#667085]"
+              size="sm"
+            >
+              {opt}
+            </Label>
+          </div>
+        )
+      })}
+    </div>
+  </div>
+)
+
+/* ─── Hourly Rate ─────────────────────────────────────────────────────── */
+
+const HourlyRate = () => {
+  const [minRate, setMinRate] = useState("")
+  const [maxRate, setMaxRate] = useState("")
+  return (
+    <div className="py-5 space-y-5">
+      <h1 className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
+        Hourly Rate
+      </h1>
+      <div className="grid grid-cols-2 gap-x-3">
+        <div className="flex flex-col gap-y-1.5">
+          <InputGroup>
+            <Input
+              id="hr-min"
+              type="text"
+              className="pl-10 h-10 w-full"
+              value={minRate}
+              onChange={(e) =>
+                setMinRate(e.target.value.replace(/\D/g, ""))
+              }
+            />
+            <InputLeftElement className="w-10">
+              <DollarSign className="text-gray-500 size-4" />
+            </InputLeftElement>
+          </InputGroup>
+          <Label className="text-gray-500" htmlFor="hr-min" size="sm">
+            Min /hr
+          </Label>
+        </div>
+        <div className="flex flex-col gap-y-1.5">
+          <InputGroup>
+            <Input
+              id="hr-max"
+              type="text"
+              className="pl-10 h-10 w-full"
+              value={maxRate}
+              onChange={(e) =>
+                setMaxRate(e.target.value.replace(/\D/g, ""))
+              }
+            />
+            <InputLeftElement className="w-10">
+              <DollarSign className="text-gray-500 size-4" />
+            </InputLeftElement>
+          </InputGroup>
+          <Label className="text-gray-500" htmlFor="hr-max" size="sm">
+            Max /hr
+          </Label>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Monthly Budget (Services) ───────────────────────────────────────── */
+
+const MonthlyBudget = () => {
+  const [minRate, setMinRate] = useState("")
+  const [maxRate, setMaxRate] = useState("")
+  return (
+    <div className="py-5 space-y-5">
+      <h1 className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
+        Monthly Budget
+      </h1>
+      <div className="grid grid-cols-2 gap-x-3">
+        <div className="flex flex-col gap-y-1.5">
+          <InputGroup>
+            <Input
+              id="mb-min"
+              type="text"
+              className="pl-10 h-10 w-full"
+              value={minRate}
+              onChange={(e) =>
+                setMinRate(e.target.value.replace(/\D/g, ""))
+              }
+            />
+            <InputLeftElement className="w-10">
+              <DollarSign className="text-gray-500 size-4" />
+            </InputLeftElement>
+          </InputGroup>
+          <Label className="text-gray-500" htmlFor="mb-min" size="sm">
+            Min /month
+          </Label>
+        </div>
+        <div className="flex flex-col gap-y-1.5">
+          <InputGroup>
+            <Input
+              id="mb-max"
+              type="text"
+              className="pl-10 h-10 w-full"
+              value={maxRate}
+              onChange={(e) =>
+                setMaxRate(e.target.value.replace(/\D/g, ""))
+              }
+            />
+            <InputLeftElement className="w-10">
+              <DollarSign className="text-gray-500 size-4" />
+            </InputLeftElement>
+          </InputGroup>
+          <Label className="text-gray-500" htmlFor="mb-max" size="sm">
+            Max /month
+          </Label>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Location filter (single-line text) ─────────────────────────────── */
+
+const LocationFilter = ({ label = "Location" }: { label?: string }) => {
+  const [value, setValue] = useState("")
+  return (
+    <div className="py-5 space-y-3">
+      <span className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
+        {label}
+      </span>
+      <InputGroup>
+        <InputLeftElement className="w-10">
+          <MarkerPin02 className="text-gray-500 size-4" />
+        </InputLeftElement>
+        <Input
+          placeholder="City, Country"
+          className="pl-10 h-10 w-full"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+      </InputGroup>
+    </div>
+  )
+}
+
 export const Sidebar = ({ className }: { className?: string }) => {
   return (
     <div
@@ -964,4 +1131,169 @@ export const Sidebar = ({ className }: { className?: string }) => {
       </div>
     </div>
   )
+}
+
+/* ─── Projects sidebar (alias of default) ─────────────────────────────── */
+
+export const SidebarProjects = Sidebar
+
+/* ─── Services sidebar ────────────────────────────────────────────────── */
+
+export const SidebarServices = ({ className }: { className?: string }) => {
+  return (
+    <div
+      className={cn(
+        "flex-none divide-y lg:block hidden divide-gray-200 w-[210px]",
+        className
+      )}
+    >
+      <Category />
+      <CheckboxGroup
+        title="Service Type"
+        options={[
+          "One-time project",
+          "Ongoing subscription",
+          "Consultation",
+          "Managed service",
+        ]}
+      />
+      <Industry />
+      <MonthlyBudget />
+      <Skills />
+      <AdditionalTags />
+      <CheckboxGroup
+        title="Delivery Time"
+        options={[
+          "Up to 1 week",
+          "1 - 2 weeks",
+          "2 - 4 weeks",
+          "1 - 3 months",
+          "3+ months",
+        ]}
+      />
+    </div>
+  )
+}
+
+/* ─── Talent sidebar ──────────────────────────────────────────────────── */
+
+export const SidebarTalent = ({ className }: { className?: string }) => {
+  return (
+    <div
+      className={cn(
+        "flex-none divide-y lg:block hidden divide-gray-200 w-[210px]",
+        className
+      )}
+    >
+      <AdditionalTags />
+      <Industry />
+      <HourlyRate />
+      <Skills />
+      <LocationFilter />
+      <CheckboxGroup
+        title="Tags"
+        options={["All Stars", "Verified", "Available now", "Open to travel"]}
+      />
+      <CheckboxGroup
+        title="Experience Level"
+        options={[
+          "Entry level (0 - 2 yrs)",
+          "Intermediate (3 - 5 yrs)",
+          "Senior (6 - 9 yrs)",
+          "Expert (10+ yrs)",
+        ]}
+      />
+    </div>
+  )
+}
+
+/* ─── Teams sidebar (brand new — derived from team landing page) ───── */
+
+export const SidebarTeams = ({ className }: { className?: string }) => {
+  return (
+    <div
+      className={cn(
+        "flex-none divide-y lg:block hidden divide-gray-200 w-[210px]",
+        className
+      )}
+    >
+      <CheckboxGroup
+        title="Team Specialty"
+        options={[
+          "Development team",
+          "Design team",
+          "Marketing team",
+          "Product team",
+          "Data team",
+          "Full-service agency",
+        ]}
+      />
+      <CheckboxGroup
+        title="Team Size"
+        options={[
+          "2 - 5 members",
+          "5 - 10 members",
+          "10 - 15 members",
+          "15 - 20 members",
+          "20+ members",
+        ]}
+      />
+      <Industry />
+      <HourlyRate />
+      <CheckboxGroup
+        title="Avg Years of Experience"
+        options={[
+          "1 - 3 years",
+          "3 - 5 years",
+          "5 - 10 years",
+          "10+ years",
+        ]}
+      />
+      <LocationFilter label="Locations" />
+      <Skills />
+      <CheckboxGroup
+        title="Previous Client Tier"
+        options={[
+          "Fortune 500",
+          "Enterprise",
+          "Mid-market",
+          "Startup",
+        ]}
+      />
+      <CheckboxGroup
+        title="Availability"
+        options={[
+          "Available now",
+          "Within 2 weeks",
+          "Within 1 month",
+          "Booked 1+ month out",
+        ]}
+      />
+    </div>
+  )
+}
+
+/* ─── Category dispatcher ─────────────────────────────────────────────── */
+
+export type SidebarCategory = "projects" | "services" | "talent" | "teams" | "all"
+
+export const CategorySidebar = ({
+  category,
+  className,
+}: {
+  category: SidebarCategory
+  className?: string
+}) => {
+  switch (category) {
+    case "services":
+      return <SidebarServices className={className} />
+    case "talent":
+      return <SidebarTalent className={className} />
+    case "teams":
+      return <SidebarTeams className={className} />
+    case "projects":
+    case "all":
+    default:
+      return <SidebarProjects className={className} />
+  }
 }
