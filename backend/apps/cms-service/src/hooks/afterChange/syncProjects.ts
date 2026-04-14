@@ -28,15 +28,33 @@ function isResolvedMedia(value: unknown): value is ResolvedMediaRef {
   return typeof value === 'object' && value !== null && ('url' in (value as object) || 'filename' in (value as object));
 }
 
+/**
+ * Resolve a Payload media reference into a URL the frontend can serve.
+ *
+ * Payload's cloud-storage plugin computes URLs as `${serverURL}${publicUrl}/${filename}`
+ * which produces `http://localhost:3020/cms-media/<file>` in dev. The Next.js
+ * frontend would then have to fetch that absolute URL — but its Image Optimizer
+ * rejects any host that resolves to a private IP (SSRF guard), and the prod
+ * CDN URL we want to use is `https://cdn.marketeqdigital.com/...` anyway.
+ *
+ * To avoid both problems we strip the cms-service host so what we forward is a
+ * same-origin path like `/cms-media/<file>`, which the frontend's Next.js
+ * rewrite proxies to MinIO in dev and to the real CDN in prod via
+ * `CMS_MEDIA_ORIGIN`.
+ */
 function mediaUrl(value: unknown, baseUrl: string): string | null {
   if (!value) return null;
-  if (typeof value === 'string') return value;
+  const baseClean = baseUrl.replace(/\/$/, '');
+  const stripBase = (url: string): string =>
+    baseClean && url.startsWith(baseClean) ? url.slice(baseClean.length) : url;
+
+  if (typeof value === 'string') return stripBase(value);
   if (isResolvedMedia(value)) {
     if (value.url) {
-      return value.url.startsWith('http') ? value.url : `${baseUrl.replace(/\/$/, '')}${value.url}`;
+      return value.url.startsWith('http') ? stripBase(value.url) : value.url;
     }
     if (value.filename) {
-      return `${baseUrl.replace(/\/$/, '')}/media/${value.filename}`;
+      return `/cms-media/${value.filename}`;
     }
   }
   return null;
@@ -59,26 +77,59 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
   }
 
   try {
-    const thumbnailUrl = mediaUrl(doc.thumbnail, cmsBase);
-    const galleryUrls = Array.isArray(doc.gallery)
-      ? doc.gallery
+    // Re-fetch the doc with depth=2 so all media references arrive as
+    // populated objects (Payload may give the afterChange hook a doc with
+    // raw numeric IDs, which leaves us no way to resolve URLs locally).
+    //
+    // We deliberately omit `draft: true` so this returns the *published*
+    // version when one exists. Otherwise autosaved drafts would overwrite
+    // the listings row with `_status='draft'`, which the read controller
+    // filters out — making the project disappear from the frontend.
+    let populated: any = doc;
+    try {
+      populated = await req.payload.findByID({
+        collection: 'projects' as any,
+        id: doc.id,
+        depth: 2,
+      });
+    } catch (err) {
+      req.payload.logger.warn(
+        { err },
+        `[syncProjectToListings] depth=2 refetch failed for "${doc.slug}", falling back to hook doc`,
+      );
+    }
+
+    // Skip syncs for non-published states. Payload fires afterChange on
+    // every autosave; we only want to push the latest *published* snapshot
+    // to listings-service so the public frontend never sees in-flight edits.
+    const docStatus = (populated as any)._status ?? (doc as any)._status;
+    if (docStatus && docStatus !== 'published') {
+      req.payload.logger.info(
+        `[syncProjectToListings] Skipping non-published "${doc.slug}" (status=${docStatus})`,
+      );
+      return doc;
+    }
+
+    const thumbnailUrl = mediaUrl(populated.thumbnail, cmsBase);
+    const galleryUrls = Array.isArray(populated.gallery)
+      ? populated.gallery
           .map((g: { image?: unknown }) => mediaUrl(g?.image, cmsBase))
           .filter((u: string | null): u is string => !!u)
       : [];
     const videoUrl =
-      doc.videoWalkthrough?.externalUrl ||
-      mediaUrl(doc.videoWalkthrough?.upload, cmsBase) ||
+      populated.videoWalkthrough?.externalUrl ||
+      mediaUrl(populated.videoWalkthrough?.upload, cmsBase) ||
       undefined;
 
     const payload = {
-      ...doc,
+      ...populated,
       id: doc.id,
       thumbnailUrl: thumbnailUrl ?? undefined,
       galleryUrls,
       videoUrl,
       // Payload puts draft/published state under `_status`; mirror it onto
       // `status` so the receiver can rely on either name.
-      status: (doc as any)._status ?? 'published',
+      status: (populated as any)._status ?? (doc as any)._status ?? 'published',
     };
 
     const url = `${listingsUrl.replace(/\/$/, '')}/internal/project-sync`;

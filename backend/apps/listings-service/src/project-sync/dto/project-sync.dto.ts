@@ -51,6 +51,19 @@ class CmsVideoWalkthrough {
   externalUrl?: string;
 }
 
+class CmsRecentQuestion {
+  @IsString()
+  question: string;
+}
+
+class CmsSkillTool {
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  icon?: CmsMediaRef | string | number | null;
+}
+
 /**
  * Payload CMS → listings-service project sync payload.
  *
@@ -145,7 +158,47 @@ export class ProjectSyncDto {
 
   @IsOptional()
   @IsString()
+  pricingModel?: string;
+
+  @IsOptional()
+  @IsString()
+  priceViewMode?: string;
+
+  @IsOptional()
+  @IsString()
   projectType?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  klarnaPaymentEnabled?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CmsRecentQuestion)
+  recentQuestions?: CmsRecentQuestion[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CmsSkillTool)
+  skillsAndTools?: CmsSkillTool[];
+
+  @IsOptional()
+  @IsBoolean()
+  chatEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  reportButtonEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  shareButtonEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  helpButtonEnabled?: boolean;
 
   @IsOptional()
   @IsBoolean()

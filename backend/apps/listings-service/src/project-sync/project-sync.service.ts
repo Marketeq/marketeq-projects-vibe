@@ -41,6 +41,9 @@ export class ProjectSyncService {
            "programmingLanguages", "developmentTech",
            "mediaUrls", "videoUrl", deliverables, faqs,
            "estimatedHours", budget, duration, featured, status,
+           "pricingModel", "priceViewMode", "priceMax", "projectType",
+           "klarnaEnabled", "recentQuestions", "skillsAndTools",
+           "chatEnabled", "reportButtonEnabled", "shareButtonEnabled", "helpButtonEnabled",
            "createdBy", "createdAt", "updatedAt"
          ) VALUES (
            $1, $2, $3, $4, $5,
@@ -48,7 +51,10 @@ export class ProjectSyncService {
            $11::text[], $12::text[],
            $13::text[], $14, $15::text[], $16::jsonb,
            $17, $18, $19, $20, $21::listing_status_enum,
-           $22, NOW(), NOW()
+           $22, $23, $24, $25,
+           $26, $27::jsonb, $28::jsonb,
+           $29, $30, $31, $32,
+           $33, NOW(), NOW()
          ) RETURNING id`,
         [
           payloadId,
@@ -72,6 +78,17 @@ export class ProjectSyncService {
           row.duration,
           row.featured,
           row.status,
+          row.pricingModel,
+          row.priceViewMode,
+          row.priceMax,
+          row.projectType,
+          row.klarnaEnabled,
+          row.recentQuestions,
+          row.skillsAndTools,
+          row.chatEnabled,
+          row.reportButtonEnabled,
+          row.shareButtonEnabled,
+          row.helpButtonEnabled,
           'cms-sync',
         ],
       );
@@ -103,6 +120,17 @@ export class ProjectSyncService {
          duration = $19,
          featured = $20,
          status = $21::listing_status_enum,
+         "pricingModel" = $22,
+         "priceViewMode" = $23,
+         "priceMax" = $24,
+         "projectType" = $25,
+         "klarnaEnabled" = $26,
+         "recentQuestions" = $27::jsonb,
+         "skillsAndTools" = $28::jsonb,
+         "chatEnabled" = $29,
+         "reportButtonEnabled" = $30,
+         "shareButtonEnabled" = $31,
+         "helpButtonEnabled" = $32,
          "updatedAt" = NOW()
        WHERE id = $1`,
       [
@@ -127,6 +155,17 @@ export class ProjectSyncService {
         row.duration,
         row.featured,
         row.status,
+        row.pricingModel,
+        row.priceViewMode,
+        row.priceMax,
+        row.projectType,
+        row.klarnaEnabled,
+        row.recentQuestions,
+        row.skillsAndTools,
+        row.chatEnabled,
+        row.reportButtonEnabled,
+        row.shareButtonEnabled,
+        row.helpButtonEnabled,
       ],
     );
     this.logger.log(`Project updated from CMS: id=${id} payloadId=${payloadId} slug=${row.slug}`);
@@ -177,6 +216,16 @@ export class ProjectSyncService {
       ? `${dto.timelineValue} ${dto.timelineUnit}`
       : null;
     const budget = dto.priceRangeMin ?? null;
+    const priceMax = dto.priceRangeMax ?? null;
+
+    const recentQuestions = (dto.recentQuestions ?? [])
+      .map((q) => q.question)
+      .filter(Boolean);
+
+    const skillsAndTools = (dto.skillsAndTools ?? []).map((s) => ({
+      title: s.title,
+      iconUrl: this.resolveMediaUrl(s.icon),
+    }));
 
     const status = this.resolveStatus(dto);
 
@@ -201,6 +250,17 @@ export class ProjectSyncService {
       duration,
       featured: dto.featured ?? false,
       status,
+      pricingModel: dto.pricingModel ?? null,
+      priceViewMode: dto.priceViewMode ?? null,
+      priceMax,
+      projectType: dto.projectType ?? null,
+      klarnaEnabled: dto.klarnaPaymentEnabled ?? false,
+      recentQuestions: JSON.stringify(recentQuestions),
+      skillsAndTools: JSON.stringify(skillsAndTools),
+      chatEnabled: dto.chatEnabled ?? false,
+      reportButtonEnabled: dto.reportButtonEnabled ?? true,
+      shareButtonEnabled: dto.shareButtonEnabled ?? true,
+      helpButtonEnabled: dto.helpButtonEnabled ?? false,
     };
   }
 

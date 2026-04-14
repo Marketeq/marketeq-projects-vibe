@@ -3,6 +3,8 @@ import { postgresAdapter } from '@payloadcms/db-postgres';
 import { lexicalEditor } from '@payloadcms/richtext-lexical';
 import { webpackBundler } from '@payloadcms/bundler-webpack';
 import seoPlugin from '@payloadcms/plugin-seo';
+import { cloudStorage } from '@payloadcms/plugin-cloud-storage';
+import { s3Adapter } from '@payloadcms/plugin-cloud-storage/s3';
 
 // Collections
 import { Listings } from './collections/Listings';
@@ -105,6 +107,33 @@ export default buildConfig({
   ],
 
   plugins: [
+    // Cloudflare R2 (S3-compatible) media storage. In dev this points at a
+    // local MinIO container and R2_PUBLIC_URL is a same-origin path so the
+    // Next.js Image Optimizer doesn't trip its private-IP SSRF guard. In
+    // prod, R2_PUBLIC_URL is the real Cloudflare CDN URL — same code path.
+    cloudStorage({
+      collections: {
+        media: {
+          adapter: s3Adapter({
+            config: {
+              endpoint: process.env.R2_ENDPOINT,
+              region: 'auto',
+              credentials: {
+                accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+                secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+              },
+              forcePathStyle: true,
+            },
+            bucket: process.env.R2_BUCKET || 'marketeq-media',
+          }),
+          generateFileURL: ({ filename }) => {
+            const base = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
+            return `${base}/${filename}`;
+          },
+          disableLocalStorage: true,
+        },
+      },
+    }),
     categorySyncPlugin,
     talentProfileSyncPlugin,
     seoPlugin({
