@@ -3,7 +3,12 @@
 /** Deterministically derive a CryptoKey from userId + system salt */
 export async function deriveKEK(userId: string): Promise<CryptoKey> {
   const encoder = new TextEncoder()
-  const systemSecret = process.env.NEXT_PUBLIC_SYSTEM_SECRET || "";
+  const systemSecret = process.env.NEXT_PUBLIC_SYSTEM_SECRET
+  if (!systemSecret) {
+    throw new Error(
+      "NEXT_PUBLIC_SYSTEM_SECRET is not set. KEK derivation requires a non-empty system secret."
+    )
+  }
   const keyMaterialRaw = encoder.encode(`${userId}:${systemSecret}`)
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
@@ -25,6 +30,23 @@ export async function deriveKEK(userId: string): Promise<CryptoKey> {
     true,
     ["encrypt", "decrypt"]
   )
+}
+
+/** Encrypt a private key PEM string with the KEK (AES-GCM) */
+export async function encryptWithKEK(
+  rawPrivateKey: string,
+  kek: CryptoKey
+): Promise<string> {
+  const encoded = new TextEncoder().encode(rawPrivateKey)
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    kek,
+    encoded
+  )
+  return `${btoa(String.fromCharCode(...iv))}:${btoa(
+    String.fromCharCode(...new Uint8Array(encrypted))
+  )}`
 }
 
 /** Decrypt the AES‑GCM–wrapped private key PEM under that KEK */

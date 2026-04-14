@@ -47,7 +47,7 @@ import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
 import { decryptAES } from "@/src/crypto/e2ee"
-import { loadKey } from "@/src/crypto/storage"
+import { loadKey, saveKey } from "@/src/crypto/storage"
 import { User } from "@/types/user"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
@@ -187,12 +187,43 @@ const LeftSidebar = ({
                 if (lm.m_content) {
                   lastMessagePreview = lm.m_content
                 } else if (lm.m_ciphertext) {
+                  // Try cached key first, then fetch+unwrap if not cached
+                  let key: Uint8Array | null = null
                   try {
-                    const key = loadKey(conv.id)
-                    if (key) {
-                      lastMessagePreview = await decryptAES(lm.m_ciphertext, key)
+                    key = loadKey(conv.id)
+                  } catch { /* not cached */ }
+
+                  if (!key && token) {
+                    try {
+                      const privPem = localStorage.getItem("privateKey")
+                      if (privPem) {
+                        const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
+                          `/api/messaging/conversations/${conv.id}/key?isGroup=${conv.isGroup}`,
+                          { headers: { Authorization: `Bearer ${token}` } }
+                        )
+                        const privKey = await importPrivateKey(privPem)
+                        const wrapped = Uint8Array.from(atob(encryptedKey), (c) => c.charCodeAt(0))
+                        const rawBuffer = await crypto.subtle.decrypt(
+                          { name: "RSA-OAEP" },
+                          privKey,
+                          wrapped
+                        )
+                        key = new Uint8Array(rawBuffer)
+                        const b64 = btoa(String.fromCharCode(...key))
+                        saveKey(conv.id, b64)
+                      }
+                    } catch {
+                      /* key unwrap failed — show fallback */
                     }
-                  } catch {
+                  }
+
+                  if (key) {
+                    try {
+                      lastMessagePreview = await decryptAES(lm.m_ciphertext, key)
+                    } catch {
+                      lastMessagePreview = "Encrypted message"
+                    }
+                  } else {
                     lastMessagePreview = "Encrypted message"
                   }
                 }

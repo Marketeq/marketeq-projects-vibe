@@ -126,6 +126,7 @@ export function Chats({
   const [isUploading, setIsUploading] = useState(false)
   const [forwardOpen, setForwardOpen] = useState(false)
   const [forwardTarget, setForwardTarget] = useState<Message | null>(null)
+  const [keyReady, setKeyReady] = useState(false)
 
   const handleOpenForward = useCallback((msg: Message) => {
     setForwardTarget(msg)
@@ -153,6 +154,7 @@ export function Chats({
 
   // 1) unwrap the AES key once per conversation
   useEffect(() => {
+    setKeyReady(false)
     if (!selectedConversation || !privateKey) return
     ;(async () => {
       try {
@@ -169,8 +171,10 @@ export function Chats({
         const arr = new Uint8Array(rawBuf)
         const b64 = btoa(String.fromCharCode(...arr))
         saveKey(selectedConversation.id, b64)
+        setKeyReady(true)
       } catch (err) {
         console.error("Failed to unwrap conversation key", err)
+        setKeyReady(true) // still allow messages to render (plaintext fallback)
       }
     })()
   }, [selectedConversation, privateKey, jwtToken])
@@ -218,7 +222,8 @@ export function Chats({
   // 2) fetch & decrypt messages
   const fetchedMsgs = useMessages(
     selectedConversation ? selectedConversation.id : "",
-    jwtToken
+    jwtToken,
+    keyReady
   )
 
   // 2.1) local messages state for optimistic updates
@@ -470,15 +475,18 @@ export function Chats({
         )
         const pinned = allMsgs.filter((m) => m.pinned || m.isPinned)
 
-        // Decrypt pinned messages
+        // Decrypt pinned messages — never display server plaintext as fallback
         let key: Uint8Array | null = null
         try { key = loadKey(selectedConversation.id) } catch { /* no key */ }
         const decrypted = await Promise.all(
           pinned.map(async (m) => {
-            if (key && m.ciphertext) {
-              try { return { ...m, content: await decryptAES(m.ciphertext, key) } } catch { return m }
+            if (!m.ciphertext) return m // legacy plaintext row
+            if (!key) return { ...m, content: "🔒 Encrypted message" }
+            try {
+              return { ...m, content: await decryptAES(m.ciphertext, key) }
+            } catch {
+              return { ...m, content: "🔒 Encrypted message" }
             }
-            return m
           })
         )
         setPinnedMsgs(decrypted)
@@ -926,7 +934,8 @@ export function Chats({
                   onClick={handleSendMessage}
                   disabled={
                     (!textareaValue.trim() && selectedFiles.length === 0) ||
-                    isUploading
+                    isUploading ||
+                    !keyReady
                   }
                 >
                   {isUploading ? (

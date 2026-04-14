@@ -14,7 +14,7 @@ import type { Message } from "@/types/message"
  * @param convId the conversation UUID
  * @param token  your JWT for Authorization
  */
-export function useMessages(convId: string, token: string) {
+export function useMessages(convId: string, token: string, keyReady?: boolean) {
   const [messages, setMessages] = useState<Message[]>([])
 
   useEffect(() => {
@@ -30,24 +30,29 @@ export function useMessages(convId: string, token: string) {
           }
         )
 
-        // 2) try to decrypt, fall back to plaintext content if no key/ciphertext
+        // 2) decrypt ciphertext. Never display server-sent plaintext as fallback —
+        //    if decryption fails or no key, show a placeholder so broken state is visible.
         let key: Uint8Array | null = null
         try {
           key = loadKey(convId)
         } catch {
-          // no AES key cached yet — will use plaintext content as fallback
+          // no AES key cached yet
         }
 
         const decrypted = await Promise.all(
           data.map(async (m) => {
-            if (key && m.ciphertext) {
-              try {
-                return { ...m, content: await decryptAES(m.ciphertext, key) }
-              } catch {
-                return m
-              }
+            if (!m.ciphertext) {
+              // legacy plaintext-only row (pre-E2EE); render as-is
+              return m
             }
-            return m
+            if (!key) {
+              return { ...m, content: "🔒 Encrypted message" }
+            }
+            try {
+              return { ...m, content: await decryptAES(m.ciphertext, key) }
+            } catch {
+              return { ...m, content: "🔒 Encrypted message" }
+            }
           })
         )
 
@@ -56,7 +61,7 @@ export function useMessages(convId: string, token: string) {
         console.error("useMessages error:", err)
       }
     })()
-  }, [convId, token])
+  }, [convId, token, keyReady])
 
   return messages
 }

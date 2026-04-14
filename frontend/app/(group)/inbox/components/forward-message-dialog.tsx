@@ -290,28 +290,22 @@ export function ForwardMessageDialog({
         if (addedMessage.trim()) parts.push(addedMessage.trim())
         const finalText = parts.join("\n\n")
 
-        if (key) {
-          const ciphertext = await encryptAES(finalText, key)
-          await apiFetch(`/v1/messages`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: {
-              threadId: contact.threadId,
-              ciphertext,
-              forwardedFromId: message.id,
-            },
-          })
-        } else {
-          await apiFetch(`/v1/messages`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: {
-              threadId: contact.threadId,
-              content: finalText,
-              forwardedFromId: message.id,
-            },
-          })
+        if (!key) {
+          throw new Error(
+            `Encryption key unavailable for ${contact.displayName}. Cannot forward.`
+          )
         }
+
+        const ciphertext = await encryptAES(finalText, key)
+        await apiFetch(`/v1/messages`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: {
+            threadId: contact.threadId,
+            ciphertext,
+            forwardedFromId: message.id,
+          },
+        })
       }
 
       onOpenChange(false)
