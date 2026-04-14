@@ -501,9 +501,10 @@ function renderTeamCard(item: TeamCard) {
       kind="team"
       id={item.id}
       name={item.name}
-      description={item.specializations?.join(" · ")}
-      mediaUrl={item.logo ?? undefined}
-      memberCount={item.memberCount}
+      tagline={item.specializations?.join(" · ")}
+      rating={item.rating}
+      projectCount={item.completedProjects}
+      memberAvatars={item.logo ? [item.logo] : undefined}
     />
   )
 }
