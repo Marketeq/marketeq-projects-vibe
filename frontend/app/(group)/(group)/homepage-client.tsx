@@ -5,11 +5,18 @@ import { projectDetailsUrl, serviceDetailsUrl } from "@/src/lib/listing-urls"
 import { cn, fromLength } from "@/utils/functions"
 import {
   AlertCircle,
+  ArrowRight,
+  ArrowUp,
   Check,
   ChevronLeft,
   ChevronRight,
   X,
 } from "@blend-metrics/icons"
+import {
+  FacebookSolid,
+  InstagramSolid,
+  TwitterSolid,
+} from "@blend-metrics/icons/social-solid"
 import { SwiperSlide } from "swiper/react"
 import type {
   CategoryRef,
@@ -26,6 +33,7 @@ import type {
   TeamCard,
 } from "@/types/homepage"
 import { Blocks1 } from "@/components/blocks-1"
+import { LinkedinSolid, Logo3 } from "@/components/icons"
 import { ListingCard } from "@/components/listing-card"
 import { ListingCardCompact } from "@/components/listing-card-compact"
 import NextImage from "@/components/next-image"
@@ -396,8 +404,9 @@ function SectionHeader({
       <div className="flex items-center gap-x-3">
         {ctaLabel && ctaUrl && (
           <NextLink href={ctaUrl}>
-            <Button variant="link" visual="gray">
+            <Button className="underline" variant="link" visual="gray">
               {ctaLabel}
+              <ArrowRight className="size-[15px]" />
             </Button>
           </NextLink>
         )}
@@ -719,13 +728,15 @@ function TabbedSectionView({ section }: { section: HomepageSection }) {
         {section.ctaLabel &&
           (section.ctaUrl ? (
             <NextLink href={section.ctaUrl}>
-              <Button variant="link" visual="gray">
+              <Button className="underline" variant="link" visual="gray">
                 {section.ctaLabel}
+                <ArrowRight className="size-[15px]" />
               </Button>
             </NextLink>
           ) : (
-            <Button variant="link" visual="gray">
+            <Button className="underline" variant="link" visual="gray">
               {section.ctaLabel}
+              <ArrowRight className="size-[15px]" />
             </Button>
           ))}
       </div>
@@ -778,13 +789,15 @@ function GridSectionView({ section }: { section: HomepageSection }) {
         {section.ctaLabel &&
           (section.ctaUrl ? (
             <NextLink href={section.ctaUrl}>
-              <Button variant="link" visual="gray">
+              <Button className="underline" variant="link" visual="gray">
                 {section.ctaLabel}
+                <ArrowRight className="size-[15px]" />
               </Button>
             </NextLink>
           ) : (
-            <Button variant="link" visual="gray">
+            <Button className="underline" variant="link" visual="gray">
               {section.ctaLabel}
+              <ArrowRight className="size-[15px]" />
             </Button>
           ))}
       </div>
@@ -938,8 +951,9 @@ function MoreCategories({ categories }: { categories: CategoryRef[] }) {
           </p>
         </div>
         <NextLink href="/categories" className="xs:max-lg:hidden">
-          <Button visual="gray" variant="link">
+          <Button className="underline" visual="gray" variant="link">
             View All Categories
+            <ArrowRight className="size-[15px]" />
           </Button>
         </NextLink>
       </div>
@@ -968,98 +982,158 @@ function MoreCategories({ categories }: { categories: CategoryRef[] }) {
   )
 }
 
-// ── Talent Network CTA ──────────────────────────────────────────────────────
-// Spec 00-HP §10.2 — recruitment banner that lives above the footer.
-
-function TalentNetworkCtaSection({ cta }: { cta: TalentNetworkCta }) {
-  if (!cta?.headline) return null
-  return (
-    <section className="relative rounded-lg overflow-hidden bg-dark-blue-600 px-[50px] py-[55px]">
-      <div className="absolute inset-0 bg-[linear-gradient(120deg,#0B1C3A_0%,#1661F6_100%)] opacity-90" />
-      <div className="relative flex flex-col gap-y-6 lg:flex-row lg:items-center lg:justify-between lg:gap-x-10">
-        <div className="max-w-[720px] space-y-3">
-          <h2 className="text-[28px] lg:text-[36px] leading-[1.15] font-bold text-white">
-            {cta.headline}
-          </h2>
-          <p className="text-base lg:text-lg leading-[1.45] text-white/85 font-light">
-            {cta.description}
-          </p>
-        </div>
-        {cta.ctaUrl && cta.ctaLabel && (
-          <NextLink
-            href={cta.ctaUrl}
-            className="self-start lg:self-auto whitespace-nowrap shrink-0 border-2 h-11 border-white px-5 rounded-[5px] inline-flex items-center justify-center gap-x-2 text-sm font-semibold text-white hover:bg-white hover:text-dark-blue-400 transition-colors duration-300"
-          >
-            {cta.ctaLabel}
-            <ChevronRight className="size-4" />
-          </NextLink>
-        )}
-      </div>
-    </section>
-  )
-}
+// Talent Network CTA is now rendered inside the Footer component (per Figma).
+// The previous standalone gradient-banner section component was removed when
+// the content moved into the footer's right column.
 
 // ── Footer ──────────────────────────────────────────────────────────────────
-// Spec 00-HP §10.1 — 4-column nav with the bottom bar (copyright + legal).
 
-function Footer({ columns }: { columns: FooterNavColumn[] }) {
-  if (columns.length === 0) return null
+function Footer({
+  columns,
+  talentCta,
+}: {
+  columns: FooterNavColumn[]
+  talentCta: TalentNetworkCta | null
+}) {
+  if (columns.length === 0 && !talentCta?.headline) return null
   const year = new Date().getFullYear()
+
   return (
-    <footer className="mt-[50px] border-t border-gray-200 bg-white">
-      <div className="max-w-[1440px] mx-auto px-[50px] py-[50px]">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 lg:gap-12">
-          {columns.map((col) => (
-            <div key={col.heading} className="space-y-4">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-dark-blue-600">
-                {col.heading}
-              </h3>
-              <ul className="space-y-3">
-                {col.links.map((link) => (
-                  <li key={`${col.heading}-${link.label}`}>
-                    <NextLink
-                      href={link.url}
-                      className="text-sm text-gray-500 hover:text-dark-blue-400 transition-colors"
-                    >
-                      {link.label}
-                    </NextLink>
-                  </li>
-                ))}
-              </ul>
+    <footer className="bg-white">
+      {/* Full-width "Back to Top" row with border separator — per Figma */}
+      <div className="border-y border-gray-200">
+        <button
+          type="button"
+          onClick={() =>
+            typeof window !== "undefined" &&
+            window.scrollTo({ top: 0, behavior: "smooth" })
+          }
+          className="w-full py-[22px] flex items-center justify-center gap-x-2 text-sm font-medium text-dark-blue-400 hover:bg-gray-50 transition-colors focus-visible:outline-none"
+          aria-label="Back to top"
+        >
+          <ArrowUp className="size-[15px]" />
+          Back to Top
+        </button>
+      </div>
+
+      <div className="max-w-[1440px] mx-auto px-[50px] pt-10 lg:pt-[50px]">
+        <div className="flex gap-y-10 md:gap-y-20 lg:gap-x-[100px] lg:flex-row flex-col lg:items-start">
+          {columns.length > 0 && (
+            <div className="flex-auto grid grid-cols-2 gap-y-10 md:flex items-start md:justify-between">
+              {columns.map((col) => (
+                <div key={col.heading} className="flex flex-col gap-y-[15px]">
+                  <span className="inline-block text-sm leading-[16.94px] font-medium text-dark-blue-600">
+                    {col.heading}
+                  </span>
+                  <ul className="space-y-[15px]">
+                    {col.links.map((link) => (
+                      <li key={`${col.heading}-${link.label}`}>
+                        <NextLink
+                          href={link.url}
+                          className="focus-visible:outline-none text-[13px] leading-[15.73px] font-light text-dark-blue-600 hover:underline"
+                        >
+                          {link.label}
+                        </NextLink>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+
+          {talentCta?.headline && (
+            <div className="max-w-[363px] w-full lg:ml-auto">
+              <h2 className="text-base leading-[19.36px] font-medium text-dark-blue-400">
+                {talentCta.headline}
+              </h2>
+
+              {talentCta.description && (
+                <p className="mt-3 text-[13px] font-light leading-[15.73px] whitespace-pre-line text-gray-700">
+                  {talentCta.description}
+                </p>
+              )}
+
+              {talentCta.ctaLabel && talentCta.ctaUrl && (
+                <NextLink href={talentCta.ctaUrl}>
+                  <Button
+                    className="mt-[30px] text-primary-500 hover:bg-primary-50 border-primary-500"
+                    variant="outlined"
+                    visual="gray"
+                  >
+                    {talentCta.ctaLabel}
+                    <ArrowRight className="size-[15px]" />
+                  </Button>
+                </NextLink>
+              )}
+            </div>
+          )}
         </div>
 
-        <div className="mt-12 pt-6 border-t border-gray-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <p className="text-xs text-gray-400">
-            © {year} Marketeq. All rights reserved.
-          </p>
-          <ul className="flex items-center gap-x-6 text-xs text-gray-400">
-            <li>
-              <NextLink
-                href="/terms"
-                className="hover:text-dark-blue-400 transition-colors"
-              >
-                Terms of Service
+        <div className="flex lg:flex-row flex-col gap-y-10 items-center justify-between mt-10 lg:mt-[50px] py-10 md:py-5 border-t border-gray-200">
+          <div className="flex items-center md:flex-row flex-col gap-y-5 md:gap-x-[57px]">
+            <Logo3 className="w-[120px] shrink-0 h-[17.62px]" />
+            <span className="inline-block text-[13px] leading-[15.73px] font-light text-dark-blue-600">
+              © 2011 - {year} Marketeq Digital Inc. All Rights Reserved.
+            </span>
+          </div>
+
+          <div className="flex md:flex-row flex-col items-center gap-10 lg:gap-x-[50px]">
+            <div className="flex gap-x-5 items-center">
+              <NextLink href="/terms">
+                <Button className="text-dark-blue-400" variant="link">
+                  Terms & Conditions
+                </Button>
               </NextLink>
-            </li>
-            <li>
-              <NextLink
-                href="/privacy"
-                className="hover:text-dark-blue-400 transition-colors"
-              >
-                Privacy Policy
+
+              <span className="inline-block bg-gray-200 h-4 w-px shrink-0" />
+
+              <NextLink href="/privacy">
+                <Button className="text-dark-blue-400" variant="link">
+                  Privacy Policy
+                </Button>
               </NextLink>
-            </li>
-            <li>
-              <NextLink
-                href="/cookies"
-                className="hover:text-dark-blue-400 transition-colors"
-              >
-                Cookie Policy
+            </div>
+
+            <div className="flex items-center gap-x-[16.6px]">
+              <NextLink href="#" aria-label="Facebook">
+                <IconButton
+                  variant="outlined"
+                  visual="gray"
+                  className="size-[30px] rounded-full"
+                >
+                  <FacebookSolid className="size-3.5 text-dark-blue-400" />
+                </IconButton>
               </NextLink>
-            </li>
-          </ul>
+              <NextLink href="#" aria-label="Twitter">
+                <IconButton
+                  variant="outlined"
+                  visual="gray"
+                  className="size-[30px] rounded-full"
+                >
+                  <TwitterSolid className="size-3.5 text-dark-blue-400" />
+                </IconButton>
+              </NextLink>
+              <NextLink href="#" aria-label="Instagram">
+                <IconButton
+                  variant="outlined"
+                  visual="gray"
+                  className="size-[30px] rounded-full"
+                >
+                  <InstagramSolid className="size-3.5 text-dark-blue-400" />
+                </IconButton>
+              </NextLink>
+              <NextLink href="#" aria-label="LinkedIn">
+                <IconButton
+                  variant="outlined"
+                  visual="gray"
+                  className="size-[30px] rounded-full"
+                >
+                  <LinkedinSolid className="size-3.5 text-dark-blue-400" />
+                </IconButton>
+              </NextLink>
+            </div>
+          </div>
         </div>
       </div>
     </footer>
@@ -1085,7 +1159,7 @@ export function HomepageClient({ data }: { data: HomepagePayload }) {
           {/* <TalentNetworkCtaSection cta={data.talentNetworkCta} /> */}
         </div>
       </div>
-      <Footer columns={data.footerNav} />
+      <Footer columns={data.footerNav} talentCta={data.talentNetworkCta} />
     </div>
   )
 }
