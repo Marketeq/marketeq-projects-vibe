@@ -54,6 +54,22 @@ interface TalentProfileDeletedEvent {
   username: string;
 }
 
+interface ProjectSavedEvent {
+  event: 'project.saved';
+  id: string;
+  payloadId: number | string;
+  slug: string;
+  title: string;
+  status: 'draft' | 'published' | 'archived';
+}
+
+interface ProjectDeletedEvent {
+  event: 'project.deleted';
+  id: string;
+  payloadId: number | string;
+  slug: string;
+}
+
 export class CmsEventPublisher {
   private static instance: CmsEventPublisher;
   private channelWrapper: ChannelWrapper | null = null;
@@ -117,6 +133,20 @@ export class CmsEventPublisher {
         await channel.assertQueue(HP_DLQ, { durable: true });
         await channel.bindQueue(HP_QUEUE, EXCHANGE, 'homepage.*');
         await channel.bindQueue(HP_DLQ, EXCHANGE_DLX, '');
+
+        // Projects cache-invalidation queue (consumed by api-gateway)
+        const PR_QUEUE = 'api-gateway.projects';
+        const PR_DLQ = `${PR_QUEUE}.dlq`;
+        await channel.assertQueue(PR_QUEUE, {
+          durable: true,
+          arguments: {
+            'x-dead-letter-exchange': EXCHANGE_DLX,
+            'x-message-ttl': 30000,
+          },
+        });
+        await channel.assertQueue(PR_DLQ, { durable: true });
+        await channel.bindQueue(PR_QUEUE, EXCHANGE, 'project.*');
+        await channel.bindQueue(PR_DLQ, EXCHANGE_DLX, '');
       },
     });
 
@@ -146,6 +176,16 @@ export class CmsEventPublisher {
   async publishTalentProfileDeleted(event: Omit<TalentProfileDeletedEvent, 'event'>): Promise<void> {
     const payload: TalentProfileDeletedEvent = { event: 'talent-profile.deleted', ...event };
     await this.publishWithRetry('talent-profile.deleted', payload);
+  }
+
+  async publishProjectSaved(event: Omit<ProjectSavedEvent, 'event'>): Promise<void> {
+    const payload: ProjectSavedEvent = { event: 'project.saved', ...event };
+    await this.publishWithRetry('project.saved', payload);
+  }
+
+  async publishProjectDeleted(event: Omit<ProjectDeletedEvent, 'event'>): Promise<void> {
+    const payload: ProjectDeletedEvent = { event: 'project.deleted', ...event };
+    await this.publishWithRetry('project.deleted', payload);
   }
 
   /** Publish any event with a custom routing key. Used by collection hooks. */

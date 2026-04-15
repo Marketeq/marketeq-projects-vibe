@@ -3,14 +3,14 @@
 import * as React from "react"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
+import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import {
   addFavorite,
   findFavoriteByItemId,
   getAllFavorites,
   removeFavorite,
 } from "@/src/lib/api/favorites"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
+import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -496,11 +496,13 @@ export default function ProjectDetails() {
         // Try the full URL slug first, then fall back to stripping the
         // trailing id segment.
         const parts = rawSlug.split("-")
-        const stripped = parts.length > 1 ? parts.slice(0, -1).join("-") : rawSlug
+        const stripped =
+          parts.length > 1 ? parts.slice(0, -1).join("-") : rawSlug
         const candidates = Array.from(new Set([rawSlug, stripped]))
 
         // Try fetching from listings-service via gateway
-        const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+        const apiBase =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
         let res: Response | null = null
         let slug = rawSlug
         for (const candidate of candidates) {
@@ -518,9 +520,7 @@ export default function ProjectDetails() {
         }
         if (!res.ok) {
           // Try as a service
-          const svcRes = await fetch(
-            `${apiBase}/v1/services/slug/${slug}`
-          )
+          const svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
           if (!svcRes.ok) {
             setLoading(false)
             return
@@ -654,41 +654,71 @@ export default function ProjectDetails() {
                 </NextLink>
 
                 {(() => {
-                  const cats = project.categories || [];
-                  const l1 = cats[0] || project.category || "Software Development";
-                  const l1Slug = l1.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/&/g, "and");
-                  const l2 = cats[1];
-                  const l2Slug = l2 ? l2.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/&/g, "and") : null;
+                  const cats = project.categories || []
+                  const l1 =
+                    cats[0] || project.category || "Software Development"
+                  const l1Slug = l1
+                    .toLowerCase()
+                    .replace(/\s+/g, "-")
+                    .replace(/[^a-z0-9-]/g, "")
+                    .replace(/&/g, "and")
+                  const l2 = cats[1]
+                  const l2Slug = l2
+                    ? l2
+                        .toLowerCase()
+                        .replace(/\s+/g, "-")
+                        .replace(/[^a-z0-9-]/g, "")
+                        .replace(/&/g, "and")
+                    : null
                   return (
                     <>
                       <div className="inline-flex items-center gap-x-2">
-                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">/</span>
-                        <NextLink href={`/c/${l1Slug}`} className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300">
+                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">
+                          /
+                        </span>
+                        <NextLink
+                          href={`/c/${l1Slug}`}
+                          className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300"
+                        >
                           {l1}
                         </NextLink>
                       </div>
                       {l2 && (
                         <div className="inline-flex items-center gap-x-2">
-                          <span className="text-xs leading-6 text-gray-500/50 font-semibold">/</span>
-                          <NextLink href={`/c/${l1Slug}/${l2Slug}`} className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300">
+                          <span className="text-xs leading-6 text-gray-500/50 font-semibold">
+                            /
+                          </span>
+                          <NextLink
+                            href={`/c/${l1Slug}/${l2Slug}`}
+                            className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300"
+                          >
                             {l2}
                           </NextLink>
                         </div>
                       )}
                       <div className="inline-flex items-center gap-x-2">
-                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">/</span>
-                        <NextLink href={`/c/${l1Slug}/${l2Slug || (project.listingType === "service" ? "services" : "projects")}`} className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300">
-                          {project.listingType === "service" ? "Services" : "Projects"}
+                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">
+                          /
+                        </span>
+                        <NextLink
+                          href={`/c/${l1Slug}/${l2Slug || (project.listingType === "service" ? "services" : "projects")}`}
+                          className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300"
+                        >
+                          {project.listingType === "service"
+                            ? "Services"
+                            : "Projects"}
                         </NextLink>
                       </div>
                       <div className="inline-flex items-center gap-x-2">
-                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">/</span>
+                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">
+                          /
+                        </span>
                         <span className="text-xs leading-6 text-gray-500 font-semibold">
                           {project.title}
                         </span>
                       </div>
                     </>
-                  );
+                  )
                 })()}
               </div>
 
@@ -747,23 +777,41 @@ export default function ProjectDetails() {
                   </div>
 
                   <div className="flex items-center gap-x-3">
-                    {(project.categories || []).map((cat: string, idx: number) => {
-                      const catSlug = cat.toLowerCase().replace(/&/g, "and").replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
-                      const cats = project.categories || []
-                      const l1Slug = (cats[0] || "").toLowerCase().replace(/&/g, "and").replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
-                      // L1 → /c/l1, L2 → /c/l1/l2, L3 → /c/l1/l2/l3
-                      let href = `/c/${l1Slug}`
-                      if (idx === 1) href = `/c/${l1Slug}/${catSlug}`
-                      if (idx === 2) {
-                        const l2Slug = (cats[1] || "").toLowerCase().replace(/&/g, "and").replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
-                        href = `/c/${l1Slug}/${l2Slug}/${catSlug}`
+                    {(project.categories || []).map(
+                      (cat: string, idx: number) => {
+                        const catSlug = cat
+                          .toLowerCase()
+                          .replace(/&/g, "and")
+                          .replace(/\s+/g, "-")
+                          .replace(/[^a-z0-9-]/g, "")
+                        const cats = project.categories || []
+                        const l1Slug = (cats[0] || "")
+                          .toLowerCase()
+                          .replace(/&/g, "and")
+                          .replace(/\s+/g, "-")
+                          .replace(/[^a-z0-9-]/g, "")
+                        // L1 → /c/l1, L2 → /c/l1/l2, L3 → /c/l1/l2/l3
+                        let href = `/c/${l1Slug}`
+                        if (idx === 1) href = `/c/${l1Slug}/${catSlug}`
+                        if (idx === 2) {
+                          const l2Slug = (cats[1] || "")
+                            .toLowerCase()
+                            .replace(/&/g, "and")
+                            .replace(/\s+/g, "-")
+                            .replace(/[^a-z0-9-]/g, "")
+                          href = `/c/${l1Slug}/${l2Slug}/${catSlug}`
+                        }
+                        return (
+                          <NextLink
+                            key={cat}
+                            href={href}
+                            className="text-sm font-semibold text-gray-500 hover:text-dark-blue-400 hover:underline transition duration-300"
+                          >
+                            {cat}
+                          </NextLink>
+                        )
                       }
-                      return (
-                        <NextLink key={cat} href={href} className="text-sm font-semibold text-gray-500 hover:text-dark-blue-400 hover:underline transition duration-300">
-                          {cat}
-                        </NextLink>
-                      )
-                    })}
+                    )}
                   </div>
                 </div>
               </div>
@@ -813,7 +861,9 @@ export default function ProjectDetails() {
                 <Button className="group" variant="link" visual="gray">
                   {selected === "View Project Scope"
                     ? "Close Scope"
-                    : project?.listingType === "service" ? "View Service Scope" : "View Project Scope"}
+                    : project?.listingType === "service"
+                      ? "View Service Scope"
+                      : "View Project Scope"}
                   <ChevronDown className="group-data-[state=active]:-rotate-180 transition duration-300 size-[15px]" />
                 </Button>
               </DisclosureTrigger>
@@ -920,83 +970,12 @@ export default function ProjectDetails() {
                             )}
                           >
                             <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
-                              Section H1 Title
+                              {project.title}
                             </h1>
 
                             <div className="mt-6 border-t pt-6 border-gray-200">
-                              <h2 className="text-xl leading-none text-dark-blue-400 font-semibold">
-                                H2 Title
-                              </h2>
-
-                              <h3 className="mt-6 text-base font-semibold text-dark-blue-400 leading-none">
-                                H3 Title
-                              </h3>
-
-                              <p className="mt-6 text-base font-extralight leading-none text-dark-blue-400">
-                                Lorem ipsum dolor sit amet, consectetur
-                                adipiscing elit, sed do eiusmod tempor
-                                incididunt ut labore et dolore magna aliqua. Ut
-                                enim ad minim veniam, quis nostrud exercitation
-                                ullamco laboris nisi ut aliquip ex ea commodo
-                                consequat. Duis aute irure dolor in
-                                reprehenderit in voluptate velit esse cillum
-                                dolore eu fugiat nulla pariatur.
-                              </p>
-
-                              <h1 className="mt-6 text-2xl leading-none font-semibold text-dark-blue-400">
-                                Section H1 Title
-                              </h1>
-                            </div>
-
-                            <div className="mt-6 border-t pb-6 border-gray-200">
-                              <p className="mt-6 text-base font-extralight leading-none text-dark-blue-400">
-                                Ut enim ad minim veniam, quis nostrud
-                                exercitation ullamco laboris nisi ut aliquip ex
-                                ea commodo consequat. Duis aute irure dolor in
-                                reprehenderit in voluptate velit esse cillum
-                                dolore eu fugiat nulla pariatur. Excepteur sint
-                                occaecat cupidatat non proident, sunt in culpa
-                                qui officia deserunt mollit anim id est laborum.
-                                <ul className="mt-5">
-                                  <li className="text-base font-extralight leading-none text-dark-blue-400">
-                                    <span className="font-semibold">
-                                      Main Bullet Point 1:
-                                    </span>{" "}
-                                    Sed ut perspiciatis unde omnis iste natus
-                                    Main Bullet Point 2: error sit voluptatem
-                                    accusantium doloremque laudantium, totam rem
-                                    aperiam Main Bullet Point 3: eaque ipsa quae
-                                    ab illo inventore veritatis et quasi
-                                    architecto beatae vitae dicta sunt
-                                    explicabo.
-                                  </li>
-                                </ul>
-                              </p>
-                            </div>
-
-                            <div className="mt-6 border-t pb-6 border-gray-200">
-                              <p className="mt-6 text-base font-extralight leading-none text-dark-blue-400">
-                                Ut enim ad minim veniam, quis nostrud
-                                exercitation ullamco laboris nisi ut aliquip ex
-                                ea commodo consequat. Duis aute irure dolor in
-                                reprehenderit in voluptate velit esse cillum
-                                dolore eu fugiat nulla pariatur. Excepteur sint
-                                occaecat cupidatat non proident, sunt in culpa
-                                qui officia deserunt mollit anim id est laborum.
-                                <ul className="mt-5">
-                                  <li className="text-base font-extralight leading-none text-dark-blue-400">
-                                    <span className="font-semibold">
-                                      Main Bullet Point 1:
-                                    </span>{" "}
-                                    Sed ut perspiciatis unde omnis iste natus
-                                    Main Bullet Point 2: error sit voluptatem
-                                    accusantium doloremque laudantium, totam rem
-                                    aperiam Main Bullet Point 3: eaque ipsa quae
-                                    ab illo inventore veritatis et quasi
-                                    architecto beatae vitae dicta sunt
-                                    explicabo.
-                                  </li>
-                                </ul>
+                              <p className="text-base font-extralight leading-relaxed text-dark-blue-400 whitespace-pre-wrap">
+                                {project.description || project.summary || ""}
                               </p>
                             </div>
 
@@ -1007,7 +986,7 @@ export default function ProjectDetails() {
                                   variant="link"
                                   onClick={() => setIsShowing(false)}
                                 >
-                                  View Less
+                                  View More
                                 </Button>
                               </div>
                             ) : (
@@ -1017,7 +996,7 @@ export default function ProjectDetails() {
                                   variant="link"
                                   onClick={() => setIsShowing(true)}
                                 >
-                                  View More
+                                  View Less
                                 </Button>
                               </div>
                             )}
@@ -1404,193 +1383,100 @@ export default function ProjectDetails() {
 
                           <div className="mt-6">
                             <div className="grid gap-x-6 grid-cols-2">
-                              <div className="space-y-3">
-                                <h3 className="text-sm leading-none font-medium text-dark-blue-400">
-                                  Programming Languages
-                                </h3>
-
-                                <div className="flex items-center flex-wrap gap-1">
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visibile:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Python,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visibile:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    React.js,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visibile:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Node.js
-                                  </NextLink>
+                              {project.programmingLanguages?.length > 0 && (
+                                <div className="space-y-3">
+                                  <h3 className="text-sm leading-none font-medium text-dark-blue-400">
+                                    Programming Languages
+                                  </h3>
+                                  <div className="flex items-center flex-wrap gap-1">
+                                    {project.programmingLanguages.map(
+                                      (lang: string, i: number) => (
+                                        <NextLink
+                                          key={lang + i}
+                                          href="#"
+                                          className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                        >
+                                          {lang}
+                                          {i <
+                                          project.programmingLanguages.length -
+                                            1
+                                            ? ","
+                                            : ""}
+                                        </NextLink>
+                                      )
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
+                              )}
 
-                              <div className="space-y-3">
-                                <h3 className="text-sm leading-none font-medium text-dark-blue-400">
-                                  Development Tech
-                                </h3>
-
-                                <div className="flex items-center flex-wrap gap-1">
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Flutter,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    React,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Native OS,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Ionic
-                                  </NextLink>
+                              {project.developmentTech?.length > 0 && (
+                                <div className="space-y-3">
+                                  <h3 className="text-sm leading-none font-medium text-dark-blue-400">
+                                    Development Tech
+                                  </h3>
+                                  <div className="flex items-center flex-wrap gap-1">
+                                    {project.developmentTech.map(
+                                      (tech: string, i: number) => (
+                                        <NextLink
+                                          key={tech + i}
+                                          href="#"
+                                          className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                        >
+                                          {tech}
+                                          {i <
+                                          project.developmentTech.length - 1
+                                            ? ","
+                                            : ""}
+                                        </NextLink>
+                                      )
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                             </div>
 
                             <div className="grid gap-x-6 grid-cols-2 mt-10">
-                              <div className="space-y-3">
-                                <h3 className="text-sm leading-none font-medium text-dark-blue-400">
-                                  Subcategories
-                                </h3>
-
-                                <ShowMoreLessRoot>
-                                  {({
-                                    isShowing,
-                                    setIsShowing,
-                                    ref,
-                                    scrollHeight,
-                                  }) => (
-                                    <div
-                                      ref={ref}
-                                      className="gap-2 flex items-center flex-wrap [interpolate-size:allow-keywords] transition-[height] duration-300"
-                                      style={{
-                                        height: isShowing
-                                          ? "auto"
-                                          : scrollHeight
-                                            ? toPxIfNumber(scrollHeight)
-                                            : "auto",
-                                      }}
-                                    >
-                                      <ShowMoreLess max={5}>
-                                        <Badge visual="gray" size="md">
-                                          iOS
-                                        </Badge>
-                                        <Badge visual="gray" size="md">
-                                          E-commerce
-                                        </Badge>
-                                        <Badge visual="gray" size="md">
-                                          Mobile Application
-                                        </Badge>
-                                        <Badge visual="gray" size="md">
-                                          Small Business
-                                        </Badge>
-                                        <Badge visual="gray" size="md">
-                                          Software Development
-                                        </Badge>
-                                        <Badge visual="gray" size="md">
-                                          Small Business
-                                        </Badge>
-                                        <Badge visual="gray" size="md">
-                                          Software Development
-                                        </Badge>
-                                      </ShowMoreLess>
-
-                                      {!isShowing ? (
-                                        <Button
-                                          onClick={() => setIsShowing(true)}
-                                          variant="link"
+                              {project.subcategories?.length > 0 && (
+                                <div className="space-y-3">
+                                  <h3 className="text-sm leading-none font-medium text-dark-blue-400">
+                                    Subcategories
+                                  </h3>
+                                  <div className="gap-2 flex items-center flex-wrap">
+                                    {project.subcategories.map(
+                                      (sc: string, i: number) => (
+                                        <Badge
+                                          key={sc + i}
                                           visual="gray"
-                                          className="text-gray-700 hover:text-gray-900 font-medium"
+                                          size="md"
                                         >
-                                          +2 more
-                                        </Button>
-                                      ) : null}
-                                    </div>
-                                  )}
-                                </ShowMoreLessRoot>
-                              </div>
-
-                              <div className="space-y-3">
-                                <h3 className="text-sm leading-none font-medium text-dark-blue-400">
-                                  Tags
-                                </h3>
-
-                                <div className="gap-2 flex items-center flex-wrap">
-                                  <ShowMoreLessRoot>
-                                    {({
-                                      isShowing,
-                                      setIsShowing,
-                                      ref,
-                                      scrollHeight,
-                                    }) => (
-                                      <div
-                                        ref={ref}
-                                        className="gap-2 flex items-center flex-wrap [interpolate-size:allow-keywords] transition-[height] duration-300"
-                                        style={{
-                                          height: isShowing
-                                            ? "auto"
-                                            : scrollHeight
-                                              ? toPxIfNumber(scrollHeight)
-                                              : "auto",
-                                        }}
-                                      >
-                                        <ShowMoreLess max={5}>
-                                          <Badge visual="gray" size="md">
-                                            B2C
-                                          </Badge>
-                                          <Badge visual="gray" size="md">
-                                            Marketplace
-                                          </Badge>
-                                          <Badge visual="gray" size="md">
-                                            Small Business
-                                          </Badge>
-                                          <Badge visual="gray" size="md">
-                                            Custom
-                                          </Badge>
-                                          <Badge visual="gray" size="md">
-                                            Native Application
-                                          </Badge>
-                                          <Badge visual="gray" size="md">
-                                            Native Application
-                                          </Badge>
-                                          <Badge visual="gray" size="md">
-                                            Native Application
-                                          </Badge>
-                                        </ShowMoreLess>
-
-                                        {!isShowing ? (
-                                          <Button
-                                            onClick={() => setIsShowing(true)}
-                                            variant="link"
-                                            visual="gray"
-                                            className="text-gray-700 hover:text-gray-900 font-medium"
-                                          >
-                                            +2 more
-                                          </Button>
-                                        ) : null}
-                                      </div>
+                                          {sc}
+                                        </Badge>
+                                      )
                                     )}
-                                  </ShowMoreLessRoot>
+                                  </div>
                                 </div>
-                              </div>
+                              )}
+
+                              {project.tags?.length > 0 && (
+                                <div className="space-y-3">
+                                  <h3 className="text-sm leading-none font-medium text-dark-blue-400">
+                                    Tags
+                                  </h3>
+                                  <div className="gap-2 flex items-center flex-wrap">
+                                    {project.tags.map(
+                                      (tag: string, i: number) => (
+                                        <Badge
+                                          key={tag + i}
+                                          visual="gray"
+                                          size="md"
+                                        >
+                                          {tag}
+                                        </Badge>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
                             <div className="mt-10">
@@ -1598,7 +1484,19 @@ export default function ProjectDetails() {
                                 Date Published
                               </h3>
                               <p className="mt-3 text-base leading-none text-gray-500">
-                                Feb 20, 2025
+                                {(() => {
+                                  const d =
+                                    project.updatedAt || project.createdAt
+                                  if (!d) return "—"
+                                  return new Date(d).toLocaleDateString(
+                                    "en-US",
+                                    {
+                                      month: "short",
+                                      day: "numeric",
+                                      year: "numeric",
+                                    }
+                                  )
+                                })()}
                               </p>
                             </div>
                           </div>
@@ -1986,6 +1884,118 @@ export default function ProjectDetails() {
                             </RadixTabs.List>
 
                             <TabsContent value="FAQs">
+                              {!project.faqs || project.faqs.length === 0 ? (
+                                <p className="pt-6 text-sm text-gray-500">
+                                  No FAQs yet for this project.
+                                </p>
+                              ) : (
+                                <ShowMoreLessRoot>
+                                  {({
+                                    isShowing,
+                                    setIsShowing,
+                                    scrollHeight,
+                                    ref,
+                                  }) => (
+                                    <>
+                                      <Accordion
+                                        ref={ref}
+                                        type="single"
+                                        className={cn(
+                                          "pt-6 space-y-[15px] overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-300"
+                                        )}
+                                        style={{
+                                          height: isShowing
+                                            ? "auto"
+                                            : scrollHeight
+                                              ? toPxIfNumber(scrollHeight)
+                                              : "auto",
+                                        }}
+                                        defaultValue="faq-0"
+                                      >
+                                        <ShowMoreLessComp max={5}>
+                                          {(
+                                            project.faqs as Array<{
+                                              question: string
+                                              answer: string
+                                            }>
+                                          ).map((faq, idx) => (
+                                            <AccordionItem
+                                              key={`faq-${idx}`}
+                                              className="rounded-lg bg-white border border-gray-300"
+                                              value={`faq-${idx}`}
+                                            >
+                                              <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
+                                                <span className="flex-auto text-left inline-block">
+                                                  {faq.question}
+                                                </span>
+                                                <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                                              </AccordionTrigger>
+                                              <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
+                                                {faq.answer}
+                                              </DisclosureContent>
+                                            </AccordionItem>
+                                          ))}
+                                        </ShowMoreLessComp>
+                                      </Accordion>
+                                      <div className="flex items-center justify-end mt-6">
+                                        <Button
+                                          size="md"
+                                          visual="gray"
+                                          variant="outlined"
+                                          className="group bg-white"
+                                          onClick={() =>
+                                            setIsShowing((prev) => !prev)
+                                          }
+                                          data-state={
+                                            isShowing ? "active" : "inactive"
+                                          }
+                                        >
+                                          {isShowing
+                                            ? "View Less"
+                                            : "View More"}
+                                          <ChevronDown className="size-[15px] transition duration-300 group-data-[state=active]:-rotate-180" />
+                                        </Button>
+                                      </div>
+                                    </>
+                                  )}
+                                </ShowMoreLessRoot>
+                              )}
+                            </TabsContent>
+
+                            <TabsContent value="Recently Asked Questions">
+                              {!project.recentQuestions ||
+                              project.recentQuestions.length === 0 ? (
+                                <p className="pt-6 text-sm text-gray-500">
+                                  No recently asked questions for this project.
+                                </p>
+                              ) : (
+                                <Accordion
+                                  type="single"
+                                  className="pt-6 space-y-[15px]"
+                                  defaultValue="rq-0"
+                                >
+                                  {(project.recentQuestions as string[]).map(
+                                    (q, idx) => (
+                                      <AccordionItem
+                                        key={`rq-${idx}`}
+                                        className="rounded-lg bg-white border border-gray-300"
+                                        value={`rq-${idx}`}
+                                      >
+                                        <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
+                                          <span className="flex-auto text-left inline-block">
+                                            {q}
+                                          </span>
+                                          <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                                        </AccordionTrigger>
+                                      </AccordionItem>
+                                    )
+                                  )}
+                                </Accordion>
+                              )}
+                            </TabsContent>
+
+                            {/* legacy hardcoded FAQ block kept below until next cleanup pass */}
+                            <TabsContent value="legacy-faq-hidden">
                               <ShowMoreLessRoot>
                                 {({
                                   isShowing,
@@ -2210,7 +2220,7 @@ export default function ProjectDetails() {
                               </ShowMoreLessRoot>
                             </TabsContent>
 
-                            <TabsContent value="Recently Asked Questions">
+                            <TabsContent value="legacy-rq-hidden">
                               <Accordion
                                 type="single"
                                 className="pt-6 space-y-[15px]"
@@ -4489,7 +4499,11 @@ export default function ProjectDetails() {
                   </Badge>
                   <div className="inline-flex items-center gap-x-1.5 ml-2">
                     <span className="text-2xl leading-none font-bold text-dark-blue-400">
-                      $5,000
+                      {project.priceMin != null
+                        ? `$${Number(project.priceMin).toLocaleString()}`
+                        : project.budget != null
+                          ? `$${Number(project.budget).toLocaleString()}`
+                          : "—"}
                     </span>
                     <span className="text-sm font-medium leading-none text-dark-blue-400">
                       per
@@ -4497,7 +4511,21 @@ export default function ProjectDetails() {
                   </div>
 
                   <div className="ml-1.5">
-                    <Listbox defaultValue="Week">
+                    <Listbox
+                      defaultValue={(() => {
+                        const m = (project.priceViewMode ||
+                          project.pricingModel ||
+                          "biweekly") as string
+                        const map: Record<string, string> = {
+                          weekly: "Week",
+                          biweekly: "2-week",
+                          monthly: "Month",
+                          quarterly: "Quarter",
+                          yearly: "Year",
+                        }
+                        return map[m] || "2-week"
+                      })()}
+                    >
                       <ListboxButton
                         className="text-sm lowercase py-[5px] px-[7px] h-max w-auto"
                         iconClassName="ml-1"
@@ -4516,7 +4544,10 @@ export default function ProjectDetails() {
                   </div>
                 </div>
 
-                <FavoriteRoot value={isFavorited} onValueChange={handleFavoriteToggle}>
+                <FavoriteRoot
+                  value={isFavorited}
+                  onValueChange={handleFavoriteToggle}
+                >
                   {({ pressed }) => (
                     <TooltipProvider delayDuration={75}>
                       <Tooltip>
@@ -4543,7 +4574,9 @@ export default function ProjectDetails() {
 
               <div className="mt-3">
                 <span className="inline-block text-sm leading-none font-medium text-dark-blue-400">
-                  with an initial payment of $833 to kickoff
+                  {project.priceMax != null
+                    ? `Up to $${Number(project.priceMax).toLocaleString()} total · ${project.pricingModel || "biweekly"} billing`
+                    : `Billing: ${project.pricingModel || "biweekly"}`}
                 </span>
               </div>
 
@@ -4738,15 +4771,19 @@ export default function ProjectDetails() {
                 <div className="flex items-center gap-x-[6.4px]">
                   <Clock className="size-[18px] text-primary-500" />
                   <span className="text-sm leading-none font-medium text-dark-blue-400">
-                    Starting from a 6 month duration
+                    {project.duration
+                      ? `${project.duration} duration`
+                      : "Duration: TBD"}
                   </span>
                 </div>
-                <div className="flex items-center gap-x-[6.4px]">
-                  <Users03 className="size-[18px] text-primary-500" />
-                  <span className="text-sm leading-none font-medium text-dark-blue-400">
-                    Minimum 4 team members
-                  </span>
-                </div>
+                {project.estimatedHours != null && (
+                  <div className="flex items-center gap-x-[6.4px]">
+                    <Users03 className="size-[18px] text-primary-500" />
+                    <span className="text-sm leading-none font-medium text-dark-blue-400">
+                      {project.estimatedHours} estimated hours
+                    </span>
+                  </div>
+                )}
               </div>
 
               <Dialog>
@@ -4762,7 +4799,8 @@ export default function ProjectDetails() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>
-                      Would you like to customize the project scope before checkout?
+                      Would you like to customize the project scope before
+                      checkout?
                     </DialogTitle>
                   </DialogHeader>
                   <DialogFooter className="mt-8">
@@ -4771,7 +4809,9 @@ export default function ProjectDetails() {
                         Edit Scope
                       </Button>
                     </DialogClose>
-                    <Button onClick={() => router.push(`/checkout/${params.slug}`)}>
+                    <Button
+                      onClick={() => router.push(`/checkout/${params.slug}`)}
+                    >
                       Continue to Checkout
                     </Button>
                   </DialogFooter>
@@ -4800,26 +4840,32 @@ export default function ProjectDetails() {
             </div>
 
             <div className="h-[50px] rounded-b-lg bg-gray-50 flex items-center justify-evenly">
-              <div className="inline-flex items-center gap-x-2">
-                <Flag className="size-[15px] text-gray-500" />
-                <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                  Report
-                </span>
-              </div>
+              {project.reportButtonEnabled !== false && (
+                <div className="inline-flex items-center gap-x-2">
+                  <Flag className="size-[15px] text-gray-500" />
+                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+                    Report
+                  </span>
+                </div>
+              )}
 
-              <div className="inline-flex items-center gap-x-2">
-                <HelpCircle className="size-[15px] text-gray-500" />
-                <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                  Help
-                </span>
-              </div>
+              {project.helpButtonEnabled === true && (
+                <div className="inline-flex items-center gap-x-2">
+                  <HelpCircle className="size-[15px] text-gray-500" />
+                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+                    Help
+                  </span>
+                </div>
+              )}
 
-              <div className="inline-flex items-center gap-x-2">
-                <Share06 className="size-[15px] text-gray-500" />
-                <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                  Share
-                </span>
-              </div>
+              {project.shareButtonEnabled !== false && (
+                <div className="inline-flex items-center gap-x-2">
+                  <Share06 className="size-[15px] text-gray-500" />
+                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+                    Share
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

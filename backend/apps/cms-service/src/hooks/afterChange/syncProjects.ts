@@ -77,32 +77,9 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
   }
 
   try {
-    // Re-fetch the doc with depth=2 so all media references arrive as
-    // populated objects (Payload may give the afterChange hook a doc with
-    // raw numeric IDs, which leaves us no way to resolve URLs locally).
-    //
-    // We deliberately omit `draft: true` so this returns the *published*
-    // version when one exists. Otherwise autosaved drafts would overwrite
-    // the listings row with `_status='draft'`, which the read controller
-    // filters out — making the project disappear from the frontend.
-    let populated: any = doc;
-    try {
-      populated = await req.payload.findByID({
-        collection: 'projects' as any,
-        id: doc.id,
-        depth: 2,
-      });
-    } catch (err) {
-      req.payload.logger.warn(
-        { err },
-        `[syncProjectToListings] depth=2 refetch failed for "${doc.slug}", falling back to hook doc`,
-      );
-    }
-
-    // Skip syncs for non-published states. Payload fires afterChange on
-    // every autosave; we only want to push the latest *published* snapshot
-    // to listings-service so the public frontend never sees in-flight edits.
-    const docStatus = (populated as any)._status ?? (doc as any)._status;
+    // Skip non-published states. Payload fires afterChange on every
+    // autosave; we only want to push the latest *published* snapshot.
+    const docStatus = (doc as any)._status;
     if (docStatus && docStatus !== 'published') {
       req.payload.logger.info(
         `[syncProjectToListings] Skipping non-published "${doc.slug}" (status=${docStatus})`,
@@ -110,26 +87,72 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       return doc;
     }
 
-    const thumbnailUrl = mediaUrl(populated.thumbnail, cmsBase);
-    const galleryUrls = Array.isArray(populated.gallery)
-      ? populated.gallery
-          .map((g: { image?: unknown }) => mediaUrl(g?.image, cmsBase))
-          .filter((u: string | null): u is string => !!u)
+    // IMPORTANT: use `doc` directly (the data being saved) for everything
+    // EXCEPT media. We deliberately do NOT call `findByID` on the projects
+    // collection — when this hook runs during a publish operation, Payload
+    // has not yet finalized the new published version, so a re-fetch would
+    // return the *previous* published snapshot and we'd sync stale data
+    // (race observed: title would lag one publish behind).
+    //
+    // Media references (`thumbnail`, `gallery[].image`, `videoWalkthrough.upload`)
+    // arrive on `doc` as raw numeric IDs, so we resolve them individually
+    // via the media collection — that read is independent of the projects
+    // publish race.
+    const resolveMedia = async (mediaRef: unknown): Promise<unknown> => {
+      if (!mediaRef) return null;
+      if (typeof mediaRef === 'object') return mediaRef;
+      if (typeof mediaRef === 'number' || typeof mediaRef === 'string') {
+        try {
+          return await req.payload.findByID({
+            collection: 'media' as any,
+            id: mediaRef as any,
+            depth: 0,
+          });
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    };
+
+    const populatedThumbnail = await resolveMedia((doc as any).thumbnail);
+    const populatedGallery = Array.isArray((doc as any).gallery)
+      ? await Promise.all(
+          ((doc as any).gallery as Array<{ image?: unknown; caption?: string }>).map(
+            async (g) => ({
+              ...g,
+              image: await resolveMedia(g?.image),
+            }),
+          ),
+        )
       : [];
+    const populatedVideoUpload = await resolveMedia(
+      (doc as any).videoWalkthrough?.upload,
+    );
+
+    const thumbnailUrl = mediaUrl(populatedThumbnail, cmsBase);
+    const galleryUrls = populatedGallery
+      .map((g) => mediaUrl(g.image, cmsBase))
+      .filter((u): u is string => !!u);
     const videoUrl =
-      populated.videoWalkthrough?.externalUrl ||
-      mediaUrl(populated.videoWalkthrough?.upload, cmsBase) ||
+      (doc as any).videoWalkthrough?.externalUrl ||
+      mediaUrl(populatedVideoUpload, cmsBase) ||
       undefined;
 
     const payload = {
-      ...populated,
+      ...doc,
       id: doc.id,
+      thumbnail: populatedThumbnail,
+      gallery: populatedGallery,
       thumbnailUrl: thumbnailUrl ?? undefined,
       galleryUrls,
       videoUrl,
       // Payload puts draft/published state under `_status`; mirror it onto
       // `status` so the receiver can rely on either name.
-      status: (populated as any)._status ?? (doc as any)._status ?? 'published',
+      status: ((doc as any)._status ?? 'published') as
+        | 'draft'
+        | 'published'
+        | 'archived',
     };
 
     const url = `${listingsUrl.replace(/\/$/, '')}/internal/project-sync`;
@@ -153,6 +176,74 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
     req.payload.logger.info(
       `[syncProjectToListings] Synced "${doc.slug}" (${operation}) → listings-service`,
     );
+
+    // Per docs/md/Home Page/08-HP — Cache Strategy & Invalidation:
+    // publish a `project.saved` event onto the cms.events topic exchange so
+    // any downstream cache (api-gateway Redis, future Cloudflare edge) can
+    // invalidate. Same pattern Categories/TalentProfiles already use.
+    try {
+      const { CmsEventPublisher } = await import('../../rabbitmq/cms-event.publisher');
+      const publisher = CmsEventPublisher.getInstance();
+      if (publisher.isConnected()) {
+        await publisher.publishProjectSaved({
+          id: String(doc.id),
+          payloadId: doc.id as number | string,
+          slug: doc.slug,
+          title: doc.title,
+          status: ((doc as any)._status ?? 'published') as 'draft' | 'published' | 'archived',
+        });
+        req.payload.logger.info(
+          `[syncProjectToListings] Published project.saved for "${doc.slug}"`,
+        );
+      } else {
+        req.payload.logger.warn(
+          `[syncProjectToListings] RabbitMQ not connected — skipping project.saved event for "${doc.slug}"`,
+        );
+      }
+    } catch (rmqErr) {
+      req.payload.logger.error(
+        { err: rmqErr },
+        `[syncProjectToListings] Failed to publish project.saved for "${doc.slug}"`,
+      );
+    }
+
+    // Frontend cache busting (Next.js on-demand ISR). The cache strategy
+    // doc covers backend Redis/CDN but not the Next.js Data Cache layer;
+    // this hook hits the frontend revalidate webhook so a normal browser
+    // refresh sees the new content within ~50ms instead of waiting for the
+    // page-level cache to expire.
+    const revalidateUrl = process.env.FRONTEND_REVALIDATE_URL;
+    const revalidateSecret = process.env.REVALIDATE_SECRET;
+    if (revalidateUrl && revalidateSecret) {
+      try {
+        const res = await fetch(revalidateUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            secret: revalidateSecret,
+            paths: [
+              `/project-details/${doc.slug}`,
+              '/projects',
+            ],
+          }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          req.payload.logger.warn(
+            `[syncProjectToListings] revalidate webhook ${res.status}: ${text}`,
+          );
+        } else {
+          req.payload.logger.info(
+            `[syncProjectToListings] Revalidated frontend paths for "${doc.slug}"`,
+          );
+        }
+      } catch (revErr) {
+        req.payload.logger.warn(
+          { err: revErr },
+          `[syncProjectToListings] Failed to call revalidate webhook for "${doc.slug}"`,
+        );
+      }
+    }
   } catch (err) {
     req.payload.logger.error(
       { err },
@@ -195,6 +286,43 @@ export const deleteProjectFromListings: CollectionAfterDeleteHook = async ({
     req.payload.logger.info(
       `[deleteProjectFromListings] Soft-deleted "${doc.slug}" in listings-service`,
     );
+
+    try {
+      const { CmsEventPublisher } = await import('../../rabbitmq/cms-event.publisher');
+      const publisher = CmsEventPublisher.getInstance();
+      if (publisher.isConnected()) {
+        await publisher.publishProjectDeleted({
+          id: String(doc.id),
+          payloadId: doc.id as number | string,
+          slug: doc.slug,
+        });
+      }
+    } catch (rmqErr) {
+      req.payload.logger.error(
+        { err: rmqErr },
+        `[deleteProjectFromListings] Failed to publish project.deleted for "${doc.slug}"`,
+      );
+    }
+
+    const revalidateUrl = process.env.FRONTEND_REVALIDATE_URL;
+    const revalidateSecret = process.env.REVALIDATE_SECRET;
+    if (revalidateUrl && revalidateSecret) {
+      try {
+        await fetch(revalidateUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            secret: revalidateSecret,
+            paths: [`/project-details/${doc.slug}`, '/projects'],
+          }),
+        });
+      } catch (revErr) {
+        req.payload.logger.warn(
+          { err: revErr },
+          `[deleteProjectFromListings] revalidate webhook failed for "${doc.slug}"`,
+        );
+      }
+    }
   } catch (err) {
     req.payload.logger.error(
       { err },

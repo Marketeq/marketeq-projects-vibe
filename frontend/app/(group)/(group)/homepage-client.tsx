@@ -1,21 +1,35 @@
 "use client"
 
 import React from "react"
-import { cn, fromLength } from "@/utils/functions"
 import { projectDetailsUrl, serviceDetailsUrl } from "@/src/lib/listing-urls"
-import { ListingCardCompact } from "@/components/listing-card-compact"
+import { cn, fromLength } from "@/utils/functions"
 import {
+  AlertCircle,
+  Check,
   ChevronLeft,
   ChevronRight,
-  Check,
-  AlertCircle,
   X,
 } from "@blend-metrics/icons"
 import { SwiperSlide } from "swiper/react"
-import NextImage from "@/components/next-image"
-import NextLink from "@/components/next-link"
+import type {
+  CategoryRef,
+  FooterNavColumn,
+  HomepageBanner,
+  HomepageBlock,
+  HomepageHeroSlide,
+  HomepagePayload,
+  HomepageSection,
+  ProjectCard,
+  ServiceCard,
+  TalentCard,
+  TalentNetworkCta,
+  TeamCard,
+} from "@/types/homepage"
 import { Blocks1 } from "@/components/blocks-1"
 import { ListingCard } from "@/components/listing-card"
+import { ListingCardCompact } from "@/components/listing-card-compact"
+import NextImage from "@/components/next-image"
+import NextLink from "@/components/next-link"
 import {
   SwiperContent,
   SwiperNextTrigger,
@@ -23,7 +37,6 @@ import {
   SwiperRoot,
 } from "@/components/swiper"
 import {
-  Badge,
   Button,
   Favorite,
   FavoriteRoot,
@@ -37,20 +50,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
-import type {
-  HomepagePayload,
-  HomepageSection,
-  HomepageBlock,
-  HomepageHeroSlide,
-  ProjectCard,
-  ServiceCard,
-  TeamCard,
-  TalentCard,
-  HomepageBanner,
-  CategoryRef,
-  FooterNavColumn,
-  TalentNetworkCta,
-} from "@/types/homepage"
 
 // ── Hero ────────────────────────────────────────────────────────────────────
 // Multi-slide rotating hero with cross-fade, Ken Burns zoom, staggered text
@@ -276,8 +275,7 @@ function Hero({ hero }: { hero: HomepagePayload["hero"] }) {
           }
         }
         :global(.hero-reveal) {
-          animation: hero-reveal-up 900ms cubic-bezier(0.22, 0.61, 0.36, 1)
-            both;
+          animation: hero-reveal-up 900ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
         }
         :global(.hero-reveal-eyebrow) {
           animation-delay: 80ms;
@@ -340,15 +338,28 @@ function Banner({ banner }: { banner: HomepageBanner }) {
   }
 
   return (
-    <div className={cn("rounded-lg border px-4 py-3 flex items-center gap-x-3", colors[banner.bannerType])}>
+    <div
+      className={cn(
+        "rounded-lg border px-4 py-3 flex items-center gap-x-3",
+        colors[banner.bannerType]
+      )}
+    >
       <AlertCircle className="size-5 shrink-0" />
       <span className="text-sm font-medium flex-auto">{banner.message}</span>
       {banner.ctaLabel && banner.ctaUrl && (
-        <NextLink href={banner.ctaUrl} className="text-sm font-semibold underline shrink-0">
+        <NextLink
+          href={banner.ctaUrl}
+          className="text-sm font-semibold underline shrink-0"
+        >
           {banner.ctaLabel}
         </NextLink>
       )}
-      <button onClick={() => setDismissed(true)} className="shrink-0 p-1 rounded hover:bg-black/5" aria-label="Dismiss banner" type="button">
+      <button
+        onClick={() => setDismissed(true)}
+        className="shrink-0 p-1 rounded hover:bg-black/5"
+        aria-label="Dismiss banner"
+        type="button"
+      >
         <X className="size-4" />
       </button>
     </div>
@@ -430,7 +441,7 @@ function FavoriteButton() {
 
 function formatBudget(budget: number | null): string {
   if (budget == null) return "Budget TBD"
-  return `$${budget.toLocaleString()} budget`
+  return `Starting at $${budget.toLocaleString()}`
 }
 
 function formatDuration(duration: string | null): string {
@@ -440,7 +451,8 @@ function formatDuration(duration: string | null): string {
 
 function formatPrice(min: number | null, max: number | null): string {
   if (min == null && max == null) return "Contact for pricing"
-  if (min != null && max != null) return `$${min.toLocaleString()} – $${max.toLocaleString()}/mo`
+  if (min != null && max != null)
+    return `$${min.toLocaleString()} – $${max.toLocaleString()}/mo`
   const price = min ?? max
   if (price == null) return "Contact for pricing"
   return `$${price.toLocaleString()}/mo`
@@ -459,7 +471,10 @@ function renderProjectCarousel(item: ProjectCard) {
     <ListingCard
       kind="project"
       id={item.id}
-      href={projectDetailsUrl(item.slug ?? item.id, item.slug ? item.id : undefined)}
+      href={projectDetailsUrl(
+        item.slug ?? item.id,
+        item.slug ? item.id : undefined
+      )}
       title={item.title}
       description={item.shortDescription ?? item.description}
       mediaUrl={item.thumbnail ?? undefined}
@@ -482,12 +497,17 @@ function renderServiceCarousel(item: ServiceCard) {
     <ListingCard
       kind="service"
       id={item.id}
-      href={serviceDetailsUrl(item.slug ?? item.id, item.slug ? item.id : undefined)}
+      href={serviceDetailsUrl(
+        item.slug ?? item.id,
+        item.slug ? item.id : undefined
+      )}
       title={item.title}
       description={item.shortDescription ?? item.description}
       mediaUrl={item.thumbnail ?? undefined}
       budget={formatPrice(item.priceMin, item.priceMax)}
-      duration={item.deliveryTime ? `Delivery: ${item.deliveryTime}` : undefined}
+      duration={
+        item.deliveryTime ? `Delivery: ${item.deliveryTime}` : undefined
+      }
       rating={item.rating}
       reviewCount={item.reviewCount}
       favoriteSlot={<FavoriteButton />}
@@ -510,7 +530,8 @@ function renderTeamCard(item: TeamCard) {
 }
 
 function renderTalentCard(item: TalentCard) {
-  const name = [item.firstName, item.lastName].filter(Boolean).join(" ") || item.username
+  const name =
+    [item.firstName, item.lastName].filter(Boolean).join(" ") || item.username
   const rate = item.rateMin != null ? `$${item.rateMin}/hr` : undefined
   return (
     <ListingCard
@@ -592,12 +613,20 @@ function CarouselNavButtons() {
   return (
     <div className="flex items-center gap-x-3">
       <SwiperPrevTrigger asChild>
-        <IconButton className={NAV_BUTTON_CLASS} visual="gray" variant="outlined">
+        <IconButton
+          className={NAV_BUTTON_CLASS}
+          visual="gray"
+          variant="outlined"
+        >
           <ChevronLeft className="size-[18px]" />
         </IconButton>
       </SwiperPrevTrigger>
       <SwiperNextTrigger asChild>
-        <IconButton className={NAV_BUTTON_CLASS} visual="gray" variant="outlined">
+        <IconButton
+          className={NAV_BUTTON_CLASS}
+          visual="gray"
+          variant="outlined"
+        >
           <ChevronRight className="size-[18px]" />
         </IconButton>
       </SwiperNextTrigger>
@@ -606,7 +635,13 @@ function CarouselNavButtons() {
 }
 
 /** Carousel section: title + nav buttons in the same header row. */
-function CarouselSectionView({ section, block }: { section: HomepageSection; block: HomepageBlock }) {
+function CarouselSectionView({
+  section,
+  block,
+}: {
+  section: HomepageSection
+  block: HomepageBlock
+}) {
   if (block.items.length === 0) return null
 
   return (
@@ -621,7 +656,10 @@ function CarouselSectionView({ section, block }: { section: HomepageSection; blo
       <div className="mt-6">
         <SwiperContent slidesPerView="auto" spaceBetween={20}>
           {block.items.map((item) => (
-            <SwiperSlide className="w-[355px]" key={`${block.entity}-${item.id}`}>
+            <SwiperSlide
+              className="w-[355px]"
+              key={`${block.entity}-${item.id}`}
+            >
               {renderBlockItem(block, item, "carousel")}
             </SwiperSlide>
           ))}
@@ -635,7 +673,9 @@ function GridBlockBody({ block }: { block: HomepageBlock }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-[42px] gap-y-10">
       {block.items.map((item) => (
-        <div key={`${block.entity}-${item.id}`}>{renderBlockItem(block, item, "grid")}</div>
+        <div key={`${block.entity}-${item.id}`}>
+          {renderBlockItem(block, item, "grid")}
+        </div>
       ))}
     </div>
   )
@@ -652,7 +692,10 @@ function TabbedSectionView({ section }: { section: HomepageSection }) {
       if (existing) {
         existing.blocks.push(block)
       } else {
-        map.set(block.tabSlug, { label: block.tabLabel ?? block.tabSlug, blocks: [block] })
+        map.set(block.tabSlug, {
+          label: block.tabLabel ?? block.tabSlug,
+          blocks: [block],
+        })
       }
     }
     return Array.from(map.entries()).map(([slug, v]) => ({ slug, ...v }))
@@ -662,9 +705,9 @@ function TabbedSectionView({ section }: { section: HomepageSection }) {
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-x-6">
+      <div className="flex items-end justify-between gap-x-6">
         <div className="space-y-2">
-          <h2 className="text-[24px] leading-none text-dark-blue-400 font-bold">
+          <h2 className="text-2xl leading-[29.05px] lg:text-4xl lg:leading-[43.57px] font-bold text-dark-blue-600">
             {section.title}
           </h2>
           {section.subtitle && (
@@ -673,8 +716,8 @@ function TabbedSectionView({ section }: { section: HomepageSection }) {
             </p>
           )}
         </div>
-        {section.ctaLabel && (
-          section.ctaUrl ? (
+        {section.ctaLabel &&
+          (section.ctaUrl ? (
             <NextLink href={section.ctaUrl}>
               <Button variant="link" visual="gray">
                 {section.ctaLabel}
@@ -684,27 +727,23 @@ function TabbedSectionView({ section }: { section: HomepageSection }) {
             <Button variant="link" visual="gray">
               {section.ctaLabel}
             </Button>
-          )
-        )}
+          ))}
       </div>
 
-      <Tabs defaultValue={tabBlocks[0].slug}>
-        <div className="mt-6">
-          <TabsList className="flex items-center gap-x-3 flex-wrap">
-            {tabBlocks.map((t) => (
-              <Badge
-                key={t.slug}
-                variant="circular"
-                visual="gray"
-                size="lg"
-                className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                asChild
-              >
-                <TabsTrigger value={t.slug}>{t.label}</TabsTrigger>
-              </Badge>
-            ))}
-          </TabsList>
-        </div>
+      <Tabs className="mt-[29px]" defaultValue={tabBlocks[0].slug}>
+        <TabsList className="px-0 w-full justify-start gap-x-3 border-b-0">
+          {tabBlocks.map((t) => (
+            <TabsTrigger
+              key={t.slug}
+              value={t.slug}
+              showUnderline={false}
+              variant="unstyled"
+              className="inline-flex items-center justify-center h-8 rounded-full border border-gray-300 bg-white px-3.5 text-sm font-semibold text-gray-500 transition-colors hover:bg-gray-50 focus-visible:outline-none data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+            >
+              {t.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
         {tabBlocks.map((t) => (
           <TabsContent key={t.slug} value={t.slug}>
             <div className="mt-[29px] space-y-10">
@@ -736,8 +775,8 @@ function GridSectionView({ section }: { section: HomepageSection }) {
             </p>
           )}
         </div>
-        {section.ctaLabel && (
-          section.ctaUrl ? (
+        {section.ctaLabel &&
+          (section.ctaUrl ? (
             <NextLink href={section.ctaUrl}>
               <Button variant="link" visual="gray">
                 {section.ctaLabel}
@@ -747,8 +786,7 @@ function GridSectionView({ section }: { section: HomepageSection }) {
             <Button variant="link" visual="gray">
               {section.ctaLabel}
             </Button>
-          )
-        )}
+          ))}
       </div>
       <div className="mt-[29px] space-y-10">
         {section.blocks.map((block) => (
@@ -878,7 +916,14 @@ function MoreCategories({ categories }: { categories: CategoryRef[] }) {
     (_, i) => categories[i % categories.length]
   )
 
-  const [imageFeature, spotlightA, spotlightB, spotlightC, spotlightD, blocksFeature] = cats
+  const [
+    imageFeature,
+    spotlightA,
+    spotlightB,
+    spotlightC,
+    spotlightD,
+    blocksFeature,
+  ] = cats
 
   return (
     <div>
@@ -920,42 +965,6 @@ function MoreCategories({ categories }: { categories: CategoryRef[] }) {
         </NextLink>
       </div>
     </div>
-  )
-}
-
-// ── Popular Tabs Strip ──────────────────────────────────────────────────────
-// Horizontal strip of category quick-links shown directly below the hero
-// (spec 00-HP §2.2). Hidden when the backend returns no tabs.
-
-function PopularTabsStrip({ tabs }: { tabs: CategoryRef[] }) {
-  if (tabs.length === 0) return null
-  return (
-    <nav
-      aria-label="Popular categories"
-      className="overflow-x-auto scrollbar-none"
-    >
-      <ul className="flex items-center gap-x-3 flex-wrap">
-        {tabs.map((tab) => (
-          <li key={tab.slug}>
-            <NextLink
-              href={`/c/${tab.slug}`}
-              className="group inline-flex items-center gap-x-2 h-9 rounded-full border border-gray-300 bg-white px-4 text-sm font-medium text-gray-600 hover:border-dark-blue-400 hover:text-dark-blue-400 transition-colors"
-            >
-              {tab.iconUrl && (
-                <NextImage
-                  src={tab.iconUrl}
-                  alt=""
-                  width={16}
-                  height={16}
-                  className="object-contain"
-                />
-              )}
-              {tab.name}
-            </NextLink>
-          </li>
-        ))}
-      </ul>
-    </nav>
   )
 }
 
@@ -1027,17 +1036,26 @@ function Footer({ columns }: { columns: FooterNavColumn[] }) {
           </p>
           <ul className="flex items-center gap-x-6 text-xs text-gray-400">
             <li>
-              <NextLink href="/terms" className="hover:text-dark-blue-400 transition-colors">
+              <NextLink
+                href="/terms"
+                className="hover:text-dark-blue-400 transition-colors"
+              >
                 Terms of Service
               </NextLink>
             </li>
             <li>
-              <NextLink href="/privacy" className="hover:text-dark-blue-400 transition-colors">
+              <NextLink
+                href="/privacy"
+                className="hover:text-dark-blue-400 transition-colors"
+              >
                 Privacy Policy
               </NextLink>
             </li>
             <li>
-              <NextLink href="/cookies" className="hover:text-dark-blue-400 transition-colors">
+              <NextLink
+                href="/cookies"
+                className="hover:text-dark-blue-400 transition-colors"
+              >
                 Cookie Policy
               </NextLink>
             </li>
@@ -1057,12 +1075,14 @@ export function HomepageClient({ data }: { data: HomepagePayload }) {
         <div className="max-w-[1440px] mx-auto px-[50px] space-y-[50px]">
           {data.banner && <Banner banner={data.banner} />}
           <Hero hero={data.hero} />
-          <PopularTabsStrip tabs={data.popularTabs} />
+          {/* PopularTabsStrip removed — category quick-link pills are not in
+              the homepage Figma. CMS still serves data.popularTabs (it's
+              consumed by Most Popular Projects section's tab bar). */}
           {data.sections.map((section) => (
             <HomepageSectionRenderer key={section.key} section={section} />
           ))}
           <MoreCategories categories={data.moreCategoriesList} />
-          <TalentNetworkCtaSection cta={data.talentNetworkCta} />
+          {/* <TalentNetworkCtaSection cta={data.talentNetworkCta} /> */}
         </div>
       </div>
       <Footer columns={data.footerNav} />
