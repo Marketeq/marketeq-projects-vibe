@@ -487,24 +487,26 @@ export const ImageEditor = ({
             }
       },
     })
-  const shouldNotifyValueChangeRef = useRef(true)
   const [dataUrl, setDataUrl] = useUncontrolledState<string | null>({
     defaultValue: null,
     onChange: (value) => {
-      if (!shouldNotifyValueChangeRef.current) {
-        shouldNotifyValueChangeRef.current = true
+      if (!value) {
+        onValueChange?.(undefined)
         return
       }
-      value ? onValueChange?.(acceptedFiles) : onValueChange?.(undefined)
+      if (acceptedFiles.length > 0) {
+        onValueChange?.(acceptedFiles)
+      }
     },
   })
 
-  // Restore a previously saved image (e.g. when navigating back to this step)
+  // Restore a previously saved image (e.g. when navigating back to this step).
+  // No ref gating needed: onChange above skips notification when acceptedFiles
+  // is empty, so this setDataUrl call won't clobber the form state.
   const defaultDataUrlApplied = useRef(false)
   useEffect(() => {
     if (defaultDataUrl && !defaultDataUrlApplied.current) {
       defaultDataUrlApplied.current = true
-      shouldNotifyValueChangeRef.current = false
       setDataUrl(defaultDataUrl)
     }
   }, [defaultDataUrl, setDataUrl])
@@ -627,7 +629,7 @@ export const ImageEditor = ({
 
   return (
     <>
-      {/* Hidden file input — always in the DOM so open() works from any dialog */}
+      {/* Keep input mounted so open() works from any step/dialog state. */}
       <div className="sr-only">
         <input {...getInputProps()} />
       </div>
@@ -657,6 +659,7 @@ export const ImageEditor = ({
           <div className="flex mt-5 justify-center">
             <div
               className="size-[160px] shrink-0 rounded-full bg-gray-100 flex items-center justify-center text-center"
+              {...getRootProps()}
             >
               <span className="text-[60px] leading-none text-gray-300 font-medium">
                 CH
