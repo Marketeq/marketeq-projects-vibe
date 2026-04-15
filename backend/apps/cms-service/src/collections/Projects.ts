@@ -179,6 +179,13 @@ export const Projects: CollectionConfig = {
               },
               fields: [{ name: 'question', type: 'text', required: true }],
             },
+            // NOTE: The "About the Team" section is intentionally NOT a CMS
+            // field. Per docs/md/CMS Service/projects/details/03 PHASE 1 §1
+            // and data-dictionary.csv:12/32, team composition is *derived*
+            // from `project_tasks.assignee` (user IDs), not authored in the
+            // CMS. The listings-service will expose GET /projects/:id/team
+            // once project_tasks lands. Until then the frontend renders a
+            // static fallback (see project-details/[slug]/page.tsx).
           ],
         },
 

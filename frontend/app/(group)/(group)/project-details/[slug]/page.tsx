@@ -1253,151 +1253,161 @@ export default function ProjectDetails() {
                           </div>
                         </div>
 
+                        {/*
+                          About the Team section — static fallback.
+
+                          Per docs/md/CMS Service/projects/details/03 PHASE 1 §1
+                          and data-dictionary.csv:12/32, team composition is
+                          derived from `project_tasks.assignee` (user IDs),
+                          NOT authored in the CMS. Until `project_tasks` and
+                          GET /projects/:id/team land we keep this block
+                          static (no false data from free-text CMS input).
+                        */}
                         <div className="p-6">
-                          <h3 className="text-base leading-none font-semibold text-dark-blue-400">
-                            About the Team
-                          </h3>
+                            <h3 className="text-base leading-none font-semibold text-dark-blue-400">
+                              About the Team
+                            </h3>
 
-                          <div className="grid grid-cols-2 gap-x-6 mt-6">
-                            <div className="flex items-start gap-x-3">
-                              <Avatar size="lg">
-                                <AvatarImage src="/man.jpg" alt="Man" />
-                                <AvatarFallback>M</AvatarFallback>
-                              </Avatar>
+                            <div className="grid grid-cols-2 gap-x-6 mt-6">
+                              <div className="flex items-start gap-x-3">
+                                <Avatar size="lg">
+                                  <AvatarImage src="/man.jpg" alt="Man" />
+                                  <AvatarFallback>M</AvatarFallback>
+                                </Avatar>
 
-                              <div className="space-y-1.5">
-                                <Badge
-                                  className="rounded-[4px] bg-primary-50"
-                                  visual="primary"
-                                >
-                                  Project Lead
-                                </Badge>
+                                <div className="space-y-1.5">
+                                  <Badge
+                                    className="rounded-[4px] bg-primary-50"
+                                    visual="primary"
+                                  >
+                                    Project Lead
+                                  </Badge>
 
-                                <div className="flex flex-col gap-y-0.5">
-                                  <span className="block text-sm leading-none text-gray-500 font-extralight">
-                                    <span className="text-base font-bold text-dark-blue-400 ">
-                                      Chris
-                                    </span>{" "}
-                                    @ux23isee
-                                  </span>
+                                  <div className="flex flex-col gap-y-0.5">
+                                    <span className="block text-sm leading-none text-gray-500 font-extralight">
+                                      <span className="text-base font-bold text-dark-blue-400 ">
+                                        Chris
+                                      </span>{" "}
+                                      @ux23isee
+                                    </span>
 
-                                  <span className="text-sm leading-none font-extralight text-dark-blue-400">
-                                    Full Stack Designer
-                                  </span>
+                                    <span className="text-sm leading-none font-extralight text-dark-blue-400">
+                                      Full Stack Designer
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="space-y-3">
+                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                  <MapPin className="size-[18px]" /> Locations
+                                </h3>
+
+                                <div className="gap-1 flex items-center flex-wrap">
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    USA,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    UK,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Brazil,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    and 1 more...
+                                  </NextLink>
                                 </div>
                               </div>
                             </div>
 
-                            <div className="space-y-3">
-                              <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                <MapPin className="size-[18px]" /> Locations
-                              </h3>
+                            <div className="mt-6 grid grid-cols-2 gap-x-6">
+                              <div className="space-y-3">
+                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                  <MessageTextSquare01 className="size-[18px]" />{" "}
+                                  Languages
+                                </h3>
 
-                              <div className="gap-1 flex items-center flex-wrap">
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  USA,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  UK,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Brazil,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  and 1 more...
-                                </NextLink>
+                                <div className="gap-1 flex items-center flex-wrap">
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    English,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Spanish,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    French
+                                  </NextLink>
+                                </div>
+                              </div>
+
+                              <div className="space-y-3">
+                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                  <Stars02 className="size-[18px]" /> Skills &
+                                  Expertise
+                                </h3>
+
+                                <div className="gap-1 flex items-center flex-wrap">
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Performance,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Security,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Operating Systems,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Design,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Databases,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    and 1 more...
+                                  </NextLink>
+                                </div>
                               </div>
                             </div>
                           </div>
-
-                          <div className="mt-6 grid grid-cols-2 gap-x-6">
-                            <div className="space-y-3">
-                              <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                <MessageTextSquare01 className="size-[18px]" />{" "}
-                                Languages
-                              </h3>
-
-                              <div className="gap-1 flex items-center flex-wrap">
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  English,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Spanish,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  French
-                                </NextLink>
-                              </div>
-                            </div>
-
-                            <div className="space-y-3">
-                              <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                <Stars02 className="size-[18px]" /> Skills &
-                                Expertise
-                              </h3>
-
-                              <div className="gap-1 flex items-center flex-wrap">
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Performance,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Security,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Operating Systems,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Design,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Databases,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  and 1 more...
-                                </NextLink>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
                       </div>
 
                       <div className="relative border mt-6 border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
