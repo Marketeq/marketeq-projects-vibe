@@ -804,6 +804,8 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
   return (
       <div
         className={cn(
+        // Keep the primary nav pinned to the viewport so iOS/macOS overscroll
+        // bounce only affects page content, not the header itself.
         "fixed inset-x-0 top-0 px-3.5 md:px-6 lg:px-[50px] bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 z-50",
         showNavShadow
           ? "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]"

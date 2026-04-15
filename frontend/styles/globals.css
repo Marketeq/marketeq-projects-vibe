@@ -37,6 +37,15 @@
   --swiper-pagination-bottom: theme(size.4);
 }
 
+/* Keep the document background and fixed nav layers stable during rubber-band
+   scrolling so the viewport does not reveal a shifting background behind them. */
+html,
+body {
+  min-height: 100%;
+  background-color: theme(colors.gray.50);
+  overscroll-behavior-y: none;
+}
+
 .react-international-phone-input-container
   .react-international-phone-country-selector-button {
   @apply mr-0;
