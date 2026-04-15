@@ -210,7 +210,16 @@ export class ProjectSyncService {
 
     const description = this.lexicalToHtml(dto.fullDescription) || dto.shortDescription || '';
     const deliverables = this.deliverablePhases(dto.deliverables);
-    const faqs = (dto.faqQuestions ?? []).map((f) => ({ question: f.question, answer: f.answer }));
+    // Payload v2 delivers `answer` as a Lexical rich-text tree once the
+    // field type flipped from textarea → richText. Run it through the same
+    // converter used by fullDescription so the column holds ready-to-render
+    // HTML and the frontend can drop it into dangerouslySetInnerHTML without
+    // a second parser. Legacy textarea strings are passed through unchanged.
+    const faqs = (dto.faqQuestions ?? []).map((f) => ({
+      question: f.question,
+      answer:
+        typeof f.answer === 'string' ? f.answer : this.lexicalToHtml(f.answer),
+    }));
 
     const duration = dto.timelineValue && dto.timelineUnit
       ? `${dto.timelineValue} ${dto.timelineUnit}`

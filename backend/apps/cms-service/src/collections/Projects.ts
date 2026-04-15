@@ -165,9 +165,14 @@ export const Projects: CollectionConfig = {
               type: 'array',
               labels: { singular: 'FAQ', plural: 'FAQs' },
               admin: { description: 'Common questions answered by the team. Editable by team lead, must pass moderation.' },
+              // Per docs/md/.../creation/Strapi Integration:196 §FAQItem the
+              // answer is spec'd as Rich Text, so editors can add bold,
+              // lists, inline links etc. — listings-service reuses the same
+              // Lexical→HTML converter used for fullDescription (no extra
+              // code path, same sanitiser).
               fields: [
                 { name: 'question', type: 'text', required: true },
-                { name: 'answer', type: 'textarea', required: true },
+                { name: 'answer', type: 'richText', required: true },
               ],
             },
             {

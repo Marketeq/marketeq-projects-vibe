@@ -19,8 +19,11 @@ class CmsFaqItem {
   @IsString()
   question: string;
 
-  @IsString()
-  answer: string;
+  // Payload delivers `answer` as a Lexical rich-text tree (object) once
+  // the field flipped from textarea → richText. Accept either shape —
+  // the service converts trees to HTML via lexicalToHtml() before storage.
+  @IsOptional()
+  answer: unknown;
 }
 
 class CmsMediaRef {

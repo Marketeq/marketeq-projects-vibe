@@ -1691,8 +1691,28 @@ export default function ProjectDetails() {
                                                 </span>
                                                 <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                                               </AccordionTrigger>
+                                              {/*
+                                                faq.answer is HTML pre-rendered
+                                                by listings-service (Lexical
+                                                → HTML via lexicalToHtml).
+                                                Content is admin-authored +
+                                                moderation-gated per spec, so
+                                                dangerouslySetInnerHTML is
+                                                safe here — same pattern used
+                                                for the fullDescription block.
+                                                DisclosureContent always
+                                                forwards children, so we wrap
+                                                the HTML in an inner div to
+                                                avoid the React "children vs
+                                                dangerouslySetInnerHTML" clash.
+                                              */}
                                               <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
-                                                {faq.answer}
+                                                <div
+                                                  className="prose prose-sm max-w-none"
+                                                  dangerouslySetInnerHTML={{
+                                                    __html: faq.answer,
+                                                  }}
+                                                />
                                               </DisclosureContent>
                                             </AccordionItem>
                                           ))}
