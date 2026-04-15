@@ -32,10 +32,6 @@ function fuzzySpellcheck(s: string) {
 
 @Injectable()
 export class CategoryService {
-
-    public async findByUuid(uuid: string) {
-      return this.catRepo.findOne({ where: { uuid }, relations: ['parent', 'tags'] });
-    }
   private readonly logger = new Logger(CategoryService.name);
 
   constructor(
@@ -46,6 +42,17 @@ export class CategoryService {
     private readonly http: HttpService,
     private readonly contentService: ContentService,
   ) {}
+
+  public async findByUuid(uuid: string): Promise<CategoryEntity> {
+    const found = await this.catRepo.findOne({
+      where: { uuid },
+      relations: ['parent', 'tags'],
+    });
+    if (!found) {
+      throw new NotFoundException(`Category with uuid ${uuid} not found`);
+    }
+    return found;
+  }
 
   // ---------------------------------------------------------
   // CMS -> Nest upsert

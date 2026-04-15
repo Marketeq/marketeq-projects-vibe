@@ -65,7 +65,6 @@ async function start() {
     payload.logger.warn('RABBITMQ_URL not set — category sync events disabled');
   }
 
-  payload.logger.info(`About to start Express listener on port ${PORT}`);
   app.listen(PORT, () => {
     payload.logger.info(`cms-service running on port ${PORT}`);
   });

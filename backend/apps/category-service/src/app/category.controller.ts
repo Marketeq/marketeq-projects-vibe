@@ -8,6 +8,7 @@ import {
   Query,
   Logger,
   BadRequestException,
+  ParseUUIDPipe,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
@@ -19,21 +20,17 @@ import { ServiceAuthGuard } from '../guards/service-auth.guard';
 @ApiTags('Categories')
 @Controller('categories')
 export class CategoryController {
-
-      @Get('/health')
-      health() {
-        return { status: 'ok', service: 'category-service', time: new Date().toISOString() };
-      }
-    @Get(':uuid')
-    async getByUuid(@Param('uuid') uuid: string) {
-      return this.service.findByUuid(uuid);
-    }
   private readonly logger = new Logger(CategoryController.name);
 
   constructor(
     private readonly service: CategoryService,
     private readonly content: ContentService,
   ) {}
+
+  @Get('health')
+  health() {
+    return { status: 'ok', service: 'category-service', time: new Date().toISOString() };
+  }
 
   @Post('sync')
   @UseGuards(ServiceAuthGuard)
@@ -204,5 +201,11 @@ export class CategoryController {
     @Body('reassignTo') reassignTo?: string,
   ) {
     return this.service.deleteCategory(uuid, reassignTo);
+  }
+
+  @Get(':uuid')
+  @ApiOperation({ summary: 'Find a category by UUID' })
+  async getByUuid(@Param('uuid', ParseUUIDPipe) uuid: string) {
+    return this.service.findByUuid(uuid);
   }
 }

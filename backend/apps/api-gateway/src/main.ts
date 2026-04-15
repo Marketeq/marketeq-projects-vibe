@@ -25,8 +25,18 @@ async function bootstrap() {
     throw new Error('FRONTEND_URL is not defined')
   }
 
-  const isMarketeqVercelPreview = (origin: string) =>
-    origin.includes('marketeq-projects') && origin.endsWith('.vercel.app')
+  const vercelPreviewPattern = process.env.VERCEL_PREVIEW_ORIGIN_REGEX
+    ? new RegExp(process.env.VERCEL_PREVIEW_ORIGIN_REGEX)
+    : /^marketeq-projects(?:-[a-z0-9-]+)?-[a-z0-9-]+\.vercel\.app$/
+
+  const isMarketeqVercelPreview = (origin: string) => {
+    try {
+      const url = new URL(origin)
+      return url.protocol === 'https:' && vercelPreviewPattern.test(url.hostname)
+    } catch {
+      return false
+    }
+  }
 
   app.enableCors({
     origin: (origin, callback) => {

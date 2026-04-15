@@ -9,18 +9,11 @@ export const Categories: CollectionConfig = {
     useAsTitle: 'name',
     defaultColumns: ['name', 'slug', 'status', 'sortOrder'],
   },
-
-
   access: {
     read: () => true,
     create: isAdminOrDeveloper,
     update: isAdminOrDeveloper,
     delete: isAdmin,
-    // --- For emergency admin bootstrapping, uncomment below ---
-    // read: () => true,
-    // create: () => true,
-    // update: () => true,
-    // delete: () => true,
   },
   hooks: {
     afterChange: [syncCategoryToService],
