@@ -72,10 +72,8 @@ node -r ts-node/register/transpile-only src/server.ts
 
 #### Log in to Payload CMS admin at
 http://localhost:3020/admin
+Enable API Key -> Generate New API Key
 
-Open DevTools → Application → Cookies → payload-token
-Copy the value of the payload-token cookie.
-This is your JWT.
 Set this value as CMS_API_KEY in your .env for category-service
 OR 
 http://localhost:3020/api/users/login
@@ -296,3 +294,84 @@ BREVO_FROM_NAME=YourName
 - Uncomment SendGrid imports and calls in `notification.service.ts`
 - Comment out the Brevo calls
 - Set `SENDGRID_API_KEY` and `SENDGRID_FROM_EMAIL` in the notification-service `.env`
+
+## category-service ↔ cms-service auth (API Key)
+
+category-service talks to cms-service as a machine client using Payload's
+**API Key** feature (not a JWT). The Authorization header sent by
+`backend/apps/category-service/src/content/cms-client.ts` is:
+
+```
+Authorization: API-Key <CMS_API_KEY>
+```
+
+For this to work, three things must all line up on the CMS side.
+
+### 1) Users collection must enable API keys
+
+`backend/apps/cms-service/src/collections/Users.ts` must declare:
+
+```ts
+export const Users: CollectionConfig = {
+  slug: 'users',
+  auth: {
+    useAPIKey: true,
+  },
+  // ...
+};
+```
+
+This adds `enable_a_p_i_key`, `api_key`, and `api_key_index` columns to the
+`users` table. If you ever see a drizzle-kit schema-push prompt offering to
+**delete** those columns on `npm run start:dev`, answer **`N`** — that
+means the flag was removed from `Users.ts` and the push would drop your
+API keys.
+
+### 2) The CMS user that owns the key must have `role: admin` or `developer`
+
+`backend/apps/cms-service/src/collections/Categories.ts` gates writes with
+`isAdminOrDeveloper` (see `src/access/roles.ts`). API-key auth only tells
+Payload *who* the caller is; the collection's access rules still apply.
+
+In the Payload admin UI (`http://localhost:3020/admin`), open the user and
+set:
+
+- **User Type** → `Admin` *(set this **first** — the Role field is hidden
+  by a UI condition until User Type is `Admin`)*
+- **Role** → `Admin` (or `Developer`)
+- Save, reload, confirm both fields stuck.
+
+Without a privileged role, every write returns
+`403 "You are not allowed to perform this action."` even though reads work
+(because `Categories.read` is public).
+
+### 3) Copy the API key into category-service env
+
+On the admin user's page in Payload:
+
+- Toggle **Enable API Key** on.
+- Click **Generate new API key** and copy the UUID.
+- Paste into `backend/apps/category-service/.env` (category-service loads
+  `.env.${NODE_ENV}` first, so also update `.env.development` if present):
+
+```
+CMS_SERVICE_URL=http://localhost:3020
+CMS_API_KEY=<uuid-from-payload>
+```
+
+- Restart category-service.
+
+### Smoke test
+
+```bash
+# read-only (public, should return {docs: [...]})
+curl http://localhost:3020/api/categories?limit=1
+
+# authenticated write via category-service
+curl -X POST http://localhost:3014/api/categories/push-test \
+  -H "x-service-token: dev-internal-token"
+```
+
+A 200 from `push-test` confirms the full chain:
+API-Key header → `useAPIKey: true` → admin role → `isAdminOrDeveloper` →
+create.

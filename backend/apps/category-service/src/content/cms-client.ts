@@ -6,7 +6,7 @@ let _client: AxiosInstance | null = null;
 function getClient(): AxiosInstance {
   if (!_client) {
     const cmsUrl = (process.env.CMS_SERVICE_URL || 'http://localhost:3020').replace(/\/+$/, '');
-    const apiKey = process.env.CMS_API_KEY || '';
+    const apiKey = process.env.CMS_API_KEY?.trim() || '';
 
     _client = axios.create({
       baseURL: `${cmsUrl}/api`,
