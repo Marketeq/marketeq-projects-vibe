@@ -7,6 +7,8 @@ import SecuritySettingsStepper from "@/components/security-settings"
 import ActiveSessionsModal from "@/components/active-sessions-modal"
 import { TwoFactorSetupModal, DisableTwoFactorModal } from "@/components/two-factor-setup"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import SettingsSidebar from "@/components/settings-sidebar"
+import NotificationPreferences from "@/components/notification-preferences"
 import {
   Bell,
   Lock,
@@ -21,14 +23,11 @@ import {
   Input,
   Label,
   Switch,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
   useToast,
 } from "@/components/ui"
+import { cn } from "@/utils/functions"
 
-const settingsSections = [
+const mobileTabItems = [
   { id: "profile", label: "Profile", icon: UserCircle },
   { id: "account", label: "Account", icon: Settings },
   { id: "notifications", label: "Notifications", icon: Bell },
@@ -123,221 +122,193 @@ export default function SettingsPage() {
   return (
     <AuthenticatedRoute>
       <div className="min-h-screen bg-gray-50">
-        <div className="max-w-6xl mx-auto px-6 py-8">
-          <h1 className="text-2xl font-semibold text-dark-blue-400">Settings</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage your account settings and preferences</p>
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="flex gap-6">
+            <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-            <TabsList className="border-b border-gray-200 bg-transparent w-full justify-start gap-x-6 px-0">
-              {settingsSections.map((section) => (
-                <TabsTrigger
-                  key={section.id}
-                  value={section.id}
-                  className="data-[state=active]:border-b-2 data-[state=active]:border-primary-500 data-[state=active]:text-primary-500 rounded-none pb-3 px-1 text-sm text-gray-500"
-                >
-                  <section.icon className="size-4 mr-1.5" />
-                  {section.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="flex-1 min-w-0">
+              <div className="md:hidden mb-6">
+                <h1 className="text-2xl font-semibold text-dark-blue-400">Settings</h1>
+                <p className="text-sm text-gray-500 mt-1">Manage your account settings and preferences</p>
+                <div className="flex gap-1 mt-4 border-b border-gray-200">
+                  {mobileTabItems.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 pb-3 text-sm border-b-2 transition-colors",
+                        activeTab === item.id
+                          ? "border-primary-500 text-primary-500"
+                          : "border-transparent text-gray-500 hover:text-gray-700"
+                      )}
+                    >
+                      <item.icon className="size-4" />
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-            {/* ── Profile Tab ── */}
-            <TabsContent value="profile" className="mt-6">
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-dark-blue-400">Profile Information</h2>
-                    <p className="text-sm text-gray-500 mt-1">Update your personal details</p>
+              {activeTab === "profile" && (
+                <div className="bg-white rounded-xl border border-gray-200 p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-dark-blue-400">Profile Information</h2>
+                      <p className="text-sm text-gray-500 mt-1">Update your personal details</p>
+                    </div>
+                    {!isEditing && (
+                      <Button variant="outlined" visual="gray" size="sm" onClick={() => setIsEditing(true)}>
+                        Edit Profile
+                      </Button>
+                    )}
                   </div>
-                  {!isEditing && (
-                    <Button variant="outlined" visual="gray" size="sm" onClick={() => setIsEditing(true)}>
-                      Edit Profile
-                    </Button>
+
+                  <div className="mt-6 flex items-center gap-x-4">
+                    <Avatar className="size-16">
+                      <AvatarImage src={user?.avatarUrl ?? ""} alt={user?.firstName ?? "User"} />
+                      <AvatarFallback className="text-lg">{user?.firstName?.[0]?.toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-medium text-dark-blue-400">{user?.firstName} {user?.lastName}</p>
+                      <p className="text-xs text-gray-500">{user?.email}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="space-y-1.5">
+                      <Label size="sm">First Name</Label>
+                      <Input
+                        value={profileForm.firstName}
+                        onChange={(e) => handleProfileChange("firstName", e.target.value)}
+                        readOnly={!isEditing}
+                        className={!isEditing ? "bg-gray-50" : ""}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Last Name</Label>
+                      <Input
+                        value={profileForm.lastName}
+                        onChange={(e) => handleProfileChange("lastName", e.target.value)}
+                        readOnly={!isEditing}
+                        className={!isEditing ? "bg-gray-50" : ""}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Email</Label>
+                      <Input value={user?.email ?? ""} readOnly className="bg-gray-50" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Username</Label>
+                      <Input
+                        value={profileForm.username}
+                        onChange={(e) => handleProfileChange("username", e.target.value)}
+                        readOnly={!isEditing}
+                        className={!isEditing ? "bg-gray-50" : ""}
+                      />
+                    </div>
+                  </div>
+
+                  {isEditing && (
+                    <div className="mt-6 flex justify-end gap-x-3">
+                      <Button variant="outlined" visual="gray" size="sm" onClick={handleProfileCancel}>
+                        Cancel
+                      </Button>
+                      <Button size="sm" onClick={handleProfileSave} disabled={isSaving}>
+                        {isSaving ? "Saving..." : "Save Changes"}
+                      </Button>
+                    </div>
                   )}
                 </div>
+              )}
 
-                <div className="mt-6 flex items-center gap-x-4">
-                  <Avatar className="size-16">
-                    <AvatarImage src={user?.avatarUrl ?? ""} alt={user?.firstName ?? "User"} />
-                    <AvatarFallback className="text-lg">{user?.firstName?.[0]?.toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="text-sm font-medium text-dark-blue-400">{user?.firstName} {user?.lastName}</p>
-                    <p className="text-xs text-gray-500">{user?.email}</p>
+              {activeTab === "account" && (
+                <div className="bg-white rounded-xl border border-gray-200 p-6">
+                  <h2 className="text-lg font-semibold text-dark-blue-400">Account Settings</h2>
+                  <p className="text-sm text-gray-500 mt-1">Manage your account preferences</p>
+
+                  <div className="mt-6 space-y-4">
+                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                      <div>
+                        <p className="text-sm font-medium text-dark-blue-400">Language</p>
+                        <p className="text-xs text-gray-500">Select your preferred language</p>
+                      </div>
+                      <span className="text-sm text-gray-500">English (US)</span>
+                    </div>
+                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                      <div>
+                        <p className="text-sm font-medium text-dark-blue-400">Timezone</p>
+                        <p className="text-xs text-gray-500">Set your local timezone</p>
+                      </div>
+                      <span className="text-sm text-gray-500">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                      <div>
+                        <p className="text-sm font-medium text-dark-blue-400">Account Type</p>
+                        <p className="text-xs text-gray-500">Your current account role</p>
+                      </div>
+                      <span className="text-sm text-gray-500 capitalize">{user?.userType?.toLowerCase() ?? user?.accountType?.toLowerCase() ?? "—"}</span>
+                    </div>
                   </div>
                 </div>
+              )}
 
-                <div className="mt-6 grid grid-cols-2 gap-6">
-                  <div className="space-y-1.5">
-                    <Label size="sm">First Name</Label>
-                    <Input
-                      value={profileForm.firstName}
-                      onChange={(e) => handleProfileChange("firstName", e.target.value)}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label size="sm">Last Name</Label>
-                    <Input
-                      value={profileForm.lastName}
-                      onChange={(e) => handleProfileChange("lastName", e.target.value)}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label size="sm">Email</Label>
-                    <Input value={user?.email ?? ""} readOnly className="bg-gray-50" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label size="sm">Username</Label>
-                    <Input
-                      value={profileForm.username}
-                      onChange={(e) => handleProfileChange("username", e.target.value)}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
+              {activeTab === "notifications" && (
+                <NotificationPreferences />
+              )}
+
+              {activeTab === "security" && (
+                <div className="bg-white rounded-xl border border-gray-200 p-6">
+                  <h2 className="text-lg font-semibold text-dark-blue-400">Security</h2>
+                  <p className="text-sm text-gray-500 mt-1">Manage your security settings</p>
+
+                  <div className="mt-6 space-y-4">
+                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                      <div>
+                        <p className="text-sm font-medium text-dark-blue-400">Password</p>
+                        <p className="text-xs text-gray-500">
+                          {user?.hasPassword ? "Password is set" : "No password set — secure your account"}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        onClick={() => setShowPasswordModal(true)}
+                      >
+                        {user?.hasPassword ? "Change Password" : "Set Password"}
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                      <div>
+                        <p className="text-sm font-medium text-dark-blue-400">Two-Factor Authentication</p>
+                        <p className="text-xs text-gray-500">
+                          {user?.twoFactorEnabled
+                            ? user?.twoFactorMethod === "sms"
+                              ? "SMS verification enabled"
+                              : "Authenticator app enabled"
+                            : "Add an extra layer of security to your account"}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={user?.twoFactorEnabled ?? false}
+                        onCheckedChange={(checked) => {
+                          if (checked) setShow2FASetup(true)
+                          else setShow2FADisable(true)
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                      <div>
+                        <p className="text-sm font-medium text-dark-blue-400">Active Sessions</p>
+                        <p className="text-xs text-gray-500">Manage your active login sessions</p>
+                      </div>
+                      <Button variant="outlined" visual="gray" size="sm" onClick={() => setShowSessionsModal(true)}>View Sessions</Button>
+                    </div>
                   </div>
                 </div>
-
-                {isEditing && (
-                  <div className="mt-6 flex justify-end gap-x-3">
-                    <Button variant="outlined" visual="gray" size="sm" onClick={handleProfileCancel}>
-                      Cancel
-                    </Button>
-                    <Button size="sm" onClick={handleProfileSave} disabled={isSaving}>
-                      {isSaving ? "Saving..." : "Save Changes"}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </TabsContent>
-
-            {/* ── Account Tab ── */}
-            <TabsContent value="account" className="mt-6">
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-dark-blue-400">Account Settings</h2>
-                <p className="text-sm text-gray-500 mt-1">Manage your account preferences</p>
-
-                <div className="mt-6 space-y-4">
-                  <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                    <div>
-                      <p className="text-sm font-medium text-dark-blue-400">Language</p>
-                      <p className="text-xs text-gray-500">Select your preferred language</p>
-                    </div>
-                    <span className="text-sm text-gray-500">English (US)</span>
-                  </div>
-                  <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                    <div>
-                      <p className="text-sm font-medium text-dark-blue-400">Timezone</p>
-                      <p className="text-xs text-gray-500">Set your local timezone</p>
-                    </div>
-                    <span className="text-sm text-gray-500">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                    <div>
-                      <p className="text-sm font-medium text-dark-blue-400">Account Type</p>
-                      <p className="text-xs text-gray-500">Your current account role</p>
-                    </div>
-                    <span className="text-sm text-gray-500 capitalize">{user?.userType?.toLowerCase() ?? user?.accountType?.toLowerCase() ?? "—"}</span>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* ── Notifications Tab ── */}
-            <TabsContent value="notifications" className="mt-6">
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-dark-blue-400">Notification Preferences</h2>
-                <p className="text-sm text-gray-500 mt-1">Choose what notifications you receive</p>
-
-                <div className="mt-6 space-y-4">
-                  <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                    <div>
-                      <p className="text-sm font-medium text-dark-blue-400">Email Notifications</p>
-                      <p className="text-xs text-gray-500">Receive email updates about your account activity</p>
-                    </div>
-                    <Switch defaultChecked />
-                  </div>
-                  <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                    <div>
-                      <p className="text-sm font-medium text-dark-blue-400">Project Updates</p>
-                      <p className="text-xs text-gray-500">Get notified when projects you follow are updated</p>
-                    </div>
-                    <Switch defaultChecked />
-                  </div>
-                  <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                    <div>
-                      <p className="text-sm font-medium text-dark-blue-400">Messages</p>
-                      <p className="text-xs text-gray-500">Receive notifications for new messages</p>
-                    </div>
-                    <Switch defaultChecked />
-                  </div>
-                  <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                    <div>
-                      <p className="text-sm font-medium text-dark-blue-400">Marketing</p>
-                      <p className="text-xs text-gray-500">Receive tips, product updates, and promotions</p>
-                    </div>
-                    <Switch />
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* ── Security Tab ── */}
-            <TabsContent value="security" className="mt-6">
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-dark-blue-400">Security</h2>
-                <p className="text-sm text-gray-500 mt-1">Manage your security settings</p>
-
-                <div className="mt-6 space-y-4">
-                  <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                    <div>
-                      <p className="text-sm font-medium text-dark-blue-400">Password</p>
-                      <p className="text-xs text-gray-500">
-                        {user?.hasPassword ? "Password is set" : "No password set — secure your account"}
-                      </p>
-                    </div>
-                    <Button
-                      variant="outlined"
-                      visual="gray"
-                      size="sm"
-                      onClick={() => setShowPasswordModal(true)}
-                    >
-                      {user?.hasPassword ? "Change Password" : "Set Password"}
-                    </Button>
-                  </div>
-                  <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                    <div>
-                      <p className="text-sm font-medium text-dark-blue-400">Two-Factor Authentication</p>
-                      <p className="text-xs text-gray-500">
-                        {user?.twoFactorEnabled
-                          ? user?.twoFactorMethod === "sms"
-                            ? "SMS verification enabled"
-                            : "Authenticator app enabled"
-                          : "Add an extra layer of security to your account"}
-                      </p>
-                    </div>
-                    <Switch
-                      checked={user?.twoFactorEnabled ?? false}
-                      onCheckedChange={(checked) => {
-                        if (checked) setShow2FASetup(true)
-                        else setShow2FADisable(true)
-                      }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                    <div>
-                      <p className="text-sm font-medium text-dark-blue-400">Active Sessions</p>
-                      <p className="text-xs text-gray-500">Manage your active login sessions</p>
-                    </div>
-                    <Button variant="outlined" visual="gray" size="sm" onClick={() => setShowSessionsModal(true)}>View Sessions</Button>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
