@@ -34,7 +34,6 @@ import {
   File,
   Image03,
   Info,
-  Loader,
   Mail05,
   MoreHorizontal,
   Pin02,
@@ -93,21 +92,25 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import { useFileUpload } from "../hooks/use-file-upload"
 import { addParticipantToGroup } from "../hooks/use-group-encryption"
 import { useMessages } from "../hooks/use-messages"
 import { useSendMessage } from "../hooks/use-send-message"
+import { ForwardMessageDialog } from "./forward-message-dialog"
 
 interface ChatsProps {
   selectedConversation: Conversation | null
   jwtToken: string
   privateKey: CryptoKey | null
+  currentUserProfile?: any
 }
 
 export function Chats({
   selectedConversation,
   jwtToken,
   privateKey,
+  currentUserProfile,
 }: ChatsProps) {
   const [textareaValue, setTextareaValue] = useState("")
   const [uploadState, setUploadState] =
@@ -119,13 +122,28 @@ export function Chats({
     "Messages"
   )
   const [pinnedMsgs, setPinnedMsgs] = useState<Message[]>([])
+  const pinnedFetchRef = useRef<AbortController | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [forwardOpen, setForwardOpen] = useState(false)
+  const [forwardTarget, setForwardTarget] = useState<Message | null>(null)
+  const [keyReady, setKeyReady] = useState(false)
+  const [keyError, setKeyError] = useState<string | null>(null)
+
+  const handleOpenForward = useCallback((msg: Message) => {
+    setForwardTarget(msg)
+    setForwardOpen(true)
+  }, [])
 
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getCurrentUser>>(null)
   useEffect(() => {
-    setCurrentUser(getCurrentUser())
-  }, [])
+    const base = getCurrentUser()
+    if (base && currentUserProfile?.username) {
+      setCurrentUser({ ...base, username: currentUserProfile.username })
+    } else {
+      setCurrentUser(base)
+    }
+  }, [currentUserProfile])
 
   const handleEmojiSelect = (emoji: DataEmoji) => {
     const emojiChar = String.fromCodePoint(
@@ -138,26 +156,42 @@ export function Chats({
 
   // 1) unwrap the AES key once per conversation
   useEffect(() => {
+    setKeyReady(false)
+    setKeyError(null)
     if (!selectedConversation || !privateKey) return
+    const ac = new AbortController()
+    const convId = selectedConversation.id
     ;(async () => {
       try {
         const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-          `/api/messaging/conversations/${selectedConversation.id}/key?isGroup=${selectedConversation.isGroup}`,
-          { headers: { Authorization: `Bearer ${jwtToken}` } }
+          `/api/messaging/conversations/${convId}/key?isGroup=${selectedConversation.isGroup}`,
+          {
+            headers: { Authorization: `Bearer ${jwtToken}` },
+            signal: ac.signal,
+          }
         )
+        if (ac.signal.aborted) return
 
-        // decrypt with your RSA privateKey → ArrayBuffer
         const privatePem = await exportPrivateKey(privateKey)
         const rawBuf = await decryptWithPrivateKey(encryptedKey, privatePem)
+        if (ac.signal.aborted) return
 
-        // store base64 so loadKey() can find it
         const arr = new Uint8Array(rawBuf)
         const b64 = btoa(String.fromCharCode(...arr))
-        saveKey(selectedConversation.id, b64)
-      } catch (err) {
+        saveKey(convId, b64)
+        setKeyReady(true)
+      } catch (err: any) {
+        if (err?.name === "AbortError") return
         console.error("Failed to unwrap conversation key", err)
+        if (!ac.signal.aborted) {
+          setKeyReady(false)
+          setKeyError(
+            "Could not decrypt this conversation key. Refresh and try again."
+          )
+        }
       }
     })()
+    return () => ac.abort()
   }, [selectedConversation, privateKey, jwtToken])
 
   //below logic to add new user to a group chat //need to add button for it once user-service can be called to add users
@@ -201,10 +235,12 @@ export function Chats({
   const [bottomRef, { height }] = useMeasure<HTMLDivElement>()
 
   // 2) fetch & decrypt messages
-  const fetchedMsgs = useMessages(
+  const { messages: fetchedMsgs, loading: messagesLoading } = useMessages(
     selectedConversation ? selectedConversation.id : "",
-    jwtToken
+    jwtToken,
+    keyReady
   )
+  const isSwitching = !keyError && (messagesLoading || !keyReady)
 
   // 2.1) local messages state for optimistic updates
   const [localMsgs, setLocalMsgs] = useState<Message[]>([])
@@ -214,8 +250,9 @@ export function Chats({
     }
   }, [fetchedMsgs])
 
-  const displayedMessages =
+  const displayedMessages = (
     selectedTab === "Messages" ? localMsgs : pinnedMsgs
+  ).filter((m) => !m.isDeleted && !(m as any).deleted)
 
   // 3) subscribe to Ably for real-time incoming
   // subscribe to Ably for real-time updates
@@ -444,29 +481,40 @@ export function Chats({
     setSelectedTab(tab)
 
     if (tab === "Pinned") {
+      if (!selectedConversation) return
+      pinnedFetchRef.current?.abort()
+      const ac = new AbortController()
+      pinnedFetchRef.current = ac
+      const convId = selectedConversation.id
+      setPinnedMsgs([])
       try {
-        if (!selectedConversation) return
         const allMsgs = await apiFetch<Message[]>(
-          `/v1/messages/thread/${selectedConversation.id}`,
+          `/v1/messages/thread/${convId}`,
           {
             headers: { Authorization: `Bearer ${jwtToken}` },
+            signal: ac.signal,
           }
         )
+        if (ac.signal.aborted) return
         const pinned = allMsgs.filter((m) => m.pinned || m.isPinned)
 
-        // Decrypt pinned messages
         let key: Uint8Array | null = null
-        try { key = loadKey(selectedConversation.id) } catch { /* no key */ }
+        try { key = loadKey(convId) } catch { /* no key */ }
         const decrypted = await Promise.all(
           pinned.map(async (m) => {
-            if (key && m.ciphertext) {
-              try { return { ...m, content: await decryptAES(m.ciphertext, key) } } catch { return m }
+            if (!m.ciphertext) return m
+            if (!key) return { ...m, content: "🔒 Encrypted message" }
+            try {
+              return { ...m, content: await decryptAES(m.ciphertext, key) }
+            } catch {
+              return { ...m, content: "🔒 Encrypted message" }
             }
-            return m
           })
         )
+        if (ac.signal.aborted) return
         setPinnedMsgs(decrypted)
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.name === "AbortError") return
         console.error("Failed to fetch pinned messages", err)
       }
     }
@@ -528,24 +576,26 @@ export function Chats({
 
   if (!currentUser) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        Not logged in
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-400">
+        <Spinner size={28} strokeWidth={3} />
       </div>
     )
   }
 
   if (!selectedConversation) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        Select a conversation
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
+        <Mail05 className="size-10 stroke-[1.5]" />
+        <p className="text-sm font-medium">Select a conversation to start messaging</p>
       </div>
     )
   }
 
   if (!receiverUser) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        Loading user…
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-400">
+        <Spinner size={28} strokeWidth={3} />
+        <p className="text-sm">Loading conversation...</p>
       </div>
     )
   }
@@ -591,16 +641,22 @@ export function Chats({
           <div className="flex flex-col gap-y-1">
             <div className="inline-flex items-center gap-x-1">
               <span className="text-lg font-semibold text-dark-blue-400">
-                {receiverUser.firstName}
+                {fullName}
               </span>
-              <span className="text-base text-dark-blue-400">{fullName}</span>
             </div>
             <div className="inline-flex items-center gap-x-2">
               <span className="text-sm text-dark-blue-400">Active now</span>
-              <span className="inline-block h-4 w-px bg-gray-300" />
-              <span className="text-sm text-dark-blue-400">
-                {receiverUser.role}
-              </span>
+              {(receiverUser as any).recentJobTitle ||
+              ((receiverUser as any).jobTitles &&
+                (receiverUser as any).jobTitles[0]) ? (
+                <>
+                  <span className="inline-block h-4 w-px bg-gray-300" />
+                  <span className="text-sm text-dark-blue-400">
+                    {(receiverUser as any).recentJobTitle ||
+                      (receiverUser as any).jobTitles[0]}
+                  </span>
+                </>
+              ) : null}
             </div>
           </div>
         </div>
@@ -616,7 +672,17 @@ export function Chats({
             }}
           >
             <ToggleGroupItem value="Messages">Messages</ToggleGroupItem>
-            <ToggleGroupItem value="Pinned">Pinned</ToggleGroupItem>
+            <ToggleGroupItem value="Pinned">
+              Pinned
+              {(() => {
+                const count = localMsgs.filter((m) => m.pinned || m.isPinned).length
+                return count > 0 ? (
+                  <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] font-semibold bg-gray-300 text-gray-800 rounded-full">
+                    {count}
+                  </span>
+                ) : null
+              })()}
+            </ToggleGroupItem>
           </ToggleGroupRoot>
 
           <div className="flex items-center gap-x-1">
@@ -677,7 +743,24 @@ export function Chats({
           scrollBar={<ScrollBar className="w-4 p-1" />}
         >
           <div className="p-8 pb-[100px] grid gap-y-6">
-            {displayedMessages.map((m, i) => (
+            {isSwitching && (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
+                <Spinner size={24} strokeWidth={3} />
+                <p className="text-sm">Loading messages...</p>
+              </div>
+            )}
+            {!isSwitching && keyError && (
+              <div className="flex flex-col items-center justify-center py-20 text-error-500 gap-2">
+                <p className="text-sm font-medium">{keyError}</p>
+              </div>
+            )}
+            {!isSwitching && displayedMessages.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
+                <Send className="size-8 stroke-[1.5]" />
+                <p className="text-sm">No messages yet. Say hello!</p>
+              </div>
+            )}
+            {!isSwitching && displayedMessages.map((m, i) => (
               <div
                 key={i}
                 className={`flex ${
@@ -690,17 +773,18 @@ export function Chats({
                   <Bubble
                     message={m}
                     currentUser={currentUser}
-                    participantUsername={
-                      receiverUser.username ?? "Unknown User"
-                    }
+                    participantUsername={receiverUser.username ?? ""}
+                    participantName={fullName}
+                    onForward={handleOpenForward}
                   />
                 ) : (
                   <YourBubble
                     message={m}
                     currentUser={currentUser}
-                    participantUsername={
-                      receiverUser.username ?? "Unknown User"
-                    }
+                    onForward={handleOpenForward}
+                    participantName={fullName}
+                    participantUsername={receiverUser.username ?? ""}
+                    participantAvatarUrl={receiverUser.avatarUrl ?? undefined}
                   />
                 )}
               </div>
@@ -869,11 +953,12 @@ export function Chats({
                 ? "Add a message (optional)..."
                 : "Send message..."
             }
-            className="[field-sizing:content] h-auto pr-11 w-full"
+            className="pr-11 w-full resize-none py-1.5 leading-5 min-h-0 h-9 overflow-hidden"
+            rows={1}
             value={textareaValue}
             onChange={(e) => setTextareaValue(e.target.value)}
           />
-          <InputRightElement className="items-end pb-[13px]">
+          <InputRightElement className="items-center">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger
@@ -883,11 +968,13 @@ export function Chats({
                   onClick={handleSendMessage}
                   disabled={
                     (!textareaValue.trim() && selectedFiles.length === 0) ||
-                    isUploading
+                    isUploading ||
+                    !keyReady ||
+                    !!keyError
                   }
                 >
                   {isUploading ? (
-                    <Loader className="size-[18px] animate-spin" />
+                    <Spinner size={18} strokeWidth={3} />
                   ) : (
                     <Send className="size-[18px]" />
                   )}
@@ -906,6 +993,16 @@ export function Chats({
           </InputRightElement>
         </InputGroup>
       </div>
+
+      <ForwardMessageDialog
+        open={forwardOpen}
+        onOpenChange={setForwardOpen}
+        message={forwardTarget}
+        currentUserId={currentUser.id}
+        currentUserProfile={currentUserProfile}
+        receiverUser={receiverUser}
+        privateKey={privateKey}
+      />
     </div>
   )
 }

@@ -67,6 +67,27 @@ export class UserKeysService {
     return userKey?.publicKey ?? '';
   }
 
+  async getEncryptedPrivateKey(userId: string): Promise<{ encryptedPrivateKey: string | null }> {
+    const userKey = await this.userKeyRepo.findOne({ where: { userId } });
+    return { encryptedPrivateKey: userKey?.encryptedPrivateKey ?? null };
+  }
+
+  async storeEncryptedPrivateKey(userId: string, encryptedPrivateKey: string, publicKey?: string): Promise<{ success: boolean }> {
+    const existing = await this.userKeyRepo.findOne({ where: { userId } });
+    if (existing) {
+      existing.encryptedPrivateKey = encryptedPrivateKey;
+      if (publicKey) existing.publicKey = publicKey;
+      await this.userKeyRepo.save(existing);
+    } else {
+      await this.userKeyRepo.save(this.userKeyRepo.create({
+        userId,
+        publicKey: publicKey || '',
+        encryptedPrivateKey,
+      }));
+    }
+    return { success: true };
+  }
+
   private encryptPrivateKey(plaintext: string): string {
     const secret = process.env.E2EE_SERVER_SECRET;
     if (!secret) {

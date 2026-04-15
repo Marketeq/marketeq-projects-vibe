@@ -1,7 +1,7 @@
 // src/hooks/useMessaging.ts
 import { useEffect, useState } from "react"
-import { decryptAES, decryptWithPrivateKey } from "@/src/crypto/e2ee"
-import { loadKey, saveKey } from "@/src/crypto/storage"
+import { decryptAES } from "@/src/crypto/e2ee"
+import { loadKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
 import type { Message } from "@/types/message"
 
@@ -14,49 +14,64 @@ import type { Message } from "@/types/message"
  * @param convId the conversation UUID
  * @param token  your JWT for Authorization
  */
-export function useMessages(convId: string, token: string) {
+export function useMessages(convId: string, token: string, keyReady?: boolean) {
   const [messages, setMessages] = useState<Message[]>([])
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!convId || !token) return
+    setMessages([])
+    if (!convId || !token) {
+      setLoading(false)
+      return
+    }
+    if (keyReady === false) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    const ac = new AbortController()
     ;(async () => {
       try {
-        // 1) fetch messages
         const data = await apiFetch<Message[]>(
           `/v1/messages/thread/${convId}`,
           {
             method: "GET",
             headers: { Authorization: `Bearer ${token}` },
+            signal: ac.signal,
           }
         )
+        if (ac.signal.aborted) return
 
-        // 2) try to decrypt, fall back to plaintext content if no key/ciphertext
         let key: Uint8Array | null = null
         try {
           key = loadKey(convId)
         } catch {
-          // no AES key cached yet — will use plaintext content as fallback
+          // no AES key cached yet
         }
 
         const decrypted = await Promise.all(
           data.map(async (m) => {
-            if (key && m.ciphertext) {
-              try {
-                return { ...m, content: await decryptAES(m.ciphertext, key) }
-              } catch {
-                return m
-              }
+            if (!m.ciphertext) return m
+            if (!key) return { ...m, content: "🔒 Encrypted message" }
+            try {
+              return { ...m, content: await decryptAES(m.ciphertext, key) }
+            } catch {
+              return { ...m, content: "🔒 Encrypted message" }
             }
-            return m
           })
         )
 
+        if (ac.signal.aborted) return
         setMessages(decrypted)
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.name === "AbortError") return
         console.error("useMessages error:", err)
+      } finally {
+        if (!ac.signal.aborted) setLoading(false)
       }
     })()
-  }, [convId, token])
+    return () => ac.abort()
+  }, [convId, token, keyReady])
 
-  return messages
+  return { messages, loading }
 }

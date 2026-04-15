@@ -60,20 +60,16 @@ export function useSendMessage(
       }
     }
 
-    // If we have a key, encrypt. Otherwise send plaintext content.
-    if (key) {
-      const ciphertext = await encryptAES(plaintext, key)
-      return apiFetch<SendResponse>(`/v1/messages`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: { threadId: convId, ciphertext },
-      })
+    // Encrypt or fail — never send plaintext
+    if (!key) {
+      throw new Error("Encryption key not available. Please wait and try again.")
     }
 
+    const ciphertext = await encryptAES(plaintext, key)
     return apiFetch<SendResponse>(`/v1/messages`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
-      body: { threadId: convId, content: plaintext },
+      body: { threadId: convId, ciphertext },
     })
   }
 }

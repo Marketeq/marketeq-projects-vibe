@@ -22,6 +22,7 @@ tags = ["secret", "env"]
 [allowlist]
 description = "Global allowlist"
 paths = [
+  '''(^|/)\.env(\..+)?\.example$''',
   '''(.*?)package-lock\.json$''',
   '''(.*?)yarn\.lock$''',
   '''(.*?)pnpm-lock\.yaml$''',

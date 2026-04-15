@@ -1,8 +1,10 @@
 "use client"
 
 import React, { Suspense, useCallback, useEffect, useRef, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { apiFetch } from "@/src/lib/api"
+import { getAccessToken, getCurrentUser } from "@/utils/auth"
 import { UserAPI } from "@/service/http/user"
 import type { UserProfile } from "@/types/user"
 import { getComputedStyle } from "@/utils/dom-utils"
@@ -395,6 +397,7 @@ export default function TalentProfilePage() {
 
 function Default() {
   const { user } = useAuth()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const usernameParam = searchParams.get("username")
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -455,6 +458,7 @@ function Default() {
           })
         return
       }
+
 
       // No user yet from auth — try /user/me directly as fallback
       setIsProfileLoading(true)
@@ -8281,7 +8285,24 @@ function Default() {
                       </span>
                     </div>
 
-                    <button className="w-full mt-5 duration-300 transition focus-visible:outlin-none text-sm leading-5 font-semibold shrink-0 h-10 flex items-center justify-center gap-x-2 rounded-[5px] px-4 bg-white border-2 text-primary-500 hover:text-white hover:bg-primary-500 border-primary-500 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]">
+                    <button
+                      className="w-full mt-5 duration-300 transition focus-visible:outlin-none text-sm leading-5 font-semibold shrink-0 h-10 flex items-center justify-center gap-x-2 rounded-[5px] px-4 bg-white border-2 text-primary-500 hover:text-white hover:bg-primary-500 border-primary-500 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]"
+                      onClick={async () => {
+                        const currentUser = getCurrentUser()
+                        const token = getAccessToken()
+                        if (!currentUser?.id || !profile?.id || currentUser.id === profile.id) return
+                        try {
+                          const thread = await apiFetch<{ id: string }>("/v1/threads", {
+                            method: "POST",
+                            headers: token ? { Authorization: `Bearer ${token}` } : {},
+                            body: { participantIds: [currentUser.id, profile.id], isGroup: false },
+                          })
+                          router.push("/inbox")
+                        } catch (err) {
+                          console.error("Failed to start conversation:", err)
+                        }
+                      }}
+                    >
                       <MessageSquare01 className="size-[15px]" /> Message Me
                     </button>
                   </div>

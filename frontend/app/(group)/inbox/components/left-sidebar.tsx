@@ -36,6 +36,7 @@ import {
   UploadCloud,
   X,
 } from "@blend-metrics/icons"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import {
   DropboxBrand,
   GoogleDrive1Brand,
@@ -45,6 +46,8 @@ import { DropdownMenuArrow } from "@radix-ui/react-dropdown-menu"
 import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
+import { decryptAES } from "@/src/crypto/e2ee"
+import { loadKey, saveKey } from "@/src/crypto/storage"
 import { User } from "@/types/user"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
@@ -100,19 +103,19 @@ const LeftSidebar = ({
   setSelectedConversation,
   messagesByConversation,
 }: LeftSidebarProps) => {
-  const token =
-    typeof window !== "undefined" ? getAccessToken() : null
   const { pinnedChats, toggleShowPinnedIcon, showPinnedIcon, checkedChats } =
     useChatsContext()
 
   //getting the user id || can get other details later as required
   const currentUser = getCurrentUser()
   const currentUserId = currentUser?.id || ""
+  const token = getAccessToken()
 
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const token = getAccessToken()
+    if (!token) return
 
     const fetchConversations = async () => {
       try {
@@ -170,12 +173,63 @@ const LeftSidebar = ({
             }
 
             try {
-              const user = await apiFetch<{ username: string }>(
+              const user = await apiFetch<{ username: string; firstName?: string; lastName?: string; avatarUrl?: string }>(
                 `/users/${otherId}`,
                 { method: "GET", headers: { Authorization: `Bearer ${token}` } }
               )
 
-              return { ...conv, participantUsername: user.username }
+              const displayName = [user.firstName?.trim(), user.lastName?.trim()].filter(Boolean).join(" ") || user.username
+
+              // Decrypt last message preview if encrypted
+              let lastMessagePreview = ""
+              const lm = (conv as any).lastMessage
+              if (lm) {
+                if (lm.m_content) {
+                  lastMessagePreview = lm.m_content
+                } else if (lm.m_ciphertext) {
+                  // Try cached key first, then fetch+unwrap if not cached
+                  let key: Uint8Array | null = null
+                  try {
+                    key = loadKey(conv.id)
+                  } catch { /* not cached */ }
+
+                  if (!key && token) {
+                    try {
+                      const privPem = localStorage.getItem("privateKey")
+                      if (privPem) {
+                        const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
+                          `/api/messaging/conversations/${conv.id}/key?isGroup=${conv.isGroup}`,
+                          { headers: { Authorization: `Bearer ${token}` } }
+                        )
+                        const privKey = await importPrivateKey(privPem)
+                        const wrapped = Uint8Array.from(atob(encryptedKey), (c) => c.charCodeAt(0))
+                        const rawBuffer = await crypto.subtle.decrypt(
+                          { name: "RSA-OAEP" },
+                          privKey,
+                          wrapped
+                        )
+                        key = new Uint8Array(rawBuffer)
+                        const b64 = btoa(String.fromCharCode(...key))
+                        saveKey(conv.id, b64)
+                      }
+                    } catch {
+                      /* key unwrap failed — show fallback */
+                    }
+                  }
+
+                  if (key) {
+                    try {
+                      lastMessagePreview = await decryptAES(lm.m_ciphertext, key)
+                    } catch {
+                      lastMessagePreview = "Encrypted message"
+                    }
+                  } else {
+                    lastMessagePreview = "Encrypted message"
+                  }
+                }
+              }
+
+              return { ...conv, participantUsername: displayName, participantAvatarUrl: user.avatarUrl, lastMessagePreview } as any
             } catch (err) {
               console.warn(
                 `[LeftSidebar] failed to fetch user for ${otherId}`,
@@ -192,11 +246,13 @@ const LeftSidebar = ({
         setConversations(enriched)
       } catch (err) {
         console.error("[LeftSidebar] error fetching conversations:", err)
+      } finally {
+        setIsLoading(false)
       }
     }
 
     fetchConversations()
-  }, [currentUserId])
+  }, [currentUserId, token])
 
   return (
     <div className="w-[322px] shrink-0 border-r bg-white border-gray-200">
@@ -386,22 +442,32 @@ const LeftSidebar = ({
 
       <ScrollArea>
         <div className="flex flex-col">
-          {conversations.map((conv) => {
-            const otherId = getOtherParticipantId(conv, currentUserId)!
-            return (
-              <Chat
-                key={conv.id}
-                conversation={{
-                  ...conv,
-                  participantUsername: conv.participantUsername,
-                }}
-                currentUserId={currentUserId}
-                onClick={() => {
-                  setSelectedConversation(conv)
-                }}
-              />
-            )
-          })}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12 text-gray-400">
+              <Spinner size={24} strokeWidth={3} />
+            </div>
+          ) : conversations.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-400">
+              <Mail05 className="size-8 stroke-[1.5]" />
+              <p className="text-sm">No conversations yet</p>
+            </div>
+          ) : (
+            conversations.map((conv) => {
+              return (
+                <Chat
+                  key={conv.id}
+                  conversation={{
+                    ...conv,
+                    participantUsername: conv.participantUsername,
+                  }}
+                  currentUserId={currentUserId}
+                  onClick={() => {
+                    setSelectedConversation(conv)
+                  }}
+                />
+              )
+            })
+          )}
         </div>
       </ScrollArea>
     </div>

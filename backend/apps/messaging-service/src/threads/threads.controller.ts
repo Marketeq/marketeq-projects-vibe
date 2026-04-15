@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Req, UseGuards, Query } from '@nestjs/common';
 import { ThreadsService } from './threads.service';
 import { AblyService } from '../ably/ably.service';
 import { GatewayAuthGuard } from '../guards/gateway-auth.guard';
@@ -18,8 +18,13 @@ export class ThreadsController {
   }
 
   @Get('ably-token')
-  getAblyToken(@Req() req: any) {
-    return this.ablyService.createTokenRequest(req.user?.id);
+  async getAblyToken(@Req() req: any, @Query('threadId') threadId?: string) {
+    const userId = req.user?.id;
+    if (threadId) {
+      await this.threadsService.assertUserIsParticipant(threadId, userId);
+      return this.ablyService.createTokenRequest(userId, [threadId]);
+    }
+    return this.ablyService.createTokenRequest(userId);
   }
 
   @Get(':id')

@@ -9,14 +9,18 @@ export class AblyService {
     this.client = new Ably.Rest({ key: process.env.ABLY_API_KEY });
   }
 
-  async createTokenRequest(userId: string) {
+  async createTokenRequest(userId: string, threadIds: string[] = []) {
+    const capability: Record<string, string[]> = {
+      [`user:${userId}`]: ['subscribe'],
+    };
+    for (const threadId of threadIds) {
+      capability[`chat:thread-${threadId}`] = ['subscribe', 'presence'];
+      capability[`presence:thread-${threadId}`] = ['subscribe', 'presence'];
+    }
+
     return this.client.auth.createTokenRequest({
       clientId: userId,
-      capability: {
-        [`chat:thread-*`]: ['publish', 'subscribe', 'presence'],
-        [`user:${userId}`]: ['subscribe'],
-        [`presence:thread-*`]: ['subscribe', 'presence'],
-      },
+      capability: JSON.stringify(capability),
     });
   }
 
