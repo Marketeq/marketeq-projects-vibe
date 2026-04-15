@@ -37,13 +37,16 @@
   --swiper-pagination-bottom: theme(size.4);
 }
 
-/* Keep the document background and fixed nav layers stable during rubber-band
-   scrolling so the viewport does not reveal a shifting background behind them. */
-html,
-body {
+/* Use the document itself as the stable gray underlay during rubber-band
+   scrolling, while still allowing the page content to keep the native bounce. */
+html {
   min-height: 100%;
   background-color: theme(colors.gray.50);
-  overscroll-behavior-y: none;
+}
+
+body {
+  min-height: 100%;
+  background-color: transparent;
 }
 
 .react-international-phone-input-container
