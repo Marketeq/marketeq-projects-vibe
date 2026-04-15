@@ -7,7 +7,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <Suspense fallback={null}>
         <TopMostHeader />
       </Suspense>
-      {children}
+      <div className="pt-[62px] lg:pt-[65px]">{children}</div>
     </>
   )
 }

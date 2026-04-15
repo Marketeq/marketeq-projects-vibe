@@ -98,6 +98,19 @@ export const IPC = {
   windowShow: 'window:show',
   windowHide: 'window:hide',
   windowQuit: 'window:quit',
+
+  // --- Phase 7 Updater (doc 30) ---
+  updaterGetStatus: 'updater:get-status',
+  updaterCheckNow: 'updater:check-now',
+  updaterSetChannel: 'updater:set-channel',
+  updaterDownload: 'updater:download',
+  updaterQuitAndInstall: 'updater:quit-and-install',
+  updaterStatusChanged: 'updater:status-changed',
+  updaterProgress: 'updater:progress',
+  updaterError: 'updater:error',
+
+  // --- Shell helpers ---
+  shellOpenExternal: 'shell:open-external',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
@@ -397,6 +410,59 @@ export const NotificationPrefsSchema = z.object({
   permissionChanges: z.boolean(),
   authAlerts: z.boolean(),
 });
+
+// ---------- Phase 8 Validation schemas ----------
+
+/** Structured error response for IPC handlers. */
+export interface IpcErrorResult {
+  ok: false;
+  code: string;
+  message: string;
+}
+
+export const TimerStartArgsSchema = z.object({
+  contractId: z.string().min(1),
+  taskId: z.string().min(1),
+  description: z.string().max(2000).optional(),
+});
+
+export const TimerStopArgsSchema = z.object({
+  reason: z.enum([
+    'user_stop', 'offline_stop', 'idle_discard',
+    'forced_signout', 'take_over', 'disputed', 'crash_recover',
+  ]).optional(),
+});
+
+export const TimerBreakStartArgsSchema = z.object({
+  kind: z.enum(['paid', 'unpaid', 'custom']),
+  durationSec: z.number().int().positive().optional(),
+});
+
+export const IdleResolveArgsSchema = z.object({
+  resolution: z.enum(['keep', 'discard', 'convert_to_break']),
+});
+
+export const PermissionCheckArgsSchema = z.enum(['screen', 'accessibility', 'notifications']);
+
+export const ScreenshotDeleteArgsSchema = z.object({
+  id: z.string().min(1),
+});
+
+export const ActivityGetRecentArgsSchema = z.object({
+  limit: z.number().int().positive().max(1000).optional(),
+});
+
+export const UpdaterSetChannelArgsSchema = z.enum(['stable', 'beta', 'alpha']);
+
+export const ShellOpenExternalArgsSchema = z.object({
+  url: z.string().url(),
+});
+
+// ---------- Phase 8 Power event IPC ----------
+
+export const IPC_POWER = {
+  errorFatal: 'error:fatal',
+} as const;
 
 // ---------- Phase 7 Updater contracts ----------
 

@@ -50,14 +50,38 @@ import { createTrayService } from './services/tray/tray-service';
 import { createNotificationService } from './services/notifications/notification-service';
 import { createOnboardingService } from './services/onboarding/onboarding-service';
 import { registerOnboardingIpc } from './services/onboarding/register-ipc';
+import {
+  createUpdaterService,
+  type UpdaterPrefsStore,
+  type AutoUpdaterPort,
+  type UpdaterService,
+} from './services/updater/updater-service';
+import { registerUpdaterIpc } from './services/updater/register-ipc';
+import type { ReleaseChannel } from './services/updater/channels';
+import { createErrorHandler } from './services/error-handler';
+import { createPowerMonitorService } from './services/power-monitor';
 
 const isDev = !app.isPackaged;
 
 let windowManager: WindowManager | null = null;
 
+let detachErrorHandler: (() => void) | null = null;
+let detachPowerMonitor: (() => void) | null = null;
+
 async function bootstrap(): Promise<void> {
   ensureSingleInstance();
   logger.info({ version: app.getVersion() }, 'marketeq-time-tracker:boot');
+
+  // --- Phase 8: Global error handler ----------------------------------------
+  const errorHandler = createErrorHandler({
+    logger,
+    getAllWindows: () => BrowserWindow.getAllWindows(),
+    onFatalShutdown: () => {
+      windowManager?.prepareToQuit();
+      app.exit(1);
+    },
+  });
+  detachErrorHandler = errorHandler.install();
 
   try {
     const db = initDatabase();
@@ -85,12 +109,40 @@ async function bootstrap(): Promise<void> {
     detachIpcHandlers = registerIpcHandlers();
   }
 
+  // --- Phase 8: Power monitor (suspend/resume) ---------------------------
+  try {
+    const powerMonitor = createPowerMonitorService({
+      logger,
+      onSuspend: () => {
+        if (timerService && timerService.getCurrentState() === 'Running') {
+          logger.info('power suspend — pausing timer');
+          void timerService.pauseTimer().catch((err) =>
+            logger.warn({ err }, 'failed to pause timer on suspend'),
+          );
+        }
+      },
+      onResume: (sleepDurationSec) => {
+        logger.info({ sleepDurationSec }, 'power resume detected');
+        // Don't auto-resume — user must explicitly resume (doc 05 SLEEP.01).
+      },
+      onClockSkew: (skewSec) => {
+        logger.warn({ skewSec }, 'clock skew detected on resume');
+      },
+    });
+    detachPowerMonitor = powerMonitor.install();
+    logger.info('phase 8 power monitor wired');
+  } catch (err) {
+    logger.error({ err }, 'failed to initialize power monitor');
+  }
+
   // --- Phase 5: auth + session management ------------------------------
   let detachAuthIpc: (() => void) | null = null;
   try {
     const db = initDatabase();
     const repos = createRepos(db);
-    const httpPort = createFetchAuthHttpPort({ logger });
+    const authBaseUrl =
+      process.env.DTT_API_BASE_URL ?? 'https://api.marketeq.com/tts/v1';
+    const httpPort = createFetchAuthHttpPort({ logger, baseUrl: authBaseUrl });
     const authService = createAuthService({
       logger,
       repos,
@@ -336,7 +388,7 @@ async function bootstrap(): Promise<void> {
         app.quit();
       },
     });
-    trayService.start();
+    // Tray start is deferred until after app.whenReady() — see below.
 
     // Forward timer bus events into tray + notifications.
     if (timerService) {
@@ -366,6 +418,68 @@ async function bootstrap(): Promise<void> {
     logger.info('phase 6 window/tray/notifications/onboarding wired');
   } catch (err) {
     logger.error({ err }, 'failed to initialize phase 6 services');
+  }
+
+  // --- Phase 7: auto-updater (doc 30) ------------------------------------
+  let detachUpdaterIpc: (() => void) | null = null;
+  let updaterSvc: UpdaterService | null = null;
+  if (!isDev) {
+    try {
+      const db = initDatabase();
+      const prefsStore: UpdaterPrefsStore = {
+        load() {
+          const row = db
+            .prepare('SELECT channel, auto_download, last_check_at, last_version FROM updater_prefs WHERE id = 1')
+            .get() as { channel: string; auto_download: number; last_check_at: number | null; last_version: string | null } | undefined;
+          return {
+            channel: (row?.channel ?? 'stable') as ReleaseChannel,
+            autoDownload: row?.auto_download !== 0,
+            lastCheckAt: row?.last_check_at ?? null,
+            lastVersion: row?.last_version ?? null,
+          };
+        },
+        save(partial) {
+          const sets: string[] = [];
+          const params: unknown[] = [];
+          if (partial.channel !== undefined) { sets.push('channel = ?'); params.push(partial.channel); }
+          if (partial.autoDownload !== undefined) { sets.push('auto_download = ?'); params.push(partial.autoDownload ? 1 : 0); }
+          if (partial.lastCheckAt !== undefined) { sets.push('last_check_at = ?'); params.push(partial.lastCheckAt); }
+          if (partial.lastVersion !== undefined) { sets.push('last_version = ?'); params.push(partial.lastVersion); }
+          if (sets.length > 0) {
+            sets.push('updated_at = unixepoch()');
+            db.prepare(`UPDATE updater_prefs SET ${sets.join(', ')} WHERE id = 1`).run(...params);
+          }
+        },
+      };
+
+      // Dynamic require to avoid crash in dev mode (electron-updater
+      // throws when running unpackaged).
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { autoUpdater } = require('electron-updater') as { autoUpdater: AutoUpdaterPort };
+
+      updaterSvc = createUpdaterService({
+        logger,
+        updater: autoUpdater,
+        prefs: prefsStore,
+        currentVersion: app.getVersion(),
+        broadcast: (event) => {
+          const targets = collectBroadcastTargets();
+          for (const wc of targets) {
+            if (event.type === 'status-changed') wc.send('updater:status-changed', event.status);
+            else if (event.type === 'progress') wc.send('updater:progress', event.progress);
+            else if (event.type === 'error') wc.send('updater:error', event.message);
+          }
+        },
+      });
+
+      detachUpdaterIpc = registerUpdaterIpc({ ipcMain, logger, service: updaterSvc });
+      updaterSvc.startPeriodicCheck();
+      logger.info('phase 7 auto-updater wired');
+    } catch (err) {
+      logger.error({ err }, 'failed to initialize auto-updater');
+    }
+  } else {
+    logger.info('phase 7 auto-updater skipped (dev mode)');
   }
 
   app.on('before-quit', (evt) => {
@@ -416,15 +530,41 @@ async function bootstrap(): Promise<void> {
       logger.warn({ err }, 'error while closing windows');
     }
     try {
+      updaterSvc?.dispose();
+      detachUpdaterIpc?.();
+    } catch (err) {
+      logger.warn({ err }, 'error while stopping updater service');
+    }
+    try {
       timerService?.dispatch({ type: 'APP_QUIT' }).catch(() => undefined);
       timerService?.dispose();
       detachIpcHandlers?.();
     } catch (err) {
       logger.warn({ err }, 'error while stopping timer service');
     }
+    try {
+      detachPowerMonitor?.();
+    } catch (err) {
+      logger.warn({ err }, 'error while detaching power monitor');
+    }
+    try {
+      detachErrorHandler?.();
+    } catch (err) {
+      logger.warn({ err }, 'error while detaching error handler');
+    }
   });
 
+  logger.info('waiting for app.whenReady()...');
   await app.whenReady();
+  logger.info('app is ready');
+
+  // Tray must be created after app is ready (Electron requirement).
+  try {
+    trayService?.start();
+  } catch (err) {
+    logger.warn({ err }, 'tray service failed to start');
+  }
+
   if (windowManager) {
     await windowManager.ensureMainWindow();
   }

@@ -162,7 +162,7 @@ function hitToListingCardProps(
       badge: kind === "service" ? "Service" : undefined,
       favoriteSlot: (
         <FavoriteRoot>
-          <Favorite />
+          {() => <Favorite />}
         </FavoriteRoot>
       ),
     }
@@ -237,7 +237,7 @@ function hitToListingCardProps(
         : undefined,
     favoriteSlot: (
       <FavoriteRoot>
-        <Favorite />
+        {() => <Favorite />}
       </FavoriteRoot>
     ),
   }

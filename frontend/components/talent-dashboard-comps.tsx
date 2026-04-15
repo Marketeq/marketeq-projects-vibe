@@ -77,7 +77,8 @@ import {
   EditablePreview,
   EditableRoot,
 } from "@/components/ui"
-import { useAuth } from "@/contexts/auth"
+import { useAuth, resolveDashboardRole } from "@/contexts/auth"
+import { ROLE } from "@/types/user"
 import { UserAPI } from "@/service/http/user"
 
 
@@ -157,6 +158,9 @@ export const WalletBold = ({
 
 export const LeftSidebar = () => {
   const pathname = usePathname()
+  const { user } = useAuth()
+  const dashboardRole = resolveDashboardRole(user)
+  const isTalent = dashboardRole === ROLE.TALENT
 
   const linkClass = (href: string) =>
     cn(
@@ -194,9 +198,12 @@ export const LeftSidebar = () => {
             <Plus className="size-[18px] text-dark-blue-400/50" />
             Create a Project
           </NextLink>
-          <NextLink className={linkClass("/transactions")} href="/transactions">
+          <NextLink
+            className={linkClass(isTalent ? "/earnings" : "/payments")}
+            href={isTalent ? "/earnings" : "/payments"}
+          >
             <CurrencyDollar className="size-[18px] text-dark-blue-400/50" />
-            Transactions
+            {isTalent ? "Transactions" : "Payments"}
           </NextLink>
           <NextLink className={linkClass("/stats")} href="/stats">
             <BarChartSquare02 className="size-[18px] text-dark-blue-400/50" />

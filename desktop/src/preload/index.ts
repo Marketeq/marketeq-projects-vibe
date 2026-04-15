@@ -4,7 +4,7 @@
 // source of truth across main/preload/renderer.
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import { IPC } from '../shared/ipc-contracts';
+import { IPC, IPC_POWER } from '../shared/ipc-contracts';
 import type {
   ActivitySample,
   ActivityStats,
@@ -283,6 +283,13 @@ const dtt = {
       ipcRenderer.on(IPC.updaterError, handler);
       return () => ipcRenderer.off(IPC.updaterError, handler);
     },
+  },
+
+  onFatalError: (cb: (payload: { code: string; message: string }) => void) => {
+    const handler = (_evt: IpcRendererEvent, payload: { code: string; message: string }) =>
+      cb(payload);
+    ipcRenderer.on(IPC_POWER.errorFatal, handler);
+    return () => ipcRenderer.off(IPC_POWER.errorFatal, handler);
   },
 };
 

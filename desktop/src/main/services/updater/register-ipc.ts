@@ -4,7 +4,7 @@
 import type { IpcMain } from 'electron';
 import type { Logger } from 'pino';
 import { z } from 'zod';
-import { IPC } from '../../shared/ipc-contracts';
+import { IPC } from '../../../shared/ipc-contracts';
 import type { UpdaterService } from './updater-service';
 import { isValidChannel, type ReleaseChannel } from './channels';
 
@@ -30,10 +30,14 @@ export function registerUpdaterIpc(deps: RegisterUpdaterIpcDeps): () => void {
   ipcMain.handle(IPC.updaterSetChannel, (_event, channel: unknown) => {
     if (!isValidChannel(channel)) {
       log.warn({ channel }, 'invalid channel');
-      throw new Error('Invalid release channel');
+      return { ok: false, code: 'ERR_VAL_UPDATER_CHANNEL', message: 'Invalid release channel' };
     }
-    service.setChannel(channel);
-    return service.getStatus();
+    try {
+      service.setChannel(channel);
+      return service.getStatus();
+    } catch (err) {
+      return { ok: false, code: 'ERR_UPDATER_SET_CHANNEL', message: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   ipcMain.handle(IPC.updaterDownload, async () => {
