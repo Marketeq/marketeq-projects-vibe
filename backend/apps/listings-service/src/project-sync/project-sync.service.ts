@@ -707,4 +707,207 @@ export class ProjectSyncService {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
+
+  /**
+   * Convert a Payload Lexical rich-text JSON tree into HTML.
+   *
+   * Covers every node type the Payload Projects collection's `fullDescription`
+   * editor can produce (Lexical v0.11.x / Payload v2):
+   *
+   *   Block nodes
+   *     paragraph          → <p>
+   *     heading            → <h1>..<h6>
+   *     list (bullet)      → <ul><li>
+   *     list (number)      → <ol><li>
+   *     list (check)       → <ul class="task-list"><li data-checked="...">
+   *     quote              → <blockquote>
+   *     code               → <pre><code class="language-*">
+   *     horizontalrule     → <hr/>
+   *     upload (image)     → <img src alt width height>
+   *
+   *   Inline nodes
+   *     text               → text, wrapped in format tags
+   *     link / autolink    → <a href target rel>
+   *     linebreak          → <br/>
+   *
+   *   Text format bitmask (Lexical)
+   *     1  bold       → <strong>
+   *     2  italic     → <em>
+   *     4  strike     → <s>
+   *     8  underline  → <u>
+   *     16 code       → <code>
+   *     32 subscript  → <sub>
+   *     64 superscript→ <sup>
+   *
+   *   Block-level `format` field ("left"|"center"|"right"|"justify") is
+   *   serialized as an inline style on the block tag so prose styling
+   *   respects author intent.
+   *
+   *   Upload node handling: the cms-service syncProjects hook pre-populates
+   *   `node.value` with the full media doc (url/filename/alt/width/height)
+   *   before POSTing, so this converter only needs to read those fields.
+   *
+   *   HTML is stored in the `description` column and rendered on the
+   *   frontend via `dangerouslySetInnerHTML` inside a Tailwind `prose`
+   *   wrapper. Content is admin-authored so no additional sanitization
+   *   is needed — text content IS still escaped via escapeHtml() for
+   *   defense-in-depth.
+   */
+  private lexicalToHtml(node: unknown): string {
+    if (node == null) return '';
+    if (typeof node === 'string') return this.escapeHtml(node);
+    if (Array.isArray(node)) return node.map((n) => this.lexicalToHtml(n)).join('');
+    if (typeof node !== 'object') return '';
+
+    const n = node as Record<string, unknown>;
+
+    // Root wrapper — { root: { type, children, ... } }
+    if (n.root) return this.lexicalToHtml(n.root);
+
+    const children = Array.isArray(n.children)
+      ? this.lexicalToHtml(n.children)
+      : '';
+
+    const type = typeof n.type === 'string' ? n.type : '';
+
+    // Block-level text alignment — Lexical stores this in the `format`
+    // string field of block nodes. Convert to a style attribute.
+    const alignStyle = this.blockAlignStyle(n.format);
+
+    switch (type) {
+      case 'root':
+        return children;
+
+      case 'paragraph':
+        if (!children) return '';
+        return alignStyle
+          ? `<p style="${alignStyle}">${children}</p>`
+          : `<p>${children}</p>`;
+
+      case 'heading': {
+        const tag =
+          typeof n.tag === 'string' && /^h[1-6]$/.test(n.tag) ? n.tag : 'h2';
+        return alignStyle
+          ? `<${tag} style="${alignStyle}">${children}</${tag}>`
+          : `<${tag}>${children}</${tag}>`;
+      }
+
+      case 'list': {
+        const listType = n.listType;
+        if (listType === 'check') {
+          return `<ul class="task-list">${children}</ul>`;
+        }
+        const listTag = listType === 'number' ? 'ol' : 'ul';
+        return `<${listTag}>${children}</${listTag}>`;
+      }
+
+      case 'listitem': {
+        // Check-list items carry a `checked: boolean` flag
+        if (typeof n.checked === 'boolean') {
+          return `<li data-checked="${n.checked}">${children}</li>`;
+        }
+        return `<li>${children}</li>`;
+      }
+
+      case 'quote':
+        return `<blockquote>${children}</blockquote>`;
+
+      case 'code': {
+        const language =
+          typeof n.language === 'string' && n.language
+            ? ` class="language-${this.escapeHtml(n.language)}"`
+            : '';
+        return `<pre><code${language}>${children}</code></pre>`;
+      }
+
+      case 'horizontalrule':
+        return '<hr/>';
+
+      case 'linebreak':
+        return '<br/>';
+
+      case 'link':
+      case 'autolink': {
+        const fields = (n.fields ?? {}) as Record<string, unknown>;
+        const url =
+          typeof n.url === 'string'
+            ? n.url
+            : typeof fields.url === 'string'
+              ? (fields.url as string)
+              : typeof fields.doc === 'string'
+                ? `/${fields.doc}`
+                : '#';
+        const newTab =
+          typeof fields.newTab === 'boolean' ? fields.newTab : true;
+        const escapedUrl = this.escapeHtml(url);
+        const target = newTab ? ' target="_blank"' : '';
+        const rel = newTab ? ' rel="noopener noreferrer"' : '';
+        return `<a href="${escapedUrl}"${target}${rel}>${children}</a>`;
+      }
+
+      case 'upload': {
+        // Expect `value` to be a populated media doc (cms hook populates
+        // upload IDs before posting). If it arrives as a raw id we skip
+        // gracefully rather than breaking the HTML.
+        const value = n.value;
+        if (!value || typeof value !== 'object') return '';
+        const v = value as Record<string, unknown>;
+        const url = this.resolveMediaUrl(v);
+        if (!url) return '';
+        const alt = typeof v.alt === 'string' ? v.alt : '';
+        const width = typeof v.width === 'number' ? ` width="${v.width}"` : '';
+        const height =
+          typeof v.height === 'number' ? ` height="${v.height}"` : '';
+        return `<img src="${this.escapeHtml(url)}" alt="${this.escapeHtml(alt)}"${width}${height} loading="lazy" />`;
+      }
+
+      case 'text': {
+        const text =
+          typeof n.text === 'string' ? this.escapeHtml(n.text) : '';
+        if (!text) return '';
+        const fmt = typeof n.format === 'number' ? n.format : 0;
+        let wrapped = text;
+        // Apply inline formats inside-out so the innermost tag hugs the text.
+        if (fmt & 64) wrapped = `<sup>${wrapped}</sup>`;
+        if (fmt & 32) wrapped = `<sub>${wrapped}</sub>`;
+        if (fmt & 16) wrapped = `<code>${wrapped}</code>`;
+        if (fmt & 8) wrapped = `<u>${wrapped}</u>`;
+        if (fmt & 4) wrapped = `<s>${wrapped}</s>`;
+        if (fmt & 2) wrapped = `<em>${wrapped}</em>`;
+        if (fmt & 1) wrapped = `<strong>${wrapped}</strong>`;
+        return wrapped;
+      }
+
+      default:
+        // Unknown block type — recurse into children so we don't drop content.
+        return children;
+    }
+  }
+
+  private blockAlignStyle(format: unknown): string {
+    if (typeof format !== 'string' || !format) return '';
+    switch (format) {
+      case 'center':
+        return 'text-align:center';
+      case 'right':
+      case 'end':
+        return 'text-align:right';
+      case 'justify':
+        return 'text-align:justify';
+      case 'left':
+      case 'start':
+        return 'text-align:left';
+      default:
+        return '';
+    }
+  }
+
+  private escapeHtml(s: string): string {
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 }
