@@ -60,6 +60,65 @@ function mediaUrl(value: unknown, baseUrl: string): string | null {
   return null;
 }
 
+/**
+ * Walk a Lexical rich-text tree and replace any `upload` node's raw ID
+ * with the populated media doc (url, alt, width, height, filename) so
+ * downstream services can render <img> tags without Payload access.
+ *
+ * Returns a NEW tree — does not mutate `node` in place.
+ */
+async function populateLexicalUploads(
+  node: unknown,
+  resolveMedia: (ref: unknown) => Promise<unknown>,
+  baseUrl: string,
+): Promise<unknown> {
+  if (node == null) return node;
+  if (Array.isArray(node)) {
+    return Promise.all(
+      node.map((child) => populateLexicalUploads(child, resolveMedia, baseUrl)),
+    );
+  }
+  if (typeof node !== 'object') return node;
+
+  const n = { ...(node as Record<string, unknown>) };
+
+  // Lexical wraps the editor state in { root: { ... } }
+  if (n.root) {
+    n.root = await populateLexicalUploads(n.root, resolveMedia, baseUrl);
+    return n;
+  }
+
+  // Recurse into children first so nested upload nodes are handled.
+  if (Array.isArray(n.children)) {
+    n.children = await Promise.all(
+      (n.children as unknown[]).map((c) =>
+        populateLexicalUploads(c, resolveMedia, baseUrl),
+      ),
+    );
+  }
+
+  // Resolve upload nodes — their `value` may be a raw ID, a minimal doc
+  // from depth=0, or an already-populated doc. Normalize to a populated
+  // doc with `url` rewritten to a same-origin `/cms-media/...` path.
+  if (n.type === 'upload') {
+    const raw = n.value;
+    const resolved = await resolveMedia(
+      raw && typeof raw === 'object' ? (raw as Record<string, unknown>).id ?? raw : raw,
+    );
+    if (resolved && typeof resolved === 'object') {
+      const media = { ...(resolved as Record<string, unknown>) } as Record<
+        string,
+        unknown
+      >;
+      const rewritten = mediaUrl(media, baseUrl);
+      if (rewritten) media.url = rewritten;
+      n.value = media;
+    }
+  }
+
+  return n;
+}
+
 export const syncProjectToListings: CollectionAfterChangeHook = async ({
   doc,
   operation,
@@ -139,6 +198,17 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       mediaUrl(populatedVideoUpload, cmsBase) ||
       undefined;
 
+    // Populate any `upload` nodes inside the Lexical rich-text field so
+    // listings-service can render <img> tags without needing access to
+    // Payload's local API. Walks the tree, replaces raw upload IDs with
+    // the fetched media doc, and rewrites the `url` to a same-origin path
+    // (`/cms-media/...`) matching the thumbnail/gallery pattern.
+    const populatedFullDescription = await populateLexicalUploads(
+      (doc as any).fullDescription,
+      resolveMedia,
+      cmsBase,
+    );
+
     const payload = {
       ...doc,
       id: doc.id,
@@ -147,6 +217,7 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       thumbnailUrl: thumbnailUrl ?? undefined,
       galleryUrls,
       videoUrl,
+      fullDescription: populatedFullDescription,
       // Payload puts draft/published state under `_status`; mirror it onto
       // `status` so the receiver can rely on either name.
       status: ((doc as any)._status ?? 'published') as

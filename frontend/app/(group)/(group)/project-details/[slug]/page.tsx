@@ -529,7 +529,7 @@ export default function ProjectDetails() {
           setProject({
             ...svcData,
             role: svcData.category || "Service",
-            summary: svcData.description,
+            summary: svcData.shortDescription || svcData.description,
             rating: 4.9,
             reviewCount: 14,
             listingType: "service",
@@ -541,7 +541,7 @@ export default function ProjectDetails() {
         setProject({
           ...data,
           role: data.category || "Software Development",
-          summary: data.description,
+          summary: data.shortDescription || data.description,
           rating: 4.9,
           reviewCount: 14,
           listingType: "project",
@@ -974,9 +974,22 @@ export default function ProjectDetails() {
                             </h1>
 
                             <div className="mt-6 border-t pt-6 border-gray-200">
-                              <p className="text-base font-extralight leading-relaxed text-dark-blue-400 whitespace-pre-wrap">
-                                {project.description || project.summary || ""}
-                              </p>
+                              {/*
+                                project.description is HTML generated from the
+                                Payload Lexical rich-text editor by the
+                                listings-service ProjectSyncService. Editor
+                                content is admin-authored (not user-submitted)
+                                so `dangerouslySetInnerHTML` is safe here — see
+                                the lexicalToHtml() helper on the service which
+                                escapes text content before wrapping in tags.
+                              */}
+                              <div
+                                className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
+                                dangerouslySetInnerHTML={{
+                                  __html:
+                                    project.description || project.summary || "",
+                                }}
+                              />
                             </div>
 
                             {isShowing ? (
