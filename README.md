@@ -60,6 +60,10 @@ Vibe Coding Marketeq Projects talent network platform.
 - npx nest start favorites-service
 - npx nest start category-service
 
+### Start CMS service
+cd /backend/apps/cms-service (chore/sync-dev-main-to-staging)
+$ npm run start:dev
+
 ### Using npm:
 ```npm exec nest -- start listings-service --watch```
 
@@ -69,6 +73,7 @@ Vibe Coding Marketeq Projects talent network platform.
 
 ### Rabbitmq:
 ```docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management```
+``` docker start rabbitmq ```
 
 ### Fast API:
 ```py -m uvicorn clip_moderation_api:app --host 0.0.0.0 --port 8000 --app-dir apps/content-moderation-service/src/filters/python```

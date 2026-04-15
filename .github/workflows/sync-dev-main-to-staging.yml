@@ -4,14 +4,90 @@ on:
   push:
     branches:
       - dev-main
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: Source branch to mirror from
+        required: true
+        default: dev-main
+      target_branch:
+        description: Target branch to mirror to
+        required: true
+        default: staging
+      dry_run:
+        description: Validate sync only (no branch mutation)
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: write
-  issues: write
 
 jobs:
-  sync-to-staging:
+  dry-run-guard:
+    if: github.event_name == 'workflow_dispatch' && inputs.dry_run
     runs-on: ubuntu-latest
+    env:
+      SOURCE_BRANCH: ${{ inputs.source_branch }}
+      TARGET_BRANCH: ${{ inputs.target_branch }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate sync plan (no mutation)
+        run: |
+          set -euo pipefail
+
+          git fetch origin "$SOURCE_BRANCH" "$TARGET_BRANCH" --prune
+
+          if ! git rev-parse --verify "origin/$SOURCE_BRANCH" >/dev/null 2>&1; then
+            echo "Source branch not found: $SOURCE_BRANCH"
+            exit 1
+          fi
+
+          if ! git rev-parse --verify "origin/$TARGET_BRANCH" >/dev/null 2>&1; then
+            echo "Target branch does not exist yet: $TARGET_BRANCH"
+            TARGET_SHA="(missing)"
+          else
+            TARGET_SHA=$(git rev-parse --short "origin/$TARGET_BRANCH")
+          fi
+
+          SOURCE_SHA=$(git rev-parse --short "origin/$SOURCE_BRANCH")
+
+          AHEAD_COUNT=0
+          BEHIND_COUNT=0
+          if git rev-parse --verify "origin/$TARGET_BRANCH" >/dev/null 2>&1; then
+            AHEAD_COUNT=$(git rev-list --count "origin/$TARGET_BRANCH..origin/$SOURCE_BRANCH")
+            BEHIND_COUNT=$(git rev-list --count "origin/$SOURCE_BRANCH..origin/$TARGET_BRANCH")
+          fi
+
+          echo "Dry-run validation complete"
+          echo "Source: $SOURCE_BRANCH ($SOURCE_SHA)"
+          echo "Target: $TARGET_BRANCH ($TARGET_SHA)"
+          echo "Commits to apply from source to target: $AHEAD_COUNT"
+          echo "Commits that exist only on target (will be overwritten by force sync): $BEHIND_COUNT"
+
+          echo "### Sync Dry-Run Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Source: \`$SOURCE_BRANCH\` ($SOURCE_SHA)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target: \`$TARGET_BRANCH\` ($TARGET_SHA)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Source-only commits: $AHEAD_COUNT" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target-only commits (would be overwritten): $BEHIND_COUNT" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Recent source commits:" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+          git log --oneline "origin/$SOURCE_BRANCH" -n 10 >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+
+  sync-to-staging:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.source_branch || 'dev-main' }}
+      TARGET_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.target_branch || 'staging' }}
 
     steps:
       - name: Checkout repository
@@ -25,61 +101,57 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Get merge info
+      - name: Capture commit info
         id: merge_info
         run: |
-          echo "commit_msg=$(git log -1 --pretty=format:'%s')" >> $GITHUB_OUTPUT
-          echo "commit_author=$(git log -1 --pretty=format:'%an')" >> $GITHUB_OUTPUT
-          echo "commit_short=$(git log -1 --pretty=format:'%h')" >> $GITHUB_OUTPUT
+          git fetch origin "$SOURCE_BRANCH" --depth=1
 
-          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-          echo "changed_files<<$EOF" >> $GITHUB_OUTPUT
-          git diff-tree --no-commit-id --name-only -r HEAD | head -20 >> $GITHUB_OUTPUT
-          echo "$EOF" >> $GITHUB_OUTPUT
+          echo "commit_msg=$(git log -1 --pretty=format:'%s' "origin/$SOURCE_BRANCH")" >> $GITHUB_OUTPUT
+          echo "commit_author=$(git log -1 --pretty=format:'%an' "origin/$SOURCE_BRANCH")" >> $GITHUB_OUTPUT
+          echo "commit_short=$(git log -1 --pretty=format:'%h' "origin/$SOURCE_BRANCH")" >> $GITHUB_OUTPUT
+          echo "source_sha=$(git rev-parse "origin/$SOURCE_BRANCH")" >> $GITHUB_OUTPUT
 
-      - name: Force sync dev-main to staging
-        id: sync
+          git diff-tree --no-commit-id --name-only -r "origin/$SOURCE_BRANCH" | head -20 > files.txt
+          echo "changed_files<<EOF" >> $GITHUB_OUTPUT
+          cat files.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Sync dev-main to staging
         run: |
           git fetch origin
 
-          if git ls-remote --exit-code --heads origin staging; then
-            echo "staging branch exists. Syncing..."
-            git checkout staging
+          if git ls-remote --exit-code --heads origin "$TARGET_BRANCH"; then
+            git checkout "$TARGET_BRANCH"
           else
-            echo "staging branch does not exist. Creating it..."
-            git checkout -b staging origin/dev-main
+            git checkout -b "$TARGET_BRANCH"
           fi
 
-          git reset --hard origin/dev-main
-          git push --force origin staging
+          git reset --hard "origin/$SOURCE_BRANCH"
+          git push origin "$TARGET_BRANCH" --force
 
-      - name: Notify team via commit comment
+      - name: Notify team (commit comment)
         if: always()
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_SHORT: ${{ steps.merge_info.outputs.commit_short }}
+          COMMIT_MSG: ${{ steps.merge_info.outputs.commit_msg }}
+          COMMIT_AUTHOR: ${{ steps.merge_info.outputs.commit_author }}
+          CHANGED_FILES: ${{ steps.merge_info.outputs.changed_files }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+          SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
+          TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
         run: |
-          SHA=$(git rev-parse HEAD)
+          SHA="${{ steps.merge_info.outputs.source_sha }}"
+          REPO="${{ github.repository }}"
 
-          if [ "${{ job.status }}" = "success" ]; then
-            BODY="## ✅ Synced dev-main → staging
-
-          **Commit:** ${{ steps.merge_info.outputs.commit_short }} — ${{ steps.merge_info.outputs.commit_msg }}
-          **Author:** ${{ steps.merge_info.outputs.commit_author }}
-
-          **Changed files:**
-          \`\`\`
-          ${{ steps.merge_info.outputs.changed_files }}
-          \`\`\`
-
-          [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          if [ "$JOB_STATUS" = "success" ]; then
+            BODY=$(printf '## Synced %s to %s\n\n**Commit:** %s - %s\n**Author:** %s\n\n**Changed files:**\n```\n%s\n```\n\n[View run](%s)' \
+              "$SOURCE_BRANCH" "$TARGET_BRANCH" "$COMMIT_SHORT" "$COMMIT_MSG" "$COMMIT_AUTHOR" "$CHANGED_FILES" "$RUN_URL")
           else
-            BODY="## ⚠️ FAILED: Sync dev-main → staging
-
-          **Commit:** ${{ steps.merge_info.outputs.commit_short }} — ${{ steps.merge_info.outputs.commit_msg }}
-          **Author:** ${{ steps.merge_info.outputs.commit_author }}
-
-          Please check the workflow logs: [View run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            BODY=$(printf '## FAILED: Sync %s to %s\n\n**Commit:** %s - %s\n\nCheck logs: %s' \
+              "$SOURCE_BRANCH" "$TARGET_BRANCH" "$COMMIT_SHORT" "$COMMIT_MSG" "$RUN_URL")
           fi
 
-          gh api repos/${{ github.repository }}/commits/${SHA}/comments \
+          gh api "repos/${REPO}/commits/${SHA}/comments" \
             -f body="$BODY"
