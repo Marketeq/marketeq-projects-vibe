@@ -49,7 +49,7 @@ export class ProjectSyncService {
            $1, $2, $3, $4, $5,
            $6, $7::text[], $8::text[], $9::text[], $10::text[],
            $11::text[], $12::text[],
-           $13::text[], $14, $15::text[], $16::jsonb,
+           $13::text[], $14, $15::jsonb, $16::jsonb,
            $17, $18, $19, $20, $21::listing_status_enum,
            $22, $23, $24, $25,
            $26, $27::jsonb, $28::jsonb,
@@ -113,7 +113,7 @@ export class ProjectSyncService {
          "developmentTech" = $12::text[],
          "mediaUrls" = $13::text[],
          "videoUrl" = $14,
-         deliverables = $15::text[],
+         deliverables = $15::jsonb,
          faqs = $16::jsonb,
          "estimatedHours" = $17,
          budget = $18,
@@ -209,7 +209,7 @@ export class ProjectSyncService {
       null;
 
     const description = this.lexicalToHtml(dto.fullDescription) || dto.shortDescription || '';
-    const deliverables = this.richTextToBullets(dto.deliverables);
+    const deliverables = this.deliverablePhases(dto.deliverables);
     const faqs = (dto.faqQuestions ?? []).map((f) => ({ question: f.question, answer: f.answer }));
 
     const duration = dto.timelineValue && dto.timelineUnit
@@ -243,7 +243,7 @@ export class ProjectSyncService {
       developmentTech,
       mediaUrls,
       videoUrl,
-      deliverables,
+      deliverables: JSON.stringify(deliverables),
       faqs: JSON.stringify(faqs),
       estimatedHours: dto.totalEstimatedHours ?? null,
       budget,
@@ -296,14 +296,36 @@ export class ProjectSyncService {
     }
   }
 
-  private richTextToBullets(value: unknown): string[] {
-    if (!value) return [];
-    const text = this.serializeRichText(value);
-    if (!text) return [];
-    return text
-      .split(/\r?\n+/)
-      .map((line) => line.replace(/^[-*•\s]+/, '').trim())
-      .filter(Boolean);
+  /**
+   * Normalize Payload's `deliverables` array field into the phase shape
+   * the frontend renders. Payload sends `[{ phaseLabel, phaseName, items: [{text}] }]`;
+   * we strip the item wrapper so storage holds `[{ phaseLabel, phaseName, items: string[] }]`
+   * — a jsonb column so the Figma-style grouped rendering is preserved end-to-end.
+   */
+  private deliverablePhases(
+    value: unknown,
+  ): Array<{ phaseLabel: string; phaseName: string; items: string[] }> {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((phase) => {
+        if (!phase || typeof phase !== 'object') return null;
+        const p = phase as Record<string, unknown>;
+        const phaseLabel = typeof p.phaseLabel === 'string' ? p.phaseLabel : '';
+        const phaseName = typeof p.phaseName === 'string' ? p.phaseName : '';
+        const rawItems = Array.isArray(p.items) ? p.items : [];
+        const items = rawItems
+          .map((it) => {
+            if (typeof it === 'string') return it;
+            if (it && typeof it === 'object' && typeof (it as { text?: unknown }).text === 'string') {
+              return (it as { text: string }).text;
+            }
+            return '';
+          })
+          .filter(Boolean);
+        if (!phaseLabel && !phaseName && items.length === 0) return null;
+        return { phaseLabel, phaseName, items };
+      })
+      .filter((p): p is { phaseLabel: string; phaseName: string; items: string[] } => !!p);
   }
 
   private extractText(node: unknown): string {

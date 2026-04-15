@@ -987,7 +987,9 @@ export default function ProjectDetails() {
                                 className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
                                 dangerouslySetInnerHTML={{
                                   __html:
-                                    project.description || project.summary || "",
+                                    project.description ||
+                                    project.summary ||
+                                    "",
                                 }}
                               />
                             </div>
@@ -999,7 +1001,7 @@ export default function ProjectDetails() {
                                   variant="link"
                                   onClick={() => setIsShowing(false)}
                                 >
-                                  View More
+                                  View Less
                                 </Button>
                               </div>
                             ) : (
@@ -1009,7 +1011,7 @@ export default function ProjectDetails() {
                                   variant="link"
                                   onClick={() => setIsShowing(true)}
                                 >
-                                  View Less
+                                  View More
                                 </Button>
                               </div>
                             )}
@@ -1029,325 +1031,61 @@ export default function ProjectDetails() {
                               Deliverables
                             </h2>
 
-                            <div className="mt-6">
-                              <span className="block text-sm font-extralight text-dark-blue-400">
-                                Phase One{" "}
-                                <span className="font-semibold">Research</span>
-                              </span>
-
-                              <div className="mt-3 grid grid-cols-3 gap-y-3">
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
+                            {/*
+                              Deliverables come back from listings-service as a
+                              grouped phase array:
+                                [{ phaseLabel, phaseName, items: string[] }]
+                              rendered as a Figma-matching stack of phase blocks
+                              with a 3-column checkmark grid per phase, separated
+                              by horizontal rules. Empty state: "Deliverables coming soon".
+                            */}
+                            {Array.isArray(project.deliverables) &&
+                            project.deliverables.length > 0 ? (
+                              <div className="mt-6 flex flex-col">
+                                {(
+                                  project.deliverables as Array<{
+                                    phaseLabel: string
+                                    phaseName: string
+                                    items: string[]
+                                  }>
+                                ).map((phase, pi) => (
+                                  <div
+                                    key={`${phase.phaseLabel}-${pi}`}
+                                    className={cn(
+                                      pi > 0 && "mt-6 pt-6 border-t border-gray-200"
+                                    )}
+                                  >
+                                    <p className="text-sm text-dark-blue-400">
+                                      <span className="font-extralight">
+                                        {phase.phaseLabel}
+                                      </span>{" "}
+                                      <span className="font-semibold">
+                                        {phase.phaseName}
+                                      </span>
+                                    </p>
+                                    <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
+                                      {phase.items.map((item, i) => (
+                                        <div
+                                          key={`${item}-${i}`}
+                                          className="flex items-center gap-x-3"
+                                        >
+                                          <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
+                                            <Check className="size-2" />
+                                          </span>
+                                          <p className="text-sm font-extralight leading-tight text-dark-blue-400">
+                                            {item}
+                                          </p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
-                            </div>
-
-                            <div className="mt-5 border-t border-gray-200 pt-5">
-                              <span className="block text-sm font-extralight text-dark-blue-400">
-                                Phase One{" "}
-                                <span className="font-semibold">Research</span>
-                              </span>
-
-                              <div className="mt-3 grid grid-cols-3 gap-y-3">
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="mt-5 border-t border-gray-200 pt-5">
-                              <span className="block text-sm font-extralight text-dark-blue-400">
-                                Phase One{" "}
-                                <span className="font-semibold">Research</span>
-                              </span>
-
-                              <div className="mt-3 grid grid-cols-3 gap-y-3">
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="mt-5 border-t border-gray-200 pt-5">
-                              <span className="block text-sm font-extralight text-dark-blue-400">
-                                Phase One{" "}
-                                <span className="font-semibold">Research</span>
-                              </span>
-
-                              <div className="mt-3 grid grid-cols-3 gap-y-3">
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="mt-5 border-t border-gray-200 pt-5">
-                              <span className="block text-sm font-extralight text-dark-blue-400">
-                                Phase One{" "}
-                                <span className="font-semibold">Research</span>
-                              </span>
-
-                              <div className="mt-3 grid grid-cols-3 gap-y-3">
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
+                            ) : (
+                              <p className="mt-6 text-sm font-extralight text-gray-500">
+                                Deliverables coming soon.
+                              </p>
+                            )}
 
                             <Alert className="mt-6">
                               <AlertIcon>

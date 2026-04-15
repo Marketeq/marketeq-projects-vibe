@@ -129,8 +129,36 @@ export const Projects: CollectionConfig = {
             },
             {
               name: 'deliverables',
-              type: 'richText',
-              admin: { description: 'Bullet list or table of project deliverables.' },
+              type: 'array',
+              labels: { singular: 'Phase', plural: 'Phases' },
+              admin: {
+                description:
+                  'Project deliverables grouped by phase. Each phase has a label (e.g. "Phase One"), a name (e.g. "Research"), and a list of check items rendered on the project details page.',
+              },
+              fields: [
+                {
+                  name: 'phaseLabel',
+                  type: 'text',
+                  required: true,
+                  admin: { description: 'e.g. "Phase One", "Phase Two"' },
+                },
+                {
+                  name: 'phaseName',
+                  type: 'text',
+                  required: true,
+                  admin: { description: 'e.g. "Research", "Design", "Front-End"' },
+                },
+                {
+                  name: 'items',
+                  type: 'array',
+                  labels: { singular: 'Item', plural: 'Items' },
+                  required: true,
+                  minRows: 1,
+                  fields: [
+                    { name: 'text', type: 'text', required: true },
+                  ],
+                },
+              ],
             },
             {
               name: 'faqQuestions',
