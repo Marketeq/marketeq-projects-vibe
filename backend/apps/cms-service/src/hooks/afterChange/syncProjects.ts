@@ -227,7 +227,7 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
     );
 
     const payload = {
-      ...populated,
+      ...doc,
       id: doc.id,
       thumbnail: populatedThumbnail,
       gallery: populatedGallery,
