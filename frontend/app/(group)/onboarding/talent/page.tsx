@@ -3229,6 +3229,7 @@ const SetYourPreferences = ({
 
   const skip = async () => {
     try {
+      if (isLoading) return
       const formData = buildStepDataFormData()
       submitTalent(formData)
     } catch (error) {
@@ -3419,6 +3420,7 @@ const SetYourPreferences = ({
                 type="button"
                 size="md"
                 onClick={skip}
+                disabled={isLoading}
               >
                 Skip
               </Button>

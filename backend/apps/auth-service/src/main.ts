@@ -5,8 +5,18 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AuthServiceModule);
+  const configuredOrigins = (process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin:
+      configuredOrigins.length === 0
+        ? 'http://localhost:3000'
+        : configuredOrigins.length === 1
+          ? configuredOrigins[0]
+          : configuredOrigins,
     credentials: true,
   });
   app.useGlobalPipes(
