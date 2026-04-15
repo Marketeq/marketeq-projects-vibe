@@ -128,6 +128,7 @@ export function Chats({
   const [forwardOpen, setForwardOpen] = useState(false)
   const [forwardTarget, setForwardTarget] = useState<Message | null>(null)
   const [keyReady, setKeyReady] = useState(false)
+  const [keyError, setKeyError] = useState<string | null>(null)
 
   const handleOpenForward = useCallback((msg: Message) => {
     setForwardTarget(msg)
@@ -156,6 +157,7 @@ export function Chats({
   // 1) unwrap the AES key once per conversation
   useEffect(() => {
     setKeyReady(false)
+    setKeyError(null)
     if (!selectedConversation || !privateKey) return
     const ac = new AbortController()
     const convId = selectedConversation.id
@@ -181,7 +183,12 @@ export function Chats({
       } catch (err: any) {
         if (err?.name === "AbortError") return
         console.error("Failed to unwrap conversation key", err)
-        if (!ac.signal.aborted) setKeyReady(true)
+        if (!ac.signal.aborted) {
+          setKeyReady(false)
+          setKeyError(
+            "Could not decrypt this conversation key. Refresh and try again."
+          )
+        }
       }
     })()
     return () => ac.abort()
@@ -233,7 +240,7 @@ export function Chats({
     jwtToken,
     keyReady
   )
-  const isSwitching = messagesLoading || !keyReady
+  const isSwitching = !keyError && (messagesLoading || !keyReady)
 
   // 2.1) local messages state for optimistic updates
   const [localMsgs, setLocalMsgs] = useState<Message[]>([])
@@ -742,6 +749,11 @@ export function Chats({
                 <p className="text-sm">Loading messages...</p>
               </div>
             )}
+            {!isSwitching && keyError && (
+              <div className="flex flex-col items-center justify-center py-20 text-error-500 gap-2">
+                <p className="text-sm font-medium">{keyError}</p>
+              </div>
+            )}
             {!isSwitching && displayedMessages.length === 0 && (
               <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
                 <Send className="size-8 stroke-[1.5]" />
@@ -957,7 +969,8 @@ export function Chats({
                   disabled={
                     (!textareaValue.trim() && selectedFiles.length === 0) ||
                     isUploading ||
-                    !keyReady
+                    !keyReady ||
+                    !!keyError
                   }
                 >
                   {isUploading ? (

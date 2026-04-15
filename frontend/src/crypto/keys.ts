@@ -158,14 +158,21 @@ export async function ensureEncryptionKeysExist(userId?: string) {
             uid = JSON.parse(atob(token.split(".")[1])).sub
           } catch { /* ignore */ }
           if (uid) {
-            const kek = await deriveKEK(uid)
-            const blob = await encryptWithKEK(existingPrivatePem, kek)
-            await apiFetch("/api/user-keys/private-key", {
-              method: "PUT",
-              headers: { Authorization: `Bearer ${token}` },
-              body: { encryptedPrivateKey: blob, publicKey: existingPublicPem },
-            })
-            console.log("Migrated existing private key to server backup")
+            try {
+              const kek = await deriveKEK(uid)
+              const blob = await encryptWithKEK(existingPrivatePem, kek)
+              await apiFetch("/api/user-keys/private-key", {
+                method: "PUT",
+                headers: { Authorization: `Bearer ${token}` },
+                body: { encryptedPrivateKey: blob, publicKey: existingPublicPem },
+              })
+              console.log("Migrated existing private key to server backup")
+            } catch (err) {
+              console.warn(
+                "Skipping private-key migration backup because KEK derivation is unavailable.",
+                err
+              )
+            }
           }
         }
       }
@@ -189,37 +196,47 @@ export async function ensureEncryptionKeysExist(userId?: string) {
     return
   }
 
-  // Derive KEK (deterministic: same userId + same SYSTEM_SECRET = same key everywhere)
-  const kek = await deriveKEK(userId)
+  // Derive KEK when configured. If missing, keep messaging available and skip backup.
+  let kek: CryptoKey | null = null
+  try {
+    kek = await deriveKEK(userId)
+  } catch (err) {
+    console.warn(
+      "KEK derivation unavailable. Private-key backup/restore will be skipped for this session.",
+      err
+    )
+  }
 
   // Try to restore from server backup
-  try {
-    const { encryptedPrivateKey } = await apiFetch<{ encryptedPrivateKey: string | null }>(
-      "/api/user-keys/private-key",
-      { headers: { Authorization: `Bearer ${token}` } }
-    )
-
-    if (encryptedPrivateKey) {
-      // Decrypt and restore
-      const privPem = await decryptWithKEK(encryptedPrivateKey, kek)
-      localStorage.setItem("privateKey", privPem)
-
-      // Validate private key imports cleanly (throws on malformed PEM)
-      await importPrivateKey(privPem)
-      // We can't derive public from private with WebCrypto, so fetch from server
-      const { publicKey: serverPubKey } = await apiFetch<{ publicKey: string }>(
-        "/api/messaging/get-public-key",
+  if (kek) {
+    try {
+      const { encryptedPrivateKey } = await apiFetch<{ encryptedPrivateKey: string | null }>(
+        "/api/user-keys/private-key",
         { headers: { Authorization: `Bearer ${token}` } }
       )
-      if (serverPubKey) {
-        localStorage.setItem("publicKey", serverPubKey)
-      }
 
-      console.log("Restored encryption keys from server backup")
-      return
+      if (encryptedPrivateKey) {
+        // Decrypt and restore
+        const privPem = await decryptWithKEK(encryptedPrivateKey, kek)
+        localStorage.setItem("privateKey", privPem)
+
+        // Validate private key imports cleanly (throws on malformed PEM)
+        await importPrivateKey(privPem)
+        // We can't derive public from private with WebCrypto, so fetch from server
+        const { publicKey: serverPubKey } = await apiFetch<{ publicKey: string }>(
+          "/api/messaging/get-public-key",
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        if (serverPubKey) {
+          localStorage.setItem("publicKey", serverPubKey)
+        }
+
+        console.log("Restored encryption keys from server backup")
+        return
+      }
+    } catch (err) {
+      console.warn("Could not restore keys from server, will generate new ones", err)
     }
-  } catch (err) {
-    console.warn("Could not restore keys from server, will generate new ones", err)
   }
 
   // First-time setup: generate new keypair
@@ -232,16 +249,18 @@ export async function ensureEncryptionKeysExist(userId?: string) {
   localStorage.setItem("publicKey", pubPem)
 
   // Encrypt private key with KEK and upload to server for future recovery
-  try {
-    const encryptedBlob = await encryptWithKEK(privPem, kek)
-    await apiFetch("/api/user-keys/private-key", {
-      method: "PUT",
-      headers: { Authorization: `Bearer ${token}` },
-      body: { encryptedPrivateKey: encryptedBlob, publicKey: pubPem },
-    })
-    console.log("Backed up encrypted private key to server")
-  } catch (err) {
-    console.error("Failed to backup private key to server", err)
+  if (kek) {
+    try {
+      const encryptedBlob = await encryptWithKEK(privPem, kek)
+      await apiFetch("/api/user-keys/private-key", {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` },
+        body: { encryptedPrivateKey: encryptedBlob, publicKey: pubPem },
+      })
+      console.log("Backed up encrypted private key to server")
+    } catch (err) {
+      console.error("Failed to backup private key to server", err)
+    }
   }
 
   // Register device

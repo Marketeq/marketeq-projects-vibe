@@ -12,7 +12,7 @@ import {
   DialogContent,
 } from "@/components/ui"
 import { apiFetch } from "@/src/lib/api"
-import { encryptAES } from "@/src/crypto/e2ee"
+import { decryptAES, encryptAES } from "@/src/crypto/e2ee"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { getAccessToken } from "@/utils/auth"
 import type { Conversation } from "@/types/conversation"
@@ -253,7 +253,46 @@ export function ForwardMessageDialog({
     setError(null)
 
     try {
-      const originalText = message.content || ""
+      let originalText = message.content || ""
+      const sourceThreadId = message.threadId || message.conversationId
+
+      if (message.ciphertext && sourceThreadId) {
+        let sourceKey: Uint8Array | null = null
+        try {
+          sourceKey = loadKey(sourceThreadId)
+        } catch {
+          // source key not cached
+        }
+
+        if (!sourceKey && privateKey) {
+          try {
+            const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
+              `/api/messaging/conversations/${sourceThreadId}/key?isGroup=false`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            )
+            const wrapped = Uint8Array.from(atob(encryptedKey), (c) =>
+              c.charCodeAt(0)
+            )
+            const rawBuffer = await crypto.subtle.decrypt(
+              { name: "RSA-OAEP" },
+              privateKey,
+              wrapped
+            )
+            sourceKey = new Uint8Array(rawBuffer)
+            const b64 = btoa(String.fromCharCode(...sourceKey))
+            saveKey(sourceThreadId, b64)
+          } catch (err) {
+            console.error("[ForwardDialog] Failed to fetch source conversation key", err)
+          }
+        }
+
+        if (!sourceKey) {
+          throw new Error("Encryption key unavailable for source message.")
+        }
+        originalText = await decryptAES(message.ciphertext, sourceKey)
+      } else if (originalText.trim() === "🔒 Encrypted message") {
+        throw new Error("Source message is encrypted and unavailable for forwarding.")
+      }
 
       for (const contact of selectedContacts) {
         let key: Uint8Array | null = null

@@ -40,6 +40,14 @@ export class ThreadsService {
     return thread;
   }
 
+  async assertUserIsParticipant(threadId: string, userId: string) {
+    const thread = await this.repo.findOne({ where: { id: threadId } });
+    if (!thread) throw new NotFoundException('Thread not found');
+    if (!thread.participantIds.includes(userId)) {
+      throw new ForbiddenException('Not a participant of this thread');
+    }
+  }
+
   async create(participantIds: string[], isGroup = false, groupName?: string) {
     // For 1:1 threads, find existing thread between the same participants
     if (!isGroup && participantIds.length === 2) {

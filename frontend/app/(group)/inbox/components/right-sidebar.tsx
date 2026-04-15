@@ -33,7 +33,6 @@ import {
 } from "@blend-metrics/icons/brands"
 import { DropdownMenuArrow } from "@radix-ui/react-dropdown-menu"
 import { useMeasure, useToggle } from "react-use"
-import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
 import { User } from "@/types/user"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
@@ -119,7 +118,7 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
   const avatarUrl = user.avatarUrl
   const initials = fullName.charAt(0).toUpperCase()
   const rate = user.rateMin && user.rateMax ? `$${user.rateMin} - $${user.rateMax}` : null
-  const availability = user.availability || user.customAvailability
+  const availability = user.availability
   const memberSince = user.createdAt ? new Date(user.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : null
 
   return (
