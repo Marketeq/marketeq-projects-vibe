@@ -12,7 +12,9 @@ export const Users: CollectionConfig = {
     read: ({ req: { user } }) => {
       if (!user) return false;
       const role = (user as any)?.role;
+       // Admin and Developer can read all users
       if (role === 'admin' || role === 'developer') return true;
+      // All other authenticated users can only read their own record (required for /api/users/me)
       return { id: { equals: user.id } };
     },
     create: isAdmin,
