@@ -1043,7 +1043,7 @@ export default function ProjectDetails() {
                                   variant="link"
                                   onClick={() => setIsShowing(false)}
                                 >
-                                  View Less
+                                  View More
                                 </Button>
                               </div>
                             ) : (
@@ -1053,7 +1053,7 @@ export default function ProjectDetails() {
                                   variant="link"
                                   onClick={() => setIsShowing(true)}
                                 >
-                                  View More
+                                  View Less
                                 </Button>
                               </div>
                             )}
