@@ -19,6 +19,15 @@ import { ServiceAuthGuard } from '../guards/service-auth.guard';
 @ApiTags('Categories')
 @Controller('categories')
 export class CategoryController {
+
+      @Get('/health')
+      health() {
+        return { status: 'ok', service: 'category-service', time: new Date().toISOString() };
+      }
+    @Get(':uuid')
+    async getByUuid(@Param('uuid') uuid: string) {
+      return this.service.findByUuid(uuid);
+    }
   private readonly logger = new Logger(CategoryController.name);
 
   constructor(

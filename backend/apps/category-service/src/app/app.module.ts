@@ -13,7 +13,11 @@ import { TagEntity } from './entities/tag.entity';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['apps/category-service/.env', '.env'],
+      envFilePath: [
+        `apps/category-service/.env.${process.env.NODE_ENV || 'development'}`,
+        'apps/category-service/.env',
+        '.env',
+      ],
     }),
     // SupabaseModule,
     TypeOrmModule.forRootAsync({

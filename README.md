@@ -61,8 +61,28 @@ Vibe Coding Marketeq Projects talent network platform.
 - npx nest start category-service
 
 ### Start CMS service
-cd /backend/apps/cms-service (chore/sync-dev-main-to-staging)
-$ npm run start:dev
+cd backend/apps/cms-service  
+npm run start:dev
+or
+npx ts-node src/server.ts
+
+###  boot CMS
+cd backend/apps/cms-service  
+node -r ts-node/register/transpile-only src/server.ts
+
+#### Log in to Payload CMS admin at
+http://localhost:3020/admin
+
+Open DevTools → Application → Cookies → payload-token
+Copy the value of the payload-token cookie.
+This is your JWT.
+Set this value as CMS_API_KEY in your .env for category-service
+OR 
+http://localhost:3020/api/users/login
+{
+  "email": "*****@gmail.com",
+  "password": "********"
+}
 
 ### Using npm:
 ```npm exec nest -- start listings-service --watch```
@@ -74,6 +94,9 @@ $ npm run start:dev
 ### Rabbitmq:
 ```docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management```
 ``` docker start rabbitmq ```
+
+### PAYLOAD_SECRET
+```node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" ```
 
 ### Fast API:
 ```py -m uvicorn clip_moderation_api:app --host 0.0.0.0 --port 8000 --app-dir apps/content-moderation-service/src/filters/python```

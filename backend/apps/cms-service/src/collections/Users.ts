@@ -8,6 +8,8 @@ export const Users: CollectionConfig = {
     useAsTitle: 'name',
     defaultColumns: ['name', 'email', 'role', 'status'],
   },
+
+  //Temporarily Allow All User Updates (for admin bootstrapping):
   access: {
     read: ({ req: { user } }) => {
       if (!user) return false;
@@ -20,6 +22,11 @@ export const Users: CollectionConfig = {
     create: isAdmin,
     update: isAdmin,
     delete: isAdmin,
+    // --- For emergency admin bootstrapping, uncomment below ---
+    // read: () => true,
+    // create: () => true,
+    // update: () => true,
+    // delete: () => true,
   },
   fields: [
     {
