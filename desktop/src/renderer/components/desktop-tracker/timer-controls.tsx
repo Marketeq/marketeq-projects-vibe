@@ -10,6 +10,10 @@ interface TimerControlsProps {
   isPaused?: boolean
   countdown?: number | null
   noTaskSelected?: boolean
+  /** 0 = fully expanded, 1 = fully compact. Drives continuous button shrinking. */
+  shrinkProgress?: number
+  /** When true, apply CSS transitions (for chevron click). When false, sizes snap to scroll position. */
+  useTransition?: boolean
   onStart?: () => void
   onPause?: () => void
   onStop?: () => void
@@ -17,18 +21,18 @@ interface TimerControlsProps {
   className?: string
 }
 
-function ManualTimeIcon({ className }: { className?: string }) {
+function ManualTimeIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return (
-    <svg className={className} width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <svg className={className} style={style} width="20" height="20" viewBox="0 0 20 20" fill="none">
       <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
       <path d="M10 6v4l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
 
-function PlayIcon({ className }: { className?: string }) {
+function PlayIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return (
-    <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg className={className} style={style} width="24" height="24" viewBox="0 0 24 24" fill="none">
       <path
         d="M8 5.14v13.72a1 1 0 001.5.86l11.04-6.86a1 1 0 000-1.72L9.5 4.28A1 1 0 008 5.14z"
         fill="currentColor"
@@ -37,18 +41,18 @@ function PlayIcon({ className }: { className?: string }) {
   )
 }
 
-function PauseIcon({ className }: { className?: string }) {
+function PauseIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return (
-    <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg className={className} style={style} width="24" height="24" viewBox="0 0 24 24" fill="none">
       <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" />
       <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" />
     </svg>
   )
 }
 
-function StopIcon({ className }: { className?: string }) {
+function StopIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return (
-    <svg className={className} width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <svg className={className} style={style} width="20" height="20" viewBox="0 0 20 20" fill="none">
       <rect x="4" y="4" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
     </svg>
   )
@@ -56,12 +60,23 @@ function StopIcon({ className }: { className?: string }) {
 
 /* ── Inject keyframes once via a <style> tag ── */
 const RING_STYLES = `
-@keyframes dtt-spin { 0% { transform: rotate(0deg) } 100% { transform: rotate(360deg) } }
-@keyframes dtt-glow { 0%,100% { opacity:.5; transform:scale(.98) } 50% { opacity:1; transform:scale(1.04) } }
-@keyframes dtt-color-shift {
-  0%   { filter: hue-rotate(0deg) }
-  50%  { filter: hue-rotate(25deg) }
-  100% { filter: hue-rotate(0deg) }
+@keyframes dtt-spin { 0% { transform: rotate(0deg) } 100% { transform: rotate(1turn) } }
+@keyframes dtt-chase {
+  0%   { transform: rotate(0deg) }
+  40%  { transform: rotate(300deg) }
+  70%  { transform: rotate(340deg) }
+  100% { transform: rotate(360deg) }
+}
+@keyframes dtt-chase-fast {
+  0%   { transform: rotate(0deg) }
+  25%  { transform: rotate(240deg) }
+  50%  { transform: rotate(290deg) }
+  75%  { transform: rotate(330deg) }
+  100% { transform: rotate(360deg) }
+}
+@keyframes dtt-shrink-in {
+  0%   { transform: scale(1.4) }
+  100% { transform: scale(1) }
 }
 `
 
@@ -74,61 +89,98 @@ function injectRingStyles() {
   document.head.appendChild(el)
 }
 
-/** Instagram-style spinning gradient ring — 3 layers, all inline animations */
+/** Staggered arcs — short ones lead, long ones trail, each offset 60deg */
 function ActiveRing() {
   React.useEffect(() => { injectRingStyles() }, [])
-  const ringMask = "radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px))"
+  const ringMask = "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px))"
+  const arcs = [
+    { size: 14, delay: 0 },
+    { size: 18, delay: 0.05 },
+    { size: 22, delay: 0.1 },
+    { size: 28, delay: 0.15 },
+    { size: 34, delay: 0.2 },
+    { size: 42, delay: 0.25 },
+  ]
   return (
     <>
-      {/* Breathing glow */}
-      <div
-        className="absolute rounded-full"
-        style={{
-          inset: -7,
-          background: "radial-gradient(circle, rgba(48,108,254,0.3) 55%, transparent 72%)",
-          animation: "dtt-glow 2.5s ease-in-out infinite",
-        }}
-      />
-      {/* Main gradient ring — continuous color band like Instagram stories */}
-      <div
-        className="absolute rounded-full"
-        style={{
-          inset: -5,
-          background: "conic-gradient(from 0deg, #306CFE, #5687FF, #98B6FF, #C9D9FF, #779EFF, #2459DB, #1948BD, #306CFE)",
-          mask: ringMask,
-          WebkitMask: ringMask,
-          animation: "dtt-spin 2s linear infinite, dtt-color-shift 4s ease-in-out infinite",
-        }}
-      />
-      {/* White gap ring — creates the 2px separation between ring and button */}
-      <div
-        className="absolute rounded-full bg-white"
-        style={{ inset: -2 }}
-      />
+      {arcs.map((arc, i) => (
+        <div
+          key={i}
+          className="absolute rounded-full"
+          style={{
+            inset: -5,
+            background: `conic-gradient(from 0deg, #306CFE ${arc.size}deg, transparent ${arc.size}deg)`,
+            mask: ringMask,
+            WebkitMask: ringMask,
+            animation: `dtt-chase 1.2s ease-in-out infinite`,
+            animationDelay: `${arc.delay}s`,
+          }}
+        />
+      ))}
     </>
   )
 }
 
-/** Countdown spinning ring — faster, single arc */
+/** Smaller version of ActiveRing for minimized header play button */
+export function MiniActiveRing() {
+  React.useEffect(() => { injectRingStyles() }, [])
+  const ringMask = "radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px))"
+  const arcs = [
+    { size: 14, delay: 0 },
+    { size: 18, delay: 0.05 },
+    { size: 22, delay: 0.1 },
+    { size: 28, delay: 0.15 },
+    { size: 34, delay: 0.2 },
+    { size: 42, delay: 0.25 },
+  ]
+  return (
+    <>
+      {arcs.map((arc, i) => (
+        <div
+          key={i}
+          className="absolute rounded-full"
+          style={{
+            inset: -3,
+            background: `conic-gradient(from 0deg, #306CFE ${arc.size}deg, transparent ${arc.size}deg)`,
+            mask: ringMask,
+            WebkitMask: ringMask,
+            animation: `dtt-chase 1.2s ease-in-out infinite`,
+            animationDelay: `${arc.delay}s`,
+          }}
+        />
+      ))}
+    </>
+  )
+}
+
+/** Countdown — same staggered arcs, faster loop, tight delays */
 function CountdownRing() {
   React.useEffect(() => { injectRingStyles() }, [])
   const ringMask = "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px))"
+  const arcs = [
+    { size: 14, delay: 0 },
+    { size: 18, delay: 0.02 },
+    { size: 22, delay: 0.04 },
+    { size: 28, delay: 0.06 },
+    { size: 34, delay: 0.08 },
+    { size: 42, delay: 0.10 },
+  ]
   return (
     <>
-      <div
-        className="absolute rounded-full"
-        style={{
-          inset: -5,
-          background: "conic-gradient(from 0deg, #306CFE, #779EFF, #C9D9FF, #306CFE)",
-          mask: ringMask,
-          WebkitMask: ringMask,
-          animation: "dtt-spin 0.8s linear infinite",
-        }}
-      />
-      <div
-        className="absolute rounded-full bg-white"
-        style={{ inset: -2 }}
-      />
+      {arcs.map((arc, i) => (
+        <div
+          key={i}
+          className="absolute rounded-full"
+          style={{
+            inset: -5,
+            background: `conic-gradient(from 0deg, #306CFE ${arc.size}deg, transparent ${arc.size}deg)`,
+            mask: ringMask,
+            WebkitMask: ringMask,
+            animation: `dtt-chase 0.9s ease-in-out infinite`,
+            animationDelay: `${arc.delay}s`,
+          }}
+        />
+      ))}
     </>
   )
 }
@@ -169,6 +221,8 @@ export function TimerControls({
   isPaused = false,
   countdown = null,
   noTaskSelected = false,
+  shrinkProgress = 0,
+  useTransition = false,
   onStart,
   onPause,
   onStop,
@@ -184,6 +238,19 @@ export function TimerControls({
   const noTaskTooltip = useExclusiveTooltip()
   const notRunningTooltip = useExclusiveTooltip()
   const isCounting = countdown !== null
+
+  // Interpolate sizes based on shrinkProgress (0 = expanded, 1 = compact)
+  const t = shrinkProgress
+  const lerp = (a: number, b: number) => a + (b - a) * t
+  const centerSize = lerp(60, 40)
+  const sideSize = lerp(40, 32)
+  const centerIconSize = lerp(24, 16)
+  const sideIconSize = lerp(20, 16)
+  const gap = lerp(20, 12)
+  const labelOpacity = Math.max(0, 1 - t * 2.5) // fade out by 40% progress
+  const labelHeight = t > 0.4 ? 0 : undefined
+  const transitionStyle = useTransition ? "all 200ms" : "none"
+
   const handleCenterClick = () => {
     if (isCounting) return
     if (isRunning) {
@@ -206,16 +273,22 @@ export function TimerControls({
     : "Start Time"
 
   return (
-    <div className={cn("flex items-end justify-center gap-5", className)}>
+    <div className={cn("flex items-end justify-center", className)} style={{ gap, transition: transitionStyle }}>
       {/* Manual Time */}
       <button
         onClick={onManualTime}
         className="flex flex-col items-center gap-1.5 group"
       >
-        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-400 transition hover:border-gray-400 hover:text-gray-600">
-          <ManualTimeIcon className="h-5 w-5" />
+        <div
+          className="flex items-center justify-center rounded-full border border-gray-300 bg-white text-gray-400 hover:border-gray-400 hover:text-gray-600"
+          style={{ width: sideSize, height: sideSize, transition: transitionStyle }}
+        >
+          <ManualTimeIcon style={{ width: sideIconSize, height: sideIconSize, transition: transitionStyle }} />
         </div>
-        <span className="text-[10px] leading-3 text-gray-500 group-hover:text-gray-700">
+        <span
+          className="text-[10px] leading-3 text-gray-500 group-hover:text-gray-700 overflow-hidden"
+          style={{ opacity: labelOpacity, height: labelHeight, transition: useTransition ? "opacity 200ms, height 200ms" : "none" }}
+        >
           Manual Time
         </span>
       </button>
@@ -229,7 +302,7 @@ export function TimerControls({
             <div className="relative flex items-center justify-center">
               {/* ── Active tracking: Instagram-style gradient ring ── */}
               {isRunning && !isPaused && !isCounting && (
-                <ActiveRing />
+                t > 0.5 ? <MiniActiveRing /> : <ActiveRing />
               )}
               {/* ── Countdown: fast spinning ring ── */}
               {isCounting && (
@@ -237,7 +310,7 @@ export function TimerControls({
               )}
               <div
                 className={cn(
-                  "relative flex h-[60px] w-[60px] items-center justify-center rounded-full text-white transition-all",
+                  "relative flex items-center justify-center rounded-full text-white",
                   "bg-primary-500",
                   isCounting
                     ? "shadow-[0_0_24px_8px_rgba(48,108,254,0.4)] scale-110"
@@ -245,17 +318,21 @@ export function TimerControls({
                     ? "hover:bg-primary-600"
                     : "shadow-[0_4px_14px_rgba(48,108,254,0.4)] hover:bg-primary-600"
                 )}
+                style={{ width: centerSize, height: centerSize, transition: transitionStyle }}
               >
                 {isCounting ? (
                   <span key={countdown} className="text-2xl font-bold tabular-nums animate-scale-in">{countdown}</span>
                 ) : isRunning && !isPaused ? (
-                  <PauseIcon className="h-6 w-6" />
+                  <PauseIcon style={{ width: centerIconSize, height: centerIconSize, transition: transitionStyle }} />
                 ) : (
-                  <PlayIcon className="h-6 w-6" />
+                  <PlayIcon style={{ width: centerIconSize, height: centerIconSize, transition: transitionStyle }} />
                 )}
               </div>
             </div>
-            <span className="text-[10px] leading-3 text-gray-500 group-hover:text-gray-700">
+            <span
+              className="text-[10px] leading-3 text-gray-500 group-hover:text-gray-700 overflow-hidden"
+              style={{ opacity: labelOpacity, height: labelHeight, transition: useTransition ? "opacity 200ms, height 200ms" : "none" }}
+            >
               {centerLabel}
             </span>
           </button>
@@ -283,10 +360,16 @@ export function TimerControls({
           }}
           className="flex flex-col items-center gap-1.5 group"
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-400 transition hover:border-gray-400 hover:text-gray-600">
-            <StopIcon className="h-5 w-5" />
+          <div
+            className="flex items-center justify-center rounded-full border border-gray-300 bg-white text-gray-400 hover:border-gray-400 hover:text-gray-600"
+            style={{ width: sideSize, height: sideSize, transition: transitionStyle }}
+          >
+            <StopIcon style={{ width: sideIconSize, height: sideIconSize, transition: transitionStyle }} />
           </div>
-          <span className="text-[10px] leading-3 text-gray-500 group-hover:text-gray-700">
+          <span
+            className="text-[10px] leading-3 text-gray-500 group-hover:text-gray-700 overflow-hidden"
+            style={{ opacity: labelOpacity, height: labelHeight, transition: useTransition ? "opacity 200ms, height 200ms" : "none" }}
+          >
             Stop Time
           </span>
         </button>

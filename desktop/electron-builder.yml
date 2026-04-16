@@ -4,7 +4,16 @@
 # once Apple Developer ID + Windows EV cert are provisioned.
 
 appId: com.marketeq.time-tracker
-productName: Marketeq Time Tracker
+productName: Marketeq
+
+# Publish to a dedicated public release-only repo so the main codebase stays
+# private while the `releases/latest/download/<file>` URLs stay stable for the
+# frontend download dialog and electron-updater (doc 30 §2).
+publish:
+  - provider: github
+    owner: Marketeq
+    repo: desktop-time-tracker
+    releaseType: release
 
 directories:
   buildResources: resources
@@ -38,7 +47,10 @@ mac:
       arch: [x64, arm64]
     - target: zip
       arch: [x64, arm64]
-  artifactName: '${productName}-${version}-${arch}.${ext}'
+  # Versionless, URL-safe filename so the frontend can use a single stable
+  # `releases/latest/download/Marketeq-Time-Tracker-mac-${arch}.dmg` URL
+  # across versions (same pattern as Obsidian, Standard Notes, Linear).
+  artifactName: 'Marketeq-mac-${arch}.${ext}'
   hardenedRuntime: false
   gatekeeperAssess: false
   identity: null # TODO(doc 29 §1.1): set to "Developer ID Application: ... (TEAM_ID)" once cert provisioned
@@ -48,6 +60,7 @@ mac:
 
 dmg:
   icon: resources/icon.png
+  title: 'Marketeq Time Tracker'
   window:
     x: 100
     y: 100
@@ -82,8 +95,8 @@ nsis:
   shortcutName: Marketeq Time Tracker
   installerIcon: resources/icon.png
   uninstallerIcon: resources/icon.png
-  artifactName: '${productName}-Setup-${version}-${arch}.${ext}'
+  artifactName: 'Marketeq-Setup-win-${arch}.${ext}'
   include: resources/installer.nsh
 
 portable:
-  artifactName: '${productName}-${version}-${arch}-portable.${ext}'
+  artifactName: 'Marketeq-win-${arch}-portable.${ext}'

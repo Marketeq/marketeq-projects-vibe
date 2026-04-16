@@ -56,8 +56,6 @@ import type {
 
 const MAX_SESSION_SEC = 14 * 60 * 60; // 14 hours
 const MAX_BREAK_SEC = 4 * 60 * 60; // 4 hours
-/** Sessions older than this on crash recovery are force-stopped (doc 05 CRASH.01). */
-const CRASH_RECOVERY_CUTOFF_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 // -----------------------------------------------------------------------------
 // IPC channel names — exported so the preload + renderer can reference them.
@@ -264,14 +262,7 @@ export function createTimerService(deps: TimerServiceDeps) {
   function currentRunningSec(): number {
     if (machine.getState() !== 'Running' || runningStartedHr == null) return 0;
     const deltaNs = process.hrtime.bigint() - runningStartedHr;
-    const sec = Number(deltaNs / 1_000_000_000n);
-    // Phase 8: clock skew guard — monotonic clock should never go negative,
-    // but if it somehow does (doc 05 XCUT.05), clamp to zero.
-    if (sec < 0) {
-      logger.warn({ sec }, 'negative running seconds detected (clock skew) — clamping to 0');
-      return 0;
-    }
-    return sec;
+    return Number(deltaNs / 1_000_000_000n);
   }
 
   function totalBillableSec(): number {
@@ -693,28 +684,6 @@ export function createTimerService(deps: TimerServiceDeps) {
     if (!userId) return snapshot();
     const open = repos.session.findActive(userId);
     if (!open) return snapshot();
-
-    // Phase 8: crash recovery cutoff — if the session is older than the
-    // threshold, force-stop it rather than resuming (doc 05 DTT-EDGE-CRASH.01).
-    const sessionAge = Date.now() - open.started_at;
-    if (sessionAge > CRASH_RECOVERY_CUTOFF_MS) {
-      logger.warn(
-        { sessionId: open.id, ageHours: Math.round(sessionAge / 3600000) },
-        'stale session found during crash recovery — force-stopping',
-      );
-      repos.session.closeActive({
-        id: open.id,
-        endedAt: Date.now(),
-        reason: 'crash_recover',
-        billableSeconds: open.billable_seconds,
-      });
-      emit(TIMER_CHANNELS.error, {
-        code: 'DTT-ERR-SYS.03',
-        message: 'A stale session was recovered and closed after an unexpected restart.',
-      });
-      return snapshot();
-    }
-
     // Rehydrate into Paused, not Running — doc 20 never silently bills the
     // user after a crash. The renderer will show "Resume" and let the user
     // confirm.

@@ -5,9 +5,8 @@
  * desktop-tracker Tailwind components.
  */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss" source("../renderer/");
+@config "../../tailwind.config.ts";
 
 :root {
   font-family:
