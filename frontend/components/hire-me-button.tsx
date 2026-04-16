@@ -3,7 +3,8 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import type { UserProfile } from "@/types/user"
-import { ArrowRight, ChevronLeft, MapPin, Plus, SearchMd, Send, X } from "@blend-metrics/icons"
+import { ArrowRight, ChevronLeft, MapPin, Plus, SearchMd, X } from "@blend-metrics/icons"
+import NextImage from "@/components/next-image"
 import {
   Avatar,
   AvatarFallback,
@@ -221,7 +222,13 @@ export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
             {offerSent ? (
               <div className="flex flex-col items-center pb-2 pt-2 text-center">
                 <div className="inline-flex items-center justify-center text-primary-500">
-                  <Send className="size-[52px]" />
+                  <NextImage
+                    src="/hire-me-sent-02.svg"
+                    alt="Offer sent"
+                    width={67}
+                    height={67}
+                    className="size-[67px]"
+                  />
                 </div>
 
                 <h2 className="mt-7 text-[16px] font-semibold leading-normal text-dark-blue-400">
@@ -268,6 +275,7 @@ export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
                 </div>
               </div>
             ) : (
+            <>
             <div className="flex items-center gap-4">
               <Avatar className="size-[90px] shrink-0">
                 <AvatarImage
@@ -613,6 +621,7 @@ export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
                 </Button>
               </div>
             ) : null}
+            </>
             )}
           </div>
       </DialogContent>
