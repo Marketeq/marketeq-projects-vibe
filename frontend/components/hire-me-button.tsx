@@ -1,8 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import type { UserProfile } from "@/types/user"
-import { ArrowRight, ChevronLeft, MapPin, Plus, SearchMd, X } from "@blend-metrics/icons"
+import { ArrowRight, ChevronLeft, MapPin, Plus, SearchMd, Send, X } from "@blend-metrics/icons"
 import {
   Avatar,
   AvatarFallback,
@@ -123,6 +124,8 @@ const durations = [
 ]
 
 export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
+  const router = useRouter()
+  const [open, setOpen] = React.useState(false)
   const [schedule, setSchedule] = React.useState("")
   const [search, setSearch] = React.useState("")
   const [showAllContracts, setShowAllContracts] = React.useState(false)
@@ -132,6 +135,7 @@ export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
   const [selectedDuration, setSelectedDuration] = React.useState("Ongoing")
   const [contractTitle, setContractTitle] = React.useState("")
   const [message, setMessage] = React.useState("")
+  const [offerSent, setOfferSent] = React.useState(false)
 
   const displayName =
     profile?.username ||
@@ -152,9 +156,29 @@ export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
   const isStepTwo = Boolean(schedule) && !selectedContract && !creatingContract
   const isStepThree = Boolean(schedule) && Boolean(selectedContract)
   const isStepFour = Boolean(schedule) && creatingContract
+  const scheduleLabel = schedule === "part-time" ? "part-time" : "full-time"
+
+  const resetFlow = React.useCallback(() => {
+    setSchedule("")
+    setSearch("")
+    setShowAllContracts(false)
+    setSelectedContractId(null)
+    setCreatingContract(false)
+    setSelectedRate("web-development")
+    setSelectedDuration("Ongoing")
+    setContractTitle("")
+    setMessage("")
+    setOfferSent(false)
+  }, [])
 
   return (
-    <Dialog>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (!nextOpen) resetFlow()
+      }}
+    >
       <DialogTrigger asChild>
         <Button size="md" {...buttonProps}>
           <Plus className="size-[15px]" />
@@ -194,6 +218,56 @@ export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
           </div>
 
           <div className="overflow-y-auto px-6 pb-6 pt-5">
+            {offerSent ? (
+              <div className="flex flex-col items-center pb-2 pt-2 text-center">
+                <div className="inline-flex items-center justify-center text-primary-500">
+                  <Send className="size-[52px]" />
+                </div>
+
+                <h2 className="mt-7 text-[16px] font-semibold leading-normal text-dark-blue-400">
+                  Offer Sent!
+                </h2>
+
+                <p className="mt-6 text-[14px] font-light leading-normal text-dark-blue-400">
+                  <span className="font-semibold">{displayName}</span> has been invited to a{" "}
+                  {scheduleLabel} contract
+                </p>
+
+                <Avatar className="mt-8 size-[64px]">
+                  <AvatarImage
+                    src={profile?.avatarUrl || "/woman.jpg"}
+                    alt={displayName}
+                  />
+                  <AvatarFallback>{displayName.charAt(0)}</AvatarFallback>
+                </Avatar>
+
+                <span className="mt-3 inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-[12px] font-medium leading-normal text-gray-500">
+                  Pending Invite
+                </span>
+
+                <h3 className="mt-8 text-[16px] font-semibold leading-normal text-dark-blue-400">
+                  What would you like to do next?
+                </h3>
+
+                <div className="mt-5 flex w-full items-center justify-center gap-3">
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    onClick={() => setOfferSent(false)}
+                  >
+                    Review Your Offer
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setOpen(false)
+                      router.push("/find-jobs")
+                    }}
+                  >
+                    Continue Browsing
+                  </Button>
+                </div>
+              </div>
+            ) : (
             <div className="flex items-center gap-4">
               <Avatar className="size-[90px] shrink-0">
                 <AvatarImage
@@ -530,11 +604,16 @@ export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
                 />
-                <Button className="mt-4 w-full" disabled={!schedule}>
+                <Button
+                  className="mt-4 w-full"
+                  disabled={!schedule}
+                  onClick={() => setOfferSent(true)}
+                >
                   Send Offer
                 </Button>
               </div>
             ) : null}
+            )}
           </div>
       </DialogContent>
     </Dialog>
