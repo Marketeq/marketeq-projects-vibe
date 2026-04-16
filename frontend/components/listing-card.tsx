@@ -33,6 +33,7 @@ import { Money } from "@/components/money"
 import { NextImage } from "@/components/next-image"
 import { NextLink } from "@/components/next-link"
 import {
+  jobDetailsUrl,
   projectDetailsUrl,
   serviceDetailsUrl,
   talentProfileUrl,
@@ -207,7 +208,9 @@ function ProjectListingCard({
 }: ProjectLikeProps) {
   const computedHref =
     href ??
-    (mode === "owned" && status && status !== "Active"
+    (cardVariant === "job" || cardVariant === "job-grid"
+      ? jobDetailsUrl(id)
+      : mode === "owned" && status && status !== "Active"
       ? `/publish-project?type=${kind}&draftId=${id}`
       : kind === "service"
         ? serviceDetailsUrl(id)
