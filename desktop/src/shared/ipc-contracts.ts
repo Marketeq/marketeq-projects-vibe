@@ -99,6 +99,13 @@ export const IPC = {
   windowHide: 'window:hide',
   windowQuit: 'window:quit',
 
+  // --- Phase 7 Updater (doc 28) ---
+  updaterGetStatus: 'updater:get-status',
+  updaterCheckNow: 'updater:check-now',
+  updaterSetChannel: 'updater:set-channel',
+  updaterDownload: 'updater:download',
+  updaterQuitAndInstall: 'updater:quit-and-install',
+
   // --- Shell helpers ---
   shellOpenExternal: 'shell:open-external',
 } as const;

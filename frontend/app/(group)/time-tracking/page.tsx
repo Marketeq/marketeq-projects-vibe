@@ -1406,10 +1406,8 @@ function ScreenshotDetailsDialog({
 //   doc 30 — Auto-Update & Release Channels  (GitHub releases feed)
 //   doc 41 — In-App Help, Empty States & Onboarding Copy
 
-// Current stable release (updated at build time from GitHub releases)
-const DTT_VERSION = "0.2.0"
-// GitHub Releases on the dedicated desktop repo — spaces become dots in asset names
-const DTT_RELEASES_BASE = `https://github.com/Marketeq/desktop-time-tracker/releases/download/v${DTT_VERSION}`
+// Versionless artifact names from electron-builder.yml — URLs stay stable across releases
+const DTT_RELEASES_BASE = "https://github.com/Marketeq/desktop-time-tracker/releases/latest/download"
 
 type DesktopPlatform = "mac-arm64" | "mac-x64" | "win-x64" | "win-arm64"
 
@@ -1427,33 +1425,33 @@ const platformOptions: Record<DesktopPlatform, PlatformOption> = {
     value: "mac-arm64",
     os: "mac",
     label: "macOS — Apple Silicon (M1/M2/M3)",
-    fileName: `Marketeq Time Tracker-${DTT_VERSION}-arm64.dmg`,
-    fileSize: "118.2 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq.Time.Tracker-${DTT_VERSION}-arm64.dmg`,
+    fileName: "Marketeq-mac-arm64.dmg",
+    fileSize: "102 MB",
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-mac-arm64.dmg`,
   },
   "mac-x64": {
     value: "mac-x64",
     os: "mac",
     label: "macOS — Intel",
-    fileName: `Marketeq Time Tracker-${DTT_VERSION}-x64.dmg`,
-    fileSize: "124.6 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq.Time.Tracker-${DTT_VERSION}-x64.dmg`,
+    fileName: "Marketeq-mac-x64.dmg",
+    fileSize: "107 MB",
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-mac-x64.dmg`,
   },
   "win-x64": {
     value: "win-x64",
     os: "windows",
     label: "Windows 10/11 — 64-bit",
-    fileName: `Marketeq Time Tracker-Setup-${DTT_VERSION}-x64.exe`,
-    fileSize: "96.8 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq.Time.Tracker-Setup-${DTT_VERSION}-x64.exe`,
+    fileName: "Marketeq-Setup-win-x64.exe",
+    fileSize: "~97 MB",
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Setup-win-x64.exe`,
   },
   "win-arm64": {
     value: "win-arm64",
     os: "windows",
     label: "Windows 10/11 — ARM64",
-    fileName: `Marketeq Time Tracker-Setup-${DTT_VERSION}-arm64.exe`,
-    fileSize: "94.3 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq.Time.Tracker-Setup-${DTT_VERSION}-arm64.exe`,
+    fileName: "Marketeq-Setup-win-arm64.exe",
+    fileSize: "~94 MB",
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Setup-win-arm64.exe`,
   },
 }
 
