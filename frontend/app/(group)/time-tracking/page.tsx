@@ -1,7 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import {
+  getScreenshotCards,
+  type ScreenshotCardDTO,
+  type ScreenshotCardsParams,
+} from "@/service/http/screenshots"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   ArrowLeft,
@@ -27,20 +32,39 @@ import {
   ZoomIn,
 } from "@blend-metrics/icons"
 import {
+  Avatar,
+  AvatarFallback,
   Button,
+  buttonVariants,
   Checkbox,
+  Combobox,
+  ComboboxButton,
+  ComboboxInput,
+  ComboboxOption,
+  ComboboxOptions,
+  ComboboxTrigger,
   Dialog,
   DialogClose,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DropdownCommand,
+  DropdownCommandEmpty,
+  DropdownCommandGroup,
+  DropdownCommandInput,
+  DropdownCommandItem,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownPopover,
+  DropdownPopoverContent,
+  DropdownPopoverTrigger,
   IconButton,
   Input,
+  InputGroup,
+  InputLeftElement,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -49,6 +73,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  ScaleOutIn,
+  ScrollArea,
   Textarea,
   Tooltip,
   TooltipContent,
@@ -69,6 +95,8 @@ interface Screenshot {
   isDuplicate?: boolean
   duplicateCount?: number
   isNoActivity?: boolean
+  keyboardPct?: number
+  mousePct?: number
 }
 
 type ProjectColor = "mint" | "salmon" | "lavender" | "cyan" | "gold" | "yellow" | "pink" | "teal" | "sage" | "lime"
@@ -203,6 +231,117 @@ const sampleTimeBlocks: TimeBlock[] = [
   },
 ]
 
+// ─── Transform backend data → frontend TimeBlock[] ─────────────────────
+
+const PROJECT_COLORS: ProjectColor[] = [
+  "mint", "salmon", "lavender", "cyan", "gold", "yellow", "pink", "teal", "sage", "lime",
+]
+
+function transformScreenshotsToTimeBlocks(cards: ScreenshotCardDTO[]): TimeBlock[] {
+  // Group by hour
+  const hourMap = new Map<string, { date: Date; cards: ScreenshotCardDTO[] }>()
+
+  for (const card of cards) {
+    const ts = card.capturedAt ? new Date(card.capturedAt) : new Date(card.createdAt)
+    // Key = date + hour for grouping
+    const hourKey = `${ts.getFullYear()}-${ts.getMonth()}-${ts.getDate()}-${ts.getHours()}`
+    if (!hourMap.has(hourKey)) {
+      hourMap.set(hourKey, { date: ts, cards: [] })
+    }
+    hourMap.get(hourKey)!.cards.push(card)
+  }
+
+  // Color assignment by projectId
+  const projectColorMap = new Map<string, ProjectColor>()
+  let colorIdx = 0
+
+  const getProjectColor = (projectId: string | null): ProjectColor => {
+    const key = projectId ?? "__none__"
+    if (!projectColorMap.has(key)) {
+      projectColorMap.set(key, PROJECT_COLORS[colorIdx % PROJECT_COLORS.length])
+      colorIdx++
+    }
+    return projectColorMap.get(key)!
+  }
+
+  const blocks: TimeBlock[] = []
+
+  for (const [, { date, cards: hourCards }] of hourMap) {
+    const hour = date.getHours()
+    const ampm = hour >= 12 ? "pm" : "am"
+    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
+    const hourLabel = `${displayHour} ${ampm}`
+
+    const dateLabel = date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
+
+    // Group by projectId within this hour
+    const projectMap = new Map<string, ScreenshotCardDTO[]>()
+    for (const c of hourCards) {
+      const pid = c.projectId ?? "__none__"
+      if (!projectMap.has(pid)) projectMap.set(pid, [])
+      projectMap.get(pid)!.push(c)
+    }
+
+    const projects: ProjectBlock[] = []
+    for (const [pid, pCards] of projectMap) {
+      const screenshots: Screenshot[] = pCards.map((c) => {
+        const capturedDate = c.capturedAt ? new Date(c.capturedAt) : new Date(c.createdAt)
+        const timeStr = capturedDate.toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        }).toLowerCase()
+
+        const activityLevel = Math.round((c.keyboardPct + c.mousePct) / 2)
+        const apps = c.apps
+          ? c.apps.map((a) => a.appName.toLowerCase().replace(/\s+/g, ""))
+          : []
+
+        return {
+          id: c.id,
+          time: timeStr,
+          imageUrl: c.thumbnailUrl || "",
+          activityLevel,
+          apps,
+          isNoActivity: activityLevel === 0 && (!c.apps || c.apps.length === 0),
+          keyboardPct: c.keyboardPct,
+          mousePct: c.mousePct,
+        }
+      })
+
+      projects.push({
+        projectName: pid === "__none__" ? "No Project" : `Project`,
+        projectColor: getProjectColor(pid === "__none__" ? null : pid),
+        taskName: pCards[0]?.taskId ?? "No task",
+        screenshots,
+      })
+    }
+
+    // Total seconds in this hour block (rough: count * 10min intervals)
+    const totalMinutes = hourCards.length * 10
+    const hrs = Math.floor(totalMinutes / 60)
+    const mins = totalMinutes % 60
+    const totalTime = `${hrs}:${mins.toString().padStart(2, "0")} hrs`
+
+    blocks.push({
+      id: `tb-${date.getTime()}-${hour}`,
+      hour: hourLabel,
+      date: dateLabel,
+      totalTime,
+      projects,
+    })
+  }
+
+  // Sort blocks by time descending
+  blocks.sort((a, b) => b.id.localeCompare(a.id))
+
+  return blocks
+}
+
 // ─── Screenshot Thumbnail ───────────────────────────────────────────────
 
 function ScreenshotThumbnail({
@@ -227,11 +366,15 @@ function ScreenshotThumbnail({
           <div className="w-full h-full bg-gray-100 flex items-center justify-center">
             <span className="text-xs text-gray-400">No Activity</span>
           </div>
+        ) : screenshot.imageUrl ? (
+          <img
+            src={screenshot.imageUrl}
+            alt={`Screenshot at ${screenshot.time}`}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
         ) : (
-          <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-            {/* Placeholder for actual screenshot images */}
-            <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-900" />
-          </div>
+          <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-900" />
         )}
         {/* Duplicate badge */}
         {screenshot.isDuplicate && screenshot.duplicateCount && (
@@ -259,26 +402,136 @@ function ScreenshotThumbnail({
 // ─── Project Bar ────────────────────────────────────────────────────────
 
 function ProjectBar({ project }: { project: ProjectBlock }) {
+  const [projectName, setProjectName] = useState(project.projectName)
+  const [taskName, setTaskName] = useState(project.taskName)
+  const [tasks, setTasks] = useState<string[]>(taskOptions)
+  const selectedProject =
+    projectOptions.find((option) => option.name === projectName) ??
+    ({
+      id: projectName,
+      name: projectName,
+      handle: "",
+      avatarColor: "bg-gray-300",
+      initial: projectName.charAt(0).toUpperCase(),
+    } satisfies ProjectOption)
+
   return (
     <div className={cn("flex items-center gap-2 px-3 py-1.5 rounded-md border", projectBarColors[project.projectColor])}>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button type="button" className={cn("text-sm font-semibold flex items-center gap-1", projectLabelColors[project.projectColor])}>
-            {project.projectName}
-            <ChevronDown className="size-3.5" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuItem>Project 1</DropdownMenuItem>
-          <DropdownMenuItem>Project 2</DropdownMenuItem>
-          <DropdownMenuItem>Project 3</DropdownMenuItem>
-          <DropdownMenuItem>Project 4</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <span className="text-sm text-gray-500">{project.taskName}</span>
-      <button type="button" className="text-gray-400 hover:text-gray-600 ml-auto">
-        <Edit03 className="size-3.5" />
-      </button>
+      <DropdownPopover
+        selected={selectedProject}
+        onSelectedChange={(option: ProjectOption | null) => {
+          if (option) setProjectName(option.name)
+        }}
+      >
+        <DropdownPopoverTrigger
+          className={cn(
+            "h-auto w-auto shrink-0 border-0 bg-transparent p-0 text-left shadow-none ring-0 hover:bg-transparent data-[state=open]:border-0 data-[state=open]:bg-transparent data-[state=open]:ring-0",
+            projectLabelColors[project.projectColor]
+          )}
+        >
+          <span className="inline-flex items-center gap-1 text-base font-semibold leading-6">
+            <span>{projectName}</span>
+            <ChevronDown className="mt-px size-3.5 shrink-0" />
+          </span>
+        </DropdownPopoverTrigger>
+        <DropdownPopoverContent
+          sideOffset={4}
+          className="w-[448px] max-w-[calc(100vw-3rem)] rounded-xl border border-gray-100 p-0 shadow-[0_24px_48px_rgba(16,24,40,0.18)]"
+        >
+          <DropdownCommand>
+            <InputGroup>
+              <InputLeftElement className="w-8 text-gray-400">
+                <SearchSm className="size-4" />
+              </InputLeftElement>
+              <DropdownCommandInput placeholder="Find contracts" className="pl-8" />
+            </InputGroup>
+            <DropdownCommandEmpty>No contracts found.</DropdownCommandEmpty>
+            <ScrollArea className="h-[224px]" type="always">
+              <DropdownCommandGroup className="py-1">
+                {projectOptions.map((option) => (
+                  <DropdownCommandItem
+                    key={option.id}
+                    itemValue={option}
+                    className="items-center gap-3 px-4 py-3 text-left data-[state=selected]:bg-gray-50"
+                  >
+                    <Avatar size="sm" className={cn("hover:ring-0 active:ring-0", option.avatarColor)}>
+                      <AvatarFallback className="bg-transparent text-white hover:bg-transparent">
+                        {option.initial}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-dark-blue-400">{option.name}</div>
+                      <div className="truncate text-xs text-gray-400">{option.handle}</div>
+                    </div>
+                  </DropdownCommandItem>
+                ))}
+              </DropdownCommandGroup>
+            </ScrollArea>
+          </DropdownCommand>
+        </DropdownPopoverContent>
+      </DropdownPopover>
+
+      <div className="h-4 w-px bg-gray-300/70" />
+
+      <DropdownPopover
+        selected={taskName}
+        onSelectedChange={(value: string | null) => {
+          if (value) setTaskName(value)
+        }}
+      >
+        <DropdownPopoverTrigger className="h-auto w-auto min-w-0 flex-1 justify-start border-0 bg-transparent p-0 text-left shadow-none ring-0 hover:bg-transparent data-[state=open]:border-0 data-[state=open]:bg-transparent data-[state=open]:ring-0">
+          <span className="inline-flex min-w-0 items-center gap-1.5 text-[14px] leading-6 text-gray-500">
+            <span className="truncate">{taskName}</span>
+            <Edit03 className="mt-px size-3.5 shrink-0 text-gray-400" />
+          </span>
+        </DropdownPopoverTrigger>
+        <DropdownPopoverContent
+          align="start"
+          sideOffset={4}
+          className="w-[462px] max-w-[calc(100vw-3rem)] rounded-xl border border-gray-100 p-0 shadow-[0_24px_48px_rgba(16,24,40,0.18)]"
+        >
+          <DropdownCommand>
+            <InputGroup>
+              <InputLeftElement className="w-8 text-gray-400">
+                <SearchSm className="size-4" />
+              </InputLeftElement>
+              <DropdownCommandInput placeholder="Find Tasks" className="pl-8" />
+            </InputGroup>
+            <DropdownCommandEmpty>No tasks found.</DropdownCommandEmpty>
+            <ScrollArea className="h-[224px]" type="always">
+              <DropdownCommandGroup className="py-1">
+                {tasks.map((option) => (
+                  <DropdownCommandItem
+                    key={option}
+                    itemValue={option}
+                    className={cn(
+                      "px-4 py-3 text-left text-sm font-medium data-[state=selected]:bg-gray-50",
+                      option === taskName ? "text-dark-blue-400" : "text-gray-500"
+                    )}
+                  >
+                    {option}
+                  </DropdownCommandItem>
+                ))}
+              </DropdownCommandGroup>
+            </ScrollArea>
+            <div className="border-t border-gray-100 px-4 py-3">
+              <Button
+                onClick={() => {
+                  const nextTask = `Task ${tasks.length + 1}`
+                  setTasks((current) => [...current, nextTask])
+                  setTaskName(nextTask)
+                }}
+                variant="link"
+                visual="gray"
+                leftIcon={<Plus className="size-4" />}
+                className="w-full justify-center text-sm"
+              >
+                Add New Task
+              </Button>
+            </div>
+          </DropdownCommand>
+        </DropdownPopoverContent>
+      </DropdownPopover>
     </div>
   )
 }
@@ -728,6 +981,8 @@ const projectOptions: ProjectOption[] = [
   { id: "p2", name: "Logo Design", handle: "@christheclient234", avatarColor: "bg-gray-300", initial: "L" },
   { id: "p3", name: "Saas Landing Page", handle: "@referrizerllc", avatarColor: "bg-primary-100", initial: "S" },
   { id: "p4", name: "Website Redesign", handle: "@referrizerllc", avatarColor: "bg-primary-100", initial: "W" },
+  { id: "p5", name: "App Redesign Sprint", handle: "@northstarstudio", avatarColor: "bg-success-400", initial: "A" },
+  { id: "p6", name: "Design QA Support", handle: "@brandteam", avatarColor: "bg-gray-500", initial: "D" },
 ]
 
 const taskOptions: string[] = [
@@ -735,69 +990,67 @@ const taskOptions: string[] = [
   "Editing layouts",
   "Fix checkout flow bugs",
   "Add analytics summary cards",
+  "Research & Design Tooltips",
+  "Prepare responsive polish pass",
 ]
 
 function ContractPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [query, setQuery] = useState("")
-  const [open, setOpen] = useState(false)
   const filtered = projectOptions.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()))
+  const selectedProject =
+    projectOptions.find((project) => project.name === value) ??
+    ({ id: value, name: value, handle: "", avatarColor: "bg-gray-300", initial: value.charAt(0).toUpperCase() } satisfies ProjectOption)
 
   return (
     <div className="space-y-1.5">
       <label className="text-sm text-gray-500">Contract</label>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="w-full flex items-center justify-between px-3 py-2 border border-gray-200 rounded-md bg-white hover:border-gray-300 transition-colors"
-          >
-            <span className="text-sm font-medium text-dark-blue-400 truncate">{value}</span>
-            <Edit03 className="size-3.5 text-gray-400 flex-none" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-[272px] p-0 bg-white border border-gray-100 shadow-lg rounded-lg overflow-hidden">
-          <div className="p-2 border-b border-gray-100">
-            <div className="relative">
-              <SearchSm className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Find Project"
-                className="w-full h-9 pl-8 pr-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:border-primary-300"
-              />
-            </div>
+      <Combobox value={selectedProject} onChange={(project: ProjectOption) => onChange(project.name)} className="w-full">
+        <ComboboxTrigger>
+          <div className="relative">
+            <ComboboxInput
+              className="h-10 pl-3 pr-9 text-sm font-medium text-dark-blue-400"
+              displayValue={(project: ProjectOption) => project?.name ?? ""}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <ComboboxButton align="right" className="right-3 text-gray-400 peer-focus:text-gray-400">
+              <Edit03 className="size-3.5" />
+            </ComboboxButton>
           </div>
-          <div className="max-h-[240px] overflow-y-auto py-1 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
-            {filtered.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => {
-                  onChange(p.name)
-                  setOpen(false)
-                }}
-                className="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 text-left"
-              >
-                <div className={cn("size-8 rounded-full flex-none flex items-center justify-center text-xs font-semibold text-white", p.avatarColor)}>
-                  {p.initial}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-dark-blue-400 truncate">{p.name}</div>
-                  <div className="text-xs text-gray-400 truncate">{p.handle}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </PopoverContent>
-      </Popover>
+        </ComboboxTrigger>
+        <ScaleOutIn afterLeave={() => setQuery("")}>
+          <ComboboxOptions className="mt-1 w-[448px] max-w-[calc(100vw-3rem)] space-y-0 rounded-xl border border-gray-100 bg-white px-0 py-0 shadow-[0_24px_48px_rgba(16,24,40,0.18)]">
+            <ScrollArea viewportClassName="max-h-[272px]">
+              {filtered.length === 0 ? (
+                <li className="px-5 py-6 text-center text-sm text-gray-400">No contracts found</li>
+              ) : (
+                filtered.map((project) => (
+                  <ComboboxOption
+                    key={project.id}
+                    value={project}
+                    className="flex items-center gap-3 px-5 py-3 text-left ui-active:bg-gray-50 ui-active:text-inherit"
+                  >
+                    <Avatar size="sm" className={cn("hover:ring-0 active:ring-0", project.avatarColor)}>
+                      <AvatarFallback className="bg-transparent text-white hover:bg-transparent">
+                        {project.initial}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-dark-blue-400">{project.name}</div>
+                      <div className="truncate text-xs text-gray-400">{project.handle}</div>
+                    </div>
+                  </ComboboxOption>
+                ))
+              )}
+            </ScrollArea>
+          </ComboboxOptions>
+        </ScaleOutIn>
+      </Combobox>
     </div>
   )
 }
 
 function TaskPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [query, setQuery] = useState("")
-  const [open, setOpen] = useState(false)
   const [tasks, setTasks] = useState<string[]>(taskOptions)
   const filtered = tasks.filter((t) => t.toLowerCase().includes(query.toLowerCase()))
 
@@ -807,66 +1060,59 @@ function TaskPicker({ value, onChange }: { value: string; onChange: (v: string) 
       setTasks([...tasks, next])
       onChange(next)
       setQuery("")
-      setOpen(false)
     }
   }
 
   return (
     <div className="space-y-1.5">
       <label className="text-sm text-gray-500">Task</label>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="w-full flex items-center justify-between px-3 py-2 border border-gray-200 rounded-md bg-white hover:border-gray-300 transition-colors"
-          >
-            <span className="text-sm font-medium text-dark-blue-400 truncate">{value}</span>
-            <Edit03 className="size-3.5 text-gray-400 flex-none" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-[272px] p-0 bg-white border border-gray-100 shadow-lg rounded-lg overflow-hidden">
-          <div className="p-2 border-b border-gray-100">
-            <div className="relative">
-              <SearchSm className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Find Tasks"
-                className="w-full h-9 pl-8 pr-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:border-primary-300"
-              />
-            </div>
+      <Combobox value={value} onChange={(task: string) => onChange(task)} className="w-full" nullable>
+        <ComboboxTrigger>
+          <div className="relative">
+            <ComboboxInput
+              className="h-10 pl-3 pr-9 text-sm font-medium text-dark-blue-400"
+              displayValue={(task: string) => task ?? ""}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <ComboboxButton align="right" className="right-3 text-gray-400 peer-focus:text-gray-400">
+              <Edit03 className="size-3.5" />
+            </ComboboxButton>
           </div>
-          <div className="max-h-[200px] overflow-y-auto py-1 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
-            {filtered.map((t, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => {
-                  onChange(t)
-                  setOpen(false)
-                }}
-                className={cn(
-                  "w-full px-3 py-2 text-left text-sm hover:bg-gray-50 transition-colors",
-                  t === value ? "bg-gray-50 text-dark-blue-400 font-medium" : "text-gray-600"
-                )}
+        </ComboboxTrigger>
+        <ScaleOutIn afterLeave={() => setQuery("")}>
+          <ComboboxOptions className="left-auto right-0 mt-1 w-[462px] max-w-[calc(100vw-3rem)] space-y-0 rounded-xl border border-gray-100 bg-white px-0 py-0 shadow-[0_24px_48px_rgba(16,24,40,0.18)]">
+            <ScrollArea viewportClassName="max-h-[224px]">
+              {filtered.length === 0 ? (
+                <li className="px-5 py-6 text-center text-sm text-gray-400">No tasks found</li>
+              ) : (
+                filtered.map((task) => (
+                  <ComboboxOption
+                    key={task}
+                    value={task}
+                    className={cn(
+                      "px-5 py-3 text-sm font-medium text-left ui-active:bg-gray-50 ui-active:text-dark-blue-400",
+                      task === value ? "text-dark-blue-400" : "text-gray-500"
+                    )}
+                  >
+                    {task}
+                  </ComboboxOption>
+                ))
+              )}
+            </ScrollArea>
+            <li className="border-t border-gray-100 px-5 py-3">
+              <Button
+                onClick={addNewTask}
+                variant="link"
+                visual="gray"
+                leftIcon={<Plus className="size-4" />}
+                className="w-full justify-center text-sm"
               >
-                {t}
-              </button>
-            ))}
-          </div>
-          <div className="border-t border-gray-100 p-1">
-            <button
-              type="button"
-              onClick={addNewTask}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm text-primary-500 hover:bg-primary-25 rounded-md font-medium"
-            >
-              <Plus className="size-4" />
-              Add New Task
-            </button>
-          </div>
-        </PopoverContent>
-      </Popover>
+                Add New Task
+              </Button>
+            </li>
+          </ComboboxOptions>
+        </ScaleOutIn>
+      </Combobox>
     </div>
   )
 }
@@ -895,8 +1141,8 @@ function ScreenshotDetailsDialog({
 
   if (!current) return null
   const s = current.screenshot
-  const keyboardActivity = s.activityLevel
-  const mouseActivity = Math.max(0, Math.round(s.activityLevel * 0.7))
+  const keyboardActivity = s.keyboardPct ?? s.activityLevel
+  const mouseActivity = s.mousePct ?? Math.max(0, Math.round(s.activityLevel * 0.7))
 
   return (
     <Dialog open={!!openId} onOpenChange={onOpenChange}>
@@ -958,6 +1204,12 @@ function ScreenshotDetailsDialog({
                   <div className="w-full h-full bg-gray-100 rounded-lg flex items-center justify-center">
                     <span className="text-sm text-gray-400">No Activity</span>
                   </div>
+                ) : s.imageUrl ? (
+                  <img
+                    src={s.imageUrl}
+                    alt={`Screenshot at ${s.time}`}
+                    className="w-full h-full rounded-lg object-cover"
+                  />
                 ) : (
                   <div className="w-full h-full rounded-lg bg-gradient-to-br from-gray-700 to-gray-900" />
                 )}
@@ -1044,6 +1296,13 @@ function ScreenshotDetailsDialog({
                       >
                         {f.screenshot.isNoActivity ? (
                           <div className="w-full h-full bg-gray-100" />
+                        ) : f.screenshot.imageUrl ? (
+                          <img
+                            src={f.screenshot.imageUrl}
+                            alt={`Screenshot at ${f.screenshot.time}`}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
                         ) : (
                           <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-900" />
                         )}
@@ -1148,7 +1407,7 @@ function ScreenshotDetailsDialog({
 //   doc 41 — In-App Help, Empty States & Onboarding Copy
 
 // Current stable release (updated at build time from GitHub releases)
-const DTT_VERSION = "1.0.0"
+const DTT_VERSION = "0.2.0"
 const DTT_RELEASES_BASE = "https://github.com/Marketeq/desktop-time-tracker/releases/latest/download"
 
 type DesktopPlatform = "mac-arm64" | "mac-x64" | "win-x64" | "win-arm64"
@@ -1163,40 +1422,41 @@ interface PlatformOption {
 }
 
 // Artifact names follow electron-builder config from doc 29 §1.1:
-//   mac:  "Desktop Time Tracker-${version}-${arch}.dmg"
-//   win:  "Desktop Time Tracker-Setup-${version}-${arch}.exe"
+//   mac:  "Marketeq Time Tracker-${version}-${arch}.dmg"
+//   win NSIS:  "Marketeq Time Tracker-Setup-${version}-${arch}.exe"
+//   win portable:  "Marketeq Time Tracker-${version}-${arch}-portable.exe"
 const platformOptions: Record<DesktopPlatform, PlatformOption> = {
   "mac-arm64": {
     value: "mac-arm64",
     os: "mac",
     label: "macOS — Apple Silicon (M1/M2/M3)",
-    fileName: `Desktop Time Tracker-${DTT_VERSION}-arm64.dmg`,
+    fileName: `Marketeq Time Tracker-${DTT_VERSION}-arm64.dmg`,
     fileSize: "118.2 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Desktop-Time-Tracker-${DTT_VERSION}-arm64.dmg`,
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Time-Tracker-${DTT_VERSION}-arm64.dmg`,
   },
   "mac-x64": {
     value: "mac-x64",
     os: "mac",
     label: "macOS — Intel",
-    fileName: `Desktop Time Tracker-${DTT_VERSION}-x64.dmg`,
+    fileName: `Marketeq Time Tracker-${DTT_VERSION}-x64.dmg`,
     fileSize: "124.6 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Desktop-Time-Tracker-${DTT_VERSION}-x64.dmg`,
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Time-Tracker-${DTT_VERSION}-x64.dmg`,
   },
   "win-x64": {
     value: "win-x64",
     os: "windows",
     label: "Windows 10/11 — 64-bit",
-    fileName: `Desktop Time Tracker-Setup-${DTT_VERSION}-x64.exe`,
+    fileName: `Marketeq Time Tracker-Setup-${DTT_VERSION}-x64.exe`,
     fileSize: "96.8 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Desktop-Time-Tracker-Setup-${DTT_VERSION}-x64.exe`,
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Time-Tracker-Setup-${DTT_VERSION}-x64.exe`,
   },
   "win-arm64": {
     value: "win-arm64",
     os: "windows",
     label: "Windows 10/11 — ARM64",
-    fileName: `Desktop Time Tracker-Setup-${DTT_VERSION}-arm64.exe`,
+    fileName: `Marketeq Time Tracker-Setup-${DTT_VERSION}-arm64.exe`,
     fileSize: "94.3 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Desktop-Time-Tracker-Setup-${DTT_VERSION}-arm64.exe`,
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Time-Tracker-Setup-${DTT_VERSION}-arm64.exe`,
   },
 }
 
@@ -1283,7 +1543,7 @@ function DownloadDesktopTrackerDialog({
             </div>
             <div>
               <DialogTitle className="text-base font-semibold text-dark-blue-400">
-                Download Desktop Time Tracker
+                Download Marketeq Time Tracker
               </DialogTitle>
               <p className="text-xs text-gray-500 mt-0.5">
                 Track your time, stay in sync, get paid.
@@ -1299,7 +1559,7 @@ function DownloadDesktopTrackerDialog({
 
         <div className="px-6 pb-6 space-y-5">
           <p className="text-xs text-gray-600 leading-5">
-            Desktop Time Tracker helps you log billable hours, capture activity,
+            Marketeq Time Tracker helps you log billable hours, capture activity,
             and keep disputes to a minimum. Set up takes about 2 minutes.
           </p>
 
@@ -1378,7 +1638,7 @@ function DownloadDesktopTrackerDialog({
               {(isMac
                 ? [
                     "Open the downloaded .dmg file",
-                    'Drag "Desktop Time Tracker" into your Applications folder',
+                    'Drag "Marketeq Time Tracker" into your Applications folder',
                     "Launch the app and sign in with your Marketeq account",
                     "Grant Screen Recording, Accessibility, and Notification permissions when prompted",
                   ]
@@ -1428,11 +1688,55 @@ export default function TimeTrackingPage() {
   const [contractFilter, setContractFilter] = useState("all")
   const [dateRange] = useState("Jan 6, 2022 – Jan 13, 2022")
   const [timezone] = useState("UTC-4 New York (Me)")
+  const [bulkSelectionEnabled, setBulkSelectionEnabled] = useState(false)
   const [showManualTimeDialog, setShowManualTimeDialog] = useState(false)
   const [showDownloadTracker, setShowDownloadTracker] = useState(false)
   const [appliedFilters, setAppliedFilters] = useState<AppliedFilters>(emptyAppliedFilters)
 
-  const flatScreenshots = flattenScreenshots(sampleTimeBlocks)
+  // --- Real data fetching ---
+  const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>(sampleTimeBlocks)
+  const [isLoading, setIsLoading] = useState(true)
+  const [totalTime, setTotalTime] = useState("03:24")
+  const [screenshotCount, setScreenshotCount] = useState(0)
+
+  const fetchScreenshots = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const params: ScreenshotCardsParams = {
+        sortBy: "timestamp",
+        sortOrder: "DESC",
+        pageSize: 100,
+      }
+      if (contractFilter !== "all") {
+        params.projectId = contractFilter
+      }
+      const res = await getScreenshotCards(params)
+      if (res.data && res.data.length > 0) {
+        const blocks = transformScreenshotsToTimeBlocks(res.data)
+        setTimeBlocks(blocks)
+        setScreenshotCount(res.total)
+        // Compute total time from screenshot count (each ~10 min interval)
+        const totalMin = res.data.length * 10
+        const hrs = Math.floor(totalMin / 60)
+        const mins = totalMin % 60
+        setTotalTime(`${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}`)
+      } else {
+        // No real data — keep sample data for demo
+        setTimeBlocks(sampleTimeBlocks)
+      }
+    } catch {
+      // API not available — fallback to sample data
+      setTimeBlocks(sampleTimeBlocks)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [contractFilter])
+
+  useEffect(() => {
+    fetchScreenshots()
+  }, [fetchScreenshots])
+
+  const flatScreenshots = useMemo(() => flattenScreenshots(timeBlocks), [timeBlocks])
   const appliedChips = getAppliedChips(appliedFilters)
   const totalActiveFilters = Object.values(appliedFilters).reduce((sum, arr) => sum + arr.length, 0)
 
@@ -1462,7 +1766,7 @@ export default function TimeTrackingPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <h1 className="text-xl font-bold text-dark-blue-400">
-                Total time <span className="text-2xl">03:24</span>
+                Total time <span className="text-2xl">{totalTime}</span>
               </h1>
               <span className="text-sm text-gray-400">
                 + Manual time <span className="font-bold text-primary-500">0:23hr</span>
@@ -1487,12 +1791,27 @@ export default function TimeTrackingPage() {
           {/* ── Filter bar ── */}
           <div className="flex items-center justify-between mt-5 gap-3">
             <div className="flex items-center gap-2">
+              <div
+                className={cn(
+                  buttonVariants({ variant: "outlined", visual: "gray", size: "sm" }),
+                  "min-w-[56px] justify-between bg-white px-2.5"
+                )}
+              >
+                <Checkbox
+                  checked={bulkSelectionEnabled}
+                  onCheckedChange={(checked) => setBulkSelectionEnabled(checked === true)}
+                  className="hover:ring-0 active:ring-0"
+                />
+                <ChevronDown className="size-4 text-gray-500" />
+              </div>
+
               {/* Filter button */}
               <FilterPopover applied={appliedFilters} onChange={setAppliedFilters}>
                 <Button
                   variant="outlined"
                   visual="gray"
                   size="sm"
+                  className="bg-white"
                   leftIcon={<FilterLines className="size-4" />}
                 >
                   <span>Filter</span>
@@ -1511,7 +1830,7 @@ export default function TimeTrackingPage() {
 
               {/* Contract filter */}
               <Select value={contractFilter} onValueChange={setContractFilter}>
-                <SelectTrigger className="w-[160px] h-9">
+                <SelectTrigger className="h-9 w-[160px] bg-white">
                   <SelectValue placeholder="All Contracts" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1524,7 +1843,7 @@ export default function TimeTrackingPage() {
               </Select>
 
               {/* Date range */}
-              <Button variant="outlined" visual="gray" size="sm" leftIcon={<Calendar className="size-4" />}>
+              <Button variant="outlined" visual="gray" size="sm" className="bg-white" leftIcon={<Calendar className="size-4" />}>
                 {dateRange}
               </Button>
             </div>
@@ -1536,7 +1855,7 @@ export default function TimeTrackingPage() {
 
               {/* Timezone */}
               <Select value={timezone}>
-                <SelectTrigger className="w-[200px] h-9">
+                <SelectTrigger className="w-[200px] h-9 bg-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1602,14 +1921,28 @@ export default function TimeTrackingPage() {
 
           {/* ── Time blocks ── */}
           <div className="mt-4 divide-y divide-gray-200">
-            {sampleTimeBlocks.map((block) => (
-              <TimeBlockCard
-                key={block.id}
-                block={block}
-                selectedScreenshotId={selectedScreenshotId}
-                onSelectScreenshot={selectScreenshot}
-              />
-            ))}
+            {isLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="size-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm text-gray-400">Loading screenshots...</span>
+                </div>
+              </div>
+            ) : timeBlocks.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <Image01 className="size-10 text-gray-300" />
+                <p className="text-sm text-gray-400">No screenshots found for this period</p>
+              </div>
+            ) : (
+              timeBlocks.map((block) => (
+                <TimeBlockCard
+                  key={block.id}
+                  block={block}
+                  selectedScreenshotId={selectedScreenshotId}
+                  onSelectScreenshot={selectScreenshot}
+                />
+              ))
+            )}
           </div>
         </div>
       </div>
