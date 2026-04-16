@@ -489,6 +489,7 @@ export class ProjectSyncService {
       location?: string;
       experienceLevel: string;
       estimatedHours: number;
+      assigneeEmail?: string;
     }>;
   }> {
     if (!Array.isArray(value)) return [];
@@ -517,12 +518,17 @@ export class ProjectSyncService {
             ? ((t as any).estimated_hours as number)
             : 0;
       if (!title || !roleName) return null;
+      const assigneeEmail =
+        typeof t.assigneeEmail === 'string' && t.assigneeEmail.trim()
+          ? t.assigneeEmail.trim().toLowerCase()
+          : undefined;
       return {
         title,
         roleName,
         location,
         experienceLevel,
         estimatedHours,
+        assigneeEmail,
       };
     };
     return value
