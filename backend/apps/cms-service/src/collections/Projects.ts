@@ -9,6 +9,7 @@ import {
   syncProjectToListings,
   deleteProjectFromListings,
 } from '../hooks/afterChange/syncProjects';
+import { computeProjectFields } from '../hooks/beforeChange/computeProjectFields';
 
 /**
  * Projects — dedicated CMS collection for the "Projects" listing type.
@@ -445,6 +446,35 @@ export const Projects: CollectionConfig = {
                 },
               ],
             },
+            // Per creation/Strapi Integration §60 + creation/Fields That
+            // Require Autocomplete §3: industries are distinct from
+            // categories and rendered as "industry badges" on the details
+            // page (doc §13 L52). Sourced from the same autocomplete
+            // library as categories (filterLevel=1 or 2).
+            {
+              name: 'industries',
+              type: 'array',
+              maxRows: 5,
+              labels: { singular: 'Industry', plural: 'Industries' },
+              admin: {
+                description:
+                  'Industry tags shown as badges. Max 5. Distinct from project categories.',
+              },
+              fields: [{ name: 'value', type: 'text', required: true }],
+            },
+            // Per spec §16 L139 + creation §208: editor-curated list of
+            // related projects. M2M self-reference so the admin can pick
+            // from the same Projects collection.
+            {
+              name: 'relatedProjects',
+              type: 'relationship',
+              relationTo: 'projects' as any,
+              hasMany: true,
+              admin: {
+                description:
+                  'Manually curated related projects. Shown in the "You might also like" rail on the details page.',
+              },
+            },
           ],
         },
 
@@ -553,6 +583,164 @@ export const Projects: CollectionConfig = {
             },
           ],
         },
+
+        // ── 6. Admin & moderation ─────────────────────────────────────────
+        // Per docs/md/.../16 - Strapi Integration §Basic Project Info L44-51
+        // + §SEO & Admin L137-149. Fields here are internal-only (not
+        // synced to listings or rendered on the frontend) except where
+        // the sync hook explicitly reads them.
+        {
+          label: 'Admin & Moderation',
+          description:
+            'Internal fields for project governance. Not shown to public visitors.',
+          fields: [
+            {
+              type: 'row',
+              fields: [
+                {
+                  name: 'visibility',
+                  type: 'select',
+                  defaultValue: 'public',
+                  options: [
+                    { label: 'Public', value: 'public' },
+                    { label: 'Private', value: 'private' },
+                    { label: 'Unlisted', value: 'unlisted' },
+                  ],
+                  admin: {
+                    width: '33%',
+                    description:
+                      'Distinct from draft/published. "Private" hides from search; "Unlisted" is accessible by direct URL only.',
+                  },
+                },
+                {
+                  name: 'moderationStatus',
+                  type: 'select',
+                  defaultValue: 'approved',
+                  options: [
+                    { label: 'Pending', value: 'pending' },
+                    { label: 'Approved', value: 'approved' },
+                    { label: 'Rejected', value: 'rejected' },
+                    { label: 'Escalated', value: 'escalated' },
+                  ],
+                  admin: {
+                    width: '33%',
+                    description:
+                      'Content-moderation status, separate from Payload\'s draft/published workflow. Set automatically by the FlagScore hook (§14.12).',
+                  },
+                },
+                {
+                  name: 'ownerId',
+                  type: 'text',
+                  admin: {
+                    width: '33%',
+                    description:
+                      'UUID of the project owner from user-service. Links this project to a real user for team, audit, and permissions.',
+                  },
+                },
+              ],
+            },
+            {
+              type: 'row',
+              fields: [
+                {
+                  name: 'isFlagged',
+                  type: 'checkbox',
+                  defaultValue: false,
+                  admin: {
+                    width: '33%',
+                    description: 'Internal flag for admin review.',
+                  },
+                },
+                {
+                  name: 'forceReviewOnEdit',
+                  type: 'checkbox',
+                  defaultValue: true,
+                  admin: {
+                    width: '33%',
+                    description:
+                      'When true, editing sensitive fields (title, description, deliverables, tags, skills, video) sets moderationStatus back to "pending" (§14.13).',
+                  },
+                },
+                {
+                  name: 'previewToken',
+                  type: 'text',
+                  admin: {
+                    width: '33%',
+                    readOnly: true,
+                    description:
+                      'Auto-generated shareable token for previewing unpublished drafts. Set on first create by the beforeChange hook.',
+                  },
+                },
+              ],
+            },
+            {
+              name: 'adminNotes',
+              type: 'richText',
+              admin: {
+                description:
+                  'Internal notes visible only to admins. Not synced to listings or shown publicly.',
+              },
+            },
+            {
+              name: 'adminTags',
+              type: 'array',
+              labels: { singular: 'Admin Tag', plural: 'Admin Tags' },
+              admin: {
+                description: 'Internal categorization tags for admin use only.',
+              },
+              fields: [
+                { name: 'value', type: 'text', required: true },
+              ],
+            },
+            {
+              name: 'activityLog',
+              type: 'array',
+              labels: { singular: 'Entry', plural: 'Activity Log' },
+              admin: {
+                readOnly: true,
+                description:
+                  'Audit trail appended automatically on every save. Shape per spec §14.16 / §11.',
+              },
+              fields: [
+                {
+                  name: 'actionType',
+                  type: 'select',
+                  options: [
+                    { label: 'Create', value: 'create' },
+                    { label: 'Update', value: 'update' },
+                    { label: 'Publish', value: 'publish' },
+                    { label: 'Unpublish', value: 'unpublish' },
+                    { label: 'Flag', value: 'flag' },
+                    { label: 'Moderate', value: 'moderate' },
+                  ],
+                },
+                { name: 'performedBy', type: 'text' },
+                { name: 'timestamp', type: 'date' },
+                { name: 'fieldChanged', type: 'text' },
+              ],
+            },
+            // SEO — per spec §16 L137-138. The @payloadcms/plugin-seo is
+            // installed globally but not targeted at this collection, so
+            // adding inline fields for now.
+            {
+              type: 'row',
+              fields: [
+                {
+                  name: 'seoTitle',
+                  type: 'text',
+                  maxLength: 70,
+                  admin: { width: '50%', description: 'Max 70 chars. Defaults to project title if empty.' },
+                },
+                {
+                  name: 'seoDescription',
+                  type: 'textarea',
+                  maxLength: 160,
+                  admin: { width: '50%', description: 'Max 160 chars. Defaults to shortDescription if empty.' },
+                },
+              ],
+            },
+          ],
+        },
       ],
     },
 
@@ -597,6 +785,9 @@ export const Projects: CollectionConfig = {
   ],
 
   hooks: {
+    // Derive Computed-tab fields from the authored doc before persistence.
+    // See docs/md/CMS Service/projects/GAP-ANALYSIS.md §2 + §7 Tier 1.
+    beforeChange: [computeProjectFields],
     afterChange: [syncProjectToListings],
     afterDelete: [deleteProjectFromListings],
   },

@@ -44,7 +44,7 @@ export class ProjectSyncService {
            "pricingModel", "priceViewMode", "priceMax", "projectType",
            "klarnaEnabled", "recentQuestions", "skillsAndTools",
            "chatEnabled", "reportButtonEnabled", "shareButtonEnabled", "helpButtonEnabled",
-           "scope",
+           "scope", industries, "relatedProjectIds",
            "createdBy", "createdAt", "updatedAt"
          ) VALUES (
            $1, $2, $3, $4, $5,
@@ -55,8 +55,10 @@ export class ProjectSyncService {
            $22, $23, $24, $25,
            $26, $27::jsonb, $28::jsonb,
            $29, $30, $31, $32,
-           $33::jsonb,
-           $34, NOW(), NOW()
+           $33::jsonb, $34::text[], $35::text[],
+           $36,
+           COALESCE($37::timestamptz, NOW()),
+           NOW()
          ) RETURNING id`,
         [
           payloadId,
@@ -92,7 +94,10 @@ export class ProjectSyncService {
           row.shareButtonEnabled,
           row.helpButtonEnabled,
           row.scope,
+          row.industries,
+          row.relatedProjectIds,
           'cms-sync',
+          dto.datePublished ?? null,
         ],
       );
       const id = result[0]?.id as string;
@@ -135,6 +140,8 @@ export class ProjectSyncService {
          "shareButtonEnabled" = $31,
          "helpButtonEnabled" = $32,
          "scope" = $33::jsonb,
+         industries = $34::text[],
+         "relatedProjectIds" = $35::text[],
          "updatedAt" = NOW()
        WHERE id = $1`,
       [
@@ -171,6 +178,8 @@ export class ProjectSyncService {
         row.shareButtonEnabled,
         row.helpButtonEnabled,
         row.scope,
+        row.industries,
+        row.relatedProjectIds,
       ],
     );
     this.logger.log(`Project updated from CMS: id=${id} payloadId=${payloadId} slug=${row.slug}`);
@@ -227,9 +236,16 @@ export class ProjectSyncService {
         typeof f.answer === 'string' ? f.answer : this.lexicalToHtml(f.answer),
     }));
 
-    const duration = dto.timelineValue && dto.timelineUnit
-      ? `${dto.timelineValue} ${dto.timelineUnit}`
-      : null;
+    // Per docs §13 L62 the UI "Project Duration" label maps to the
+    // `duration` column, described as a "calculated backend value".
+    // Prefer the CMS-derived `projectDurationLabel` (scope rollup via
+    // computeProjectFields beforeChange hook); fall back to the
+    // author-declared timelineValue/Unit pair only when scope is empty.
+    const duration =
+      dto.projectDurationLabel ??
+      (dto.timelineValue && dto.timelineUnit
+        ? `${dto.timelineValue} ${dto.timelineUnit}`
+        : null);
     const budget = dto.priceRangeMin ?? null;
     const priceMax = dto.priceRangeMax ?? null;
 
@@ -243,6 +259,16 @@ export class ProjectSyncService {
     }));
 
     const status = this.resolveStatus(dto);
+    const industries = (dto.industries ?? []).map((i) => i.value).filter(Boolean);
+    // relatedProjects arrives as array of IDs (numbers) or populated
+    // docs. Normalize to string IDs for storage.
+    const relatedProjectIds = (Array.isArray(dto.relatedProjects) ? dto.relatedProjects : [])
+      .map((r) => {
+        if (typeof r === 'number' || typeof r === 'string') return String(r);
+        if (r && typeof r === 'object' && (r as any).id) return String((r as any).id);
+        return '';
+      })
+      .filter(Boolean);
 
     return {
       title: dto.title,
@@ -256,6 +282,7 @@ export class ProjectSyncService {
       skills,
       programmingLanguages,
       developmentTech,
+      industries,
       mediaUrls,
       videoUrl,
       deliverables: JSON.stringify(deliverables),
@@ -273,6 +300,7 @@ export class ProjectSyncService {
       klarnaEnabled: dto.klarnaPaymentEnabled ?? false,
       recentQuestions: JSON.stringify(recentQuestions),
       skillsAndTools: JSON.stringify(skillsAndTools),
+      relatedProjectIds,
       chatEnabled: dto.chatEnabled ?? false,
       reportButtonEnabled: dto.reportButtonEnabled ?? true,
       shareButtonEnabled: dto.shareButtonEnabled ?? true,

@@ -132,6 +132,26 @@ export class ProjectSyncDto {
   @IsOptional()
   deliverables?: unknown;
 
+  // Computed fields populated by the CMS beforeChange hook (see
+  // cms-service/src/hooks/beforeChange/computeProjectFields.ts).
+  //
+  // Per docs §13 Frontend Integration L58 / L62 the frontend reads the
+  // UI "Date Published" label from `createdAt` and "Project Duration"
+  // from `duration`. We forward the CMS-derived values into those same
+  // columns so there's a single frontend read path — no schema change
+  // required.
+  @IsOptional()
+  @IsString()
+  datePublished?: string;
+
+  @IsOptional()
+  @IsNumber()
+  projectDurationTotal?: number;
+
+  @IsOptional()
+  @IsString()
+  projectDurationLabel?: string;
+
   // Scope tree authored in CMS. Drives pricing, duration, deliverables
   // AI, and skills derivation per spec §01 / §08.
   @IsOptional()
@@ -139,6 +159,20 @@ export class ProjectSyncDto {
   @ValidateNested({ each: true })
   @Type(() => CmsScopePhase)
   scope?: CmsScopePhase[];
+
+  // Industries — distinct from categories, rendered as "industry badges"
+  // on the details page per doc §13 L52. Array of {value} from CMS.
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CmsValueItem)
+  industries?: CmsValueItem[];
+
+  // Editor-curated related projects (M2M self-ref). Payload sends as
+  // an array of project IDs (numbers) or populated docs depending on
+  // depth.
+  @IsOptional()
+  relatedProjects?: unknown;
 
   @IsOptional()
   @IsArray()
