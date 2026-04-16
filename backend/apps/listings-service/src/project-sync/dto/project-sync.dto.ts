@@ -26,6 +26,41 @@ class CmsFaqItem {
   answer: unknown;
 }
 
+// Project scope shape — mirrors docs/md/.../08 - DTO and Schema Validation
+// PhaseDto / TaskDto with Payload's naming (roleName, experienceLevel,
+// estimatedHours). One Phase contains N Tasks; pricing, duration,
+// deliverables and skill derivation all read from this tree.
+class CmsScopeTask {
+  @IsString()
+  title: string;
+
+  @IsString()
+  roleName: string;
+
+  @IsOptional()
+  @IsString()
+  location?: string;
+
+  @IsIn(['Student', 'Junior', 'Medior', 'Senior', 'Guru'])
+  experienceLevel: string;
+
+  @IsNumber()
+  estimatedHours: number;
+}
+
+class CmsScopePhase {
+  @IsString()
+  phaseName: string;
+
+  @IsNumber()
+  order: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CmsScopeTask)
+  tasks: CmsScopeTask[];
+}
+
 class CmsMediaRef {
   @IsOptional()
   @IsString()
@@ -96,6 +131,14 @@ export class ProjectSyncDto {
 
   @IsOptional()
   deliverables?: unknown;
+
+  // Scope tree authored in CMS. Drives pricing, duration, deliverables
+  // AI, and skills derivation per spec §01 / §08.
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CmsScopePhase)
+  scope?: CmsScopePhase[];
 
   @IsOptional()
   @IsArray()

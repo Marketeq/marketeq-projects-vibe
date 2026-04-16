@@ -294,6 +294,85 @@ export const Projects: CollectionConfig = {
               defaultValue: false,
               admin: { description: 'Show Klarna installment options at checkout.' },
             },
+            // ── Scope Builder ────────────────────────────────────────────────
+            // Per docs/md/CMS Service/projects/creation/Strapi Integration §Step 3
+            // Scope Builder. Phase { phase_name, order, tasks[] } and
+            // Task { title, role_name, location, experience_level, estimated_hours }
+            // are the primary data the entire pricing + deliverables +
+            // skills + duration pipeline derives from.
+            //
+            // The spec's warning applies verbatim:
+            //   ⛔ Do NOT add editable fields for duration, weeks, start day,
+            //      or end day. These are calculated automatically based on
+            //      task hours and work schedules.
+            {
+              name: 'scope',
+              type: 'array',
+              labels: { singular: 'Phase', plural: 'Scope (phases)' },
+              admin: {
+                description:
+                  'Ordered list of phases. Each phase contains tasks with role, experience, and estimated hours. Pricing and duration are computed from this tree — do not add duration fields here.',
+              },
+              fields: [
+                {
+                  name: 'phaseName',
+                  type: 'text',
+                  required: true,
+                  admin: { description: 'e.g. "Research", "Design", "Front-End"' },
+                },
+                {
+                  name: 'order',
+                  type: 'number',
+                  required: true,
+                  min: 1,
+                  admin: {
+                    description:
+                      'Phase order (1-indexed). Used to sort phases on the project details page.',
+                  },
+                },
+                {
+                  name: 'tasks',
+                  type: 'array',
+                  required: true,
+                  minRows: 1,
+                  labels: { singular: 'Task', plural: 'Tasks' },
+                  fields: [
+                    { name: 'title', type: 'text', required: true },
+                    {
+                      name: 'roleName',
+                      type: 'text',
+                      required: true,
+                      admin: { description: 'Role required for this task (e.g. "Senior Designer").' },
+                    },
+                    {
+                      name: 'location',
+                      type: 'text',
+                      admin: { description: 'Country preference (optional).' },
+                    },
+                    {
+                      name: 'experienceLevel',
+                      type: 'select',
+                      required: true,
+                      defaultValue: 'Medior',
+                      options: [
+                        { label: 'Student', value: 'Student' },
+                        { label: 'Junior', value: 'Junior' },
+                        { label: 'Medior', value: 'Medior' },
+                        { label: 'Senior', value: 'Senior' },
+                        { label: 'Guru', value: 'Guru' },
+                      ],
+                    },
+                    {
+                      name: 'estimatedHours',
+                      type: 'number',
+                      required: true,
+                      min: 1,
+                      admin: { description: 'Estimated hours for this task. Drives pricing + duration.' },
+                    },
+                  ],
+                },
+              ],
+            },
           ],
         },
 

@@ -879,22 +879,60 @@ export default function ProjectDetails() {
               value="Details"
               style={{ willChange: "auto" }}
             >
+              {/*
+                Project gallery carousel — spec:
+                  docs/md/.../Strapi Collection Type... Project Listings:42
+                  "Gallery Images — Media (Multiple), Optional, Cloudflare R2"
+
+                Source: project.mediaUrls. The listings-service sync
+                concatenates [thumbnail, ...gallery[].image] into a single
+                `mediaUrls` text[] column, so index 0 is always the
+                thumbnail (already rendered in the project header strip
+                above) and .slice(1) is the authored gallery.
+
+                When the project has no authored gallery we keep the
+                static /waves.png placeholder carousel so the design
+                density stays intact (saved "no-empty-swap" memory rule).
+              */}
               <Carousel className="max-w-[818px] w-full">
                 <CarouselContent className="-ml-3">
-                  {Array.from({ length: 5 }).map((_, index) => (
-                    <CarouselItem key={index} className="group basis-1/3">
-                      <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
-                        <NextImage
-                          className="object-cover"
-                          src="/waves.png"
-                          alt="Waves"
-                          sizes="25vw"
-                          fill
-                        />
-                        <div className="absolute inset-0 transition duration-300" />
-                      </div>
-                    </CarouselItem>
-                  ))}
+                  {(() => {
+                    const gallery =
+                      (project.mediaUrls as string[] | undefined)?.slice(1) ?? []
+                    if (gallery.length === 0) {
+                      return Array.from({ length: 5 }).map((_, index) => (
+                        <CarouselItem key={index} className="group basis-1/3">
+                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
+                            <NextImage
+                              className="object-cover"
+                              src="/waves.png"
+                              alt="Waves"
+                              sizes="25vw"
+                              fill
+                            />
+                            <div className="absolute inset-0 transition duration-300" />
+                          </div>
+                        </CarouselItem>
+                      ))
+                    }
+                    return gallery.map((url, index) => (
+                      <CarouselItem
+                        key={`${url}-${index}`}
+                        className="group basis-1/3"
+                      >
+                        <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
+                          <NextImage
+                            className="object-cover"
+                            src={url}
+                            alt={`${project.title} — gallery image ${index + 1}`}
+                            sizes="25vw"
+                            fill
+                          />
+                          <div className="absolute inset-0 transition duration-300" />
+                        </div>
+                      </CarouselItem>
+                    ))
+                  })()}
                 </CarouselContent>
 
                 <CarouselPreviousTrigger />
@@ -3249,6 +3287,155 @@ export default function ProjectDetails() {
             </TabsContent>
 
             <TabsContent value="View Project Scope">
+              {/*
+                Project Scope viewer — spec refs:
+                  docs/md/.../creation/Strapi Integration:124-149  (Scope Builder)
+                  docs/md/.../details/08 - DTO and Schema Validation:42-84 (Phase/Task DTOs)
+                  docs/md/.../details/01:209-227 (duration/pricing derivation)
+
+                Data source: project.scope — an ordered array of phases,
+                each with a tasks[] array. Tasks carry title, roleName,
+                experienceLevel, estimatedHours. Duration labels ("Day 1
+                - Day 8") are derived on the fly from accumulated task
+                hours assuming an 8-hour workday, since the spec
+                explicitly forbids authoring duration fields directly
+                ("⛔ Do NOT add editable fields for duration, weeks…").
+
+                Empty-scope fallback keeps the original hardcoded 3-phase
+                block below (no-empty-swap memory rule).
+              */}
+              {Array.isArray(project.scope) && project.scope.length > 0 ? (
+                (() => {
+                  type ScopeTask = {
+                    title: string
+                    roleName: string
+                    location?: string | null
+                    experienceLevel: string
+                    estimatedHours: number
+                  }
+                  type ScopePhase = {
+                    phaseName: string
+                    order: number
+                    tasks: ScopeTask[]
+                  }
+                  const phases = (project.scope as ScopePhase[])
+                    .slice()
+                    .sort((a, b) => a.order - b.order)
+                  const phaseLabels = [
+                    "Phase One",
+                    "Phase Two",
+                    "Phase Three",
+                    "Phase Four",
+                    "Phase Five",
+                    "Phase Six",
+                    "Phase Seven",
+                    "Phase Eight",
+                  ]
+                  // Accumulate day ranges across phases so later phases
+                  // start on day (prev end + 1).
+                  let cursor = 1
+                  const withDays = phases.map((phase) => {
+                    const phaseHours = phase.tasks.reduce(
+                      (sum, t) => sum + (t.estimatedHours || 0),
+                      0
+                    )
+                    const days = Math.max(1, Math.ceil(phaseHours / 8))
+                    const start = cursor
+                    const end = cursor + days - 1
+                    cursor = end + 1
+                    return { phase, start, end }
+                  })
+                  return (
+                    <div className="mt-6">
+                      <Accordion
+                        type="single"
+                        defaultValue="scope-0"
+                        className="flex-auto space-y-3"
+                      >
+                        {withDays.map(({ phase, start, end }, pi) => (
+                          <AccordionItem
+                            key={`scope-${pi}`}
+                            value={`scope-${pi}`}
+                            className="rounded-lg border border-gray-200 shadow-sm"
+                          >
+                            <div className="flex items-center justify-between gap-x-4 px-3 py-3">
+                              <div className="inline-flex items-center gap-x-3.5">
+                                <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
+                                  <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                                </AccordionTrigger>
+
+                                <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
+                                  {phaseLabels[pi] ?? `Phase ${pi + 1}`}{" "}
+                                  <span className="font-light">
+                                    {phase.phaseName}
+                                  </span>
+                                </span>
+                              </div>
+
+                              <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                  Day {start}
+                                </span>
+                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                  -
+                                </span>
+                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                  Day {end}
+                                </span>
+                              </div>
+                            </div>
+
+                            <DisclosureContent>
+                              <Table>
+                                <TableHeader className="bg-gray-50">
+                                  <TableRow className="hover:bg-transparent">
+                                    <TableHead>Task</TableHead>
+                                    <TableHead>Role</TableHead>
+                                    <TableHead>Experience</TableHead>
+                                    <TableHead>Duration</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {phase.tasks.map((task, ti) => (
+                                    <TableRow key={`task-${pi}-${ti}`}>
+                                      <TableCell className="py-4 px-6">
+                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                          {task.title}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell className="py-4 px-6">
+                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                          {task.roleName}
+                                          {task.location
+                                            ? ` · ${task.location}`
+                                            : ""}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell className="py-4 px-6">
+                                        <Badge
+                                          className="rounded-[4px] bg-primary-50"
+                                          visual="primary"
+                                        >
+                                          {task.experienceLevel}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="py-4 px-6">
+                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                          {task.estimatedHours} hours
+                                        </span>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </DisclosureContent>
+                          </AccordionItem>
+                        ))}
+                      </Accordion>
+                    </div>
+                  )
+                })()
+              ) : (
               <div className="mt-6">
                 <Accordion
                   type="single"
@@ -3818,6 +4005,7 @@ export default function ProjectDetails() {
                   </AccordionItem>
                 </Accordion>
               </div>
+              )}
             </TabsContent>
           </Tabs>
         </div>

@@ -44,6 +44,7 @@ export class ProjectSyncService {
            "pricingModel", "priceViewMode", "priceMax", "projectType",
            "klarnaEnabled", "recentQuestions", "skillsAndTools",
            "chatEnabled", "reportButtonEnabled", "shareButtonEnabled", "helpButtonEnabled",
+           "scope",
            "createdBy", "createdAt", "updatedAt"
          ) VALUES (
            $1, $2, $3, $4, $5,
@@ -54,7 +55,8 @@ export class ProjectSyncService {
            $22, $23, $24, $25,
            $26, $27::jsonb, $28::jsonb,
            $29, $30, $31, $32,
-           $33, NOW(), NOW()
+           $33::jsonb,
+           $34, NOW(), NOW()
          ) RETURNING id`,
         [
           payloadId,
@@ -89,6 +91,7 @@ export class ProjectSyncService {
           row.reportButtonEnabled,
           row.shareButtonEnabled,
           row.helpButtonEnabled,
+          row.scope,
           'cms-sync',
         ],
       );
@@ -131,6 +134,7 @@ export class ProjectSyncService {
          "reportButtonEnabled" = $30,
          "shareButtonEnabled" = $31,
          "helpButtonEnabled" = $32,
+         "scope" = $33::jsonb,
          "updatedAt" = NOW()
        WHERE id = $1`,
       [
@@ -166,6 +170,7 @@ export class ProjectSyncService {
         row.reportButtonEnabled,
         row.shareButtonEnabled,
         row.helpButtonEnabled,
+        row.scope,
       ],
     );
     this.logger.log(`Project updated from CMS: id=${id} payloadId=${payloadId} slug=${row.slug}`);
@@ -210,6 +215,7 @@ export class ProjectSyncService {
 
     const description = this.lexicalToHtml(dto.fullDescription) || dto.shortDescription || '';
     const deliverables = this.deliverablePhases(dto.deliverables);
+    const scope = this.scopePhases(dto.scope);
     // Payload v2 delivers `answer` as a Lexical rich-text tree once the
     // field type flipped from textarea → richText. Run it through the same
     // converter used by fullDescription so the column holds ready-to-render
@@ -253,6 +259,7 @@ export class ProjectSyncService {
       mediaUrls,
       videoUrl,
       deliverables: JSON.stringify(deliverables),
+      scope: JSON.stringify(scope),
       faqs: JSON.stringify(faqs),
       estimatedHours: dto.totalEstimatedHours ?? null,
       budget,
@@ -303,6 +310,83 @@ export class ProjectSyncService {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Normalize Payload's `scope` array field (Phase → Task[]) into the
+   * jsonb shape the listings entity expects. Mirrors docs §08 PhaseDto /
+   * TaskDto field names — Payload already authors in the correct case
+   * (phaseName, roleName, experienceLevel, estimatedHours) so this is
+   * mostly a pass-through with defensive normalization for stray inputs
+   * (e.g. legacy snake_case from Strapi migrations).
+   */
+  private scopePhases(
+    value: unknown,
+  ): Array<{
+    phaseName: string;
+    order: number;
+    tasks: Array<{
+      title: string;
+      roleName: string;
+      location?: string;
+      experienceLevel: string;
+      estimatedHours: number;
+    }>;
+  }> {
+    if (!Array.isArray(value)) return [];
+    const normalizeTask = (raw: unknown) => {
+      if (!raw || typeof raw !== 'object') return null;
+      const t = raw as Record<string, unknown>;
+      const title = typeof t.title === 'string' ? t.title : '';
+      const roleName =
+        typeof t.roleName === 'string'
+          ? t.roleName
+          : typeof (t as any).role_name === 'string'
+            ? ((t as any).role_name as string)
+            : '';
+      const location =
+        typeof t.location === 'string' ? (t.location as string) : undefined;
+      const experienceLevel =
+        typeof t.experienceLevel === 'string'
+          ? t.experienceLevel
+          : typeof (t as any).experience_level === 'string'
+            ? ((t as any).experience_level as string)
+            : 'Medior';
+      const estimatedHours =
+        typeof t.estimatedHours === 'number'
+          ? t.estimatedHours
+          : typeof (t as any).estimated_hours === 'number'
+            ? ((t as any).estimated_hours as number)
+            : 0;
+      if (!title || !roleName) return null;
+      return {
+        title,
+        roleName,
+        location,
+        experienceLevel,
+        estimatedHours,
+      };
+    };
+    return value
+      .map((phase) => {
+        if (!phase || typeof phase !== 'object') return null;
+        const p = phase as Record<string, unknown>;
+        const phaseName =
+          typeof p.phaseName === 'string'
+            ? p.phaseName
+            : typeof (p as any).phase_name === 'string'
+              ? ((p as any).phase_name as string)
+              : '';
+        const order = typeof p.order === 'number' ? p.order : 0;
+        const rawTasks = Array.isArray(p.tasks) ? p.tasks : [];
+        const tasks = rawTasks
+          .map(normalizeTask)
+          .filter((t): t is NonNullable<typeof t> => !!t);
+        if (!phaseName || tasks.length === 0) return null;
+        return { phaseName, order, tasks };
+      })
+      .filter((p): p is NonNullable<typeof p> => !!p)
+      .sort((a, b) => a.order - b.order);
   }
 
   /**

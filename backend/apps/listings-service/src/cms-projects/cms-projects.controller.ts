@@ -19,7 +19,7 @@ export class CmsProjectsController {
     const rows = await this.dataSource.query(
       `SELECT id, title, slug, "shortDescription", description, category,
               categories, subcategories, skills, tags, "programmingLanguages", "developmentTech",
-              "mediaUrls", "videoUrl", deliverables, faqs,
+              "mediaUrls", "videoUrl", deliverables, faqs, scope,
               budget, "priceMax", "pricingModel", "priceViewMode", "projectType", "klarnaEnabled",
               "estimatedHours", duration,
               "recentQuestions", "skillsAndTools",
@@ -39,7 +39,7 @@ export class CmsProjectsController {
     const rows = await this.dataSource.query(
       `SELECT id, title, slug, "shortDescription", description, category,
               categories, subcategories, skills, tags, "programmingLanguages", "developmentTech",
-              "mediaUrls", "videoUrl", deliverables, faqs,
+              "mediaUrls", "videoUrl", deliverables, faqs, scope,
               budget, "priceMax", "pricingModel", "priceViewMode", "projectType", "klarnaEnabled",
               "estimatedHours", duration,
               "recentQuestions", "skillsAndTools",
@@ -86,6 +86,11 @@ function shapeProject(row: any) {
     developmentTech: row.developmentTech ?? [],
     deliverables: row.deliverables ?? [],
     faqs: row.faqs ?? [],
+    // Scope tree: ordered phases each containing tasks with role +
+    // experience + estimated hours. Shape matches docs §08 PhaseDto /
+    // TaskDto. Pricing, duration, deliverables AI and skill derivation
+    // all read from this downstream.
+    scope: row.scope ?? [],
     recentQuestions: row.recentQuestions ?? [],
     skillsAndTools: row.skillsAndTools ?? [],
     chatEnabled: row.chatEnabled ?? false,
