@@ -125,7 +125,14 @@ export const TagsInputInput = React.forwardRef<
   }
 >(
   (
-    { className, options, onInputValueChange, allowCreateOption, ...props },
+    {
+      className,
+      options,
+      onInputValueChange,
+      allowCreateOption,
+      onKeyDown,
+      ...props
+    },
     ref
   ) => {
     const { inputValue, setInputValue, addValue, clearInputValue, focus } =
@@ -143,6 +150,10 @@ export const TagsInputInput = React.forwardRef<
       !options?.some(
         (option) => option.toLowerCase() === normalizedInputValue.toLowerCase()
       )
+    const exactMatchedOption = options?.find(
+      (option) => option.toLowerCase() === normalizedInputValue.toLowerCase()
+    )
+    const enterOptionValue = exactMatchedOption ?? (canCreateOption ? normalizedInputValue : null)
 
     useUpdateEffect(() => {
       isInputValueValid ? on() : off()
@@ -156,6 +167,18 @@ export const TagsInputInput = React.forwardRef<
               "text-base leading-6 grow text-gray-900 placeholder:text-gray-500 font-normal focus-visible:outline-none border-0 focus:ring-0 p-0 h-max",
               className
             )}
+            onKeyDown={(event) => {
+              onKeyDown?.(event)
+              if (event.defaultPrevented) return
+              if (event.key !== "Enter" || event.nativeEvent.isComposing) return
+              if (!enterOptionValue) return
+
+              event.preventDefault()
+              addValue(enterOptionValue)
+              clearInputValue()
+              focus()
+              off()
+            }}
             {...props}
             ref={ref}
           />

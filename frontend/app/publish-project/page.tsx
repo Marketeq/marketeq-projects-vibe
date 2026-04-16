@@ -1115,7 +1115,8 @@ const projectInfoSchema = z.object({
           .array(z.string(), {
             required_error: "Please enter/select at least 1 sub-category(s)",
           })
-          .min(1, "Please enter/select at least 1 category(s)"),
+          .min(1, "Please enter/select at least 1 category(s)")
+          .max(5, "You can add a maximum of five (5) sub categories"),
       })
     )
     .length(3, "Please enter/select all the categories and sub-categories"),
@@ -1163,6 +1164,10 @@ const FALLBACK_CATEGORY_OPTIONS = [
   "Cloud Computing",
   "Cybersecurity",
 ]
+
+const MAX_SUBCATEGORIES_PER_CATEGORY = 5
+const SUBCATEGORY_LIMIT_ERROR =
+  "You can add a maximum of five (5) sub categories"
 
 const FALLBACK_SUBCATEGORY_OPTIONS = options.value
 const FALLBACK_INDUSTRY_OPTIONS = [
@@ -1250,6 +1255,7 @@ const ProjectInfo = ({
   )
   const [tagOptions, setTagOptions] = useState<string[]>(FALLBACK_TAG_OPTIONS)
   const [skills, setSkills] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
+  const [titleInputValue, setTitleInputValue] = useState("")
   const categoryRequestRef = useRef(0)
   const typeRequestRef = useRef(0)
   const categoryDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -1269,6 +1275,23 @@ const ProjectInfo = ({
     control: methods.control,
     name: "category",
   })
+  const handleSubCategoryChange = useCallback(
+    (fieldName: `category.${0 | 1 | 2}.subCategories`, onChange: (value: string[]) => void) =>
+      (details: { value: string[] }) => {
+        if (details.value.length > MAX_SUBCATEGORIES_PER_CATEGORY) {
+          methods.setError(fieldName, {
+            type: "manual",
+            message: SUBCATEGORY_LIMIT_ERROR,
+          })
+          return
+        }
+
+        methods.clearErrors(fieldName)
+        onChange(details.value)
+        void methods.trigger(fieldName)
+      },
+    [methods]
+  )
 
   const { error } = projectInfoSchema.safeParse(projectInfoValues)
   const totalFields = keys(methods.control._fields).length
@@ -1276,6 +1299,46 @@ const ProjectInfo = ({
   const progressValue = parseInt(
     `${((totalFields - totalFieldErrors) / totalFields) * 33}`
   )
+  const titleCharacterCount =
+    titleInputValue.length || projectInfoValues.title?.length || 0
+  const titleHasError = hookFormHasError({
+    errors,
+    name: "title",
+  })
+  const hasCommittedTitle =
+    typeof projectInfoValues.title === "string" &&
+    projectInfoValues.title.trim().length > 0
+
+  const commitTitleValue = useCallback(() => {
+    const nextValue = titleInputValue.trim()
+
+    if (!nextValue) {
+      void methods.trigger("title")
+      return
+    }
+
+    methods.setValue("title", nextValue, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    })
+    void methods.trigger("title").then((isValid) => {
+      if (isValid) {
+        methods.clearErrors("title")
+        setTitleInputValue("")
+      }
+    })
+  }, [methods, titleInputValue])
+
+  const clearCommittedTitle = useCallback(() => {
+    methods.setValue("title", "", {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    })
+    methods.clearErrors("title")
+    setTitleInputValue("")
+  }, [methods])
 
   const fetchCategoriesAutocomplete = useCallback((query: string) => {
     const trimmedQuery = query.trim()
@@ -1373,6 +1436,24 @@ const ProjectInfo = ({
   const activeCategory = Array.isArray(categoryValues)
     ? categoryValues[activeCategoryIndex]
     : null
+  const getAvailableCategoriesForIndex = useCallback(
+    (index: number, currentValue?: string) => {
+      const selectedCategories = Array.isArray(categoryValues)
+        ? categoryValues
+            .map((item, itemIndex) =>
+              itemIndex === index ? null : item?.category?.trim()
+            )
+            .filter(
+              (item): item is string => typeof item === "string" && item.length > 0
+            )
+        : []
+
+      return categoryOptions.filter(
+        (category) => category === currentValue || !selectedCategories.includes(category)
+      )
+    },
+    [categoryOptions, categoryValues]
+  )
   const suggestedForActiveCategory = suggested.filter(
     ({ category, subCategory }) =>
       !(
@@ -1453,22 +1534,57 @@ const ProjectInfo = ({
                   </HelperText>
 
                   <span className="text-xs leading-[14.52px] text-gray-500">
-                    {projectInfoValues.title?.length || 0}/120
+                    {titleCharacterCount}/120
                   </span>
                 </div>
               </div>
 
-              <Input
-                id="title"
-                type="text"
-                placeholder="Enter Title"
-                {...methods.register("title")}
-                onBlur={() => methods.trigger("title")}
-                isInvalid={hookFormHasError({
-                  errors,
-                  name: "title",
-                })}
-              />
+              <div className="relative">
+                <Input
+                  id="title"
+                  type="text"
+                  placeholder={hasCommittedTitle && !titleInputValue ? "" : "Enter Title"}
+                  value={titleInputValue}
+                  onChange={(event) => {
+                    setTitleInputValue(event.target.value)
+                    if (titleHasError) {
+                      methods.clearErrors("title")
+                    }
+                  }}
+                  onBlur={commitTitleValue}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return
+                    event.preventDefault()
+                    commitTitleValue()
+                  }}
+                  className={cn(
+                    hasCommittedTitle &&
+                      !titleInputValue &&
+                      !titleHasError &&
+                      "text-transparent"
+                  )}
+                  isInvalid={titleHasError}
+                />
+
+                {hasCommittedTitle && !titleInputValue && !titleHasError ? (
+                  <div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center px-[14px]">
+                    <div className="pointer-events-auto inline-flex max-w-full items-center gap-1 rounded-md bg-primary-50 px-2 py-1 text-sm leading-none text-primary-500">
+                      <span className="truncate">
+                        {projectInfoValues.title}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="Remove selected title"
+                        className="inline-flex size-4 items-center justify-center rounded-sm opacity-60 transition hover:bg-primary-100 hover:opacity-100"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={clearCommittedTitle}
+                      >
+                        <X2 className="size-3" />
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
 
               <HookFormErrorMessage
                 errors={errors}
@@ -1521,7 +1637,7 @@ const ProjectInfo = ({
                             )}
                           </ListboxButton>
                           <ListboxOptions>
-                            {categoryOptions.map((category) => (
+                            {getAvailableCategoriesForIndex(0, value).map((category) => (
                               <ListboxOption key={category} value={category}>
                                 {category}
                               </ListboxOption>
@@ -1537,7 +1653,10 @@ const ProjectInfo = ({
                     control={methods.control}
                     render={({ field: { onChange, ...field } }) => (
                       <TagsInputRoot
-                        onValueChange={(details) => onChange(details.value)}
+                        onValueChange={handleSubCategoryChange(
+                          "category.0.subCategories",
+                          onChange
+                        )}
                         {...field}
                         className="space-y-1.5"
                       >
@@ -1554,7 +1673,7 @@ const ProjectInfo = ({
                                     <TagsInputItemPreview
                                       visual="primary"
                                       size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50"
+                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
                                     >
                                       <TagsInputItemText>
                                         {value}
@@ -1567,7 +1686,11 @@ const ProjectInfo = ({
                                   </TagsInputItem>
                                 ))}
                                 <TagsInputInput
-                                  placeholder="Add Sub-Category(s)"
+                                  placeholder={
+                                    tagsInput.value.length
+                                      ? ""
+                                      : "Add Sub-Category(s)"
+                                  }
                                   options={subCategoryOptions}
                                   allowCreateOption
                                   className="flex-1 min-w-[100px] "
@@ -1624,7 +1747,7 @@ const ProjectInfo = ({
                             )}
                           </ListboxButton>
                           <ListboxOptions>
-                            {categoryOptions.map((category) => (
+                            {getAvailableCategoriesForIndex(1, value).map((category) => (
                               <ListboxOption key={category} value={category}>
                                 {category}
                               </ListboxOption>
@@ -1640,7 +1763,10 @@ const ProjectInfo = ({
                     control={methods.control}
                     render={({ field: { onChange, ...field } }) => (
                       <TagsInputRoot
-                        onValueChange={(details) => onChange(details.value)}
+                        onValueChange={handleSubCategoryChange(
+                          "category.1.subCategories",
+                          onChange
+                        )}
                         {...field}
                         className="space-y-1.5"
                       >
@@ -1661,7 +1787,7 @@ const ProjectInfo = ({
                                     <TagsInputItemPreview
                                       visual="primary"
                                       size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50"
+                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
                                     >
                                       <TagsInputItemText>
                                         {value}
@@ -1675,7 +1801,11 @@ const ProjectInfo = ({
                                 ))}
                                 <TagsInputInput
                                   options={subCategoryOptions}
-                                  placeholder="Add Sub-Category(s)"
+                                  placeholder={
+                                    tagsInput.value.length
+                                      ? ""
+                                      : "Add Sub-Category(s)"
+                                  }
                                   allowCreateOption
                                   className="flex-1 min-w-[100px]"
                                   onInputValueChange={(value) => {
@@ -1732,7 +1862,7 @@ const ProjectInfo = ({
                             )}
                           </ListboxButton>
                           <ListboxOptions>
-                            {categoryOptions.map((category) => (
+                            {getAvailableCategoriesForIndex(2, value).map((category) => (
                               <ListboxOption key={category} value={category}>
                                 {category}
                               </ListboxOption>
@@ -1748,7 +1878,10 @@ const ProjectInfo = ({
                     control={methods.control}
                     render={({ field: { onChange, ...field } }) => (
                       <TagsInputRoot
-                        onValueChange={(details) => onChange(details.value)}
+                        onValueChange={handleSubCategoryChange(
+                          "category.2.subCategories",
+                          onChange
+                        )}
                         {...field}
                         className="space-y-1.5"
                       >
@@ -1769,7 +1902,7 @@ const ProjectInfo = ({
                                     <TagsInputItemPreview
                                       visual="primary"
                                       size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50"
+                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
                                     >
                                       <TagsInputItemText>
                                         {value}
@@ -1783,7 +1916,11 @@ const ProjectInfo = ({
                                 ))}
                                 <TagsInputInput
                                   options={subCategoryOptions}
-                                  placeholder="Add Sub-Category(s)"
+                                  placeholder={
+                                    tagsInput.value.length
+                                      ? ""
+                                      : "Add Sub-Category(s)"
+                                  }
                                   allowCreateOption
                                   className="flex-1 min-w-[100px]"
                                   onInputValueChange={(value) => {
