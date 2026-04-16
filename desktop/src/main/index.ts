@@ -247,7 +247,7 @@ async function bootstrap(): Promise<void> {
     const db = initDatabase();
     const repos = createRepos(db);
     const apiBaseUrl =
-      process.env.DTT_API_BASE_URL ?? 'https://api.marketeq.com/tts/v1';
+      process.env.DTT_API_BASE_URL ?? 'http://localhost:4000';
     const api = createApiClient({
       baseUrl: apiBaseUrl,
       logger,
