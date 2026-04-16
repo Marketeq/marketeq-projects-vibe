@@ -8,12 +8,20 @@ import { UserAPI } from "@/service/http/user"
 import {
   Button,
   DropdownMenu,
-  DropdownMenuCheckItem,
+  DropdownMenuItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
-  ScrollArea,
-  ScrollBar,
 } from "@/components/ui"
+
+const mobileSecondaryNavItems = [
+  { label: "Research", href: "/c/research" },
+  { label: "Design", href: "/c/design" },
+  { label: "Development", href: "/c/development" },
+  { label: "Testing", href: "/c/testing" },
+  { label: "Security", href: "/c/security" },
+  { label: "Maintenance", href: "/c/maintenance" },
+  { label: "Digital Marketing", href: "/c/digital-marketing" },
+]
 
 const TeamMemberLink = () => {
   const router = useRouter()
@@ -181,20 +189,14 @@ export function MarketplaceSecondaryNavShell({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <ScrollArea
-                  viewportClassName="max-h-[250px]"
-                  scrollBar={<ScrollBar className="w-4 p-1" />}
-                >
-                  <DropdownMenuCheckItem>Option 1</DropdownMenuCheckItem>
-                  <DropdownMenuCheckItem>Option 2</DropdownMenuCheckItem>
-                  <DropdownMenuCheckItem>Option 3</DropdownMenuCheckItem>
-                  <DropdownMenuCheckItem>Option 4</DropdownMenuCheckItem>
-                  <DropdownMenuCheckItem>Option 5</DropdownMenuCheckItem>
-                  <DropdownMenuCheckItem>Option 6</DropdownMenuCheckItem>
-                  <DropdownMenuCheckItem>Option 7</DropdownMenuCheckItem>
-                  <DropdownMenuCheckItem>Option 8</DropdownMenuCheckItem>
-                  <DropdownMenuCheckItem>Option 9</DropdownMenuCheckItem>
-                </ScrollArea>
+                {mobileSecondaryNavItems.map((item) => (
+                  <DropdownMenuItem
+                    key={item.href}
+                    onClick={() => router.push(item.href)}
+                  >
+                    {item.label}
+                  </DropdownMenuItem>
+                ))}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
