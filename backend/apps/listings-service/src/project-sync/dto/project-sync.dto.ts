@@ -46,6 +46,13 @@ class CmsScopeTask {
 
   @IsNumber()
   estimatedHours: number;
+
+  // Hybrid team model (spec §16 L96): the assignee lives on the Task
+  // as an email, not a UUID. Emails are safe to expose in the CMS
+  // admin (editors know them) and don't leak the internal UUID space.
+  @IsOptional()
+  @IsString()
+  assigneeEmail?: string;
 }
 
 class CmsScopePhase {
@@ -124,6 +131,13 @@ export class ProjectSyncDto {
 
   @IsString()
   shortDescription: string;
+
+  // Spec §16 L15 / data-dictionary: project owner. Stored in
+  // listings-service as `createdBy` so `projectHistoryRatings`
+  // (§14.14) can group past projects by the same owner.
+  @IsOptional()
+  @IsString()
+  ownerId?: string;
 
   // Payload richText is JSON; we accept any and stringify in the service.
   @IsOptional()

@@ -19,12 +19,15 @@ import { CollectionBeforeChangeHook } from 'payload/types';
  *       every project has a scope we can flip the field to `readOnly`.
  *
  *   • `projectDurationTotal` (weeks) + `projectDurationLabel` (§14.2)
- *       `max(1, ceil(totalHours / 40))` — capacity baseline assuming one
- *       full-time resource. Spec §14.2 references `task.end_day` which
+ *       `max(1, ceil(totalHours / (teamSize × 40)))` — assumes every
+ *       distinct assignee works in parallel at 40 hrs/week. `teamSize`
+ *       is the same set that feeds §14.5 TotalTeamMembers, so duration
+ *       and team count stay consistent. Falls back to 1 when no team
+ *       is assigned yet. Spec §14.2 references `task.end_day` which
  *       doesn't exist on the Task component (see GAP-ANALYSIS §8 #2);
  *       the capacity interpretation is the closest defensible reading.
- *       Once `assignedTeam` lands, divide by team capacity instead of
- *       the 40-hour baseline — this file is the single place to change.
+ *       `projectDurationLabel` pivots its unit per spec §01 L98-104:
+ *       `< 7 days → "N days"`, `< 4 weeks → "N weeks"`, else `"N months"`.
  *
  *   • `startingPriceTotal` (§14.7)
  *       `sum(task.estimatedHours × role.hourlyRate)`. Rates come from
@@ -47,9 +50,13 @@ import { CollectionBeforeChangeHook } from 'payload/types';
  *       — "this project needs N distinct specialists". Approximation
  *       until the real team-assignment subsystem lands.
  *
- * NOT handled here (still blocked on other subsystems):
+ * NOT handled here (lives in a different layer, not blocked):
  *   - `projectHistoryRatings` (§14.14) — average of the *owner's* past
- *     projects' reviews. Needs `ownerId` + the reviews pipeline.
+ *     projects' reviews. Derived at read time by the listings-service
+ *     `CmsProjectsController` from sibling rows sharing `createdBy`,
+ *     so it updates whenever a past project is re-rated without
+ *     touching the current document. See
+ *     `backend/apps/listings-service/src/cms-projects/cms-projects.controller.ts`.
  */
 
 // Hourly rate card keyed by `Task.experienceLevel`. Stand-in for the
@@ -213,6 +220,7 @@ export const computeProjectFields: CollectionBeforeChangeHook = async ({
           estimatedHours?: unknown;
           experienceLevel?: unknown;
           roleName?: unknown;
+          assigneeEmail?: unknown;
         };
 
         const hours = Number(t.estimatedHours);
@@ -224,12 +232,16 @@ export const computeProjectFields: CollectionBeforeChangeHook = async ({
           totalCost += hours * rate;
         }
 
-        // Team-count proxy: distinct (roleName, experienceLevel) tuples.
-        // A given role at a given seniority maps to "one specialist"
-        // needed on the project. This is an approximation — the
-        // authoritative source is `assignedTeam` which isn't wired yet.
-        const role = typeof t.roleName === 'string' ? t.roleName.trim() : '';
-        if (role) teamRoles.add(`${role}::${level}`);
+        // Team-count: prefer real assigneeEmail when available,
+        // fall back to (roleName, experienceLevel) proxy otherwise.
+        // Emails are the canonical team identifier per spec §16 L96.
+        const email =
+          typeof t.assigneeEmail === 'string' ? t.assigneeEmail.trim().toLowerCase() : '';
+        if (email) teamRoles.add(`email::${email}`);
+        else {
+          const role = typeof t.roleName === 'string' ? t.roleName.trim() : '';
+          if (role) teamRoles.add(`role::${role}::${level}`);
+        }
       }
     }
 
@@ -239,10 +251,35 @@ export const computeProjectFields: CollectionBeforeChangeHook = async ({
       // so projects without scope can still pass validation.
       data.totalEstimatedHours = totalHours;
 
-      // §14.2 ProjectDurationWeeks — 40-hour week baseline, floor of 1.
-      const weeks = Math.max(1, Math.ceil(totalHours / 40));
+      // §14.2 ProjectDurationWeeks — divide by team capacity so adding
+      // a second assignee roughly halves the duration. Each team member
+      // contributes 40 hrs/week; `teamRoles.size` reuses the set that
+      // feeds §14.5 TotalTeamMembers (email-first with role+level proxy
+      // as fallback). When nothing is assigned, fall back to 1 resource
+      // so the field still produces a sensible value for draft projects.
+      const teamSize = Math.max(1, teamRoles.size);
+      const capacityHoursPerWeek = teamSize * 40;
+      const weeksFloat = totalHours / capacityHoursPerWeek;
+      const weeks = Math.max(1, Math.ceil(weeksFloat));
       data.projectDurationTotal = weeks;
-      data.projectDurationLabel = weeks === 1 ? '1 week' : `${weeks} weeks`;
+
+      // §01 L98-104 "Timestamps" pivot — choose the smallest unit that
+      // still reads naturally:
+      //   < 7 days  → "N days"
+      //   < 4 weeks → "N weeks"
+      //   else      → "N months"  (average 4.345 weeks/month)
+      // `projectDurationTotal` stays in whole weeks so downstream
+      // consumers (payment-period math, filters) keep a stable numeric
+      // field; only the display label pivots.
+      const days = Math.max(1, Math.ceil(weeksFloat * 7));
+      if (days < 7) {
+        data.projectDurationLabel = days === 1 ? '1 day' : `${days} days`;
+      } else if (weeks < 4) {
+        data.projectDurationLabel = weeks === 1 ? '1 week' : `${weeks} weeks`;
+      } else {
+        const months = Math.max(1, Math.ceil(weeksFloat / 4.345));
+        data.projectDurationLabel = months === 1 ? '1 month' : `${months} months`;
+      }
 
       // §14.7 EstimatedCost — rounded to whole dollars.
       if (totalCost > 0) {
@@ -260,6 +297,15 @@ export const computeProjectFields: CollectionBeforeChangeHook = async ({
     if (teamRoles.size > 0) {
       data.teamMemberCount = teamRoles.size;
     }
+
+    // Derive teamEmails — the unique set of email addresses assigned
+    // to scope tasks. Always overwrite so clearing assignments in the
+    // CMS actually shrinks the team (previous logic preserved stale
+    // values when the new scope had no emails).
+    const emails = [...teamRoles]
+      .filter((k) => k.startsWith('email::'))
+      .map((k) => k.slice(7));
+    data.teamEmails = emails;
   }
 
   return data;

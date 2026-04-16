@@ -7,7 +7,6 @@ import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import {
   addFavorite,
   findFavoriteByItemId,
-  getAllFavorites,
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
@@ -766,14 +765,18 @@ export default function ProjectDetails() {
                       </span>
                     </div>
 
-                    <span className="size-1 shrink-0 rounded-full bg-dark-blue-400" />
-
-                    <div className="inline-flex items-center gap-x-1.5">
-                      <ChartBreakoutCircle className="size-[18px] shrink-0" />
-                      <span className="text-sm leading-none font-semibold text-dark-blue-400">
-                        Top Rated
-                      </span>
-                    </div>
+                    {/* §13 L59: "Show only if isTopRated is true" */}
+                    {project.isTopRated && (
+                      <>
+                        <span className="size-1 shrink-0 rounded-full bg-dark-blue-400" />
+                        <div className="inline-flex items-center gap-x-1.5">
+                          <ChartBreakoutCircle className="size-[18px] shrink-0" />
+                          <span className="text-sm leading-none font-semibold text-dark-blue-400">
+                            Top Rated
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-x-3">
@@ -898,7 +901,8 @@ export default function ProjectDetails() {
                 <CarouselContent className="-ml-3">
                   {(() => {
                     const gallery =
-                      (project.mediaUrls as string[] | undefined)?.slice(1) ?? []
+                      (project.mediaUrls as string[] | undefined)?.slice(1) ??
+                      []
                     if (gallery.length === 0) {
                       return Array.from({ length: 5 }).map((_, index) => (
                         <CarouselItem key={index} className="group basis-1/3">
@@ -1090,7 +1094,8 @@ export default function ProjectDetails() {
                                   <div
                                     key={`${phase.phaseLabel}-${pi}`}
                                     className={cn(
-                                      pi > 0 && "mt-6 pt-6 border-t border-gray-200"
+                                      pi > 0 &&
+                                        "mt-6 pt-6 border-t border-gray-200"
                                     )}
                                   >
                                     <p className="text-sm text-dark-blue-400">
@@ -1292,16 +1297,174 @@ export default function ProjectDetails() {
                         </div>
 
                         {/*
-                          About the Team section — static fallback.
-
-                          Per docs/md/CMS Service/projects/details/03 PHASE 1 §1
-                          and data-dictionary.csv:12/32, team composition is
-                          derived from `project_tasks.assignee` (user IDs),
-                          NOT authored in the CMS. Until `project_tasks` and
-                          GET /projects/:id/team land we keep this block
-                          static (no false data from free-text CMS input).
+                          About the Team — hydrated from user-service via
+                          project.team[] (Step 2 of the hybrid team model).
+                          Falls back to the static design when team is empty.
                         */}
-                        <div className="p-6">
+                        {Array.isArray(project.team) &&
+                        project.team.length > 0 ? (
+                          (() => {
+                            type TeamMember = {
+                              firstName: string
+                              username: string
+                              avatarUrl: string | null
+                              location: string | null
+                              languages: string[]
+                              skills: string[]
+                              isLead: boolean
+                              isOnline: boolean
+                            }
+                            const members = project.team as TeamMember[]
+                            const lead =
+                              members.find((m) => m.isLead) ?? members[0]
+                            const allLocations = Array.from(
+                              new Set(
+                                members
+                                  .map((m) => m.location)
+                                  .filter((l): l is string => !!l)
+                              )
+                            )
+                            const allLanguages = Array.from(
+                              new Set(members.flatMap((m) => m.languages))
+                            )
+                            const allSkills = Array.from(
+                              new Set(members.flatMap((m) => m.skills))
+                            )
+                            const visibleSkills = allSkills.slice(0, 5)
+                            const extraSkillCount =
+                              allSkills.length - visibleSkills.length
+                            const headerLabel =
+                              members.length > 1 ? "Current Team" : "Created By"
+                            return (
+                              <div className="p-6">
+                                <h3 className="text-base leading-none font-semibold text-dark-blue-400">
+                                  {headerLabel}
+                                </h3>
+                                <div className="grid grid-cols-2 gap-x-6 mt-6">
+                                  <div className="flex items-start gap-x-3">
+                                    <Avatar size="lg">
+                                      {lead.avatarUrl ? (
+                                        <AvatarImage
+                                          src={lead.avatarUrl}
+                                          alt={lead.firstName}
+                                        />
+                                      ) : null}
+                                      <AvatarFallback>
+                                        {lead.firstName.charAt(0).toUpperCase()}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="space-y-1.5">
+                                      <Badge
+                                        className="rounded-[4px] bg-primary-50"
+                                        visual="primary"
+                                      >
+                                        {lead.isLead
+                                          ? "Project Lead"
+                                          : "Team Member"}
+                                      </Badge>
+                                      <div className="flex flex-col gap-y-0.5">
+                                        <NextLink
+                                          href={`/talent/${encodeURIComponent(lead.username)}`}
+                                          className="block text-sm leading-none text-gray-500 font-extralight hover:underline"
+                                        >
+                                          <span className="text-base font-bold text-dark-blue-400">
+                                            {lead.firstName}
+                                          </span>{" "}
+                                          @{lead.username}
+                                        </NextLink>
+                                        {lead.skills[0] ? (
+                                          <span className="text-sm leading-none font-extralight text-dark-blue-400">
+                                            {lead.skills
+                                              .slice(0, 2)
+                                              .join(" · ")}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {allLocations.length > 0 && (
+                                    <div className="space-y-3">
+                                      <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                        <MapPin className="size-[18px]" />{" "}
+                                        Locations
+                                      </h3>
+                                      <div className="gap-1 flex items-center flex-wrap">
+                                        {allLocations.map((loc, i) => (
+                                          <NextLink
+                                            key={loc}
+                                            href={`/talent?location=${encodeURIComponent(loc)}`}
+                                            className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                          >
+                                            {loc}
+                                            {i < allLocations.length - 1
+                                              ? ","
+                                              : ""}
+                                          </NextLink>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                {(allLanguages.length > 0 ||
+                                  visibleSkills.length > 0) && (
+                                  <div className="mt-6 grid grid-cols-2 gap-x-6">
+                                    {allLanguages.length > 0 && (
+                                      <div className="space-y-3">
+                                        <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                          <MessageTextSquare01 className="size-[18px]" />{" "}
+                                          Languages
+                                        </h3>
+                                        <div className="gap-1 flex items-center flex-wrap">
+                                          {allLanguages.map((lang, i) => (
+                                            <NextLink
+                                              key={lang}
+                                              href={`/talent?language=${encodeURIComponent(lang)}`}
+                                              className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                            >
+                                              {lang}
+                                              {i < allLanguages.length - 1
+                                                ? ","
+                                                : ""}
+                                            </NextLink>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {visibleSkills.length > 0 && (
+                                      <div className="space-y-3">
+                                        <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                          <Stars02 className="size-[18px]" />{" "}
+                                          Skills & Expertise
+                                        </h3>
+                                        <div className="gap-1 flex items-center flex-wrap">
+                                          {visibleSkills.map((skill, i) => (
+                                            <NextLink
+                                              key={skill}
+                                              href={`/talent?skills=${encodeURIComponent(skill)}`}
+                                              className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                            >
+                                              {skill}
+                                              {i < visibleSkills.length - 1 ||
+                                              extraSkillCount > 0
+                                                ? ","
+                                                : ""}
+                                            </NextLink>
+                                          ))}
+                                          {extraSkillCount > 0 && (
+                                            <span className="text-sm leading-6 font-semibold text-dark-blue-400">
+                                              and {extraSkillCount} more...
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })()
+                        ) : (
+                          <div className="p-6">
                             <h3 className="text-base leading-none font-semibold text-dark-blue-400">
                               About the Team
                             </h3>
@@ -1446,6 +1609,7 @@ export default function ProjectDetails() {
                               </div>
                             </div>
                           </div>
+                        )}
                       </div>
 
                       <div className="relative border mt-6 border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
@@ -3436,575 +3600,578 @@ export default function ProjectDetails() {
                   )
                 })()
               ) : (
-              <div className="mt-6">
-                <Accordion
-                  type="single"
-                  defaultValue="item-1"
-                  className="flex-auto space-y-3"
-                >
-                  <AccordionItem
-                    value="item-1"
-                    className="rounded-lg border border-gray-200 shadow-sm"
+                <div className="mt-6">
+                  <Accordion
+                    type="single"
+                    defaultValue="item-1"
+                    className="flex-auto space-y-3"
                   >
-                    <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                      <div className="inline-flex items-center gap-x-3.5">
-                        <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                          <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                        </AccordionTrigger>
+                    <AccordionItem
+                      value="item-1"
+                      className="rounded-lg border border-gray-200 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between gap-x-4 px-3 py-3">
+                        <div className="inline-flex items-center gap-x-3.5">
+                          <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
+                            <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                          </AccordionTrigger>
 
-                        <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                          Phase One <span className="font-light">Research</span>
-                        </span>
+                          <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
+                            Phase One{" "}
+                            <span className="font-light">Research</span>
+                          </span>
+                        </div>
+
+                        <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            Day 1
+                          </span>
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            -
+                          </span>
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            Day 8
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          Day 1
-                        </span>
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          -
-                        </span>
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          Day 8
-                        </span>
-                      </div>
-                    </div>
+                      <DisclosureContent>
+                        <Table>
+                          <TableHeader className="bg-gray-50">
+                            <TableRow className="hover:bg-transparent">
+                              <TableHead>Task</TableHead>
+                              <TableHead>Description</TableHead>
+                              <TableHead>Assignee</TableHead>
+                              <TableHead>Duration</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                    <DisclosureContent>
-                      <Table>
-                        <TableHeader className="bg-gray-50">
-                          <TableRow className="hover:bg-transparent">
-                            <TableHead>Task</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Assignee</TableHead>
-                            <TableHead>Duration</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
-
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </DisclosureContent>
-                  </AccordionItem>
-                  <AccordionItem
-                    value="item-2"
-                    className="rounded-lg border border-gray-200 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                      <div className="inline-flex items-center gap-x-3.5">
-                        <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                          <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                        </AccordionTrigger>
-
-                        <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                          Phase One <span className="font-light">Research</span>
-                        </span>
-                      </div>
-
-                      <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          Day 1
-                        </span>
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          -
-                        </span>
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          Day 8
-                        </span>
-                      </div>
-                    </div>
-
-                    <DisclosureContent>
-                      <Table>
-                        <TableHeader className="bg-gray-50">
-                          <TableRow className="hover:bg-transparent">
-                            <TableHead>Task</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Assignee</TableHead>
-                            <TableHead>Duration</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
-
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
-                                  </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                              </TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </DisclosureContent>
+                    </AccordionItem>
+                    <AccordionItem
+                      value="item-2"
+                      className="rounded-lg border border-gray-200 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between gap-x-4 px-3 py-3">
+                        <div className="inline-flex items-center gap-x-3.5">
+                          <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
+                            <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                          </AccordionTrigger>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
-                                  </span>
-                                </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                          <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
+                            Phase One{" "}
+                            <span className="font-light">Research</span>
+                          </span>
+                        </div>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
-                                  </span>
-                                </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
-
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
-                                  </span>
-                                </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </DisclosureContent>
-                  </AccordionItem>
-                  <AccordionItem
-                    value="item-3"
-                    className="rounded-lg border border-gray-200 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                      <div className="inline-flex items-center gap-x-3.5">
-                        <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                          <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                        </AccordionTrigger>
-
-                        <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                          Phase One <span className="font-light">Research</span>
-                        </span>
+                        <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            Day 1
+                          </span>
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            -
+                          </span>
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            Day 8
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          Day 1
-                        </span>
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          -
-                        </span>
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          Day 8
-                        </span>
+                      <DisclosureContent>
+                        <Table>
+                          <TableHeader className="bg-gray-50">
+                            <TableRow className="hover:bg-transparent">
+                              <TableHead>Task</TableHead>
+                              <TableHead>Description</TableHead>
+                              <TableHead>Assignee</TableHead>
+                              <TableHead>Duration</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
+
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
+                                  </span>
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
+
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
+                                  </span>
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
+
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
+                                  </span>
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
+
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
+                                  </span>
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </DisclosureContent>
+                    </AccordionItem>
+                    <AccordionItem
+                      value="item-3"
+                      className="rounded-lg border border-gray-200 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between gap-x-4 px-3 py-3">
+                        <div className="inline-flex items-center gap-x-3.5">
+                          <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
+                            <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                          </AccordionTrigger>
+
+                          <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
+                            Phase One{" "}
+                            <span className="font-light">Research</span>
+                          </span>
+                        </div>
+
+                        <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            Day 1
+                          </span>
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            -
+                          </span>
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            Day 8
+                          </span>
+                        </div>
                       </div>
-                    </div>
 
-                    <DisclosureContent>
-                      <Table>
-                        <TableHeader className="bg-gray-50">
-                          <TableRow className="hover:bg-transparent">
-                            <TableHead>Task</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Assignee</TableHead>
-                            <TableHead>Duration</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                      <DisclosureContent>
+                        <Table>
+                          <TableHeader className="bg-gray-50">
+                            <TableRow className="hover:bg-transparent">
+                              <TableHead>Task</TableHead>
+                              <TableHead>Description</TableHead>
+                              <TableHead>Assignee</TableHead>
+                              <TableHead>Duration</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </DisclosureContent>
-                  </AccordionItem>
-                </Accordion>
-              </div>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </DisclosureContent>
+                    </AccordionItem>
+                  </Accordion>
+                </div>
               )}
             </TabsContent>
           </Tabs>
@@ -4103,55 +4270,39 @@ export default function ProjectDetails() {
 
               <div className="flex flex-col items-start gap-y-3 mt-6">
                 <span className="inline-block text-xs font-medium text-dark-blue-400">
-                  Current Team
+                  {Array.isArray(project.team) && project.team.length > 1
+                    ? "Current Team"
+                    : "Created By"}
                 </span>
 
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <AvatarGroup size="sm" excess>
-                        <Avatar
-                          className="border-2 border-white hover:ring-0 active:ring-0"
-                          size="sm"
-                        >
-                          <AvatarImage src="/woman.jpg" alt="Woman" />
-                          <AvatarFallback>W</AvatarFallback>
-                        </Avatar>
-                        <Avatar
-                          className="border-2 border-white hover:ring-0 active:ring-0"
-                          size="sm"
-                        >
-                          <AvatarImage src="/woman.jpg" alt="Woman" />
-                          <AvatarFallback>W</AvatarFallback>
-                        </Avatar>
-                        <Avatar
-                          className="border-2 border-white hover:ring-0 active:ring-0"
-                          size="sm"
-                        >
-                          <AvatarImage src="/woman.jpg" alt="Woman" />
-                          <AvatarFallback>W</AvatarFallback>
-                        </Avatar>
-                        <Avatar
-                          className="border-2 border-white hover:ring-0 active:ring-0"
-                          size="sm"
-                        >
-                          <AvatarImage src="/woman.jpg" alt="Woman" />
-                          <AvatarFallback>W</AvatarFallback>
-                        </Avatar>
-                        <Avatar
-                          className="border-2 border-white hover:ring-0 active:ring-0"
-                          size="sm"
-                        >
-                          <AvatarImage src="/woman.jpg" alt="Woman" />
-                          <AvatarFallback>W</AvatarFallback>
-                        </Avatar>
-                        <Avatar
-                          className="border-2 border-white hover:ring-0 active:ring-0"
-                          size="sm"
-                        >
-                          <AvatarImage src="/woman.jpg" alt="Woman" />
-                          <AvatarFallback>W</AvatarFallback>
-                        </Avatar>
+                        {(Array.isArray(project.team) && project.team.length > 0
+                          ? project.team
+                          : [
+                              { firstName: "T", avatarUrl: "/woman.jpg" },
+                              { firstName: "T", avatarUrl: "/woman.jpg" },
+                              { firstName: "T", avatarUrl: "/woman.jpg" },
+                            ]
+                        ).map((m: any, i: number) => (
+                          <Avatar
+                            key={m.username ?? i}
+                            className="border-2 border-white hover:ring-0 active:ring-0"
+                            size="sm"
+                          >
+                            {m.avatarUrl ? (
+                              <AvatarImage
+                                src={m.avatarUrl}
+                                alt={m.firstName}
+                              />
+                            ) : null}
+                            <AvatarFallback>
+                              {(m.firstName || "?").charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        ))}
                       </AvatarGroup>
                     </TooltipTrigger>
                     <TooltipContent className="p-0" size="md">
@@ -4165,122 +4316,60 @@ export default function ProjectDetails() {
                         }
                       >
                         <div className="space-y-3 pr-5">
-                          <div className="flex items-center gap-x-[18px]">
-                            <div className="flex items-center gap-x-2 flex-auto">
-                              <Avatar>
-                                <AvatarImage src="/woman.jpg" alt="Woman" />
-                                <AvatarFallback>W</AvatarFallback>
-                              </Avatar>
-
-                              <div className="flex flex-col flex-auto">
-                                <div className="flex items-center gap-x-0.5">
-                                  <span className="text-xs leading-5 font-semibold text-white">
-                                    Sevil
-                                  </span>
-                                  <span className="text-[10px] leading-none font-light text-white">
-                                    @designsuperstar23
-                                  </span>
-                                </div>
-                                <span className="text-[10px] font-light text-white">
-                                  Full-stack Developer
-                                </span>
-                              </div>
-                            </div>
-
-                            <span className="text-sm font-semibold text-white leading-5">
-                              $75{" "}
-                              <span className="text-[10px] font-light leading-5">
-                                /hr
-                              </span>
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-x-[18px]">
-                            <div className="flex items-center gap-x-2 flex-auto">
-                              <Avatar>
-                                <AvatarImage src="/woman.jpg" alt="Woman" />
-                                <AvatarFallback>W</AvatarFallback>
-                              </Avatar>
-
-                              <div className="flex flex-col flex-auto">
-                                <div className="flex items-center gap-x-0.5">
-                                  <span className="text-xs leading-5 font-semibold text-white">
-                                    Sevil
-                                  </span>
-                                  <span className="text-[10px] leading-none font-light text-white">
-                                    @designsuperstar23
-                                  </span>
-                                </div>
-                                <span className="text-[10px] font-light text-white">
-                                  Full-stack Developer
-                                </span>
-                              </div>
-                            </div>
-
-                            <span className="text-sm font-semibold text-white leading-5">
-                              $75{" "}
-                              <span className="text-[10px] font-light leading-5">
-                                /hr
-                              </span>
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-x-[18px]">
-                            <div className="flex items-center gap-x-2 flex-auto">
-                              <Avatar>
-                                <AvatarImage src="/woman.jpg" alt="Woman" />
-                                <AvatarFallback>W</AvatarFallback>
-                              </Avatar>
-
-                              <div className="flex flex-col flex-auto">
-                                <div className="flex items-center gap-x-0.5">
-                                  <span className="text-xs leading-5 font-semibold text-white">
-                                    Sevil
-                                  </span>
-                                  <span className="text-[10px] leading-none font-light text-white">
-                                    @designsuperstar23
+                          {(Array.isArray(project.team) &&
+                          project.team.length > 0
+                            ? project.team
+                            : [
+                                {
+                                  firstName: "Sevil",
+                                  username: "designsuperstar23",
+                                  location: null,
+                                  skills: ["Full-stack Developer"],
+                                },
+                                {
+                                  firstName: "Sevil",
+                                  username: "designsuperstar23",
+                                  location: null,
+                                  skills: ["Full-stack Developer"],
+                                },
+                              ]
+                          ).map((m: any, i: number) => (
+                            <div
+                              key={m.username ?? i}
+                              className="flex items-center gap-x-[18px]"
+                            >
+                              <div className="flex items-center gap-x-2 flex-auto">
+                                <Avatar>
+                                  {m.avatarUrl ? (
+                                    <AvatarImage
+                                      src={m.avatarUrl}
+                                      alt={m.firstName}
+                                    />
+                                  ) : null}
+                                  <AvatarFallback>
+                                    {(m.firstName || "?")
+                                      .charAt(0)
+                                      .toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex flex-col flex-auto">
+                                  <div className="flex items-center gap-x-0.5">
+                                    <span className="text-xs leading-5 font-semibold text-white">
+                                      {m.firstName}
+                                    </span>
+                                    <span className="text-[10px] leading-none font-light text-white">
+                                      @{m.username}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] font-light text-white">
+                                    {m.location ||
+                                      m.skills?.[0] ||
+                                      "Team Member"}
                                   </span>
                                 </div>
-                                <span className="text-[10px] font-light text-white">
-                                  Full-stack Developer
-                                </span>
                               </div>
                             </div>
-
-                            <span className="text-sm font-semibold text-white leading-5">
-                              $75{" "}
-                              <span className="text-[10px] font-light leading-5">
-                                /hr
-                              </span>
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-x-[18px]">
-                            <div className="flex items-center gap-x-2 flex-auto">
-                              <Avatar>
-                                <AvatarImage src="/woman.jpg" alt="Woman" />
-                                <AvatarFallback>W</AvatarFallback>
-                              </Avatar>
-
-                              <div className="flex flex-col flex-auto">
-                                <div className="flex items-center gap-x-0.5">
-                                  <span className="text-xs leading-5 font-semibold text-white">
-                                    Sevil
-                                  </span>
-                                  <span className="text-[10px] leading-none font-light text-white">
-                                    @designsuperstar23
-                                  </span>
-                                </div>
-                                <span className="text-[10px] font-light text-white">
-                                  Full-stack Developer
-                                </span>
-                              </div>
-                            </div>
-
-                            <span className="text-sm font-semibold text-white leading-5">
-                              $75{" "}
-                              <span className="text-[10px] font-light leading-5">
-                                /hr
-                              </span>
-                            </span>
-                          </div>
+                          ))}
                         </div>
                       </ScrollArea>
                     </TooltipContent>

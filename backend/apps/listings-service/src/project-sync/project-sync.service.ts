@@ -1,7 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { ProjectSyncDto } from './dto/project-sync.dto';
+import {
+  DELIVERABLES_ADAPTER,
+  DeliverablesAdapter,
+} from './deliverables/deliverables.adapter';
+import { SKILLS_ADAPTER, SkillsAdapter } from './skills/skills.adapter';
 
 /**
  * ProjectSyncService — receives Payload CMS project documents and
@@ -22,11 +27,15 @@ export class ProjectSyncService {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
+    @Inject(DELIVERABLES_ADAPTER)
+    private readonly deliverablesAdapter: DeliverablesAdapter,
+    @Inject(SKILLS_ADAPTER)
+    private readonly skillsAdapter: SkillsAdapter,
   ) {}
 
   async syncFromCms(dto: ProjectSyncDto): Promise<{ id: string; payloadId: string; action: 'created' | 'updated' }> {
     const payloadId = String(dto.id);
-    const row = this.toRow(dto);
+    const row = await this.toRow(dto);
 
     const existing = await this.dataSource.query(
       `SELECT id FROM public.projects WHERE "payloadId" = $1 LIMIT 1`,
@@ -96,7 +105,11 @@ export class ProjectSyncService {
           row.scope,
           row.industries,
           row.relatedProjectIds,
-          'cms-sync',
+          // Owner identity — prefer the CMS-authored `ownerId` so
+          // `projectHistoryRatings` (§14.14) can group by the same
+          // owner across projects. Fall back to `cms-sync` for legacy
+          // documents that were synced before the field existed.
+          dto.ownerId?.trim() || 'cms-sync',
           dto.datePublished ?? null,
         ],
       );
@@ -142,6 +155,15 @@ export class ProjectSyncService {
          "scope" = $33::jsonb,
          industries = $34::text[],
          "relatedProjectIds" = $35::text[],
+         -- Backfill ownership when the CMS now supplies an ownerId and
+         -- the row still has the legacy 'cms-sync' placeholder. Never
+         -- overwrite a real owner once it's set, so §14.14 history
+         -- doesn't churn when an unrelated field is edited.
+         "createdBy" = CASE
+           WHEN $36::text IS NOT NULL AND $36::text <> '' AND "createdBy" = 'cms-sync'
+             THEN $36::text
+           ELSE "createdBy"
+         END,
          "updatedAt" = NOW()
        WHERE id = $1`,
       [
@@ -180,6 +202,7 @@ export class ProjectSyncService {
         row.scope,
         row.industries,
         row.relatedProjectIds,
+        dto.ownerId?.trim() || null,
       ],
     );
     this.logger.log(`Project updated from CMS: id=${id} payloadId=${payloadId} slug=${row.slug}`);
@@ -200,11 +223,11 @@ export class ProjectSyncService {
 
   // ── Internal mapping ─────────────────────────────────────────────────
 
-  private toRow(dto: ProjectSyncDto) {
+  private async toRow(dto: ProjectSyncDto) {
     const categories = (dto.categories ?? []).map((c) => c.value).filter(Boolean);
     const subcategories = (dto.subcategories ?? []).map((c) => c.value).filter(Boolean);
     const tags = (dto.tags ?? []).map((t) => t.value).filter(Boolean);
-    const skills = (dto.projectSkills ?? []).map((s) => s.value).filter(Boolean);
+    const authoredSkills = (dto.projectSkills ?? []).map((s) => s.value).filter(Boolean);
     const programmingLanguages = (dto.programmingLanguages ?? []).map((p) => p.value).filter(Boolean);
     const developmentTech = (dto.developmentTechnologies ?? []).map((d) => d.value).filter(Boolean);
 
@@ -223,8 +246,42 @@ export class ProjectSyncService {
       null;
 
     const description = this.lexicalToHtml(dto.fullDescription) || dto.shortDescription || '';
-    const deliverables = this.deliverablePhases(dto.deliverables);
+    const authoredDeliverables = this.deliverablePhases(dto.deliverables);
     const scope = this.scopePhases(dto.scope);
+    // §01 Deliverables — spec says deliverables are "derived from an
+    // AI summary that uses a large language model". When no author
+    // content is present, delegate to the `DeliverablesAdapter` seam.
+    // The bound adapter (`DeliverablesAdapterHuggingFace`) uses the
+    // same MiniLM-L6-v2 embedding endpoint as
+    // `favorites-service/ai/ai.service.ts` to cluster semantically
+    // similar task titles into a single deliverable, and falls back
+    // to the heuristic adapter when `HUGGINGFACE_API_KEY` is absent
+    // or any inference call fails. Authored content always wins so
+    // editors can override task-by-task.
+    const deliverables =
+      authoredDeliverables.length > 0
+        ? authoredDeliverables
+        : await this.deliverablesAdapter.deriveDeliverables(scope);
+
+    // §14.11 SuggestedSkills + §03 Task → Skill Map — delegate to the
+    // `SkillsAdapter` seam when the editor hasn't supplied
+    // `projectSkills`. Bound adapter
+    // (`SkillsAdapterHuggingFace`) embeds the description + category +
+    // tags + scope task titles and ranks against the `public.projects`
+    // skills vocabulary; `SkillsAdapterHeuristic` is the no-model
+    // fallback. Authored content always wins.
+    const scopeTaskTitles = scope
+      .flatMap((p) => p.tasks.map((t) => t.title))
+      .filter(Boolean);
+    const skills =
+      authoredSkills.length > 0
+        ? authoredSkills
+        : await this.skillsAdapter.extractSkills({
+            description,
+            category: categories[0] ?? null,
+            tags,
+            scopeTaskTitles,
+          });
     // Payload v2 delivers `answer` as a Lexical rich-text tree once the
     // field type flipped from textarea → richText. Run it through the same
     // converter used by fullDescription so the column holds ready-to-render
@@ -330,16 +387,6 @@ export class ProjectSyncService {
     return null;
   }
 
-  private serializeRichText(value: unknown): string | null {
-    if (!value) return null;
-    if (typeof value === 'string') return value;
-    try {
-      return this.extractText(value).trim() || null;
-    } catch {
-      return null;
-    }
-  }
-
   /**
    * Normalize Payload's `scope` array field (Phase → Task[]) into the
    * jsonb shape the listings entity expects. Mirrors docs §08 PhaseDto /
@@ -359,6 +406,7 @@ export class ProjectSyncService {
       location?: string;
       experienceLevel: string;
       estimatedHours: number;
+      assigneeEmail?: string;
     }>;
   }> {
     if (!Array.isArray(value)) return [];
@@ -387,12 +435,17 @@ export class ProjectSyncService {
             ? ((t as any).estimated_hours as number)
             : 0;
       if (!title || !roleName) return null;
+      const assigneeEmail =
+        typeof t.assigneeEmail === 'string' && t.assigneeEmail.trim()
+          ? t.assigneeEmail.trim().toLowerCase()
+          : undefined;
       return {
         title,
         roleName,
         location,
         experienceLevel,
         estimatedHours,
+        assigneeEmail,
       };
     };
     return value
@@ -447,19 +500,6 @@ export class ProjectSyncService {
         return { phaseLabel, phaseName, items };
       })
       .filter((p): p is { phaseLabel: string; phaseName: string; items: string[] } => !!p);
-  }
-
-  private extractText(node: unknown): string {
-    if (node == null) return '';
-    if (typeof node === 'string') return node;
-    if (Array.isArray(node)) return node.map((n) => this.extractText(n)).join('\n');
-    if (typeof node === 'object') {
-      const obj = node as Record<string, unknown>;
-      if (typeof obj.text === 'string') return obj.text;
-      if (Array.isArray(obj.children)) return this.extractText(obj.children);
-      if (obj.root) return this.extractText(obj.root);
-    }
-    return '';
   }
 
   /**
