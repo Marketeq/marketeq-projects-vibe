@@ -444,7 +444,10 @@ export default function MarketPlaceLayout({
       {/* <AuthenticatedRoute> */}
         <div
           ref={secondaryNavRef}
-          className="px-3.5 md:px-6 lg:px-[50px] bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] xs:max-md:hidden sticky top-[57px] lg:top-[56px] z-40 transition-transform duration-300"
+          // Pin the secondary nav under the fixed primary header so it also
+          // stays locked during overscroll bounce. The transform still handles
+          // the existing hide/show-on-scroll behavior without rejoining flow.
+          className="fixed inset-x-0 top-[62px] lg:top-[65px] px-3.5 md:px-6 lg:px-[50px] bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] xs:max-md:hidden z-40 transition-transform duration-300"
           style={{ transform: showSecondaryNav ? "translateY(0)" : "translateY(-100%)" }}
         >
           <div className="pt-0.5 pb-3.5 lg:py-3 flex items-end gap-x-6 lg:justify-between lg:gap-x-[30px] ">
@@ -565,7 +568,11 @@ export default function MarketPlaceLayout({
           </div>
         </div>
 
-        {children}
+        {/* Reserve space for the fixed secondary nav on desktop so nested
+            category pages render below both pinned navigation layers. */}
+        <div className="xs:max-md:pt-0 pt-[52px] lg:pt-[57px]">
+          {children}
+        </div>
         <Footer />
       {/* </AuthenticatedRoute> */}
     </>

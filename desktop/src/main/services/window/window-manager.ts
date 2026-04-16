@@ -238,7 +238,7 @@ export function resolveRendererPaths(dirname: string): {
   rendererIndexPath: string;
 } {
   return {
-    preloadPath: path.join(dirname, '..', 'preload', 'preload', 'index.js'),
+    preloadPath: path.join(dirname, '..', '..', 'preload', 'preload', 'index.js'),
     rendererIndexPath: path.join(
       dirname,
       '..',
