@@ -93,7 +93,7 @@ jobs:
           fi
 
       - name: Open violation issue
-        if: steps.detect.outputs.violation == 'true' && steps.approval.outputs.approved == 'false'
+        if: steps.detect.outputs.violation == 'true' && steps.approval.outputs.approved == 'false' && github.actor != 'CTorres9800'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FILES: ${{ steps.detect.outputs.files }}
