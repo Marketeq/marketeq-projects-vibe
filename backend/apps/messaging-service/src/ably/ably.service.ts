@@ -44,4 +44,20 @@ export class AblyService {
   publishMessageRead(userId: string, messageId: string) {
     return this.publish(`user:${userId}`, 'message:read', { messageId });
   }
+
+  publishThreadStateChanged(
+    userId: string,
+    threadId: string,
+    patch: Record<string, unknown>,
+  ) {
+    return this.publish(`user:${userId}`, 'thread:state-changed', { threadId, patch });
+  }
+
+  publishThreadListAssignments(userId: string, threadId: string, listIds: string[]) {
+    return this.publish(`user:${userId}`, 'thread:list-assignments-changed', { threadId, listIds });
+  }
+
+  publishThreadListsChanged(userId: string) {
+    return this.publish(`user:${userId}`, 'thread:lists-changed', {});
+  }
 }

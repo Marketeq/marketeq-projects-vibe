@@ -3,15 +3,7 @@
 import React, { useCallback, useMemo, useRef, useState } from "react"
 import { useEffect } from "react"
 import { decryptAES, decryptWithPrivateKey } from "@/src/crypto/e2ee"
-import {
-  ensureEncryptionKeysExist,
-  exportPrivateKey,
-  exportPublicKey,
-  generateKeyPair,
-  importPrivateKey,
-  savePrivateKey,
-  savePublicKey,
-} from "@/src/crypto/keys"
+import { exportPrivateKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
 import { Bubble, YourBubble } from "@/stories/inbox.stories"
@@ -97,6 +89,7 @@ import { useFileUpload } from "../hooks/use-file-upload"
 import { addParticipantToGroup } from "../hooks/use-group-encryption"
 import { useMessages } from "../hooks/use-messages"
 import { useSendMessage } from "../hooks/use-send-message"
+import { useThreadActions } from "../hooks/use-thread-actions"
 import { ForwardMessageDialog } from "./forward-message-dialog"
 
 interface ChatsProps {
@@ -129,6 +122,11 @@ export function Chats({
   const [forwardTarget, setForwardTarget] = useState<Message | null>(null)
   const [keyReady, setKeyReady] = useState(false)
   const [keyError, setKeyError] = useState<string | null>(null)
+  // Thread-level state is source-of-truth from the server (selectedConversation)
+  // which is kept up-to-date by the user:{userId} Ably subscription in left-sidebar.
+  const threadPinned = !!(selectedConversation as any)?.isPinned
+  const threadStarred = !!(selectedConversation as any)?.isStarred
+  const threadActions = useThreadActions(jwtToken)
 
   const handleOpenForward = useCallback((msg: Message) => {
     setForwardTarget(msg)
@@ -192,7 +190,7 @@ export function Chats({
       }
     })()
     return () => ac.abort()
-  }, [selectedConversation, privateKey, jwtToken])
+  }, [selectedConversation?.id, selectedConversation?.isGroup, privateKey, jwtToken])
 
   //below logic to add new user to a group chat //need to add button for it once user-service can be called to add users
   const handleAddUser = async (userId: string) => {
@@ -359,7 +357,7 @@ export function Chats({
     })
       .then(setReceiverUser)
       .catch(console.error)
-  }, [selectedConversation])
+  }, [selectedConversation?.id])
 
   // 6) send handler
   const handleSendMessage = async () => {
@@ -708,20 +706,66 @@ export function Chats({
                 <DropdownMenuItem>
                   <Info className="size-4" /> Profile Info
                 </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Star className="size-4" /> Mark Favorite
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    if (!selectedConversation) return
+                    const next = !threadStarred
+                    ;(next
+                      ? threadActions.star(selectedConversation.id)
+                      : threadActions.unstar(selectedConversation.id)
+                    ).catch((err) => console.error("star toggle failed", err))
+                  }}
+                >
+                  <Star className="size-4" />
+                  {threadStarred ? "Unmark Favorite" : "Mark Favorite"}
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    if (!selectedConversation) return
+                    threadActions
+                      .markUnread(selectedConversation.id)
+                      .catch((err) => console.error("mark unread failed", err))
+                  }}
+                >
                   <Mail05 className="size-4" /> Mark Unread
                 </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Pin02 className="size-4" /> Pin Chat
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    if (!selectedConversation) return
+                    const next = !threadPinned
+                    ;(next
+                      ? threadActions.pin(selectedConversation.id)
+                      : threadActions.unpin(selectedConversation.id)
+                    ).catch((err) => console.error("pin toggle failed", err))
+                  }}
+                >
+                  <Pin02 className="size-4" />
+                  {threadPinned ? "Unpin Chat" : "Pin Chat"}
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    if (!selectedConversation) return
+                    threadActions
+                      .archive(selectedConversation.id)
+                      .catch((err) => console.error("archive failed", err))
+                  }}
+                >
                   <Archive className="size-4" /> Archive
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    if (!selectedConversation) return
+                    threadActions
+                      .spam(selectedConversation.id)
+                      .catch((err) => console.error("spam failed", err))
+                  }}
+                >
                   <AlertTriangle className="size-4" /> Move to Spam
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-error-500">

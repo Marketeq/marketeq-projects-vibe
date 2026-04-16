@@ -2,9 +2,10 @@
 
 import React, { useCallback, useMemo, useState } from "react"
 import { useEffect } from "react"
-import { ensureEncryptionKeysExist, importPrivateKey } from "@/src/crypto/keys"
+import { useSearchParams } from "next/navigation"
+import { ensureEncryptionKeysExist, loadPrivateKey } from "@/src/crypto/keys"
 import { apiFetch } from "@/src/lib/api"
-import { getAccessToken } from "@/utils/auth"
+import { getAccessToken, getCurrentUser } from "@/utils/auth"
 import { useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
@@ -20,6 +21,14 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
   const [pinnedChats, setPinnedChats] = useState(0)
   const [showPinnedIcon, toggleShowPinnedIcon] = useToggle(false)
   const [checkedChats, setCheckedChats] = useState(0)
+
+  // If everything gets unpinned while in "View pinned" mode, exit the mode
+  // so the sidebar doesn't render empty with no visible Close control.
+  useEffect(() => {
+    if (pinnedChats === 0 && showPinnedIcon) {
+      toggleShowPinnedIcon(false)
+    }
+  }, [pinnedChats, showPinnedIcon, toggleShowPinnedIcon])
 
   const onChatPinned = useCallback(
     (value: boolean) =>
@@ -40,6 +49,7 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
   const value = useMemo(
     () => ({
       pinnedChats,
+      setPinnedChats,
       onChatPinned,
       showPinnedIcon,
       toggleShowPinnedIcon,
@@ -92,6 +102,9 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
 
 //New implementation for new encryption logic
 export default function InboxRoot() {
+  const searchParams = useSearchParams()
+  const initialThreadId = searchParams?.get("threadId") ?? null
+
   const [selectedConversation, setSelectedConversation] =
     useState<Conversation | null>(null)
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null)
@@ -122,14 +135,17 @@ export default function InboxRoot() {
       // 1) Ensure keypair exists, device registered, public key pushed
       await ensureEncryptionKeysExist()
 
-      // 2) Load private key from localStorage
-      const privPem = localStorage.getItem("privateKey")
-      if (!privPem) {
+      // 2) Load private key from IndexedDB (keyed by userId)
+      const uid = getCurrentUser()?.id
+      if (!uid) {
+        console.error("No userId available after key setup")
+        return
+      }
+      const key = await loadPrivateKey(uid)
+      if (!key) {
         console.error("No private key found after key setup")
         return
       }
-
-      const key = await importPrivateKey(privPem)
       setPrivateKey(key)
     })()
   }, [token])
@@ -150,6 +166,7 @@ export default function InboxRoot() {
           setSelectedConversation={setSelectedConversation}
           // We pass the whole map so Sidebar can show previews:
           messagesByConversation={messagesByConversation}
+          initialThreadId={initialThreadId}
         />
 
         {/* pass only the conversation and token into Chats */}

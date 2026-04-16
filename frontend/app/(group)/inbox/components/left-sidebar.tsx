@@ -4,14 +4,10 @@ import React, { useCallback, useMemo, useState } from "react"
 import { useEffect } from "react"
 import {
   ensureEncryptionKeysExist,
-  exportPrivateKey,
-  exportPublicKey,
-  generateKeyPair,
-  importPrivateKey,
-  savePrivateKey,
-  savePublicKey,
+  loadPrivateKey,
 } from "@/src/crypto/keys"
 import { apiFetch } from "@/src/lib/api"
+import { useUserChannel } from "@/utils/useUserChannel"
 import { getCurrentUser, getAccessToken } from "@/utils/auth"
 import { noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
@@ -96,14 +92,16 @@ interface LeftSidebarProps {
   selectedConversation: Conversation | null
   setSelectedConversation: (conv: Conversation) => void
   messagesByConversation: Record<string, Message[]>
+  initialThreadId?: string | null
 }
 
 const LeftSidebar = ({
   selectedConversation,
   setSelectedConversation,
   messagesByConversation,
+  initialThreadId,
 }: LeftSidebarProps) => {
-  const { pinnedChats, toggleShowPinnedIcon, showPinnedIcon, checkedChats } =
+  const { pinnedChats, setPinnedChats, toggleShowPinnedIcon, showPinnedIcon, checkedChats } =
     useChatsContext()
 
   //getting the user id || can get other details later as required
@@ -117,142 +115,201 @@ const LeftSidebar = ({
   useEffect(() => {
     if (!token) return
 
-    const fetchConversations = async () => {
+    let cancelled = false
+
+    const patchConv = (id: string, patch: Partial<Conversation>) => {
+      if (cancelled) return
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? ({ ...c, ...patch } as Conversation) : c))
+      )
+    }
+
+    const enrichGroup = async (conv: Conversation) => {
       try {
-        const data = await apiFetch<Conversation[]>(
-          "/v1/threads",
-          {
-            method: "GET",
-            headers: { Authorization: `Bearer ${token}` },
-          }
+        const group = await apiFetch<{ name: string }>(
+          `/v1/threads/${conv.id}`,
+          { method: "GET", headers: { Authorization: `Bearer ${token}` } }
         )
-
-        const enriched = await Promise.all(
-          data.map(async (conv: Conversation) => {
-            // GROUP conversation
-            if (conv.isGroup) {
-              try {
-                const group = await apiFetch<{ name: string }>(
-                  `/v1/threads/${conv.id}`,
-                  {
-                    method: "GET",
-                    headers: { Authorization: `Bearer ${token}` },
-                  }
-                )
-
-                return {
-                  ...conv,
-                  participantUsername: group.name, // or participantName, whatever you're rendering
-                }
-              } catch (err) {
-                console.warn(
-                  `[LeftSidebar] failed to fetch group name for ${conv.id}`,
-                  err
-                )
-                return {
-                  ...conv,
-                  participantUsername: "Unnamed Group",
-                }
-              }
-            }
-
-            // INDIVIDUAL conversation
-            const otherId = conv.participantIds?.find(
-              (id) => id !== currentUserId
-            )
-
-            if (!otherId) {
-              console.warn(
-                `[LeftSidebar] couldn’t find “other” participant for conv ${conv.id}`,
-                { currentUserId, participantIds: conv.participantIds }
-              )
-              return {
-                ...conv,
-                participantUsername: "Unknown User",
-              }
-            }
-
-            try {
-              const user = await apiFetch<{ username: string; firstName?: string; lastName?: string; avatarUrl?: string }>(
-                `/users/${otherId}`,
-                { method: "GET", headers: { Authorization: `Bearer ${token}` } }
-              )
-
-              const displayName = [user.firstName?.trim(), user.lastName?.trim()].filter(Boolean).join(" ") || user.username
-
-              // Decrypt last message preview if encrypted
-              let lastMessagePreview = ""
-              const lm = (conv as any).lastMessage
-              if (lm) {
-                if (lm.m_content) {
-                  lastMessagePreview = lm.m_content
-                } else if (lm.m_ciphertext) {
-                  // Try cached key first, then fetch+unwrap if not cached
-                  let key: Uint8Array | null = null
-                  try {
-                    key = loadKey(conv.id)
-                  } catch { /* not cached */ }
-
-                  if (!key && token) {
-                    try {
-                      const privPem = localStorage.getItem("privateKey")
-                      if (privPem) {
-                        const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-                          `/api/messaging/conversations/${conv.id}/key?isGroup=${conv.isGroup}`,
-                          { headers: { Authorization: `Bearer ${token}` } }
-                        )
-                        const privKey = await importPrivateKey(privPem)
-                        const wrapped = Uint8Array.from(atob(encryptedKey), (c) => c.charCodeAt(0))
-                        const rawBuffer = await crypto.subtle.decrypt(
-                          { name: "RSA-OAEP" },
-                          privKey,
-                          wrapped
-                        )
-                        key = new Uint8Array(rawBuffer)
-                        const b64 = btoa(String.fromCharCode(...key))
-                        saveKey(conv.id, b64)
-                      }
-                    } catch {
-                      /* key unwrap failed — show fallback */
-                    }
-                  }
-
-                  if (key) {
-                    try {
-                      lastMessagePreview = await decryptAES(lm.m_ciphertext, key)
-                    } catch {
-                      lastMessagePreview = "Encrypted message"
-                    }
-                  } else {
-                    lastMessagePreview = "Encrypted message"
-                  }
-                }
-              }
-
-              return { ...conv, participantUsername: displayName, participantAvatarUrl: user.avatarUrl, lastMessagePreview } as any
-            } catch (err) {
-              console.warn(
-                `[LeftSidebar] failed to fetch user for ${otherId}`,
-                err
-              )
-              return {
-                ...conv,
-                participantUsername: "Unknown User",
-              }
-            }
-          })
-        )
-
-        setConversations(enriched)
+        patchConv(conv.id, { participantUsername: group.name } as any)
       } catch (err) {
-        console.error("[LeftSidebar] error fetching conversations:", err)
-      } finally {
-        setIsLoading(false)
+        console.warn(
+          `[LeftSidebar] failed to fetch group name for ${conv.id}`,
+          err
+        )
+        patchConv(conv.id, { participantUsername: "Unnamed Group" } as any)
       }
     }
 
-    fetchConversations()
+    const enrichIndividual = async (
+      conv: Conversation,
+      privKeyRef: { current: CryptoKey | null }
+    ) => {
+      const otherId = conv.participantIds?.find((id) => id !== currentUserId)
+      if (!otherId) {
+        patchConv(conv.id, { participantUsername: "Unknown User" } as any)
+        return
+      }
+
+      try {
+        const user = await apiFetch<{
+          username: string
+          firstName?: string
+          lastName?: string
+          avatarUrl?: string
+        }>(`/users/${otherId}`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const displayName =
+          [user.firstName?.trim(), user.lastName?.trim()]
+            .filter(Boolean)
+            .join(" ") || user.username
+        patchConv(conv.id, {
+          participantUsername: displayName,
+          participantAvatarUrl: user.avatarUrl,
+        } as any)
+      } catch (err) {
+        console.warn(`[LeftSidebar] failed to fetch user for ${otherId}`, err)
+        patchConv(conv.id, { participantUsername: "Unknown User" } as any)
+        return
+      }
+
+      // Last-message preview (best-effort; placeholder already rendered)
+      const lm = (conv as any).lastMessage
+      if (!lm) return
+      if (lm.m_content) {
+        patchConv(conv.id, { lastMessagePreview: lm.m_content } as any)
+        return
+      }
+      if (!lm.m_ciphertext) return
+
+      let key: Uint8Array | null = null
+      try {
+        key = loadKey(conv.id)
+      } catch { /* not cached */ }
+
+      if (!key && currentUserId) {
+        try {
+          const privKey = privKeyRef.current
+          if (privKey) {
+            const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
+              `/api/messaging/conversations/${conv.id}/key?isGroup=${conv.isGroup}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            )
+            const wrapped = Uint8Array.from(atob(encryptedKey), (c) =>
+              c.charCodeAt(0)
+            )
+            const rawBuffer = await window.crypto.subtle.decrypt(
+              { name: "RSA-OAEP" },
+              privKey,
+              wrapped
+            )
+            key = new Uint8Array(rawBuffer)
+            const b64 = btoa(String.fromCharCode(...key))
+            saveKey(conv.id, b64)
+          }
+        } catch {
+          /* unwrap failed; keep placeholder */
+        }
+      }
+
+      if (key) {
+        try {
+          const preview = await decryptAES(lm.m_ciphertext, key)
+          patchConv(conv.id, { lastMessagePreview: preview } as any)
+        } catch {
+          /* decrypt failed; placeholder remains */
+        }
+      }
+    }
+
+    const run = async () => {
+      try {
+        const data = await apiFetch<Conversation[]>("/v1/threads", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (cancelled) return
+
+        // Render list immediately with placeholders; no network/crypto blocked.
+        const placeholders = data.map((conv: Conversation) => ({
+          ...conv,
+          participantUsername: conv.isGroup ? "Group" : "…",
+          lastMessagePreview: (conv as any).lastMessage?.m_ciphertext
+            ? "Encrypted message"
+            : (conv as any).lastMessage?.m_content ?? "",
+        })) as Conversation[]
+        setConversations(placeholders)
+        setPinnedChats(placeholders.filter((c) => (c as any).isPinned).length)
+        setIsLoading(false)
+
+        // Auto-select the thread if the caller passed ?threadId=... and it
+        // exists in this user's threads. Only fires once per mount.
+        if (initialThreadId) {
+          const match = placeholders.find((c) => c.id === initialThreadId)
+          if (match && !cancelled) setSelectedConversation(match)
+        }
+
+        // Load the private key once per pass; share across all unwraps.
+        const privKeyRef: { current: CryptoKey | null } = { current: null }
+        if (currentUserId) {
+          try {
+            privKeyRef.current = await loadPrivateKey(currentUserId)
+          } catch {
+            privKeyRef.current = null
+          }
+        }
+
+        // Enrich in parallel; each resolves independently and patches state.
+        await Promise.allSettled(
+          data.map((conv) =>
+            conv.isGroup ? enrichGroup(conv) : enrichIndividual(conv, privKeyRef)
+          )
+        )
+      } catch (err) {
+        if (!cancelled) {
+          console.error("[LeftSidebar] error fetching conversations:", err)
+          setIsLoading(false)
+        }
+      }
+    }
+
+    run()
+
+    return () => {
+      cancelled = true
+    }
   }, [currentUserId, token])
+
+  // Live-sync: apply server state-change broadcasts (pin/star/archive/...)
+  useUserChannel({
+    onThreadStateChanged: ({ threadId, patch }) => {
+      if (patch.removed) {
+        setConversations((prev) => prev.filter((c) => c.id !== threadId))
+        return
+      }
+      setConversations((prev) => {
+        const next = prev.map((c) => (c.id === threadId ? { ...c, ...patch } : c))
+        next.sort((a, b) => {
+          if (!!a.isPinned !== !!b.isPinned) return a.isPinned ? -1 : 1
+          return (
+            new Date((b as any).updatedAt).getTime() -
+            new Date((a as any).updatedAt).getTime()
+          )
+        })
+        return next
+      })
+      // Keep the currently-open thread in the top bar in sync too
+      if (selectedConversation && selectedConversation.id === threadId) {
+        setSelectedConversation({ ...(selectedConversation as any), ...patch })
+      }
+    },
+  })
+
+  // Keep the pinned-chats bar count in sync with the live conversations list
+  useEffect(() => {
+    setPinnedChats(conversations.filter((c) => c.isPinned).length)
+  }, [conversations, setPinnedChats])
 
   return (
     <div className="w-[322px] shrink-0 border-r bg-white border-gray-200">
@@ -419,22 +476,21 @@ const LeftSidebar = ({
 
           {showPinnedIcon ? (
             <Button
-              className="hover:no-underline opacity-50 hover:opacity-100"
+              className="hover:no-underline"
               variant="link"
               visual="gray"
-              onClick={toggleShowPinnedIcon}
+              onClick={() => toggleShowPinnedIcon()}
             >
               <X className="size-[15px]" /> Close
             </Button>
           ) : (
             <Button
-              className="group"
+              className="hover:no-underline"
               variant="link"
               visual="gray"
-              onClick={toggleShowPinnedIcon}
+              onClick={() => toggleShowPinnedIcon()}
             >
-              View{" "}
-              <X className="size-[15px] opacity-50 group-hover:opacity-100" />
+              View
             </Button>
           )}
         </div>
@@ -460,6 +516,7 @@ const LeftSidebar = ({
                     ...conv,
                     participantUsername: conv.participantUsername,
                   }}
+                  pinned={conv.isPinned}
                   currentUserId={currentUserId}
                   onClick={() => {
                     setSelectedConversation(conv)

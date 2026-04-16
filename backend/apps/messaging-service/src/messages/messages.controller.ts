@@ -8,8 +8,8 @@ export class MessagesController {
   constructor(private readonly service: MessagesService) {}
 
   @Get('thread/:threadId')
-  getThreadMessages(@Param('threadId') threadId: string) {
-    return this.service.getThreadMessages(threadId);
+  getThreadMessages(@Param('threadId') threadId: string, @Req() req: any) {
+    return this.service.getThreadMessages(threadId, req.user?.id);
   }
 
   @Post()
@@ -40,18 +40,18 @@ export class MessagesController {
   }
 
   @Post(':id/pin')
-  pin(@Param('id') id: string) {
-    return this.service.pin(id);
+  pin(@Param('id') id: string, @Req() req: any) {
+    return this.service.pin(id, req.user?.id);
   }
 
   @Delete(':id/pin')
-  unpin(@Param('id') id: string) {
-    return this.service.unpin(id);
+  unpin(@Param('id') id: string, @Req() req: any) {
+    return this.service.unpin(id, req.user?.id);
   }
 
   @Post(':id/star')
-  star(@Param('id') id: string) {
-    return this.service.star(id);
+  star(@Param('id') id: string, @Req() req: any) {
+    return this.service.star(id, req.user?.id);
   }
 
   @Get('search')

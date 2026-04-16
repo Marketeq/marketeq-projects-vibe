@@ -65,6 +65,7 @@ interface ChatProps {
 }
 export const [ChatsContextProvider, useChatsContext] = createContext<{
   pinnedChats: number
+  setPinnedChats: (n: number) => void
   onChatPinned: (pinned: boolean) => void
   onChatChecked: (checked: boolean) => void
   showPinnedIcon: boolean
@@ -109,10 +110,10 @@ export const UserDetail = ({
       onChatPinned(value)
 
       try {
-        await apiFetch<{ message: string }>(
-          `/api/messaging/conversations/${conversation.id}/pin`,
+        await apiFetch<unknown>(
+          `/v1/threads/${conversation.id}/pin`,
           {
-            method: "POST",
+            method: value ? "POST" : "DELETE",
             headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
           }
         )
@@ -177,12 +178,16 @@ export const UserDetail = ({
 
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
-              <button className="absolute top-[13.73px] right-[15px] size-[27px] hidden group-hover/chat:inline-flex data-[state=open]:inline-flex justify-center items-center focus-visible:outline-none text-gray-500 transition-opacity duration-300 group-hover/chat:opacity-100 data-[state=open]:opacity-100 opacity-0 rounded-full hover:text-dark-blue-500 hover:bg-primary-50">
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="absolute top-[13.73px] right-[15px] size-[27px] hidden group-hover/chat:inline-flex data-[state=open]:inline-flex justify-center items-center focus-visible:outline-none text-gray-500 transition-opacity duration-300 group-hover/chat:opacity-100 data-[state=open]:opacity-100 opacity-0 rounded-full hover:text-dark-blue-500 hover:bg-primary-50"
+              >
                 <MoreHorizontal className="size-[15px]" />
               </button>
             </DropdownMenuTrigger>
 
             <DropdownMenuContent
+              onClick={(e) => e.stopPropagation()}
               className="min-w-[142px] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:duration-100"
               align="end"
               side="bottom"
@@ -231,7 +236,7 @@ export const UserDetail = ({
             </DialogContent>
           </Dialog>
 
-          {showPinnedIcon && isPinned && (
+          {isPinned && (
             <Pin02 className="size-4 absolute shrink-0 text-primary-500 fill-primary-500 top-[3px] right-1" />
           )}
         </div>
@@ -264,9 +269,13 @@ export const Chat = ({
   variant,
   className,
   onClick,
+  pinned: pinnedProp,
 }: ChatProps) => {
   const { showPinnedIcon } = useChatsContext()
-  const [isPinned, setIsPinned] = useState(false)
+  const [localPinned, setLocalPinned] = useState(false)
+  // If parent supplied `pinned` (from server truth), it takes precedence
+  const isPinned = pinnedProp ?? localPinned
+  const setIsPinned = (v: boolean) => setLocalPinned(v)
 
   if (showPinnedIcon) {
     return isPinned ? (
