@@ -1605,7 +1605,7 @@ function DownloadDesktopTrackerDialog({
                 {selected.fileName}
               </div>
               <div className="text-xs text-gray-500">
-                v{DTT_VERSION}  {selected.fileSize}  Stable channel
+                {selected.fileSize}  Stable channel
               </div>
             </div>
             <Button
