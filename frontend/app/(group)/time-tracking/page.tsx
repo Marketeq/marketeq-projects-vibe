@@ -1506,9 +1506,7 @@ function DownloadDesktopTrackerDialog({
   }, [open])
 
   const triggerDownload = () => {
-    // In production this would navigate to the GitHub releases asset URL
-    // to start the browser download. We avoid creating <a> elements here
-    // and just surface a toast + flip the "started" flag for the fallback.
+    window.open(selected.downloadUrl, "_blank")
     setDownloadStarted(true)
     toast({
       title: "Download started",
@@ -1520,6 +1518,7 @@ function DownloadDesktopTrackerDialog({
   useEffect(() => {
     if (!open || downloadStarted) return
     const t = setTimeout(() => {
+      window.open(selected.downloadUrl, "_blank")
       setDownloadStarted(true)
       toast({
         title: "Download started",
