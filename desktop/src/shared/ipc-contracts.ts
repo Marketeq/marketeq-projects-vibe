@@ -98,6 +98,9 @@ export const IPC = {
   windowShow: 'window:show',
   windowHide: 'window:hide',
   windowQuit: 'window:quit',
+
+  // --- Shell helpers ---
+  shellOpenExternal: 'shell:open-external',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
@@ -397,27 +400,3 @@ export const NotificationPrefsSchema = z.object({
   permissionChanges: z.boolean(),
   authAlerts: z.boolean(),
 });
-
-// ---------- Phase 7 Updater contracts ----------
-
-export type UpdaterReleaseChannel = 'stable' | 'beta' | 'alpha';
-
-export type UpdaterStateName = 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
-
-export interface UpdaterProgressInfo {
-  total: number;
-  delta: number;
-  transferred: number;
-  percent: number;
-  bytesPerSecond: number;
-}
-
-export interface UpdaterStatusDTO {
-  currentVersion: string;
-  channel: UpdaterReleaseChannel;
-  state: UpdaterStateName;
-  availableVersion: string | null;
-  progress: UpdaterProgressInfo | null;
-  lastError: string | null;
-  lastCheckAt: number | null;
-}

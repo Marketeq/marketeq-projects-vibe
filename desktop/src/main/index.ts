@@ -1,14 +1,13 @@
 // src/main/index.ts
 // Electron main process entry point for the Marketeq Time Tracker.
-// Responsibilities:
+// Responsibilities (Phase 1):
 //   1. Enforce single-instance lock.
 //   2. Initialize logging.
 //   3. Initialize the local SQLite database and run migrations.
-//   4. Register typed IPC handlers (timer/capture/sync/auth/onboarding).
-//   5. Create the main BrowserWindow via the Phase 6 window manager,
-//      wire tray + notifications.
+//   4. Register the typed IPC handlers.
+//   5. Create the main BrowserWindow.
 
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { ensureSingleInstance } from './lifecycle/single-instance';
 import { logger } from './logger';
@@ -18,7 +17,6 @@ import { registerIpcHandlers } from './ipc';
 import { createRepos } from './db/repos';
 import {
   createTimerService,
-  TIMER_CHANNELS,
   type TimerService,
 } from './services/timer/timer-service';
 import { createPermissionsService } from './services/permissions/permissions-service';
@@ -41,19 +39,55 @@ import { createAuthService } from './services/auth/auth-service';
 import { createFetchAuthHttpPort } from './services/auth/http-port';
 import { registerAuthIpc } from './services/auth/register-ipc';
 import { collectBroadcastTargets } from './ipc/timer';
-import {
-  createWindowManager,
-  resolveRendererPaths,
-  type WindowManager,
-} from './services/window/window-manager';
-import { createTrayService } from './services/tray/tray-service';
-import { createNotificationService } from './services/notifications/notification-service';
+import { ipcMain } from 'electron';
 import { createOnboardingService } from './services/onboarding/onboarding-service';
 import { registerOnboardingIpc } from './services/onboarding/register-ipc';
 
 const isDev = !app.isPackaged;
 
-let windowManager: WindowManager | null = null;
+async function createMainWindow(): Promise<BrowserWindow> {
+  const win = new BrowserWindow({
+    width: 340,
+    height: 580,
+    minWidth: 320,
+    minHeight: 480,
+    show: true,
+    title: 'Marketeq',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 14, y: 14 },
+    webPreferences: {
+      // `__dirname` at runtime is `dist/main/main/`, so we need three `..`
+      // jumps to reach `dist/preload/preload/index.js`:
+      //   dist/main/main -> dist/main -> dist -> dist/preload/preload/index.js
+      preload: path.join(__dirname, '..', '..', 'preload', 'preload', 'index.js'),
+      contextIsolation: true,
+      sandbox: false,
+      nodeIntegration: false,
+    },
+  });
+
+  if (isDev && process.env.VITE_DEV_SERVER_URL) {
+    await win.loadURL(process.env.VITE_DEV_SERVER_URL);
+    win.webContents.openDevTools({ mode: 'detach' });
+  } else {
+    const rendererIndex = path.join(
+      __dirname,
+      '..',
+      '..',
+      'renderer',
+      'index.html',
+    );
+    await win.loadFile(rendererIndex);
+  }
+
+  win.once('ready-to-show', () => {
+    win.show();
+    win.focus();
+    win.moveTop();
+    app.dock?.bounce?.('informational');
+  });
+  return win;
+}
 
 async function bootstrap(): Promise<void> {
   ensureSingleInstance();
@@ -131,6 +165,26 @@ async function bootstrap(): Promise<void> {
     logger.info('phase 5 auth service wired');
   } catch (err) {
     logger.error({ err }, 'failed to initialize auth service');
+  }
+
+  // --- Phase 6: onboarding wizard --------------------------------------
+  let detachOnboardingIpc: (() => void) | null = null;
+  try {
+    const db = initDatabase();
+    const repos = createRepos(db);
+    const onboardingService = createOnboardingService({
+      db,
+      logger,
+    });
+    detachOnboardingIpc = registerOnboardingIpc({
+      ipcMain,
+      logger,
+      service: onboardingService,
+      getBroadcastTargets: () => collectBroadcastTargets(),
+    });
+    logger.info('phase 6 onboarding service wired');
+  } catch (err) {
+    logger.error({ err }, 'failed to initialize onboarding service');
   }
 
   // --- Phase 3: capture pipeline ---------------------------------------
@@ -264,123 +318,7 @@ async function bootstrap(): Promise<void> {
     logger.error({ err }, 'failed to initialize sync pipeline');
   }
 
-  // --- Phase 6: window manager, onboarding, tray, notifications --------
-  let detachOnboardingIpc: (() => void) | null = null;
-  let trayService: ReturnType<typeof createTrayService> | null = null;
-  let detachTimerBus: (() => void) | null = null;
-  try {
-    const db = initDatabase();
-    const onboardingService = createOnboardingService({
-      db,
-      logger,
-      getUserId: () => null,
-    });
-
-    const { preloadPath, rendererIndexPath } = resolveRendererPaths(__dirname);
-    windowManager = createWindowManager({
-      logger,
-      isDev,
-      devServerUrl: process.env.VITE_DEV_SERVER_URL,
-      preloadPath,
-      rendererIndexPath,
-      getTimerState: () =>
-        timerService ? timerService.getCurrentState() : 'Idle',
-    });
-
-    detachOnboardingIpc = registerOnboardingIpc({
-      ipcMain,
-      logger,
-      service: onboardingService,
-      getBroadcastTargets: () => collectBroadcastTargets(),
-    });
-
-    const notificationService = createNotificationService({
-      logger,
-      windowManager,
-      getPrefs: () => onboardingService.getNotificationPrefs(),
-    });
-
-    // Resolve tray icon dir from packaged resources or dev tree.
-    const resourcesRoot = app.isPackaged
-      ? process.resourcesPath
-      : path.join(__dirname, '..', '..', 'resources');
-    const fallbackIcon = path.join(resourcesRoot, 'icon.png');
-
-    trayService = createTrayService({
-      logger,
-      iconsDir: resourcesRoot,
-      fallbackIcon,
-      windowManager,
-      onStartTimer: () => {
-        void timerService?.startTimer({
-          contractId: 'default',
-          taskId: 'default',
-        });
-      },
-      onPauseTimer: async () => {
-        await timerService?.pauseTimer();
-      },
-      onResumeTimer: async () => {
-        await timerService?.resumeTimer();
-      },
-      onStopTimer: async () => {
-        await timerService?.stopTimer('user_stop');
-      },
-      onStartBreak: async (kind) => {
-        await timerService?.startBreak({ kind, durationSec: 15 * 60 });
-      },
-      onSyncNow: () => undefined,
-      onLogout: () => undefined,
-      onQuit: () => {
-        windowManager?.prepareToQuit();
-        app.quit();
-      },
-    });
-    trayService.start();
-
-    // Forward timer bus events into tray + notifications.
-    if (timerService) {
-      detachTimerBus = timerService.attachEventBus((evt) => {
-        try {
-          if (evt.channel === TIMER_CHANNELS.stateChanged) {
-            trayService?.setTimerState(evt.payload.state, evt.payload.elapsedSec);
-          } else if (evt.channel === TIMER_CHANNELS.tick) {
-            trayService?.setTimerState(evt.payload.state, evt.payload.elapsedSec);
-          } else if (evt.channel === TIMER_CHANNELS.workReminder) {
-            notificationService.workReminder(evt.payload.elapsedSec);
-          } else if (evt.channel === TIMER_CHANNELS.breakReminder) {
-            notificationService.breakReminder(evt.payload.elapsedSec);
-          } else if (evt.channel === TIMER_CHANNELS.breakExpiring) {
-            notificationService.breakExpiring(evt.payload.remainingSec);
-          } else if (evt.channel === TIMER_CHANNELS.breakExpired) {
-            notificationService.breakExpired();
-          } else if (evt.channel === TIMER_CHANNELS.idleResolutionNeeded) {
-            notificationService.idleDetected(evt.payload.seconds);
-          }
-        } catch (err) {
-          logger.warn({ err }, 'timer bus → tray/notifications failed');
-        }
-      });
-    }
-
-    logger.info('phase 6 window/tray/notifications/onboarding wired');
-  } catch (err) {
-    logger.error({ err }, 'failed to initialize phase 6 services');
-  }
-
-  app.on('before-quit', (evt) => {
-    // Confirm-before-quit when there's an active session.
-    if (windowManager && !windowManager.isQuitting()) {
-      evt.preventDefault();
-      void (async () => {
-        const ok = await windowManager!.confirmQuit();
-        if (!ok) return;
-        windowManager!.prepareToQuit();
-        app.quit();
-      })();
-      return;
-    }
-
+  app.on('before-quit', () => {
     // Fire off the async sync shutdown but don't block the quit path —
     // Electron gives us ~2 s before force-killing anyway.
     if (stopSync) {
@@ -405,52 +343,42 @@ async function bootstrap(): Promise<void> {
       logger.warn({ err }, 'error while detaching onboarding ipc');
     }
     try {
-      detachTimerBus?.();
-      trayService?.destroy();
-    } catch (err) {
-      logger.warn({ err }, 'error while stopping tray service');
-    }
-    try {
-      windowManager?.closeAll();
-    } catch (err) {
-      logger.warn({ err }, 'error while closing windows');
-    }
-    try {
       timerService?.dispatch({ type: 'APP_QUIT' }).catch(() => undefined);
       timerService?.dispose();
       detachIpcHandlers?.();
     } catch (err) {
       logger.warn({ err }, 'error while stopping timer service');
     }
+    // IMPORTANT: closeDatabase MUST be the last thing we do in shutdown,
+    // otherwise capture-supervisor / timer / sync-worker handlers above
+    // will try to persist state against a closed connection and throw.
+    try {
+      closeDatabase();
+    } catch (err) {
+      logger.warn({ err }, 'error while closing database on quit');
+    }
   });
 
   await app.whenReady();
-  if (windowManager) {
-    await windowManager.ensureMainWindow();
-  }
+  await createMainWindow();
 
   app.on('activate', () => {
-    if (windowManager) {
-      void windowManager.showMainWindow();
-    } else if (BrowserWindow.getAllWindows().length === 0) {
-      // Shouldn't happen, but keep a safety net.
+    if (BrowserWindow.getAllWindows().length === 0) {
+      void createMainWindow();
     }
   });
 }
 
 app.on('window-all-closed', () => {
-  // Phase 6: close-to-tray — keep the app alive so the tray menu remains
-  // accessible on both platforms. Users quit explicitly via tray → Quit
-  // or the File menu, which calls `windowManager.prepareToQuit()` first.
+  if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
-  try {
-    closeDatabase();
-  } catch (err) {
-    logger.warn({ err }, 'error while closing database on quit');
-  }
-});
+// NOTE: the `before-quit` handler that closes the DB is registered inside
+// `bootstrap()` AFTER the capture / sync / timer teardown steps. A module-level
+// handler here would fire BEFORE the bootstrap handler (Electron invokes
+// listeners in registration order, and module code runs before the async
+// bootstrap completes), causing a shutdown race where capture-supervisor
+// tries to persist permission-grant rows against an already-closed DB.
 
 void bootstrap().catch((err) => {
   logger.error({ err }, 'bootstrap failed');

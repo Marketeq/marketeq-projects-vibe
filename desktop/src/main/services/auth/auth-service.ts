@@ -64,28 +64,52 @@ export const REFRESH_RETRY_BACKOFF_MS = 5_000;
 const RawUserMirror = z.object({
   id: z.string().min(1),
   email: z.string().email(),
-  displayName: z.string().min(1),
+  displayName: z.string().default(''),
   avatarUrl: z.string().nullable().optional(),
-  timezone: z.string().min(1),
-  currency: z.string().min(3).max(3),
+  timezone: z.string().default('UTC'),
+  currency: z.string().default('USD'),
   pendingErasure: z.boolean().optional(),
 });
 
 const LoginResponseSchema = z.object({
   accessToken: z.string().min(1),
   refreshToken: z.string().min(1),
-  expiresIn: z.number().int().positive(),
+  expiresIn: z.number().int().positive().default(604800),
   user: RawUserMirror,
 });
 type LoginResponse = z.infer<typeof LoginResponseSchema>;
 
 const RefreshResponseSchema = z.object({
   accessToken: z.string().min(1),
-  expiresIn: z.number().int().positive(),
+  expiresIn: z.number().int().positive().default(604800),
   /** Refresh token rotation is supported — optional field. */
   refreshToken: z.string().min(1).optional(),
 });
 type RefreshResponse = z.infer<typeof RefreshResponseSchema>;
+
+/** Normalize backend responses that may use snake_case keys. */
+function normalizeLoginBody(raw: unknown): unknown {
+  if (raw == null || typeof raw !== 'object') return raw;
+  const r = raw as Record<string, unknown>;
+  const user = r.user as Record<string, unknown> | undefined;
+  return {
+    accessToken: r.accessToken ?? r.access_token,
+    refreshToken: r.refreshToken ?? r.refresh_token,
+    expiresIn: r.expiresIn ?? r.expires_in ?? 604800,
+    user: user
+      ? {
+          id: user.id,
+          email: user.email,
+          displayName:
+            user.displayName ?? user.display_name ?? user.username ?? '',
+          avatarUrl: user.avatarUrl ?? user.avatar_url ?? null,
+          timezone: user.timezone ?? 'UTC',
+          currency: user.currency ?? 'USD',
+          pendingErasure: user.pendingErasure ?? false,
+        }
+      : undefined,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // HTTP port — tiny abstraction so tests can inject a fake.
@@ -370,7 +394,7 @@ export function createAuthService(deps: AuthServiceDeps) {
       return handleLoginHttpError(normalizedEmail, syntheticErr);
     }
 
-    const bodyParsed = LoginResponseSchema.safeParse(res.body);
+    const bodyParsed = LoginResponseSchema.safeParse(normalizeLoginBody(res.body));
     if (!bodyParsed.success) {
       logger.error(
         { issues: bodyParsed.error.issues },

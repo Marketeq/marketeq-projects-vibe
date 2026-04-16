@@ -37,8 +37,6 @@ import type {
   TimerStartArgs,
   TimerStopArgs,
   TimerTickPayload,
-  UpdaterProgressInfo,
-  UpdaterStatusDTO,
 } from '../shared/ipc-contracts';
 import type { AppInfo, PingResult } from '../shared/types';
 
@@ -47,6 +45,11 @@ const dtt = {
   ping: (echo: string): Promise<PingResult> =>
     ipcRenderer.invoke(IPC.ping, echo),
   listDbTables: (): Promise<string[]> => ipcRenderer.invoke(IPC.dbTablesList),
+
+  shell: {
+    openExternal: (url: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.shellOpenExternal, url),
+  },
 
   permissions: {
     check: (kind: PermissionKindShort): Promise<PermissionStatusShort> =>
@@ -253,35 +256,6 @@ const dtt = {
       const handler = (_evt: IpcRendererEvent, payload: boolean) => cb(payload);
       ipcRenderer.on(IPC.netOnlineChanged, handler);
       return () => ipcRenderer.off(IPC.netOnlineChanged, handler);
-    },
-  },
-  updater: {
-    getStatus: (): Promise<UpdaterStatusDTO> =>
-      ipcRenderer.invoke(IPC.updaterGetStatus),
-    checkNow: (): Promise<UpdaterStatusDTO> =>
-      ipcRenderer.invoke(IPC.updaterCheckNow),
-    setChannel: (channel: string): Promise<UpdaterStatusDTO> =>
-      ipcRenderer.invoke(IPC.updaterSetChannel, channel),
-    download: (): Promise<UpdaterStatusDTO> =>
-      ipcRenderer.invoke(IPC.updaterDownload),
-    quitAndInstall: (): Promise<void> =>
-      ipcRenderer.invoke(IPC.updaterQuitAndInstall),
-    onStatusChanged: (cb: (s: UpdaterStatusDTO) => void) => {
-      const handler = (_evt: IpcRendererEvent, payload: UpdaterStatusDTO) =>
-        cb(payload);
-      ipcRenderer.on(IPC.updaterStatusChanged, handler);
-      return () => ipcRenderer.off(IPC.updaterStatusChanged, handler);
-    },
-    onProgress: (cb: (p: UpdaterProgressInfo) => void) => {
-      const handler = (_evt: IpcRendererEvent, payload: UpdaterProgressInfo) =>
-        cb(payload);
-      ipcRenderer.on(IPC.updaterProgress, handler);
-      return () => ipcRenderer.off(IPC.updaterProgress, handler);
-    },
-    onError: (cb: (msg: string) => void) => {
-      const handler = (_evt: IpcRendererEvent, payload: string) => cb(payload);
-      ipcRenderer.on(IPC.updaterError, handler);
-      return () => ipcRenderer.off(IPC.updaterError, handler);
     },
   },
 };
