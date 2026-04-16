@@ -1409,7 +1409,7 @@ function ScreenshotDetailsDialog({
 // Current stable release (updated at build time from GitHub releases)
 const DTT_VERSION = "0.2.0"
 // GitHub Releases on the dedicated desktop repo — spaces become dots in asset names
-const DTT_RELEASES_BASE = "https://github.com/Marketeq/desktop-time-tracker/releases/latest/download"
+const DTT_RELEASES_BASE = `https://github.com/Marketeq/desktop-time-tracker/releases/download/v${DTT_VERSION}`
 
 type DesktopPlatform = "mac-arm64" | "mac-x64" | "win-x64" | "win-arm64"
 
@@ -1503,7 +1503,12 @@ function DownloadDesktopTrackerDialog({
   }, [open])
 
   const triggerDownload = () => {
-    window.open(selected.downloadUrl, "_blank")
+    const a = document.createElement("a")
+    a.href = selected.downloadUrl
+    a.download = selected.fileName
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
     setDownloadStarted(true)
     toast({
       title: "Download started",
@@ -1515,7 +1520,12 @@ function DownloadDesktopTrackerDialog({
   useEffect(() => {
     if (!open || downloadStarted) return
     const t = setTimeout(() => {
-      window.open(selected.downloadUrl, "_blank")
+      const a = document.createElement("a")
+      a.href = selected.downloadUrl
+      a.download = selected.fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
       setDownloadStarted(true)
       toast({
         title: "Download started",
