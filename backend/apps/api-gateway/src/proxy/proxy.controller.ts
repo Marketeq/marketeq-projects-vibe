@@ -31,6 +31,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   categories: 'categories',      // category taxonomy service
   tags: 'categories',            // tags managed by category-service
   'category-pages': 'categories', // category page assembly
+  tasks: 'timeTracking',          // time-tracking-service contract task endpoints
   screenshots: 'timeTracking',   // time-tracking-service screenshot endpoints
   'time-tracking': 'timeTracking', // time-tracking-service general endpoints
   sessions: 'timeTracking',      // time-tracking-service session endpoints
