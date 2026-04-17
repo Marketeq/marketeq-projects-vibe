@@ -258,6 +258,10 @@ async function bootstrap(): Promise<void> {
       store: createSqliteOutboxStore(db),
       logger,
     });
+    // Wire the auth token into the API client so sync requests are authenticated
+    if (authService) {
+      authService.setApiClient({ setAuthToken: (t) => api.setAuthToken(t) });
+    }
     const network = createNetworkMonitor({ api, logger });
     const worker = createSyncWorker({
       api,
