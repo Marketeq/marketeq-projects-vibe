@@ -1,6 +1,6 @@
-import { randomUUID } from 'crypto';
 import { CollectionConfig } from 'payload/types';
 import { isAdmin, isAdminOrDeveloper } from '../access/roles';
+import { crossServiceUuidField } from '../fields/crossServiceUuid';
 import { syncCategoryToService, deleteCategoryFromService } from '../hooks/afterChange/syncCategories';
 
 export const Categories: CollectionConfig = {
@@ -20,23 +20,7 @@ export const Categories: CollectionConfig = {
     afterDelete: [deleteCategoryFromService],
   },
   fields: [
-    {
-      name: 'uuid',
-      type: 'text',
-      unique: true,
-      index: true,
-      admin: { description: 'Stable UUID for cross-service identity. Auto-generated on create.' },
-      hooks: {
-        beforeValidate: [
-          ({ value, operation }) => {
-            if (operation === 'create' && !value) {
-              return randomUUID();
-            }
-            return value;
-          },
-        ],
-      },
-    },
+    crossServiceUuidField(),
     {
       name: 'name',
       type: 'text',
