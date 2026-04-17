@@ -40,8 +40,11 @@ import { createFetchAuthHttpPort } from './services/auth/http-port';
 import { registerAuthIpc } from './services/auth/register-ipc';
 import { collectBroadcastTargets } from './ipc/timer';
 import { ipcMain } from 'electron';
+import { randomUUID } from 'node:crypto';
+import os from 'node:os';
 import { createOnboardingService } from './services/onboarding/onboarding-service';
 import { registerOnboardingIpc } from './services/onboarding/register-ipc';
+import { registerContractsIpc } from './services/contracts/register-ipc';
 
 const isDev = !app.isPackaged;
 
@@ -109,7 +112,31 @@ async function bootstrap(): Promise<void> {
   try {
     const db = initDatabase();
     const repos = createRepos(db);
-    timerService = createTimerService({ db, repos, logger });
+
+    // Ensure device_self has a row — required for session creation.
+    if (!repos.device.findSelf()) {
+      const deviceId = `dev_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
+      repos.device.insert({
+        id: deviceId,
+        installation_uuid: randomUUID(),
+        os_name: process.platform === 'darwin' ? 'mac' : 'win',
+        os_version: os.release(),
+        app_version: app.getVersion(),
+        arch: process.arch === 'arm64' ? 'arm64' : 'x64',
+        created_at: Date.now(),
+      });
+      logger.info({ deviceId }, 'seeded device_self row');
+    }
+
+    timerService = createTimerService({
+      db,
+      repos,
+      logger,
+      // Lazy callbacks — auth is wired after timer, so these close
+      // over the authService variable that gets assigned later.
+      getUserId: () => authService?.getCurrentUser()?.id ?? repos.user.findFirst()?.id ?? null,
+      getDeviceId: () => repos.device.findSelf()?.id ?? null,
+    });
     // Restore any open session that was left behind by a previous crash.
     timerService.restoreFromDb();
     detachIpcHandlers = registerIpcHandlers({ timer: timerService });
@@ -166,6 +193,22 @@ async function bootstrap(): Promise<void> {
     logger.info('phase 5 auth service wired');
   } catch (err) {
     logger.error({ err }, 'failed to initialize auth service');
+  }
+
+  // --- Contracts IPC (fetches from backend API, not local DB) -----------
+  let detachContractsIpc: (() => void) | null = null;
+  try {
+    const apiBaseUrl =
+      process.env.DTT_API_BASE_URL ?? 'http://localhost:4000';
+    detachContractsIpc = registerContractsIpc({
+      logger,
+      getAccessToken: () => authService?.getAccessToken() ?? null,
+      getUserId: () => authService?.getCurrentUser()?.id ?? null,
+      apiBaseUrl,
+    });
+    logger.info('contracts IPC wired');
+  } catch (err) {
+    logger.error({ err }, 'failed to initialize contracts IPC');
   }
 
   // --- Phase 6: onboarding wizard --------------------------------------
@@ -349,6 +392,11 @@ async function bootstrap(): Promise<void> {
       detachOnboardingIpc?.();
     } catch (err) {
       logger.warn({ err }, 'error while detaching onboarding ipc');
+    }
+    try {
+      detachContractsIpc?.();
+    } catch (err) {
+      logger.warn({ err }, 'error while detaching contracts ipc');
     }
     try {
       timerService?.dispatch({ type: 'APP_QUIT' }).catch(() => undefined);
