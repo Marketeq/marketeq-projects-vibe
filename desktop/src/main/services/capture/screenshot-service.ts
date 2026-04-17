@@ -245,8 +245,12 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
       return [];
     }
     if (!deps.permissions.isScreenRecordingAllowed()) {
-      log.warn('captureOnce: screen recording permission not granted, skip');
-      return [];
+      // On macOS 15 (Sequoia), getMediaAccessStatus('screen') may falsely
+      // report 'denied' even when the user granted permission. Instead of
+      // bailing out, log the warning and attempt the capture anyway — if
+      // permission is truly missing, desktopCapturer.getSources() will
+      // return an empty array which we handle gracefully below.
+      log.warn('captureOnce: screen recording permission reported as missing — attempting anyway (macOS 15 workaround)');
     }
     const sessionId = resolveSessionId();
     if (!sessionId) {
