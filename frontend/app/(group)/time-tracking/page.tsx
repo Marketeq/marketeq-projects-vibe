@@ -7,6 +7,8 @@ import {
   type ScreenshotCardDTO,
   type ScreenshotCardsParams,
 } from "@/service/http/screenshots"
+import { getContractsForTalent, getContractsForClient, type ContractDTO } from "@/service/http/contracts"
+import { useAuth } from "@/contexts/auth"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   ArrowLeft,
@@ -1697,6 +1699,19 @@ export default function TimeTrackingPage() {
   const [showDownloadTracker, setShowDownloadTracker] = useState(false)
   const [appliedFilters, setAppliedFilters] = useState<AppliedFilters>(emptyAppliedFilters)
 
+  // --- Real contracts from API ---
+  const { user } = useAuth()
+  const [realContracts, setRealContracts] = useState<ContractDTO[]>([])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const role = (user as any).role?.toUpperCase?.() || (user as any).accountType?.toUpperCase?.() || ""
+    const fetcher = role === "CLIENT" ? getContractsForClient : getContractsForTalent
+    fetcher(user.id)
+      .then((contracts) => setRealContracts(contracts))
+      .catch(() => {})
+  }, [user?.id])
+
   // --- Real data fetching ---
   const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>(sampleTimeBlocks)
   const [isLoading, setIsLoading] = useState(true)
@@ -1839,10 +1854,18 @@ export default function TimeTrackingPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Contracts</SelectItem>
-                  <SelectItem value="project1">Project 1</SelectItem>
-                  <SelectItem value="project2">Project 2</SelectItem>
-                  <SelectItem value="project3">Project 3</SelectItem>
-                  <SelectItem value="project4">Project 4</SelectItem>
+                  {realContracts.length > 0
+                    ? realContracts.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.title || "Untitled"}
+                        </SelectItem>
+                      ))
+                    : [
+                        <SelectItem key="project1" value="project1">Project 1</SelectItem>,
+                        <SelectItem key="project2" value="project2">Project 2</SelectItem>,
+                        <SelectItem key="project3" value="project3">Project 3</SelectItem>,
+                        <SelectItem key="project4" value="project4">Project 4</SelectItem>,
+                      ]}
                 </SelectContent>
               </Select>
 
