@@ -215,12 +215,14 @@ const formatGroupDateLong = (isoDate: string) => {
 const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete }: { groupId: string; groupName: string; talents: TalentCardData[]; createdAt: string; onRename: (groupId: string, newName: string) => void; onDelete: (groupId: string) => void }) => {
   const router = useRouter()
   // Show the most recently added talents (last in array = most recent)
-  const recentTalents = [...talents].reverse().slice(0, 5)
+  const recentTalents = [...talents].reverse().slice(0, 4)
   // Rotation angles for circular layout: positions around the circle
-  const rotationAngles = [0, -45, -90, -135, -180]
+  const avatarRotationAngles = [-135, -90, -45, 0]
+  const savedRotationAngle = -180
   const href = `/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=talent`
 
-  // Staggered entrance: avatars appear one-by-one from bottom
+  // Staggered entrance: same motion as before, but delay order is reversed so
+  // the cascade starts from the lower slot and rises upward.
   const avatarVariants = {
     hidden: { opacity: 0, scale: 0.3, y: 20 },
     visible: (i: number) => ({
@@ -259,15 +261,15 @@ const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete
             <motion.div
               key={talent.id}
               className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto"
-              style={{ rotate: `${rotationAngles[i]}deg` } as React.CSSProperties}
-              custom={i}
+              style={{ rotate: `${avatarRotationAngles[i]}deg` } as React.CSSProperties}
+              custom={i + 1}
               initial="hidden"
               animate="visible"
               variants={avatarVariants}
             >
               <Avatar
                 className="border-2 border-white size-[44.96px] lg:size-[61px] pointer-events-none !ring-0 hover:!ring-0"
-                style={{ rotate: `${-rotationAngles[i]}deg` } as React.CSSProperties}
+                style={{ rotate: `${-avatarRotationAngles[i]}deg` } as React.CSSProperties}
                 size="2xl"
               >
                 <AvatarImage src={talent.avatarUrl} alt={`${talent.firstName} ${talent.lastName}`} />
@@ -276,19 +278,19 @@ const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete
             </motion.div>
           ))}
 
-          {/* Saved count — fill remaining slot if fewer than 5 talents */}
+          {/* Saved count stays on the original bottom-center slot inside the ring. */}
           {recentTalents.length < 5 && (
             <motion.div
-              className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto"
-              style={{ rotate: `${rotationAngles[recentTalents.length]}deg` } as React.CSSProperties}
-              custom={recentTalents.length}
+              className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto z-10"
+              style={{ rotate: `${savedRotationAngle}deg` } as React.CSSProperties}
+              custom={0}
               initial="hidden"
               animate="visible"
               variants={avatarVariants}
             >
               <div
                 className="size-[44.96px] lg:size-[61px] bg-white border border-gray-300 flex rounded-full flex-col shrink-0 justify-center items-center"
-                style={{ rotate: `${-rotationAngles[recentTalents.length]}deg` } as React.CSSProperties}
+                style={{ rotate: `${-savedRotationAngle}deg` } as React.CSSProperties}
               >
                 <span className="inline-block text-[11.79px] leading-[14.27px] lg:text-base lg:leading-[19.36px] font-semibold text-dark-blue-400">
                   {talents.length}
