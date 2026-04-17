@@ -6,6 +6,7 @@ import payload from 'payload';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { CmsEventPublisher } from './rabbitmq/cms-event.publisher';
+import { ContractsEventConsumer } from './rabbitmq/contracts-event.consumer';
 
 const app = express();
 const PORT = Number(process.env.CMS_PORT) || 3020;
@@ -94,6 +95,17 @@ async function start() {
       payload.logger.info('RabbitMQ publisher connected');
     } catch (err) {
       payload.logger.error({ err }, 'RabbitMQ connection failed — events will not publish');
+    }
+
+    // Inbound consumer: contracts-service → orders projection (CS-00 §727).
+    // contracts-service emits `contract.activated` via NestJS RMQ ClientProxy
+    // onto `contracts_events_queue`; this consumer projects each event into
+    // an Orders row so admins can track contracts from the Payload UI.
+    try {
+      const consumer = new ContractsEventConsumer(payload);
+      await consumer.connect(rabbitmqUrl);
+    } catch (err) {
+      payload.logger.error({ err }, 'contracts-event consumer failed to start — orders will not be auto-created from contracts');
     }
   } else {
     payload.logger.warn('RABBITMQ_URL not set — category sync events disabled');
