@@ -121,11 +121,12 @@ async function bootstrap(): Promise<void> {
 
   // --- Phase 5: auth + session management ------------------------------
   let detachAuthIpc: (() => void) | null = null;
+  let authService: ReturnType<typeof createAuthService> | null = null;
   try {
     const db = initDatabase();
     const repos = createRepos(db);
     const httpPort = createFetchAuthHttpPort({ logger });
-    const authService = createAuthService({
+    authService = createAuthService({
       logger,
       repos,
       http: httpPort,
@@ -191,6 +192,7 @@ async function bootstrap(): Promise<void> {
   let stopCaptureIpc: (() => void) | null = null;
   let captureSupervisor: ReturnType<typeof createCaptureSupervisor> | null =
     null;
+  let screenshotService: ReturnType<typeof createScreenshotService> | null = null;
   try {
     const db = initDatabase();
     const repos = createRepos(db);
@@ -198,7 +200,7 @@ async function bootstrap(): Promise<void> {
       logger,
       permissionGrantRepo: repos.permissionGrant,
     });
-    const screenshotService = createScreenshotService({
+    screenshotService = createScreenshotService({
       logger,
       screenshotRepo: repos.screenshot,
       sessionRepo: repos.session,
@@ -276,7 +278,9 @@ async function bootstrap(): Promise<void> {
       detachEventBridge = createEventBridge({
         outbox,
         timer: timerService,
+        screenshotService: screenshotService ?? undefined,
         getDeviceId: () => repos.device.findSelf()?.id ?? null,
+        getUserId: () => authService?.getCurrentUser()?.id ?? null,
         logger,
       }).detach;
     }
