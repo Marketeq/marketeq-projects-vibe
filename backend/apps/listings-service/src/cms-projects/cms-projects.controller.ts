@@ -39,7 +39,7 @@ export class CmsProjectsController {
               rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
               status, "createdAt", "updatedAt"
          FROM public.projects
-        WHERE status != 'draft'
+        WHERE status = 'published'::listing_status_enum
         ORDER BY featured DESC NULLS LAST, "createdAt" DESC
         LIMIT 50`,
     );
