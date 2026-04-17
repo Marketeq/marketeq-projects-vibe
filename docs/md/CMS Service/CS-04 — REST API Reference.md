@@ -9,15 +9,29 @@
 
 ## 1. Authentication
 
-cms-service uses two authentication methods depending on the caller.
+cms-service accepts three authentication schemes depending on the caller.
 
-**API Key — internal service-to-service**
+**Shared-secret API Key — internal service-to-service (stateless)**
 
-Used by other microservices to call CMS index endpoints. Pass `CMS_API_KEY` as a header:
+Used by other microservices to read and write. A single shared secret lives in `CMS_API_KEY` (backend/.env) and is recognised by the access-role helpers in `src/access/roles.ts` as a synthetic admin. Scoped to the private backend network — never exposed publicly.
 
 ```
 Authorization: API-Key <CMS_API_KEY>
 ```
+
+When the header matches, every role helper (`isAdmin`, `isAdminOrDeveloper`, `isContentEditorOrAbove`, `isEditor`, `isAuthorOfDocument`, `readPublishedOrCmsUser`) short-circuits to `true`. If `CMS_API_KEY` is unset on the server, the helper returns `false` without comparison (guards against the open-auth bug described in CODE_REVIEW_SOP §8.1).
+
+**Per-user Payload API Key — admin-audited machine access**
+
+Payload's native per-user API keys. Each admin user can toggle **Enable API Key** in `/admin/collections/users/:id` and mint a UUID via **Generate new API key**. Header format (collection-slug prefix is required by Payload):
+
+```
+Authorization: users API-Key <per-user-uuid>
+```
+
+Writes made with a per-user key are attributed to that user in audit trails (`activityLog.performedBy`, `_status` transitions, etc.). Prefer this over the shared secret for any flow where attribution matters.
+
+Requires `auth: { useAPIKey: true }` on the Users collection (see `src/collections/Users.ts`).
 
 **Payload JWT — admin panel users**
 

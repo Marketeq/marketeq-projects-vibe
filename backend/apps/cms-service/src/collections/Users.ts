@@ -3,7 +3,13 @@ import { isAdmin } from '../access/roles';
 
 export const Users: CollectionConfig = {
   slug: 'users',
-  auth: true,
+  // Enables Payload's native per-user API Key strategy. Adds the "Enable API
+  // Key" toggle + "Generate New API Key" button under each user in the admin,
+  // and three columns to the users table (enable_a_p_i_key, api_key,
+  // api_key_index). Additive — email/password login and /admin UI behaviour
+  // are unchanged. Header format for consumers is `Authorization: users
+  // API-Key <key>` (collection-slug prefix is required by Payload).
+  auth: { useAPIKey: true },
   admin: {
     useAsTitle: 'name',
     defaultColumns: ['name', 'email', 'role', 'status'],
