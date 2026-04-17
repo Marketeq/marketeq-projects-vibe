@@ -1,6 +1,7 @@
 import { CollectionConfig } from 'payload/types';
 import { isAdmin, isAdminOrDeveloper } from '../access/roles';
 import { crossServiceUuidField } from '../fields/crossServiceUuid';
+import { crossServiceSourceIdField } from '../fields/crossServiceSourceIdField';
 import {
   syncTalentProfileToService,
   deleteTalentProfileFromService,
@@ -26,13 +27,11 @@ export const TalentProfiles: CollectionConfig = {
   fields: [
     // ─── Identity ───────────────────────────────────────
     crossServiceUuidField(),
-    {
-      name: 'sourceId',
-      type: 'text',
+    crossServiceSourceIdField({
+      required: false,
       unique: true,
-      index: true,
-      admin: { description: 'User UUID from user-service/auth-service. Links this CMS profile to the platform user.' },
-    },
+      description: 'User UUID from user-service / auth-service. Links this CMS profile to the platform user.',
+    }),
     {
       type: 'row',
       fields: [
