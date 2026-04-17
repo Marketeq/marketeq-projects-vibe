@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { cmsClient, findCmsCategoryIdByUuid, getAllPages } from './cms-client';
+import { cmsClient, getAllPages } from './cms-client';
 import { CONTENT_TYPES, ContentTypeConfig } from './content.types';
 
 @Injectable()
@@ -12,48 +12,38 @@ export class ContentService {
 
   // ---------- discovery ----------
 
-  /** Count items per content-type referencing the category (by UUID) */
-  async countByCategory(categoryUuid: string) {
+  /** Count items per content-type referencing the category ID */
+  async countByCategory(categoryId: string) {
     const counts: Record<string, number> = {};
-    const cmsId = await findCmsCategoryIdByUuid(categoryUuid);
-    if (cmsId == null) {
-      for (const cfg of CONTENT_TYPES) counts[cfg.name] = 0;
-      return counts;
-    }
     for (const cfg of CONTENT_TYPES) {
       try {
         const res = await cmsClient.get(cfg.api, {
           params: {
-            [`where[${cfg.categoryField}][equals]`]: cmsId,
+            [`where[${cfg.categoryField}][equals]`]: categoryId,
             limit: 0,
           },
         });
         counts[cfg.name] = res.data?.totalDocs ?? 0;
       } catch (e) {
-        // Only 404s are expected here — a collection that doesn't exist
-        // in this Payload deployment. Anything else (500, network, auth)
-        // is a real failure and must surface instead of reporting `0`.
-        if (!this.isNotFound(e)) throw e;
-        this.logger.warn(`Skipping ${cfg.name} (${cfg.api}): 404 Not Found`);
+        if (this.isNotFound(e)) {
+          this.logger.warn(`Skipping ${cfg.name} (${cfg.api}): 404 Not Found`);
+        } else {
+          this.logger.warn(`Skipping ${cfg.name} (${cfg.api}): ${((e as any)?.message) || e}`);
+        }
         counts[cfg.name] = 0;
       }
     }
     return counts;
   }
 
-  /** Preview sample items that would be reassigned (category addressed by UUID) */
-  async preview(categoryUuid: string, limit = 20) {
+  /** Preview sample items that would be reassigned */
+  async preview(categoryId: string, limit = 20) {
     const preview: Record<string, Array<{ id: number | string; title: string }>> = {};
-    const cmsId = await findCmsCategoryIdByUuid(categoryUuid);
-    if (cmsId == null) {
-      for (const cfg of CONTENT_TYPES) preview[cfg.name] = [];
-      return preview;
-    }
     for (const cfg of CONTENT_TYPES) {
       try {
         const res = await cmsClient.get(cfg.api, {
           params: {
-            [`where[${cfg.categoryField}][equals]`]: cmsId,
+            [`where[${cfg.categoryField}][equals]`]: categoryId,
             limit,
           },
         });
@@ -63,8 +53,11 @@ export class ContentService {
           title: doc.title ?? doc.name ?? `#${doc.id}`,
         }));
       } catch (e) {
-        if (!this.isNotFound(e)) throw e;
-        this.logger.warn(`Skipping ${cfg.name} (${cfg.api}): 404 Not Found`);
+        if (this.isNotFound(e)) {
+          this.logger.warn(`Skipping ${cfg.name} (${cfg.api}): 404 Not Found`);
+        } else {
+          this.logger.warn(`Skipping ${cfg.name} (${cfg.api}): ${((e as any)?.message) || e}`);
+        }
         preview[cfg.name] = [];
       }
     }
@@ -73,29 +66,9 @@ export class ContentService {
 
   // ---------- reassignment ----------
 
-  /** Reassign all content referencing `fromUuid` over to `toUuid` */
-  async reassignCategory(fromUuid: string, toUuid: string) {
-    this.logger.log(`Reassigning content: ${fromUuid} -> ${toUuid}`);
-    const [fromId, toId] = await Promise.all([
-      findCmsCategoryIdByUuid(fromUuid),
-      findCmsCategoryIdByUuid(toUuid),
-    ]);
-    // When either category doesn't exist in CMS yet (local-only rows synced
-    // via /sync but never pushed, or rows created purely in category-service
-    // test fixtures), there is no CMS content to migrate and no target to
-    // migrate into — treat as a no-op rather than blowing up the caller.
-    // reassignChildrenToParent iterates over each child and a single missing
-    // CMS counterpart used to abort the whole batch.
-    if (fromId == null) {
-      this.logger.log(`No CMS counterpart for fromUuid=${fromUuid} — nothing to reassign.`);
-      return;
-    }
-    if (toId == null) {
-      this.logger.warn(
-        `toUuid=${toUuid} has no CMS counterpart — skipping reassign (content left pointing at fromUuid=${fromUuid}).`,
-      );
-      return;
-    }
+  /** Reassign all content that references fromId -> toId (via Payload REST) */
+  async reassignCategory(fromId: string, toId: string) {
+    this.logger.log(`Reassigning content: ${fromId} -> ${toId}`);
     for (const cfg of CONTENT_TYPES) {
       await this.reassignForType(cfg, fromId, toId);
     }
