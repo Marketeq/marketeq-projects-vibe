@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { cmsClient, findCmsCategoryIdByUuid, getAllPages } from './cms-client';
 import { CONTENT_TYPES, ContentTypeConfig } from './content.types';
 
@@ -8,17 +8,6 @@ export class ContentService {
 
   private isNotFound(err: any) {
     return err?.response?.status === 404;
-  }
-
-  // category-service endpoints accept the stable UUID; Payload relationship
-  // fields are keyed by integer id. Every call into Payload must translate
-  // first — see findCmsCategoryIdByUuid.
-  private async resolveCmsCategoryId(uuid: string): Promise<number | string> {
-    const id = await findCmsCategoryIdByUuid(uuid);
-    if (id == null) {
-      throw new NotFoundException(`No CMS category found for uuid "${uuid}"`);
-    }
-    return id;
   }
 
   // ---------- discovery ----------
@@ -88,9 +77,25 @@ export class ContentService {
   async reassignCategory(fromUuid: string, toUuid: string) {
     this.logger.log(`Reassigning content: ${fromUuid} -> ${toUuid}`);
     const [fromId, toId] = await Promise.all([
-      this.resolveCmsCategoryId(fromUuid),
-      this.resolveCmsCategoryId(toUuid),
+      findCmsCategoryIdByUuid(fromUuid),
+      findCmsCategoryIdByUuid(toUuid),
     ]);
+    // When either category doesn't exist in CMS yet (local-only rows synced
+    // via /sync but never pushed, or rows created purely in category-service
+    // test fixtures), there is no CMS content to migrate and no target to
+    // migrate into — treat as a no-op rather than blowing up the caller.
+    // reassignChildrenToParent iterates over each child and a single missing
+    // CMS counterpart used to abort the whole batch.
+    if (fromId == null) {
+      this.logger.log(`No CMS counterpart for fromUuid=${fromUuid} — nothing to reassign.`);
+      return;
+    }
+    if (toId == null) {
+      this.logger.warn(
+        `toUuid=${toUuid} has no CMS counterpart — skipping reassign (content left pointing at fromUuid=${fromUuid}).`,
+      );
+      return;
+    }
     for (const cfg of CONTENT_TYPES) {
       await this.reassignForType(cfg, fromId, toId);
     }
