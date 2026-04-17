@@ -41,11 +41,11 @@ export class ContentService {
         });
         counts[cfg.name] = res.data?.totalDocs ?? 0;
       } catch (e) {
-        if (this.isNotFound(e)) {
-          this.logger.warn(`Skipping ${cfg.name} (${cfg.api}): 404 Not Found`);
-        } else {
-          this.logger.warn(`Skipping ${cfg.name} (${cfg.api}): ${((e as any)?.message) || e}`);
-        }
+        // Only 404s are expected here — a collection that doesn't exist
+        // in this Payload deployment. Anything else (500, network, auth)
+        // is a real failure and must surface instead of reporting `0`.
+        if (!this.isNotFound(e)) throw e;
+        this.logger.warn(`Skipping ${cfg.name} (${cfg.api}): 404 Not Found`);
         counts[cfg.name] = 0;
       }
     }
@@ -74,11 +74,8 @@ export class ContentService {
           title: doc.title ?? doc.name ?? `#${doc.id}`,
         }));
       } catch (e) {
-        if (this.isNotFound(e)) {
-          this.logger.warn(`Skipping ${cfg.name} (${cfg.api}): 404 Not Found`);
-        } else {
-          this.logger.warn(`Skipping ${cfg.name} (${cfg.api}): ${((e as any)?.message) || e}`);
-        }
+        if (!this.isNotFound(e)) throw e;
+        this.logger.warn(`Skipping ${cfg.name} (${cfg.api}): 404 Not Found`);
         preview[cfg.name] = [];
       }
     }
