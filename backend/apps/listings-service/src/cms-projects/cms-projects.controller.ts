@@ -39,7 +39,7 @@ export class CmsProjectsController {
               rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
               status, "createdAt", "updatedAt"
          FROM public.projects
-        WHERE status != 'draft'
+        WHERE status = 'published'
         ORDER BY featured DESC NULLS LAST, "createdAt" DESC
         LIMIT 50`,
     );
@@ -60,6 +60,7 @@ export class CmsProjectsController {
               status, "createdBy", "createdAt", "updatedAt"
          FROM public.projects
         WHERE slug = $1
+          AND status = 'published'
         LIMIT 1`,
       [slug],
     );
@@ -110,7 +111,11 @@ export class CmsProjectsController {
   @Get('slug/:slug/similar')
   async findSimilar(@Param('slug') slug: string) {
     const rows = await this.dataSource.query(
-      `SELECT skills, tags, subcategories, id FROM public.projects WHERE slug = $1 LIMIT 1`,
+      `SELECT skills, tags, subcategories, id
+         FROM public.projects
+        WHERE slug = $1
+          AND status = 'published'
+        LIMIT 1`,
       [slug],
     );
     if (!rows[0]) throw new NotFoundException(`Project not found: ${slug}`);
@@ -126,7 +131,11 @@ export class CmsProjectsController {
   @Get('slug/:slug/related-categories')
   async findRelatedCategories(@Param('slug') slug: string) {
     const rows = await this.dataSource.query(
-      `SELECT category FROM public.projects WHERE slug = $1 LIMIT 1`,
+      `SELECT category
+         FROM public.projects
+        WHERE slug = $1
+          AND status = 'published'
+        LIMIT 1`,
       [slug],
     );
     if (!rows[0]) throw new NotFoundException(`Project not found: ${slug}`);
@@ -173,7 +182,7 @@ export class CmsProjectsController {
          ) AS score
        FROM public.projects p, source s
        WHERE p.id != $4
-         AND p.status != 'draft'
+         AND p.status = 'published'
          AND (p.skills && s.skills OR p.tags && s.tags OR p.subcategories && s.subcats)
        ORDER BY score DESC
        LIMIT 6`,

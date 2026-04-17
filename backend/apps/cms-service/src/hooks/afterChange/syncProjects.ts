@@ -138,12 +138,27 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
   }
 
   try {
-    // Skip non-published states. Payload fires afterChange on every
-    // autosave; we only want to push the latest *published* snapshot.
     const docStatus = (doc as any)._status;
     if (docStatus && docStatus !== 'published') {
+      // Keep listings-service aligned with Payload's public visibility:
+      // any transition away from `published` must immediately hide the
+      // row from `/v1/projects` and `/v1/projects/slug/:slug`.
+      const url = `${listingsUrl.replace(/\/$/, '')}/internal/project-sync/${encodeURIComponent(String(doc.id))}`;
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        req.payload.logger.error(
+          `[syncProjectToListings] ${res.status} archiving non-published "${doc.slug}" (status=${docStatus}): ${text}`,
+        );
+        return doc;
+      }
+
       req.payload.logger.info(
-        `[syncProjectToListings] Skipping non-published "${doc.slug}" (status=${docStatus})`,
+        `[syncProjectToListings] Archived non-published "${doc.slug}" in listings-service (status=${docStatus})`,
       );
       return doc;
     }
