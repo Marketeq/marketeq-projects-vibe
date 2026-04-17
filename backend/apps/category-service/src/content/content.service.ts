@@ -1,5 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { cmsClient, getAllPages } from './cms-client';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { cmsClient, findCmsCategoryIdByUuid, getAllPages } from './cms-client';
 import { CONTENT_TYPES, ContentTypeConfig } from './content.types';
 
 @Injectable()
@@ -10,16 +10,32 @@ export class ContentService {
     return err?.response?.status === 404;
   }
 
+  // category-service endpoints accept the stable UUID; Payload relationship
+  // fields are keyed by integer id. Every call into Payload must translate
+  // first — see findCmsCategoryIdByUuid.
+  private async resolveCmsCategoryId(uuid: string): Promise<number | string> {
+    const id = await findCmsCategoryIdByUuid(uuid);
+    if (id == null) {
+      throw new NotFoundException(`No CMS category found for uuid "${uuid}"`);
+    }
+    return id;
+  }
+
   // ---------- discovery ----------
 
-  /** Count items per content-type referencing the category ID */
-  async countByCategory(categoryId: string) {
+  /** Count items per content-type referencing the category (by UUID) */
+  async countByCategory(categoryUuid: string) {
     const counts: Record<string, number> = {};
+    const cmsId = await findCmsCategoryIdByUuid(categoryUuid);
+    if (cmsId == null) {
+      for (const cfg of CONTENT_TYPES) counts[cfg.name] = 0;
+      return counts;
+    }
     for (const cfg of CONTENT_TYPES) {
       try {
         const res = await cmsClient.get(cfg.api, {
           params: {
-            [`where[${cfg.categoryField}][equals]`]: categoryId,
+            [`where[${cfg.categoryField}][equals]`]: cmsId,
             limit: 0,
           },
         });
@@ -36,14 +52,19 @@ export class ContentService {
     return counts;
   }
 
-  /** Preview sample items that would be reassigned */
-  async preview(categoryId: string, limit = 20) {
+  /** Preview sample items that would be reassigned (category addressed by UUID) */
+  async preview(categoryUuid: string, limit = 20) {
     const preview: Record<string, Array<{ id: number | string; title: string }>> = {};
+    const cmsId = await findCmsCategoryIdByUuid(categoryUuid);
+    if (cmsId == null) {
+      for (const cfg of CONTENT_TYPES) preview[cfg.name] = [];
+      return preview;
+    }
     for (const cfg of CONTENT_TYPES) {
       try {
         const res = await cmsClient.get(cfg.api, {
           params: {
-            [`where[${cfg.categoryField}][equals]`]: categoryId,
+            [`where[${cfg.categoryField}][equals]`]: cmsId,
             limit,
           },
         });
@@ -66,9 +87,13 @@ export class ContentService {
 
   // ---------- reassignment ----------
 
-  /** Reassign all content that references fromId -> toId (via Payload REST) */
-  async reassignCategory(fromId: string, toId: string) {
-    this.logger.log(`Reassigning content: ${fromId} -> ${toId}`);
+  /** Reassign all content referencing `fromUuid` over to `toUuid` */
+  async reassignCategory(fromUuid: string, toUuid: string) {
+    this.logger.log(`Reassigning content: ${fromUuid} -> ${toUuid}`);
+    const [fromId, toId] = await Promise.all([
+      this.resolveCmsCategoryId(fromUuid),
+      this.resolveCmsCategoryId(toUuid),
+    ]);
     for (const cfg of CONTENT_TYPES) {
       await this.reassignForType(cfg, fromId, toId);
     }

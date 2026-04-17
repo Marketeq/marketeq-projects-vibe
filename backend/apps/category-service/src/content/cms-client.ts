@@ -25,6 +25,32 @@ export const cmsClient = new Proxy({} as AxiosInstance, {
 });
 
 /**
+ * Resolve a category-service UUID (stable cross-service identifier) to the
+ * corresponding Payload `id` (auto-generated integer primary key).
+ *
+ * category-service speaks UUIDs in its domain and URL paths, but Payload's
+ * `relationship` fields on downstream collections (Listings, Projects, etc.)
+ * store the integer `id`. Passing a UUID straight into
+ * `where[category][equals]=...` or into a PATCH body yields
+ * `invalid input syntax for type integer: "<uuid>"` at the DB layer.
+ *
+ * Returns `null` when no matching category exists — callers decide whether
+ * to skip or raise.
+ */
+export async function findCmsCategoryIdByUuid(uuid: string): Promise<number | string | null> {
+  if (!uuid) return null;
+  const res = await cmsClient.get('/categories', {
+    params: {
+      'where[uuid][equals]': uuid,
+      limit: 1,
+      depth: 0,
+    },
+  });
+  const doc = res.data?.docs?.[0];
+  return doc?.id ?? null;
+}
+
+/**
  * Paginate through all docs from Payload CMS REST API.
  * Payload uses { docs, totalDocs, page, totalPages, hasNextPage } response shape.
  */
