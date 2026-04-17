@@ -12,6 +12,8 @@ import { DaySummary } from "./day-summary"
 import { ContractEntry, TaskEntry } from "./contract-entry"
 import { AccountMenu } from "./account-menu"
 import { NewTaskForm } from "./new-task-form"
+import { useAuth } from "@/contexts/auth"
+import { getContractsForTalent, getContractsForClient, type ContractDTO } from "@/service/http/contracts"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -246,6 +248,43 @@ export function TimeTrackerApp({
   const [view, setView] = React.useState<View>("main")
   const [days, setDays] = React.useState<DayGroup[]>(initialDays || SEED_DAYS)
   const [expandedContracts, setExpandedContracts] = React.useState<Set<string>>(new Set())
+  const { user } = useAuth()
+
+  // Fetch real contracts from backend and replace seed data
+  React.useEffect(() => {
+    if (!user?.id) return
+    const role = (user as any).role?.toUpperCase?.() || (user as any).accountType?.toUpperCase?.() || ""
+    const fetcher = role === "CLIENT" ? getContractsForClient : getContractsForTalent
+    fetcher(user.id)
+      .then((contracts: ContractDTO[]) => {
+        if (!contracts.length) return
+        const mapped: Contract[] = contracts
+          .filter((c) => c.status === "active" || c.status === "ACTIVE")
+          .map((c) => ({
+            id: c.id,
+            name: c.title || "Untitled Contract",
+            clientHandle: c.clientId || "client",
+            tasks: [
+              {
+                id: `task-${c.id}`,
+                name: "General work",
+                timeRange: "Not started",
+                duration: "00:00:00",
+              },
+            ],
+          }))
+        if (mapped.length > 0) {
+          setDays((prev) => {
+            const next = [...prev]
+            next[0] = { ...next[0], contracts: mapped }
+            return next
+          })
+        }
+      })
+      .catch(() => {
+        // API unavailable — keep seed data
+      })
+  }, [user?.id])
 
   // Search
   const [searchValue, setSearchValue] = React.useState("")
