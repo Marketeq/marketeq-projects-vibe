@@ -5,90 +5,81 @@ import {
   Bell,
   CreditCard,
   Lock,
-  Settings,
+  Settings02,
   UserCircle,
 } from "@blend-metrics/icons"
-
-interface SidebarItem {
-  id: string
-  label: string
-  icon: React.ComponentType<{ className?: string }>
-  disabled?: boolean
-}
-
-interface SidebarGroup {
-  label: string
-  items: SidebarItem[]
-}
-
-const sidebarGroups: SidebarGroup[] = [
-  {
-    label: "Account Settings",
-    items: [
-      { id: "profile", label: "Profile", icon: UserCircle },
-      { id: "account", label: "Account", icon: Settings },
-      { id: "security", label: "Security", icon: Lock },
-    ],
-  },
-  {
-    label: "Preferences",
-    items: [
-      { id: "notifications", label: "Notifications", icon: Bell },
-      { id: "billing", label: "Billing", icon: CreditCard, disabled: true },
-    ],
-  },
-]
 
 interface SettingsSidebarProps {
   activeTab: string
   onTabChange: (tab: string) => void
 }
 
+const itemClass = (active: boolean) =>
+  cn(
+    "flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3 text-left",
+    active && "bg-gray-100"
+  )
+
+const iconClass = "size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400"
+
 export default function SettingsSidebar({
   activeTab,
   onTabChange,
 }: SettingsSidebarProps) {
   return (
-    <aside className="hidden md:flex w-[260px] shrink-0 flex-col bg-dark-blue-400 rounded-xl overflow-hidden">
-      <div className="flex items-center gap-2 px-6 py-5 border-b border-white/10">
-        <Settings className="size-5 text-white" />
-        <span className="text-base font-semibold text-white">Settings</span>
+    <div className="w-[224px] shrink-0 bg-gray-50 min-[1024px]:block hidden border-r space-y-6 border-gray-200 p-[15px] self-stretch">
+      <div className="flex flex-col gap-y-2">
+        <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
+          Account Settings
+        </span>
+
+        <div className="flex flex-col gap-y-1">
+          <button
+            className={itemClass(activeTab === "profile")}
+            onClick={() => onTabChange("profile")}
+          >
+            <UserCircle className={iconClass} />
+            Profile
+          </button>
+          <button
+            className={itemClass(activeTab === "account")}
+            onClick={() => onTabChange("account")}
+          >
+            <Settings02 className={iconClass} />
+            Account
+          </button>
+          <button
+            className={itemClass(activeTab === "security")}
+            onClick={() => onTabChange("security")}
+          >
+            <Lock className={iconClass} />
+            Security
+          </button>
+        </div>
       </div>
 
-      <nav className="flex flex-col gap-8 px-3 py-6 flex-1 overflow-y-auto">
-        {sidebarGroups.map((group) => (
-          <div key={group.label} className="flex flex-col">
-            <span className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-              {group.label}
-            </span>
-            {group.items.map((item) => {
-              const isActive = activeTab === item.id
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => !item.disabled && onTabChange(item.id)}
-                  disabled={item.disabled}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-white/10 text-white"
-                      : "text-gray-400 hover:bg-white/5 hover:text-gray-200",
-                    item.disabled && "opacity-40 cursor-not-allowed"
-                  )}
-                >
-                  <item.icon className="size-5 shrink-0" />
-                  {item.label}
-                  {item.disabled && (
-                    <span className="ml-auto text-[10px] uppercase tracking-wider opacity-60">
-                      Soon
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        ))}
-      </nav>
-    </aside>
+      <div className="flex flex-col gap-y-2">
+        <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
+          Preferences
+        </span>
+
+        <div className="flex flex-col gap-y-1">
+          <button
+            className={itemClass(activeTab === "notifications")}
+            onClick={() => onTabChange("notifications")}
+          >
+            <Bell className={iconClass} />
+            Notifications
+          </button>
+          <button
+            disabled
+            className={cn(itemClass(false), "opacity-40 cursor-not-allowed hover:bg-transparent")}
+          >
+            <CreditCard className={iconClass} />
+            Billing
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

@@ -127,7 +127,7 @@ export default function SettingsPage() {
             <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
             <div className="flex-1 min-w-0">
-              <div className="md:hidden mb-6">
+              <div className="min-[1024px]:hidden mb-6">
                 <h1 className="text-2xl font-semibold text-dark-blue-400">Settings</h1>
                 <p className="text-sm text-gray-500 mt-1">Manage your account settings and preferences</p>
                 <div className="flex gap-1 mt-4 border-b border-gray-200">
