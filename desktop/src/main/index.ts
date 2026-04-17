@@ -101,10 +101,15 @@ async function bootstrap(): Promise<void> {
     runMigrations(db);
     logger.info('db ready, migrations applied');
   } catch (err) {
+    console.error('FATAL: failed to initialize local database', err);
     logger.error({ err }, 'fatal: failed to initialize local database');
     app.exit(1);
     return;
   }
+
+  // Forward-declare authService so the timer's lazy getUserId callback
+  // can reference it (assigned in Phase 5 below).
+  let authService: ReturnType<typeof createAuthService> | null = null;
 
   // --- Phase 2: Timer service (9-state FSM) ----------------------------
   let timerService: TimerService | null = null;
@@ -148,7 +153,6 @@ async function bootstrap(): Promise<void> {
 
   // --- Phase 5: auth + session management ------------------------------
   let detachAuthIpc: (() => void) | null = null;
-  let authService: ReturnType<typeof createAuthService> | null = null;
   try {
     const db = initDatabase();
     const repos = createRepos(db);
@@ -198,6 +202,8 @@ async function bootstrap(): Promise<void> {
   // --- Contracts IPC (fetches from backend API, not local DB) -----------
   let detachContractsIpc: (() => void) | null = null;
   try {
+    const db = initDatabase();
+    const repos = createRepos(db);
     const apiBaseUrl =
       process.env.DTT_API_BASE_URL ?? 'http://localhost:4000';
     detachContractsIpc = registerContractsIpc({
@@ -205,6 +211,8 @@ async function bootstrap(): Promise<void> {
       getAccessToken: () => authService?.getAccessToken() ?? null,
       getUserId: () => authService?.getCurrentUser()?.id ?? null,
       apiBaseUrl,
+      contractRepo: repos.contract,
+      taskRepo: repos.task,
     });
     logger.info('contracts IPC wired');
   } catch (err) {
@@ -437,6 +445,7 @@ app.on('window-all-closed', () => {
 // tries to persist permission-grant rows against an already-closed DB.
 
 void bootstrap().catch((err) => {
+  console.error('BOOTSTRAP FAILED:', err);
   logger.error({ err }, 'bootstrap failed');
   app.exit(1);
 });
