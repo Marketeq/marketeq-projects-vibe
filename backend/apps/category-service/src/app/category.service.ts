@@ -587,7 +587,7 @@ export class CategoryService {
   private authHeader() {
     const key = this.cmsApiKey();
     if (!key) return {};
-    return { Authorization: `JWT ${key}` };
+    return { Authorization: `API-Key ${key}` };
   }
 
   private formatHttpError(error: unknown): string {
