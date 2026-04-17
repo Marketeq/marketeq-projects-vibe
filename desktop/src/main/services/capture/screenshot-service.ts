@@ -147,6 +147,8 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
   let capturedCount = 0;
   let lastCaptureAt: number | null = null;
   let nextCaptureAt: number | null = null;
+  let isFirstCapture = true;
+  const FIRST_CAPTURE_DELAY_MS = 60_000; // 60s for first screenshot
 
   const rootDir =
     deps.rootDir ??
@@ -387,7 +389,11 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
 
   function scheduleNext(): void {
     if (handle) clearTimeout(handle);
-    const delay = nextIntervalMs();
+    // First capture after ~60s so user gets immediate feedback that capture
+    // is working (matches Hubstaff / Time Doctor behaviour), then settle
+    // into the regular 10-minute interval.
+    const delay = isFirstCapture ? FIRST_CAPTURE_DELAY_MS : nextIntervalMs();
+    isFirstCapture = false;
     nextCaptureAt = Date.now() + delay;
     handle = setTimeout(() => {
       void tick();
@@ -417,6 +423,7 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
     clearTimeout(handle);
     handle = null;
     nextCaptureAt = null;
+    isFirstCapture = true;
     log.info('screenshot service stopped');
   }
 
