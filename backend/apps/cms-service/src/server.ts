@@ -3,6 +3,8 @@ dotenv.config();
 
 import express from 'express';
 import payload from 'payload';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { CmsEventPublisher } from './rabbitmq/cms-event.publisher';
 
 const app = express();
@@ -11,6 +13,38 @@ const PORT = Number(process.env.CMS_PORT) || 3020;
 // Health check — registered before payload.init() so it's always available
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'cms-service' });
+});
+
+// Same-origin media proxy. Payload's `generateFileURL` stores media paths as
+// `/cms-media/<filename>` (see payload.config.ts) so the Next.js Image
+// Optimizer doesn't trip its private-IP SSRF guard. The frontend rewrites
+// that path to MinIO/R2; without this proxy the admin UI (same origin as
+// cms-service) 404s on every thumbnail. In prod the env override points at
+// the real Cloudflare R2 / CDN host.
+const cmsMediaOrigin = (
+  process.env.CMS_MEDIA_ORIGIN || 'http://localhost:9000/marketeq-media'
+).replace(/\/$/, '');
+app.get('/cms-media/*', async (req, res) => {
+  const key = (req.params as { 0: string })[0];
+  const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  const upstreamUrl = `${cmsMediaOrigin}/${key}${qs}`;
+  try {
+    const upstream = await fetch(upstreamUrl);
+    res.status(upstream.status);
+    upstream.headers.forEach((value, key) => {
+      const lower = key.toLowerCase();
+      if (lower === 'transfer-encoding' || lower === 'connection') return;
+      res.setHeader(key, value);
+    });
+    if (!upstream.body) {
+      res.end();
+      return;
+    }
+    await pipeline(Readable.fromWeb(upstream.body as any), res);
+  } catch (err) {
+    payload.logger?.error({ err, upstreamUrl }, 'cms-media proxy failed');
+    res.status(502).json({ error: 'media proxy failed' });
+  }
 });
 
 // Readiness check — verifies DB + RabbitMQ

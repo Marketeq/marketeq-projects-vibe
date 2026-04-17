@@ -743,6 +743,31 @@ export const Projects: CollectionConfig = {
                 readOnly: true,
                 description:
                   'Audit trail appended automatically on every save. Shape per spec §14.16 / §11.',
+                components: {
+                  RowLabel: ({ data, index }: { data?: Record<string, unknown>; index?: number }) => {
+                    const row = (data ?? {}) as {
+                      actionType?: string;
+                      performedBy?: string;
+                      timestamp?: string;
+                      fieldChanged?: string;
+                    };
+                    const num = String((index ?? 0) + 1).padStart(2, '0');
+                    const when = row.timestamp
+                      ? new Date(row.timestamp).toLocaleString(undefined, {
+                          month: 'short',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : '—';
+                    const action = row.actionType
+                      ? row.actionType.charAt(0).toUpperCase() + row.actionType.slice(1)
+                      : 'Change';
+                    const actor = row.performedBy || 'system';
+                    const field = row.fieldChanged && row.fieldChanged !== '(save)' ? ` · ${row.fieldChanged}` : '';
+                    return `#${num}  ·  ${when}  ·  ${action}  ·  ${actor}${field}`;
+                  },
+                },
               },
               fields: [
                 {

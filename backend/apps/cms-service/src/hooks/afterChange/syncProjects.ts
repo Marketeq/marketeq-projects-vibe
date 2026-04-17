@@ -25,7 +25,9 @@ interface ResolvedMediaRef {
 }
 
 function isResolvedMedia(value: unknown): value is ResolvedMediaRef {
-  return typeof value === 'object' && value !== null && ('url' in (value as object) || 'filename' in (value as object));
+  if (typeof value !== 'object') return false;
+  const obj = Object(value);
+  return 'url' in obj || 'filename' in obj;
 }
 
 /**
