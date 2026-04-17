@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "start:dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "bootstrap": "node scripts/bootstrap.mjs",
     "seed:homepage": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-homepage-seed.ts",
     "seed:projects": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-projects-seed.ts"
   },

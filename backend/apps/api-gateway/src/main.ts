@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core'
 import { ValidationPipe, Logger } from '@nestjs/common'
+import { MicroserviceOptions, Transport } from '@nestjs/microservices'
 import * as cookieParser from 'cookie-parser'
 import { ApiGatewayModule } from './api-gateway.module'
 import { GlobalExceptionFilter } from './filters/global-exception.filter'
@@ -54,6 +55,63 @@ async function bootstrap() {
     },
     credentials: true,
   })
+
+  // RMQ consumers for cms.events fan-out — one connectMicroservice call per
+  // queue (NestJS Transport.RMQ binds 1:1 with the queue). cms-service
+  // publishes raw `{ event, ...fields }` payloads via amqp-connection-manager;
+  // the deserializer lifts `event` into NestJS's `pattern` slot so
+  // @EventPattern handlers fire (same fix as user-service / category-service).
+  const rabbitmqUrl = process.env.RABBITMQ_URL
+  const cmsDeserializer = {
+    deserialize: (value: unknown) => {
+      const v = (value ?? {}) as { event?: string }
+      return { pattern: v.event, data: value }
+    },
+  }
+  if (rabbitmqUrl) {
+    // Homepage cache invalidation on homepage.saved / homepage.deleted
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'api-gateway.homepage',
+        queueOptions: {
+          durable: true,
+          arguments: { 'x-dead-letter-exchange': 'cms.events.dlx' },
+        },
+        noAck: false,
+        prefetchCount: 1,
+        deserializer: cmsDeserializer,
+      },
+    })
+    logger.log('RabbitMQ microservice connected (queue: api-gateway.homepage)')
+
+    // Project edits also invalidate the /homepage cache because the feed
+    // embeds project cards (homepage.service.fetchProjects). Without this
+    // consumer, project changes stay invisible on `/` until cache TTL.
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'api-gateway.projects',
+        queueOptions: {
+          durable: true,
+          arguments: {
+            'x-dead-letter-exchange': 'cms.events.dlx',
+            'x-message-ttl': 30000,
+          },
+        },
+        noAck: false,
+        prefetchCount: 1,
+        deserializer: cmsDeserializer,
+      },
+    })
+    logger.log('RabbitMQ microservice connected (queue: api-gateway.projects)')
+  } else {
+    logger.warn('RABBITMQ_URL not set — cms.events consumers disabled')
+  }
+
+  await app.startAllMicroservices()
 
   const port = process.env.PORT || 4000
   await app.listen(port)

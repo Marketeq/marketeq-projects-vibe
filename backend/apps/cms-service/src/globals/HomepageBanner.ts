@@ -1,11 +1,15 @@
 import { GlobalConfig } from 'payload/types';
 import { isContentEditorOrAbove } from '../access/roles';
+import { syncHomepageBannerToBroadcast } from '../hooks/afterChange/syncHomepageBanner';
 
 export const HomepageBanner: GlobalConfig = {
   slug: 'homepage-banner',
   access: {
     read: () => true,
     update: isContentEditorOrAbove,
+  },
+  hooks: {
+    afterChange: [syncHomepageBannerToBroadcast],
   },
   fields: [
     {

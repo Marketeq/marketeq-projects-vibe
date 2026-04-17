@@ -69,15 +69,17 @@ export class ContentService {
   /** Reassign all content that references fromId -> toId (via Payload REST) */
   async reassignCategory(fromId: string, toId: string) {
     this.logger.log(`Reassigning content: ${fromId} -> ${toId}`);
-
     for (const cfg of CONTENT_TYPES) {
       await this.reassignForType(cfg, fromId, toId);
     }
-
     this.logger.log('Reassignment completed.');
   }
 
-  private async reassignForType(cfg: ContentTypeConfig, fromCatId: string, toCatId: string) {
+  private async reassignForType(
+    cfg: ContentTypeConfig,
+    fromCatId: number | string,
+    toCatId: number | string,
+  ) {
     let docs: any[] = [];
     try {
       docs = await getAllPages<any>(cfg.api, {
@@ -108,9 +110,8 @@ export class ContentService {
               [cfg.categoryField]: toCatId,
             });
           } else {
-            // many relation: replace old id with new id
-            const current: string[] = Array.isArray(doc[cfg.categoryField])
-              ? doc[cfg.categoryField].map((r: any) => typeof r === 'object' ? r.id : r)
+            const current: Array<number | string> = Array.isArray(doc[cfg.categoryField])
+              ? doc[cfg.categoryField].map((r: any) => (typeof r === 'object' ? r.id : r))
               : [];
             const keep = current.filter((x) => String(x) !== String(fromCatId));
             const newIds = Array.from(new Set([...keep, toCatId]));
