@@ -1,5 +1,6 @@
 import { CollectionConfig } from 'payload/types';
 import { isAdmin } from '../access/roles';
+import { crossServiceSourceIdField } from '../fields/crossServiceSourceIdField';
 
 export const Users: CollectionConfig = {
   slug: 'users',
@@ -26,13 +27,11 @@ export const Users: CollectionConfig = {
     delete: isAdmin,
   },
   fields: [
-    {
-      name: 'sourceId',
-      type: 'text',
+    crossServiceSourceIdField({
+      required: false,
       unique: true,
-      index: true,
-      admin: { description: 'UUID from user-service/auth-service' },
-    },
+      description: 'UUID from user-service / auth-service.',
+    }),
     {
       name: 'name',
       type: 'text',
