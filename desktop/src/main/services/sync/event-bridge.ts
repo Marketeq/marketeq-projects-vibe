@@ -99,6 +99,10 @@ export function createEventBridge(deps: EventBridgeDeps) {
           log?.warn('event-bridge: screenshot skipped — no authenticated user');
           return;
         }
+        // Get active contract from timer so screenshots are linked to the
+        // correct project/service/team contract
+        const snap = deps.timer.getSnapshot();
+        const contract = snap.pickedContract;
         deps.outbox.enqueue({
           kind: 'screenshot.confirm',
           method: 'POST',
@@ -111,6 +115,8 @@ export function createEventBridge(deps: EventBridgeDeps) {
             bytes: e.bytes,
             timestamp: new Date(e.takenAt).toISOString(),
             monitorId: e.displayId,
+            projectId: contract?.contractId ?? undefined,
+            taskId: contract?.taskId ?? undefined,
           },
         });
       } catch (err) {
