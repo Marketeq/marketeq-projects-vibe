@@ -1,13 +1,19 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { ProjectSyncController } from './project-sync.controller';
-import { ProjectSyncService } from './project-sync.service';
-import { DELIVERABLES_ADAPTER } from './deliverables/deliverables.adapter';
-import { DeliverablesAdapterHeuristic } from './deliverables/deliverables.adapter.heuristic';
-import { DeliverablesAdapterHuggingFace } from './deliverables/deliverables.adapter.huggingface';
-import { SKILLS_ADAPTER } from './skills/skills.adapter';
-import { SkillsAdapterHeuristic } from './skills/skills.adapter.heuristic';
-import { SkillsAdapterHuggingFace } from './skills/skills.adapter.huggingface';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { ProjectSyncController } from "./project-sync.controller";
+import { ProjectSyncService } from "./project-sync.service";
+import { ProjectSyncContractMiddleware } from "./project-sync.contract.middleware";
+import { DELIVERABLES_ADAPTER } from "./deliverables/deliverables.adapter";
+import { DeliverablesAdapterHeuristic } from "./deliverables/deliverables.adapter.heuristic";
+import { DeliverablesAdapterHuggingFace } from "./deliverables/deliverables.adapter.huggingface";
+import { SKILLS_ADAPTER } from "./skills/skills.adapter";
+import { SkillsAdapterHeuristic } from "./skills/skills.adapter.heuristic";
+import { SkillsAdapterHuggingFace } from "./skills/skills.adapter.huggingface";
 
 @Module({
   imports: [ConfigModule],
@@ -35,4 +41,10 @@ import { SkillsAdapterHuggingFace } from './skills/skills.adapter.huggingface';
   ],
   exports: [ProjectSyncService],
 })
-export class ProjectSyncModule {}
+export class ProjectSyncModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(ProjectSyncContractMiddleware)
+      .forRoutes({ path: "internal/project-sync", method: RequestMethod.POST });
+  }
+}

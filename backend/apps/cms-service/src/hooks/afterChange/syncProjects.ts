@@ -1,4 +1,7 @@
-import { CollectionAfterChangeHook, CollectionAfterDeleteHook } from 'payload/types';
+import {
+  CollectionAfterChangeHook,
+  CollectionAfterDeleteHook,
+} from "payload/types";
 
 /**
  * Payload Projects → listings-service sync.
@@ -24,10 +27,53 @@ interface ResolvedMediaRef {
   filename?: string;
 }
 
+type ProjectSyncProjection = {
+  id: number | string;
+  title: string;
+  slug: string;
+  shortDescription?: string;
+  fullDescription?: unknown;
+  deliverables?: unknown;
+  faqQuestions?: unknown;
+  categories?: unknown;
+  subcategories?: unknown;
+  tags?: unknown;
+  projectSkills?: unknown;
+  programmingLanguages?: unknown;
+  developmentTechnologies?: unknown;
+  totalEstimatedHours?: number;
+  timelineValue?: number;
+  timelineUnit?: string;
+  priceRangeMin?: number;
+  priceRangeMax?: number;
+  pricingModel?: string;
+  priceViewMode?: string;
+  projectType?: string;
+  klarnaPaymentEnabled?: boolean;
+  recentQuestions?: unknown;
+  skillsAndTools?: unknown;
+  chatEnabled?: boolean;
+  reportButtonEnabled?: boolean;
+  shareButtonEnabled?: boolean;
+  helpButtonEnabled?: boolean;
+  featured?: boolean;
+  _status?: "draft" | "published" | "archived" | "flagged";
+  status?: "draft" | "published" | "archived" | "flagged";
+  thumbnailUrl?: string;
+  galleryUrls?: string[];
+  videoUrl?: string;
+  scope?: unknown;
+  industries?: unknown;
+  relatedProjects?: unknown;
+  datePublished?: string;
+  projectDurationLabel?: string;
+  ownerId?: string;
+};
+
 function isResolvedMedia(value: unknown): value is ResolvedMediaRef {
-  if (typeof value !== 'object') return false;
+  if (typeof value !== "object") return false;
   const obj = Object(value);
-  return 'url' in obj || 'filename' in obj;
+  return "url" in obj || "filename" in obj;
 }
 
 /**
@@ -46,14 +92,14 @@ function isResolvedMedia(value: unknown): value is ResolvedMediaRef {
  */
 function mediaUrl(value: unknown, baseUrl: string): string | null {
   if (!value) return null;
-  const baseClean = baseUrl.replace(/\/$/, '');
+  const baseClean = baseUrl.replace(/\/$/, "");
   const stripBase = (url: string): string =>
     baseClean && url.startsWith(baseClean) ? url.slice(baseClean.length) : url;
 
-  if (typeof value === 'string') return stripBase(value);
+  if (typeof value === "string") return stripBase(value);
   if (isResolvedMedia(value)) {
     if (value.url) {
-      return value.url.startsWith('http') ? stripBase(value.url) : value.url;
+      return value.url.startsWith("http") ? stripBase(value.url) : value.url;
     }
     if (value.filename) {
       return `/cms-media/${value.filename}`;
@@ -80,7 +126,7 @@ async function populateLexicalUploads(
       node.map((child) => populateLexicalUploads(child, resolveMedia, baseUrl)),
     );
   }
-  if (typeof node !== 'object') return node;
+  if (typeof node !== "object") return node;
 
   const n = { ...(node as Record<string, unknown>) };
 
@@ -102,12 +148,14 @@ async function populateLexicalUploads(
   // Resolve upload nodes — their `value` may be a raw ID, a minimal doc
   // from depth=0, or an already-populated doc. Normalize to a populated
   // doc with `url` rewritten to a same-origin `/cms-media/...` path.
-  if (n.type === 'upload') {
+  if (n.type === "upload") {
     const raw = n.value;
     const resolved = await resolveMedia(
-      raw && typeof raw === 'object' ? (raw as Record<string, unknown>).id ?? raw : raw,
+      raw && typeof raw === "object"
+        ? ((raw as Record<string, unknown>).id ?? raw)
+        : raw,
     );
-    if (resolved && typeof resolved === 'object') {
+    if (resolved && typeof resolved === "object") {
       const media = { ...(resolved as Record<string, unknown>) } as Record<
         string,
         unknown
@@ -128,7 +176,9 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
 }) => {
   const listingsUrl = process.env.LISTINGS_SERVICE_URL;
   const token = process.env.CMS_SYNC_TOKEN;
-  const cmsBase = process.env.CMS_PUBLIC_URL || `http://localhost:${process.env.CMS_PORT || 3020}`;
+  const cmsBase =
+    process.env.CMS_PUBLIC_URL ||
+    `http://localhost:${process.env.CMS_PORT || 3020}`;
 
   if (!listingsUrl || !token) {
     req.payload.logger.warn(
@@ -139,13 +189,13 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
 
   try {
     const docStatus = (doc as any)._status;
-    if (docStatus && docStatus !== 'published') {
+    if (docStatus && docStatus !== "published") {
       // Keep listings-service aligned with Payload's public visibility:
       // any transition away from `published` must immediately hide the
       // row from `/v1/projects` and `/v1/projects/slug/:slug`.
-      const url = `${listingsUrl.replace(/\/$/, '')}/internal/project-sync/${encodeURIComponent(String(doc.id))}`;
+      const url = `${listingsUrl.replace(/\/$/, "")}/internal/project-sync/${encodeURIComponent(String(doc.id))}`;
       const res = await fetch(url, {
-        method: 'DELETE',
+        method: "DELETE",
         headers: { authorization: `Bearer ${token}` },
       });
 
@@ -176,11 +226,11 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
     // publish race.
     const resolveMedia = async (mediaRef: unknown): Promise<unknown> => {
       if (!mediaRef) return null;
-      if (typeof mediaRef === 'object') return mediaRef;
-      if (typeof mediaRef === 'number' || typeof mediaRef === 'string') {
+      if (typeof mediaRef === "object") return mediaRef;
+      if (typeof mediaRef === "number" || typeof mediaRef === "string") {
         try {
           return await req.payload.findByID({
-            collection: 'media' as any,
+            collection: "media" as any,
             id: mediaRef as any,
             depth: 0,
           });
@@ -194,12 +244,12 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
     const populatedThumbnail = await resolveMedia((doc as any).thumbnail);
     const populatedGallery = Array.isArray((doc as any).gallery)
       ? await Promise.all(
-          ((doc as any).gallery as Array<{ image?: unknown; caption?: string }>).map(
-            async (g) => ({
-              ...g,
-              image: await resolveMedia(g?.image),
-            }),
-          ),
+          (
+            (doc as any).gallery as Array<{ image?: unknown; caption?: string }>
+          ).map(async (g) => ({
+            ...g,
+            image: await resolveMedia(g?.image),
+          })),
         )
       : [];
     const populatedVideoUpload = await resolveMedia(
@@ -226,28 +276,67 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       cmsBase,
     );
 
-    const payload = {
-      ...doc,
+    // Sync contract boundary: only forward serving/projection fields.
+    // This prevents admin/editorial-only keys from drifting into the
+    // listings write-model via broad object spreads.
+    const payload: ProjectSyncProjection = {
       id: doc.id,
-      thumbnail: populatedThumbnail,
-      gallery: populatedGallery,
+      title: (doc as any).title,
+      slug: (doc as any).slug,
+      shortDescription: (doc as any).shortDescription,
+      fullDescription: populatedFullDescription,
+      deliverables: (doc as any).deliverables,
+      faqQuestions: (doc as any).faqQuestions,
+      categories: (doc as any).categories,
+      subcategories: (doc as any).subcategories,
+      tags: (doc as any).tags,
+      projectSkills: (doc as any).projectSkills,
+      programmingLanguages: (doc as any).programmingLanguages,
+      developmentTechnologies: (doc as any).developmentTechnologies,
+      totalEstimatedHours: (doc as any).totalEstimatedHours,
+      timelineValue: (doc as any).timelineValue,
+      timelineUnit: (doc as any).timelineUnit,
+      priceRangeMin: (doc as any).priceRangeMin,
+      priceRangeMax: (doc as any).priceRangeMax,
+      pricingModel: (doc as any).pricingModel,
+      priceViewMode: (doc as any).priceViewMode,
+      projectType: (doc as any).projectType,
+      klarnaPaymentEnabled: (doc as any).klarnaPaymentEnabled,
+      recentQuestions: (doc as any).recentQuestions,
+      skillsAndTools: (doc as any).skillsAndTools,
+      chatEnabled: (doc as any).chatEnabled,
+      reportButtonEnabled: (doc as any).reportButtonEnabled,
+      shareButtonEnabled: (doc as any).shareButtonEnabled,
+      helpButtonEnabled: (doc as any).helpButtonEnabled,
+      featured: (doc as any).featured,
+      _status: ((doc as any)._status ?? "published") as
+        | "draft"
+        | "published"
+        | "archived"
+        | "flagged",
+      // Payload puts draft/published state under `_status`; mirror it onto
+      // `status` so the receiver can rely on either name.
+      status: ((doc as any)._status ?? "published") as
+        | "draft"
+        | "published"
+        | "archived"
+        | "flagged",
       thumbnailUrl: thumbnailUrl ?? undefined,
       galleryUrls,
       videoUrl,
-      fullDescription: populatedFullDescription,
-      // Payload puts draft/published state under `_status`; mirror it onto
-      // `status` so the receiver can rely on either name.
-      status: ((doc as any)._status ?? 'published') as
-        | 'draft'
-        | 'published'
-        | 'archived',
+      scope: (doc as any).scope,
+      industries: (doc as any).industries,
+      relatedProjects: (doc as any).relatedProjects,
+      datePublished: (doc as any).datePublished,
+      projectDurationLabel: (doc as any).projectDurationLabel,
+      ownerId: (doc as any).ownerId,
     };
 
-    const url = `${listingsUrl.replace(/\/$/, '')}/internal/project-sync`;
+    const url = `${listingsUrl.replace(/\/$/, "")}/internal/project-sync`;
     const res = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'content-type': 'application/json',
+        "content-type": "application/json",
         authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
@@ -270,7 +359,8 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
     // any downstream cache (api-gateway Redis, future Cloudflare edge) can
     // invalidate. Same pattern Categories/TalentProfiles already use.
     try {
-      const { CmsEventPublisher } = await import('../../rabbitmq/cms-event.publisher');
+      const { CmsEventPublisher } =
+        await import("../../rabbitmq/cms-event.publisher");
       const publisher = CmsEventPublisher.getInstance();
       if (publisher.isConnected()) {
         await publisher.publishProjectSaved({
@@ -278,7 +368,10 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
           payloadId: doc.id as number | string,
           slug: doc.slug,
           title: doc.title,
-          status: ((doc as any)._status ?? 'published') as 'draft' | 'published' | 'archived',
+          status: ((doc as any)._status ?? "published") as
+            | "draft"
+            | "published"
+            | "archived",
         });
         req.payload.logger.info(
           `[syncProjectToListings] Published project.saved for "${doc.slug}"`,
@@ -305,14 +398,11 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
     if (revalidateUrl && revalidateSecret) {
       try {
         const res = await fetch(revalidateUrl, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({
             secret: revalidateSecret,
-            paths: [
-              `/project-details/${doc.slug}`,
-              '/projects',
-            ],
+            paths: [`/project-details/${doc.slug}`, "/projects"],
           }),
         });
         if (!res.ok) {
@@ -357,9 +447,9 @@ export const deleteProjectFromListings: CollectionAfterDeleteHook = async ({
   }
 
   try {
-    const url = `${listingsUrl.replace(/\/$/, '')}/internal/project-sync/${encodeURIComponent(String(doc.id))}`;
+    const url = `${listingsUrl.replace(/\/$/, "")}/internal/project-sync/${encodeURIComponent(String(doc.id))}`;
     const res = await fetch(url, {
-      method: 'DELETE',
+      method: "DELETE",
       headers: { authorization: `Bearer ${token}` },
     });
 
@@ -376,7 +466,8 @@ export const deleteProjectFromListings: CollectionAfterDeleteHook = async ({
     );
 
     try {
-      const { CmsEventPublisher } = await import('../../rabbitmq/cms-event.publisher');
+      const { CmsEventPublisher } =
+        await import("../../rabbitmq/cms-event.publisher");
       const publisher = CmsEventPublisher.getInstance();
       if (publisher.isConnected()) {
         await publisher.publishProjectDeleted({
@@ -397,11 +488,11 @@ export const deleteProjectFromListings: CollectionAfterDeleteHook = async ({
     if (revalidateUrl && revalidateSecret) {
       try {
         await fetch(revalidateUrl, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({
             secret: revalidateSecret,
-            paths: [`/project-details/${doc.slug}`, '/projects'],
+            paths: [`/project-details/${doc.slug}`, "/projects"],
           }),
         });
       } catch (revErr) {
