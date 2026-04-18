@@ -3,7 +3,7 @@ import { IsArray, IsOptional, IsString, IsUUID } from 'class-validator';
 export class UpdateScreenshotMetaDto {
   @IsOptional()
   @IsString()
-  projectId?: string;
+  contractId?: string;
 
   @IsOptional()
   @IsString()
@@ -17,7 +17,7 @@ export class BatchUpdateScreenshotDto {
 
   @IsOptional()
   @IsString()
-  projectId?: string;
+  contractId?: string;
 
   @IsOptional()
   @IsString()
