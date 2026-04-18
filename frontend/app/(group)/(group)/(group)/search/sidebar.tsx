@@ -452,7 +452,6 @@ const Skills = ({
       >
         <InputGroup>
           <ComboboxPrimitive.Input
-            placeholder="Add skills by keyword"
             placeholder={placeholder}
             className={cn(
               inputVariants({
