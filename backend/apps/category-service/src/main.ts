@@ -65,12 +65,16 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config)
   SwaggerModule.setup('api/docs', app, document)
 
-  await app.startAllMicroservices()
-
   const port = process.env.PORT || 3023
   await app.listen(port)
 
   logger.log(`category-service running on port ${port}`)
+
+  if (rabbitmqUrl) {
+    app.startAllMicroservices().catch((error) => {
+      logger.error('Failed to start category RMQ microservice', error)
+    })
+  }
 }
 
 bootstrap()

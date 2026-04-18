@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
-import Fuse from 'fuse.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AutocompleteEntry, EntryStatus, EntryType } from './entities/autocomplete-entry.entity';
@@ -13,8 +13,27 @@ import { ReviewAutocompleteDto } from './dto/review-autocomplete.dto';
 import { QueryAutocompleteDto } from './dto/query-autocomplete.dto';
 import { EntryFilter } from './filters/entry.filter';
 
+const FuseLib: any = require('fuse.js');
+
 /** Set of types that have corresponding JSON data files */
-const JSON_DATA_TYPES = new Set(['skills', 'job_titles', 'certifications', 'industries', 'languages']);
+const JSON_DATA_TYPES = new Set([
+  'skills',
+  'job_titles',
+  'certifications',
+  'industries',
+  'languages',
+  'search_keywords',
+]);
+
+function resolveAutocompleteDataPath(type: string): string | null {
+  const candidates = [
+    path.resolve(process.cwd(), 'apps/autocomplete-service/data/autocomplete', `${type}.json`),
+    path.resolve(__dirname, '../data/autocomplete', `${type}.json`),
+    path.resolve(__dirname, '../../data/autocomplete', `${type}.json`),
+  ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
 
 // Heuristic keyword-to-category mapping
 const CATEGORY_RULES: Record<string, string[]> = {
@@ -44,6 +63,7 @@ function assignHeuristicCategory(label: string): string | null {
 @Injectable()
 export class AutocompleteService {
   constructor(
+    private readonly http: HttpService,
     @InjectRepository(AutocompleteEntry)
     private readonly entryRepo: Repository<AutocompleteEntry>,
     @InjectRepository(AutocompleteReviewQueue)
@@ -54,6 +74,24 @@ export class AutocompleteService {
     private readonly rejectedRepo: Repository<AutocompleteRejectedEntry>,
     private readonly filter: EntryFilter,
   ) {}
+
+  async getCategoryMatches(query: string): Promise<{
+    value: string;
+    uuid: string;
+    type: 'category' | 'subcategory';
+  }[]> {
+    const trimmedQuery = (query ?? '').trim();
+    if (!trimmedQuery) {
+      throw new BadRequestException('Query parameter q is required');
+    }
+
+    const liveCategories = await this.fetchLiveCategories(trimmedQuery);
+    if (liveCategories.length > 0) {
+      return liveCategories;
+    }
+
+    return this.queryCategoryRepo(trimmedQuery);
+  }
 
   async submit(dto: SubmitAutocompleteDto): Promise<AutocompleteEntry> {
     const validation = this.filter.validate(dto.value);
@@ -118,14 +156,14 @@ export class AutocompleteService {
 
     if (candidates.length === 0) return [];
 
-    const fuse = new Fuse(candidates, {
+    const fuse = new FuseLib(candidates, {
       keys: ['normalized', 'value'],
       threshold: 0.3,
       includeScore: true,
     });
 
     const results = fuse.search(normalizedQ, { limit });
-    return results.map(r => r.item);
+    return results.map((r: { item: AutocompleteEntry }) => r.item);
   }
 
   async getByType(type: EntryType): Promise<AutocompleteEntry[]> {
@@ -208,8 +246,8 @@ export class AutocompleteService {
    * Falls back gracefully if the file does not exist.
    */
   queryFromJson(type: string, q?: string, limit = 10): { id: string; label: string }[] {
-    const filepath = path.join(__dirname, '../../data/autocomplete', `${type}.json`);
-    if (!fs.existsSync(filepath)) {
+    const filepath = resolveAutocompleteDataPath(type);
+    if (!filepath) {
       return [];
     }
     const raw = fs.readFileSync(filepath, 'utf-8');
@@ -217,7 +255,112 @@ export class AutocompleteService {
     if (!q || q.trim() === '') {
       return data.slice(0, limit);
     }
-    const fuse = new Fuse(data, { keys: ['label'], threshold: 0.3 });
-    return fuse.search(q, { limit }).map(r => r.item);
+    const fuse = new FuseLib(data, { keys: ['label'], threshold: 0.3 });
+    return fuse.search(q, { limit }).map((r: { item: { id: string; label: string } }) => r.item);
+  }
+
+  private async fetchLiveCategories(query: string): Promise<{
+    value: string;
+    uuid: string;
+    type: 'category' | 'subcategory';
+  }[]> {
+    const categoryServiceUrl =
+      (process.env.CATEGORY_SERVICE_URL || 'http://localhost:3023').replace(/\/$/, '');
+
+    try {
+      const response = await this.http.axiosRef.get(`${categoryServiceUrl}/api/categories/tree`, {
+        timeout: 5000,
+      });
+      const nodes = Array.isArray(response.data) ? response.data : [];
+      const flattened = this.flattenCategoryTree(nodes);
+      return this.searchCategoryResults(flattened, query);
+    } catch {
+      return [];
+    }
+  }
+
+  private queryCategoryRepo(query: string): {
+    value: string;
+    uuid: string;
+    type: 'category' | 'subcategory';
+  }[] | Promise<{
+    value: string;
+    uuid: string;
+    type: 'category' | 'subcategory';
+  }[]> {
+    return this.categoryRepo
+      .find({
+        where: { isActive: true },
+        order: { name: 'ASC' },
+        take: 500,
+      })
+      .then((rows) =>
+        this.searchCategoryResults(
+          rows.map((row) => ({
+            value: row.name,
+            uuid: row.id,
+            type: row.parentSlug ? 'subcategory' as const : 'category' as const,
+          })),
+          query,
+        ),
+      );
+  }
+
+  private flattenCategoryTree(
+    nodes: Array<{
+      uuid: string;
+      name: string;
+      approved?: boolean;
+      children?: any[];
+    }>,
+    depth = 0,
+  ): {
+    value: string;
+    uuid: string;
+    type: 'category' | 'subcategory';
+  }[] {
+    return nodes.flatMap((node) => {
+      const children = Array.isArray(node.children) ? node.children : [];
+      const descendants = this.flattenCategoryTree(children, depth + 1);
+      if (!node?.approved) {
+        return descendants;
+      }
+
+      return [
+        {
+          value: node.name,
+          uuid: node.uuid,
+          type: depth === 0 ? 'category' as const : 'subcategory' as const,
+        },
+        ...descendants,
+      ];
+    });
+  }
+
+  private searchCategoryResults(
+    values: Array<{
+      value: string;
+      uuid: string;
+      type: 'category' | 'subcategory';
+    }>,
+    query: string,
+  ): {
+    value: string;
+    uuid: string;
+    type: 'category' | 'subcategory';
+  }[] {
+    const uniqueValues = Array.from(
+      new Map(values.map((value) => [`${value.type}:${value.uuid}`, value])).values(),
+    );
+
+    const fuse = new FuseLib(uniqueValues, {
+      keys: ['value'],
+      threshold: 0.3,
+      includeScore: true,
+    });
+
+    return fuse
+      .search(query, { limit: 20 })
+      .map((result: { item: { value: string; uuid: string; type: 'category' | 'subcategory' } }) => result.item);
   }
 }

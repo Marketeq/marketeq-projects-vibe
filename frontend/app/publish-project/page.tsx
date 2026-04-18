@@ -21,6 +21,7 @@ import {
   type AutocompleteCategorySuggestion,
   type AutocompleteTypeSuggestion,
 } from "@/service/http/autocomplete"
+import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { HTTPS, ONE_SECOND } from "@/utils/constants"
@@ -719,10 +720,56 @@ const BottomBar = ({
         await new Promise((resolve) => setTimeout(resolve, remainingMs))
       }
     }
+    const ensureCustomSubcategories = async () => {
+      try {
+        const response = await CategoryAPI.getTree()
+        const nodes: CategoryTreeNode[] = Array.isArray(response?.data)
+          ? response.data
+          : []
+        const categoryNodesByName = indexCategoryTreeByName(nodes)
+        const creations = new Map<string, { name: string; parentUuid?: string }>()
+
+        ;(projectInfo.category ?? []).forEach((entry) => {
+          const categoryName = entry?.category?.trim()
+          if (!categoryName) return
+
+          const categoryNode = categoryNodesByName.get(categoryName)
+          if (!categoryNode) return
+
+          const knownSubcategories = new Set(
+            collectCategoryDescendants(categoryNode).map((node) =>
+              node.name.trim().toLowerCase()
+            )
+          )
+
+          ;(entry.subCategories ?? []).forEach((subCategory) => {
+            const trimmedSubCategory = subCategory.trim()
+            if (!trimmedSubCategory) return
+
+            if (knownSubcategories.has(trimmedSubCategory.toLowerCase())) {
+              return
+            }
+
+            creations.set(`${categoryNode.uuid}:${trimmedSubCategory.toLowerCase()}`, {
+              name: trimmedSubCategory,
+              parentUuid: categoryNode.uuid,
+            })
+          })
+        })
+
+        for (const creation of creations.values()) {
+          await ProjectAPI.CreateModeratedSubcategory(creation)
+        }
+      } catch (error) {
+        // Keep project publishing functional even when category sync is unavailable.
+      }
+    }
 
     // Show "submitted for review" state immediately while validation/publish APIs run.
     setSubmissionOutcome({ status: "in_review" })
     setIsProjectSubmitted(true)
+
+    await ensureCustomSubcategories()
 
     const categories = Array.from(
       new Set(
@@ -744,6 +791,12 @@ const BottomBar = ({
       title: projectInfo.title,
       categories,
       subCategories,
+      categorySelections: (projectInfo.category ?? []).map((value) => ({
+        category: value?.category?.trim() ?? "",
+        subCategories: (value?.subCategories ?? [])
+          .map((subCategory) => subCategory.trim())
+          .filter(Boolean),
+      })),
       industries: projectInfo.industry,
       tags: projectInfo.tags,
       skills: projectInfo.skills,
@@ -1150,6 +1203,25 @@ const projectInfoSchema = z.object({
 
 type ProjectInfoFormValues = z.infer<typeof projectInfoSchema>
 
+const PROJECT_INFO_PROGRESS_FIELDS: Array<keyof ProjectInfoFormValues> = [
+  "title",
+  "category",
+  "industry",
+  "shortDescription",
+  "fullDescription",
+  "tags",
+  "skills",
+]
+
+const TITLE_MAX_LENGTH = 120
+const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const FULL_DESCRIPTION_MAX_LENGTH = 2000
+const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
+const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
+  "Please do not enter more than 300 character(s)"
+const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
+  "Please do not enter more than 2,000 character(s)"
+
 const FALLBACK_CATEGORY_OPTIONS = [
   "Web Development",
   "Mobile Development",
@@ -1207,9 +1279,7 @@ const FALLBACK_SKILL_OPTIONS = [
   "API Integration",
 ]
 
-const normalizeAutocompleteLabel = (
-  item: AutocompleteCategorySuggestion | AutocompleteTypeSuggestion
-) => {
+const normalizeAutocompleteLabel = (item: AutocompleteTypeSuggestion) => {
   if ("value" in item && typeof item.value === "string") return item.value
   if ("label" in item && typeof item.label === "string") return item.label
   return ""
@@ -1219,6 +1289,61 @@ const getUniqueOptions = (values: string[]) =>
   Array.from(
     new Set(values.map((value) => value.trim()).filter((value) => value.length))
   )
+
+type SuggestedCategoryOption = {
+  category: string
+  subCategory: string
+}
+
+const DEFAULT_SUGGESTED_CATEGORIES: SuggestedCategoryOption[] = [
+  { category: "Design", subCategory: "UI/UX Design" },
+  { category: "Development", subCategory: "Mobile App" },
+  { category: "Data Science", subCategory: "Machine Learning" },
+]
+
+const isActiveCategoryNode = (node: CategoryTreeNode) => node.approved
+
+const collectCategoryDescendants = (node?: CategoryTreeNode): CategoryTreeNode[] => {
+  if (!node?.children?.length) return []
+
+  return node.children.flatMap((child) => {
+    const descendants = collectCategoryDescendants(child)
+    return isActiveCategoryNode(child) ? [child, ...descendants] : descendants
+  })
+}
+
+const collectSelectableCategories = (nodes: CategoryTreeNode[]) => {
+  const secondLevelNodes = nodes.flatMap((node) =>
+    (node.children ?? []).filter(isActiveCategoryNode)
+  )
+
+  return getIsNotEmpty(secondLevelNodes)
+    ? secondLevelNodes
+    : nodes.filter(isActiveCategoryNode)
+}
+
+const findSuggestedSubCategory = (node?: CategoryTreeNode): string | null => {
+  const [firstDescendant] = collectCategoryDescendants(node)
+  return firstDescendant?.name ?? null
+}
+
+const indexCategoryTreeByName = (nodes: CategoryTreeNode[]) => {
+  const index = new Map<string, CategoryTreeNode>()
+
+  const visit = (entries: CategoryTreeNode[]) => {
+    entries.forEach((entry) => {
+      if (isActiveCategoryNode(entry)) {
+        index.set(entry.name, entry)
+      }
+      if (entry.children?.length) {
+        visit(entry.children)
+      }
+    })
+  }
+
+  visit(nodes)
+  return index
+}
 type ProjectInfoProps = {
   setProgress?: (val: number) => void
 }
@@ -1236,14 +1361,13 @@ const ProjectInfo = ({
     trigger,
   } = methods
 
-  const [suggested, setSuggested] = useState([
-    { category: "Design", subCategory: "UI/UX Design" },
-    { category: "Development", subCategory: "Mobile App" },
-    { category: "Data Science", subCategory: "Machine Learning" },
-  ])
+  const [suggested, setSuggested] = useState<SuggestedCategoryOption[]>(
+    DEFAULT_SUGGESTED_CATEGORIES
+  )
 
   const [showSuggestions] = useState(true)
   const [activeCategoryIndex, setActiveCategoryIndex] = useState(0)
+  const [categoryTree, setCategoryTree] = useState<CategoryTreeNode[]>([])
   const [categoryOptions, setCategoryOptions] = useState<string[]>(
     FALLBACK_CATEGORY_OPTIONS
   )
@@ -1255,12 +1379,13 @@ const ProjectInfo = ({
   )
   const [tagOptions, setTagOptions] = useState<string[]>(FALLBACK_TAG_OPTIONS)
   const [skills, setSkills] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
+  const [suggestedSkillOptions] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
   const [titleInputValue, setTitleInputValue] = useState("")
   const categoryRequestRef = useRef(0)
-  const typeRequestRef = useRef(0)
   const categoryDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   )
+  const typeRequestRef = useRef(0)
   const typeDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   )
@@ -1275,6 +1400,29 @@ const ProjectInfo = ({
     control: methods.control,
     name: "category",
   })
+  const categoryNodesByName = useMemo(() => {
+    return indexCategoryTreeByName(categoryTree)
+  }, [categoryTree])
+  const getSubCategoryOptionsForCategory = useCallback(
+    (categoryName?: string, query = "") => {
+      const normalizedQuery = query.trim().toLowerCase()
+      const activeNode = categoryName
+        ? categoryNodesByName.get(categoryName)
+        : undefined
+      const sourceNodes = activeNode
+        ? collectCategoryDescendants(activeNode)
+        : categoryTree.flatMap((node) => collectCategoryDescendants(node))
+
+      return getUniqueOptions(
+        sourceNodes
+          .map((node) => node.name)
+          .filter((name) =>
+            normalizedQuery ? name.toLowerCase().includes(normalizedQuery) : true
+          )
+      )
+    },
+    [categoryNodesByName, categoryTree]
+  )
   const handleSubCategoryChange = useCallback(
     (fieldName: `category.${0 | 1 | 2}.subCategories`, onChange: (value: string[]) => void) =>
       (details: { value: string[] }) => {
@@ -1292,12 +1440,50 @@ const ProjectInfo = ({
       },
     [methods]
   )
+  const handleCategorySelection = useCallback(
+    (
+      index: 0 | 1 | 2,
+      categoryName: string,
+      onChange: (value: string) => void
+    ) => {
+      onChange(categoryName)
+      setActiveCategoryIndex(index)
 
-  const { error } = projectInfoSchema.safeParse(projectInfoValues)
-  const totalFields = keys(methods.control._fields).length
-  const totalFieldErrors = error ? keys(error.flatten().fieldErrors).length : 0
-  const progressValue = parseInt(
-    `${((totalFields - totalFieldErrors) / totalFields) * 33}`
+      const availableSubCategories = getSubCategoryOptionsForCategory(categoryName)
+      setSubCategoryOptions(availableSubCategories)
+
+      const fieldName = `category.${index}.subCategories` as const
+      const currentSubCategories = methods.getValues(fieldName) ?? []
+      const nextSubCategories = currentSubCategories.filter((value) =>
+        availableSubCategories.includes(value)
+      )
+
+      if (nextSubCategories.length !== currentSubCategories.length) {
+        methods.setValue(fieldName, nextSubCategories, {
+          shouldDirty: true,
+          shouldTouch: true,
+          shouldValidate: true,
+        })
+      }
+
+      void methods.trigger(`category.${index}`)
+    },
+    [getSubCategoryOptionsForCategory, methods]
+  )
+
+  const completedProjectInfoFields = PROJECT_INFO_PROGRESS_FIELDS.filter(
+    (fieldName) =>
+      projectInfoSchema.shape[fieldName]
+        .safeParse(projectInfoValues?.[fieldName]).success
+  ).length
+  const progressValue = Math.max(
+    0,
+    Math.min(
+      33,
+      Math.round(
+        (completedProjectInfoFields / PROJECT_INFO_PROGRESS_FIELDS.length) * 33
+      )
+    )
   )
   const titleCharacterCount =
     titleInputValue.length || projectInfoValues.title?.length || 0
@@ -1305,9 +1491,23 @@ const ProjectInfo = ({
     errors,
     name: "title",
   })
+  const shortDescriptionHasError = hookFormHasError({
+    errors,
+    name: "shortDescription",
+  })
+  const fullDescriptionHasError = hookFormHasError({
+    errors,
+    name: "fullDescription",
+  })
   const hasCommittedTitle =
     typeof projectInfoValues.title === "string" &&
     projectInfoValues.title.trim().length > 0
+  const shortDescriptionField = methods.register("shortDescription", {
+    onBlur: () => trigger("shortDescription"),
+  })
+  const fullDescriptionField = methods.register("fullDescription", {
+    onBlur: () => trigger("fullDescription"),
+  })
 
   const commitTitleValue = useCallback(() => {
     const nextValue = titleInputValue.trim()
@@ -1340,47 +1540,113 @@ const ProjectInfo = ({
     setTitleInputValue("")
   }, [methods])
 
-  const fetchCategoriesAutocomplete = useCallback((query: string) => {
-    const trimmedQuery = query.trim()
-    if (!trimmedQuery) return
-    if (categoryDebounceTimerRef.current) {
-      clearTimeout(categoryDebounceTimerRef.current)
-    }
+  const triggerMaxLengthError = useCallback(
+    (
+      fieldName: "title" | "shortDescription" | "fullDescription",
+      message: string
+    ) => {
+      methods.setError(fieldName, {
+        type: "manual",
+        message,
+      })
+    },
+    [methods]
+  )
 
-    categoryDebounceTimerRef.current = setTimeout(async () => {
-      const currentRequestId = ++categoryRequestRef.current
-      try {
-        const response = await AutocompleteAPI.getCategories(trimmedQuery)
-        if (currentRequestId !== categoryRequestRef.current) return
+  const shouldBlockMaxLengthInput = useCallback(
+    (
+      event:
+        | React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>
+        | React.ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+      currentLength: number,
+      maxLength: number
+    ) => {
+      const selectionLength =
+        event.currentTarget.selectionEnd !== null &&
+        event.currentTarget.selectionStart !== null
+          ? event.currentTarget.selectionEnd - event.currentTarget.selectionStart
+          : 0
 
-        const values: AutocompleteCategorySuggestion[] = Array.isArray(
-          response?.data
-        )
-          ? response.data
-          : []
-        const categories = getUniqueOptions(
-          values
-            .filter((item) => item.type === "category")
-            .map((item) => normalizeAutocompleteLabel(item))
-        )
-        const subCategories = getUniqueOptions(
-          values
-            .filter((item) => item.type === "subcategory")
-            .map((item) => normalizeAutocompleteLabel(item))
-        )
-
-        if (getIsNotEmpty(categories)) {
-          setCategoryOptions(categories)
-          setIndustryOptions(categories)
+      if ("key" in event) {
+        if (
+          event.ctrlKey ||
+          event.metaKey ||
+          event.altKey ||
+          event.key.length !== 1
+        ) {
+          return false
         }
-        if (getIsNotEmpty(subCategories)) {
-          setSubCategoryOptions(subCategories)
-        }
-      } catch (error) {
-        // Keep fallback options when autocomplete is unavailable.
+
+        return currentLength - selectionLength >= maxLength
       }
-    }, 250)
-  }, [])
+
+      const pastedText = event.clipboardData.getData("text")
+      return currentLength - selectionLength + pastedText.length > maxLength
+    },
+    []
+  )
+
+  const fetchCategoriesAutocomplete = useCallback(
+    (index: 0 | 1 | 2, query: string) => {
+      const trimmedQuery = query.trim()
+      setActiveCategoryIndex(index)
+      const activeCategoryName = Array.isArray(categoryValues)
+        ? categoryValues[index]?.category
+        : undefined
+      const fallbackOptions = getSubCategoryOptionsForCategory(activeCategoryName)
+
+      if (!trimmedQuery) {
+        setSubCategoryOptions(fallbackOptions)
+        return
+      }
+      if (categoryDebounceTimerRef.current) {
+        clearTimeout(categoryDebounceTimerRef.current)
+      }
+
+      categoryDebounceTimerRef.current = setTimeout(async () => {
+        const currentRequestId = ++categoryRequestRef.current
+
+        try {
+          const response = await AutocompleteAPI.getCategories(trimmedQuery)
+          if (currentRequestId !== categoryRequestRef.current) return
+
+          const values: AutocompleteCategorySuggestion[] = Array.isArray(
+            response?.data
+          )
+            ? response.data
+            : []
+
+          const scopedSubCategoryOptions =
+            getSubCategoryOptionsForCategory(activeCategoryName)
+          const allowedSubCategories = new Set(
+            scopedSubCategoryOptions.map((value) => value.toLowerCase())
+          )
+          const hasScopedSubCategories = allowedSubCategories.size > 0
+          const matchingSubCategories = getUniqueOptions(
+            values
+              .filter((item) => item.type === "subcategory")
+              .map((item) => item.value.trim())
+              .filter((value) =>
+                activeCategoryName && hasScopedSubCategories
+                  ? allowedSubCategories.has(value.toLowerCase())
+                  : true
+              )
+          )
+
+          setSubCategoryOptions(
+            getIsNotEmpty(matchingSubCategories)
+              ? matchingSubCategories
+              : getSubCategoryOptionsForCategory(activeCategoryName, trimmedQuery)
+          )
+        } catch (error) {
+          setSubCategoryOptions(
+            getSubCategoryOptionsForCategory(activeCategoryName, trimmedQuery)
+          )
+        }
+      }, 250)
+    },
+    [categoryValues, getSubCategoryOptionsForCategory]
+  )
 
   const fetchTypeAutocomplete = useCallback(
     (type: string, query: string, onSuccess: (options: string[]) => void) => {
@@ -1414,8 +1680,40 @@ const ProjectInfo = ({
     },
     []
   )
-
   useEffect(() => {
+    const loadCategoryTree = async () => {
+      try {
+        const response = await CategoryAPI.getTree()
+        const nodes: CategoryTreeNode[] = Array.isArray(response?.data)
+          ? response.data
+          : []
+        const selectableCategories = collectSelectableCategories(nodes)
+        const nextCategoryOptions = getUniqueOptions(
+          selectableCategories.map((node) => node.name)
+        )
+        const nextSuggested = selectableCategories
+          .map((node) => {
+            const subCategory = findSuggestedSubCategory(node)
+            return subCategory
+              ? { category: node.name, subCategory }
+              : null
+          })
+          .filter((value): value is SuggestedCategoryOption => value !== null)
+
+        setCategoryTree(nodes)
+        if (getIsNotEmpty(nextCategoryOptions)) {
+          setCategoryOptions(nextCategoryOptions)
+        }
+        if (getIsNotEmpty(nextSuggested)) {
+          setSuggested(nextSuggested)
+        }
+      } catch (error) {
+        // Keep fallback options when category-service is unavailable.
+      }
+    }
+
+    void loadCategoryTree()
+
     return () => {
       if (categoryDebounceTimerRef.current) {
         clearTimeout(categoryDebounceTimerRef.current)
@@ -1425,14 +1723,22 @@ const ProjectInfo = ({
       }
     }
   }, [])
+  useEffect(() => {
+    const activeCategoryName = Array.isArray(categoryValues)
+      ? categoryValues[activeCategoryIndex]?.category
+      : undefined
+
+    setSubCategoryOptions(getSubCategoryOptionsForCategory(activeCategoryName))
+  }, [activeCategoryIndex, categoryValues, getSubCategoryOptionsForCategory])
   // NEW: Report progress to parent whenever it changes
   useEffect(() => {
     setProgress?.(progressValue) //calls the prop passed from PublishProject
   }, [progressValue, setProgress])
 
-  const suggestedSkills = skills.filter(
+  const suggestedSkills = suggestedSkillOptions.filter(
     (value) => !projectInfoValues.skills?.includes(value)
   )
+  const suggestedSkillsForDisplay = suggestedSkills.slice(0, 3)
   const activeCategory = Array.isArray(categoryValues)
     ? categoryValues[activeCategoryIndex]
     : null
@@ -1454,13 +1760,29 @@ const ProjectInfo = ({
     },
     [categoryOptions, categoryValues]
   )
-  const suggestedForActiveCategory = suggested.filter(
-    ({ category, subCategory }) =>
-      !(
-        activeCategory?.category === category &&
-        Array.isArray(activeCategory?.subCategories) &&
-        activeCategory.subCategories.includes(subCategory)
-      )
+  const selectedSuggestedPairs = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(categoryValues) ? categoryValues : [])
+          .flatMap((item) =>
+            item?.category && Array.isArray(item.subCategories)
+              ? item.subCategories.map(
+                  (subCategory) => `${item.category}::${subCategory}`
+                )
+              : []
+          )
+      ),
+    [categoryValues]
+  )
+  const suggestedForDisplay = useMemo(
+    () =>
+      suggested
+        .filter(
+          ({ category, subCategory }) =>
+            !selectedSuggestedPairs.has(`${category}::${subCategory}`)
+        )
+        .slice(0, 3),
+    [selectedSuggestedPairs, suggested]
   )
 
   return (
@@ -1534,7 +1856,7 @@ const ProjectInfo = ({
                   </HelperText>
 
                   <span className="text-xs leading-[14.52px] text-gray-500">
-                    {titleCharacterCount}/120
+                    {titleCharacterCount}/{TITLE_MAX_LENGTH}
                   </span>
                 </div>
               </div>
@@ -1545,17 +1867,46 @@ const ProjectInfo = ({
                   type="text"
                   placeholder={hasCommittedTitle && !titleInputValue ? "" : "Enter Title"}
                   value={titleInputValue}
+                  maxLength={TITLE_MAX_LENGTH}
                   onChange={(event) => {
-                    setTitleInputValue(event.target.value)
-                    if (titleHasError) {
+                    setTitleInputValue(
+                      event.target.value.slice(0, TITLE_MAX_LENGTH)
+                    )
+                    if (
+                      titleHasError &&
+                      get(errors, "title.type") === "manual"
+                    ) {
                       methods.clearErrors("title")
                     }
                   }}
                   onBlur={commitTitleValue}
                   onKeyDown={(event) => {
+                    if (
+                      shouldBlockMaxLengthInput(
+                        event,
+                        titleInputValue.length,
+                        TITLE_MAX_LENGTH
+                      )
+                    ) {
+                      event.preventDefault()
+                      triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                      return
+                    }
                     if (event.key !== "Enter") return
                     event.preventDefault()
                     commitTitleValue()
+                  }}
+                  onPaste={(event) => {
+                    if (
+                      shouldBlockMaxLengthInput(
+                        event,
+                        titleInputValue.length,
+                        TITLE_MAX_LENGTH
+                      )
+                    ) {
+                      event.preventDefault()
+                      triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                    }
                   }}
                   className={cn(
                     hasCommittedTitle &&
@@ -1623,7 +1974,12 @@ const ProjectInfo = ({
                       control={methods.control}
                       name="category.0.category"
                       render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox value={value} onChange={onChange}>
+                        <Listbox
+                          value={value}
+                          onChange={(nextValue) =>
+                            handleCategorySelection(0, nextValue, onChange)
+                          }
+                        >
                           <ListboxButton
                             placeholder="Add Category"
                             className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
@@ -1695,9 +2051,16 @@ const ProjectInfo = ({
                                   allowCreateOption
                                   className="flex-1 min-w-[100px] "
                                   onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(value)
+                                    fetchCategoriesAutocomplete(0, value)
                                   }}
-                                  onFocus={() => setActiveCategoryIndex(0)}
+                                  onFocus={() => {
+                                    setActiveCategoryIndex(0)
+                                    setSubCategoryOptions(
+                                      getSubCategoryOptionsForCategory(
+                                        categoryValues?.[0]?.category
+                                      )
+                                    )
+                                  }}
                                 />
                                 <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
                               </TagsInputControl>
@@ -1733,7 +2096,12 @@ const ProjectInfo = ({
                       control={methods.control}
                       name="category.1.category"
                       render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox value={value} onChange={onChange}>
+                        <Listbox
+                          value={value}
+                          onChange={(nextValue) =>
+                            handleCategorySelection(1, nextValue, onChange)
+                          }
+                        >
                           <ListboxButton
                             placeholder="Add Category"
                             className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
@@ -1809,9 +2177,16 @@ const ProjectInfo = ({
                                   allowCreateOption
                                   className="flex-1 min-w-[100px]"
                                   onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(value)
+                                    fetchCategoriesAutocomplete(1, value)
                                   }}
-                                  onFocus={() => setActiveCategoryIndex(1)}
+                                  onFocus={() => {
+                                    setActiveCategoryIndex(1)
+                                    setSubCategoryOptions(
+                                      getSubCategoryOptionsForCategory(
+                                        categoryValues?.[1]?.category
+                                      )
+                                    )
+                                  }}
                                 />
 
                                 <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
@@ -1848,7 +2223,12 @@ const ProjectInfo = ({
                       control={methods.control}
                       name="category.2.category"
                       render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox value={value} onChange={onChange}>
+                        <Listbox
+                          value={value}
+                          onChange={(nextValue) =>
+                            handleCategorySelection(2, nextValue, onChange)
+                          }
+                        >
                           <ListboxButton
                             placeholder="Add Category"
                             className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
@@ -1924,9 +2304,16 @@ const ProjectInfo = ({
                                   allowCreateOption
                                   className="flex-1 min-w-[100px]"
                                   onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(value)
+                                    fetchCategoriesAutocomplete(2, value)
                                   }}
-                                  onFocus={() => setActiveCategoryIndex(2)}
+                                  onFocus={() => {
+                                    setActiveCategoryIndex(2)
+                                    setSubCategoryOptions(
+                                      getSubCategoryOptionsForCategory(
+                                        categoryValues?.[2]?.category
+                                      )
+                                    )
+                                  }}
                                 />
 
                                 <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
@@ -1960,7 +2347,7 @@ const ProjectInfo = ({
                 </span>
 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
-                  {suggestedForActiveCategory.map(
+                  {suggestedForDisplay.map(
                     ({ category, subCategory }) => (
                       <Badge
                         size="md"
@@ -2073,7 +2460,11 @@ const ProjectInfo = ({
                               placeholder="Add Industries"
                               allowCreateOption
                               onInputValueChange={(value) => {
-                                fetchCategoriesAutocomplete(value)
+                                fetchTypeAutocomplete(
+                                  "industries",
+                                  value,
+                                  setIndustryOptions
+                                )
                               }}
                             />
 
@@ -2111,7 +2502,8 @@ const ProjectInfo = ({
                   </HelperText>
 
                   <span className="text-xs leading-[14.52px] text-gray-500">
-                    {projectInfoValues.shortDescription?.length || 0}/300
+                    {projectInfoValues.shortDescription?.length || 0}/
+                    {SHORT_DESCRIPTION_MAX_LENGTH}
                   </span>
                 </div>
               </div>
@@ -2119,13 +2511,48 @@ const ProjectInfo = ({
               <Textarea
                 id="short-description"
                 placeholder="Enter a short Description"
-                {...methods.register("shortDescription", {
-                  onBlur: () => trigger("shortDescription"),
-                })}
-                isInvalid={hookFormHasError({
-                  errors,
-                  name: "shortDescription",
-                })}
+                maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
+                {...shortDescriptionField}
+                onChange={(event) => {
+                  shortDescriptionField.onChange(event)
+                  if (
+                    shortDescriptionHasError &&
+                    get(errors, "shortDescription.type") === "manual"
+                  ) {
+                    methods.clearErrors("shortDescription")
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      event.currentTarget.value.length,
+                      SHORT_DESCRIPTION_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError(
+                      "shortDescription",
+                      SHORT_DESCRIPTION_MAX_LENGTH_ERROR
+                    )
+                  }
+                }}
+                onPaste={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      event.currentTarget.value.length,
+                      SHORT_DESCRIPTION_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError(
+                      "shortDescription",
+                      SHORT_DESCRIPTION_MAX_LENGTH_ERROR
+                    )
+                  }
+                }}
+                isInvalid={shortDescriptionHasError}
               />
 
               <HookFormErrorMessage
@@ -2153,21 +2580,57 @@ const ProjectInfo = ({
                   </HelperText>
 
                   <span className="text-xs leading-[14.52px] text-gray-500">
-                    {projectInfoValues.fullDescription?.length || 0}/2,000
+                    {projectInfoValues.fullDescription?.length || 0}/
+                    {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
                   </span>
                 </div>
               </div>
 
               <Textarea
                 id="full-description"
-                placeholder="Enter a short Description"
-                {...methods.register("fullDescription", {
-                  onBlur: () => trigger("fullDescription"),
-                })}
-                isInvalid={hookFormHasError({
-                  errors,
-                  name: "fullDescription",
-                })}
+                placeholder="Enter a full Description"
+                maxLength={FULL_DESCRIPTION_MAX_LENGTH}
+                {...fullDescriptionField}
+                onChange={(event) => {
+                  fullDescriptionField.onChange(event)
+                  if (
+                    fullDescriptionHasError &&
+                    get(errors, "fullDescription.type") === "manual"
+                  ) {
+                    methods.clearErrors("fullDescription")
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      event.currentTarget.value.length,
+                      FULL_DESCRIPTION_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError(
+                      "fullDescription",
+                      FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                    )
+                  }
+                }}
+                onPaste={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      event.currentTarget.value.length,
+                      FULL_DESCRIPTION_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError(
+                      "fullDescription",
+                      FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                    )
+                  }
+                }}
+                isInvalid={fullDescriptionHasError}
               />
 
               <HookFormErrorMessage
@@ -2247,7 +2710,7 @@ const ProjectInfo = ({
                               allowCreateOption
                               onInputValueChange={(value) => {
                                 fetchTypeAutocomplete(
-                                  "skills",
+                                  "search_keywords",
                                   value,
                                   setTagOptions
                                 )
@@ -2366,14 +2829,14 @@ const ProjectInfo = ({
               />
             </div>
 
-            {getIsNotEmpty(suggestedSkills) ? (
+            {getIsNotEmpty(suggestedSkillsForDisplay) ? (
               <div className="mt-6 space-y-1.5">
                 <span className="block text-xs leading-5 text-dark-blue-400">
                   Suggested Skills
                 </span>
 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
-                  {suggestedSkills.map((suggestedSkill, index) => (
+                  {suggestedSkillsForDisplay.map((suggestedSkill, index) => (
                     <Badge
                       size="md"
                       className="pr-2 bg-primary-50 focus-visible:outline-none text-primary-500"
