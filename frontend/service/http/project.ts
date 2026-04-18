@@ -45,6 +45,9 @@ export const ProjectAPI = {
       },
     })
   },
+  CreateModeratedSubcategory: (data: { name: string; parentUuid?: string }) => {
+    return AxiosRequest.post(`${LISTINGS_BASE}/publish/category/subcategory`, data)
+  },
   UploadMedia: (data: FormData) => {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/media`, data, {
       headers: {

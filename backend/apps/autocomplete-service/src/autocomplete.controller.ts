@@ -29,6 +29,11 @@ export class AutocompleteController {
     return this.svc.getCategoryMap();
   }
 
+  @Get('categories')
+  getCategorySuggestions(@Query('q') query: string) {
+    return this.svc.getCategoryMatches(query);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Patch('review')
   review(@Body() dto: ReviewAutocompleteDto) {

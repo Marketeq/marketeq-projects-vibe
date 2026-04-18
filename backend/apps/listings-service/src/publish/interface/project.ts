@@ -17,6 +17,12 @@ export class Project {
 
   categories?: string[] | null;
   subCategories?: string[] | null;
+  categorySelections?:
+    | {
+        category: string;
+        subCategories: string[];
+      }[]
+    | null;
   industries?: string[] | null;
   tags?: string[] | null;
   skills?: string[] | null;
