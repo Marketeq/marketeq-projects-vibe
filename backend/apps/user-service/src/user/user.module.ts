@@ -4,6 +4,7 @@ import { UserController } from './user.controller';
 import { UserSettingsController } from './user-settings.controller';
 import { UserSyncController } from './user-sync.controller';
 import { UserSelfController } from './user-self.controller';
+import { UserInternalController } from './user-internal.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserSchemaGuardService } from './user-schema-guard.service';
 // import { User } from 'src/user/entities/user.entity';
@@ -18,6 +19,7 @@ import { TimezoneResolutionService } from './timezone-resolution.service';
     UserSettingsController,
     UserSyncController,
     UserSelfController,
+    UserInternalController,
   ],
   exports: [UserService],
 })

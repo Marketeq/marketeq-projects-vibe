@@ -68,4 +68,27 @@ export class HomepageConsumer {
       channel.nack(message, false, true);
     }
   }
+
+  /**
+   * The HomepageBanner global is embedded in /homepage's `banner` field
+   * (homepage.service.ts assemble step). Edit a banner in the CMS admin
+   * and it should land on `/` in sub-second instead of waiting for the
+   * 300 s Redis TTL — this handler bridges that gap.
+   */
+  @EventPattern('homepage-banner.saved')
+  async onHomepageBannerSaved(
+    @Ctx() context: RmqContext,
+  ): Promise<void> {
+    const channel = context.getChannelRef();
+    const message = context.getMessage();
+    try {
+      this.logger.log('Received homepage-banner.saved — invalidating homepage cache');
+      // invalidateCache wipes all hp:home:* variants regardless of slug
+      await this.homepageService.invalidateCache('homepage-banner-event');
+      channel.ack(message);
+    } catch (err) {
+      this.logger.error('Failed to invalidate cache after homepage-banner.saved', err);
+      channel.nack(message, false, true);
+    }
+  }
 }

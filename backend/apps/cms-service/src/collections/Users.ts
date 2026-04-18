@@ -1,9 +1,16 @@
 import { CollectionConfig } from 'payload/types';
 import { isAdmin } from '../access/roles';
+import { crossServiceSourceIdField } from '../fields/crossServiceSourceIdField';
 
 export const Users: CollectionConfig = {
   slug: 'users',
-  auth: true,
+  // Enables Payload's native per-user API Key strategy. Adds the "Enable API
+  // Key" toggle + "Generate New API Key" button under each user in the admin,
+  // and three columns to the users table (enable_a_p_i_key, api_key,
+  // api_key_index). Additive — email/password login and /admin UI behaviour
+  // are unchanged. Header format for consumers is `Authorization: users
+  // API-Key <key>` (collection-slug prefix is required by Payload).
+  auth: { useAPIKey: true },
   admin: {
     useAsTitle: 'name',
     defaultColumns: ['name', 'email', 'role', 'status'],
@@ -20,13 +27,11 @@ export const Users: CollectionConfig = {
     delete: isAdmin,
   },
   fields: [
-    {
-      name: 'sourceId',
-      type: 'text',
+    crossServiceSourceIdField({
+      required: false,
       unique: true,
-      index: true,
-      admin: { description: 'UUID from user-service/auth-service' },
-    },
+      description: 'UUID from user-service / auth-service.',
+    }),
     {
       name: 'name',
       type: 'text',

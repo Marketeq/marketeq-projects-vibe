@@ -300,6 +300,19 @@ export class UserService {
     return this.userRepository.save(user);
   }
 
+  // Load a user with skills + languages relations for the internal
+  // profile endpoint. getUserById intentionally skips relations for
+  // perf on the auth-gated path; this variant pays the join cost only
+  // when the caller explicitly needs the nested data.
+  async getUserWithRelations(id: string): Promise<User> {
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: ['skills', 'languages'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
   /* ── Aliases used by vibe controllers (me.controller, internal.controller) ── */
 
   async findByEmail(email: string): Promise<User | null> {

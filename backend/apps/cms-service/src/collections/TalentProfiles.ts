@@ -1,6 +1,7 @@
-import { randomUUID } from 'crypto';
 import { CollectionConfig } from 'payload/types';
 import { isAdmin, isAdminOrDeveloper } from '../access/roles';
+import { crossServiceUuidField } from '../fields/crossServiceUuid';
+import { crossServiceSourceIdField } from '../fields/crossServiceSourceIdField';
 import {
   syncTalentProfileToService,
   deleteTalentProfileFromService,
@@ -25,30 +26,12 @@ export const TalentProfiles: CollectionConfig = {
   },
   fields: [
     // ─── Identity ───────────────────────────────────────
-    {
-      name: 'uuid',
-      type: 'text',
+    crossServiceUuidField(),
+    crossServiceSourceIdField({
+      required: false,
       unique: true,
-      index: true,
-      admin: { description: 'Stable UUID for cross-service identity. Auto-generated on create.' },
-      hooks: {
-        beforeValidate: [
-          ({ value, operation }) => {
-            if (operation === 'create' && !value) {
-              return randomUUID();
-            }
-            return value;
-          },
-        ],
-      },
-    },
-    {
-      name: 'sourceId',
-      type: 'text',
-      unique: true,
-      index: true,
-      admin: { description: 'User UUID from user-service/auth-service. Links this CMS profile to the platform user.' },
-    },
+      description: 'User UUID from user-service / auth-service. Links this CMS profile to the platform user.',
+    }),
     {
       type: 'row',
       fields: [

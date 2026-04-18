@@ -11,7 +11,7 @@ function getClient(): AxiosInstance {
     _client = axios.create({
       baseURL: `${cmsUrl}/api`,
       headers: apiKey
-        ? { Authorization: `JWT ${apiKey}`, 'Content-Type': 'application/json' }
+        ? { Authorization: `API-Key ${apiKey}`, 'Content-Type': 'application/json' }
         : { 'Content-Type': 'application/json' },
     });
   }

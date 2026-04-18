@@ -120,7 +120,7 @@ jobs:
                 role: "user",
                 content: (
                   "You are the Regression Detector for the Marketeq freelance marketplace repo (Next.js frontend + NestJS backend). Your ONLY job is to find places where this pull request silently breaks code that was working before.\n\n" +
-                  "The biggest recurring bug class in this repo is: Dev A fixes something, Dev B opens a PR that touches the same file or a shared dependency, Dev B's PR lands and silently overwrites or contradicts Dev A's fix. You must catch this before it merges.\n\n" +
+                  "The biggest recurring bug class in this repo is: Dev A fixes something, Dev B opens a PR that touches the same file or a shared dependency, Dev B then lands a PR that silently overwrites or contradicts the earlier fix. You must catch this before it merges.\n\n" +
                   "PR Title: " + $title + "\n" +
                   "Base branch: " + $base + "\n" +
                   "PR Description:\n" + $body + "\n\n" +
@@ -144,7 +144,7 @@ jobs:
                   "- 🔥 **<severity>** — <file>:<line> — <symbol or behavior at risk>. <one-sentence explanation of why this could break existing functionality>. Caller affected: `<path>`.\n\n" +
                   "If none, write: No regression risks detected in the diff or caller snippets analyzed.\n\n" +
                   "## What I Could Not Verify\n" +
-                  "List anything you would need additional files to confirm (e.g., 'could not verify callers of useSession outside the 200-line window'). Be specific.\n\n" +
+                  "List anything you would need additional files to confirm (for example: could not verify callers of useSession outside the 200-line window). Be specific.\n\n" +
                   "## Reviewer Action Required\n" +
                   "A numbered list of exactly what a human reviewer must manually check before merging. Be concrete. Reference file paths.\n\n" +
                   "Be paranoid. Prefer false positives over false negatives. If you are uncertain, flag it. Do not approve a PR you cannot prove is safe."
