@@ -1,0 +1,40 @@
+import { MigrationInterface, QueryRunner } from 'typeorm';
+
+export class ProjectsDeliverablesJsonb1765000000000 implements MigrationInterface {
+  name = 'ProjectsDeliverablesJsonb1765000000000';
+
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
+      ALTER TABLE public."projects"
+      ALTER COLUMN "deliverables" DROP DEFAULT
+    `);
+    await queryRunner.query(`
+      ALTER TABLE public."projects"
+      ALTER COLUMN "deliverables" TYPE jsonb
+      USING to_jsonb("deliverables")
+    `);
+    await queryRunner.query(`
+      ALTER TABLE public."projects"
+      ALTER COLUMN "deliverables" SET DEFAULT '[]'::jsonb
+    `);
+    await queryRunner.query(`
+      UPDATE public."projects" SET "deliverables" = '[]'::jsonb WHERE "deliverables" IS NULL
+    `);
+  }
+
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
+      ALTER TABLE public."projects"
+      ALTER COLUMN "deliverables" DROP DEFAULT
+    `);
+    await queryRunner.query(`
+      ALTER TABLE public."projects"
+      ALTER COLUMN "deliverables" TYPE text[]
+      USING ARRAY[]::text[]
+    `);
+    await queryRunner.query(`
+      ALTER TABLE public."projects"
+      ALTER COLUMN "deliverables" SET DEFAULT '{}'::text[]
+    `);
+  }
+}

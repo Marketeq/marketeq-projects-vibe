@@ -162,8 +162,10 @@ export const CategoryPages: CollectionConfig = {
                   name: 'image',
                   type: 'upload',
                   relationTo: 'media',
-                  required: true,
-                  admin: { description: 'Banner background image. Stored in Cloudflare R2.' },
+                  admin: {
+                    description:
+                      'Banner background image override. If blank, the frontend uses its default L1 banner. Stored in Cloudflare R2.',
+                  },
                 },
                 {
                   name: 'titleOverride',

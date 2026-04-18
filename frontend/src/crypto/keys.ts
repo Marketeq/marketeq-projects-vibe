@@ -1,4 +1,6 @@
 import { apiFetch } from "../../src/lib/api"
+import { getAccessToken } from "../../utils/auth"
+import { deriveKEK, encryptWithKEK, decryptWithKEK } from "./backup"
 
 export async function generateKeyPair() {
   return await window.crypto.subtle.generateKey(
@@ -87,90 +89,200 @@ export async function loadPublicKey(): Promise<CryptoKey | null> {
   return pem ? await importPublicKey(pem) : null
 }
 
-// Updated ensureEncryptionKeysExist to include device logic
-export async function ensureEncryptionKeysExist() {
-  const token = localStorage.getItem("token")
+/**
+ * Ensures a usable RSA keypair exists in localStorage.
+ *
+ * Flow (per spec doc "Seamless Key Recovery"):
+ *  1. If privateKey already in localStorage → done (fast path).
+ *  2. Otherwise, try to restore from server:
+ *     a. Derive KEK deterministically from userId + SYSTEM_SECRET.
+ *     b. Download the encrypted private key blob from /user-keys/private-key.
+ *     c. If found → decrypt with KEK → store in localStorage. Done.
+ *  3. Otherwise (first-ever signup):
+ *     a. Generate new RSA-4096 keypair.
+ *     b. Encrypt private key with KEK → upload to /user-keys/private-key.
+ *     c. Register device + push public key to messaging-service.
+ */
+export async function ensureEncryptionKeysExist(userId?: string) {
+  const token = getAccessToken()
   if (!token) {
-    console.error("No JWT token in localStorage, cannot register device")
+    console.error("No access token found, cannot set up encryption keys")
     return
   }
 
+  // Fast path: already have keys locally
   const existingPrivatePem = localStorage.getItem("privateKey")
-  const existingDeviceId = localStorage.getItem("deviceId")
+  const existingPublicPem = localStorage.getItem("publicKey")
+  if (existingPrivatePem && existingPublicPem) {
+    // Ensure messaging-service has the public key
+    try {
+      await apiFetch("/api/messaging/public-key", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: { publicKey: existingPublicPem },
+      })
+    } catch { /* messaging-service may already have it */ }
 
-  // If both a keypair AND a deviceId are already stored, we’re done.
-  if (existingPrivatePem && existingDeviceId) {
-    console.log("Keys & device already registered:", existingDeviceId)
+    // Ensure server has the encrypted backup (one-time migration for existing users).
+    // IMPORTANT: only migrate if the server's stored public key matches ours —
+    // otherwise we could overwrite a valid backup with a stale/wrong keypair
+    // and leave the user unable to unwrap any conversation keys.
+    try {
+      const { encryptedPrivateKey } = await apiFetch<{ encryptedPrivateKey: string | null }>(
+        "/api/user-keys/private-key",
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      if (!encryptedPrivateKey) {
+        // Check server public key against ours before migrating
+        let serverPub: string | null = null
+        try {
+          const res = await apiFetch<{ publicKey: string }>(
+            "/api/messaging/get-public-key",
+            { headers: { Authorization: `Bearer ${token}` } }
+          )
+          serverPub = res?.publicKey ?? null
+        } catch { /* no server public key yet — safe to migrate */ }
+
+        const normalize = (s: string) => s.replace(/\s+/g, "")
+        const publicKeyMatches =
+          !serverPub || normalize(serverPub) === normalize(existingPublicPem)
+
+        if (!publicKeyMatches) {
+          console.warn(
+            "Local public key differs from server — refusing to migrate stale private key to server backup"
+          )
+        } else {
+          // Parse userId for KEK derivation
+          let uid: string | undefined
+          try {
+            uid = JSON.parse(atob(token.split(".")[1])).sub
+          } catch { /* ignore */ }
+          if (uid) {
+            try {
+              const kek = await deriveKEK(uid)
+              const blob = await encryptWithKEK(existingPrivatePem, kek)
+              await apiFetch("/api/user-keys/private-key", {
+                method: "PUT",
+                headers: { Authorization: `Bearer ${token}` },
+                body: { encryptedPrivateKey: blob, publicKey: existingPublicPem },
+              })
+              console.log("Migrated existing private key to server backup")
+            } catch (err) {
+              console.warn(
+                "Skipping private-key migration backup because KEK derivation is unavailable.",
+                err
+              )
+            }
+          }
+        }
+      }
+    } catch { /* server backup is best-effort */ }
+
     return
   }
 
-  // 1) Generate a brand‑new RSA keypair
+  // Need userId to derive KEK
+  if (!userId) {
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]))
+      userId = payload.sub
+    } catch {
+      console.error("Cannot parse userId from token")
+      return
+    }
+  }
+  if (!userId) {
+    console.error("No userId available for KEK derivation")
+    return
+  }
 
+  // Derive KEK when configured. If missing, keep messaging available and skip backup.
+  let kek: CryptoKey | null = null
+  try {
+    kek = await deriveKEK(userId)
+  } catch (err) {
+    console.warn(
+      "KEK derivation unavailable. Private-key backup/restore will be skipped for this session.",
+      err
+    )
+  }
+
+  // Try to restore from server backup
+  if (kek) {
+    try {
+      const { encryptedPrivateKey } = await apiFetch<{ encryptedPrivateKey: string | null }>(
+        "/api/user-keys/private-key",
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+
+      if (encryptedPrivateKey) {
+        // Decrypt and restore
+        const privPem = await decryptWithKEK(encryptedPrivateKey, kek)
+        localStorage.setItem("privateKey", privPem)
+
+        // Validate private key imports cleanly (throws on malformed PEM)
+        await importPrivateKey(privPem)
+        // We can't derive public from private with WebCrypto, so fetch from server
+        const { publicKey: serverPubKey } = await apiFetch<{ publicKey: string }>(
+          "/api/messaging/get-public-key",
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        if (serverPubKey) {
+          localStorage.setItem("publicKey", serverPubKey)
+        }
+
+        console.log("Restored encryption keys from server backup")
+        return
+      }
+    } catch (err) {
+      console.warn("Could not restore keys from server, will generate new ones", err)
+    }
+  }
+
+  // First-time setup: generate new keypair
   const { publicKey, privateKey } = await generateKeyPair()
   const pubPem = await exportPublicKey(publicKey)
   const privPem = await exportPrivateKey(privateKey)
 
-  // 2) Persist the private key locally so we can decrypt later
+  // Store locally
   localStorage.setItem("privateKey", privPem)
+  localStorage.setItem("publicKey", pubPem)
 
-  // 3) Register this public key as a *new* device
-
-  const res = await apiFetch("/api/devices", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ publicKey: pubPem }),
-  })
-
-  if (!res.ok) {
-    console.error("Failed to register device", await res.text())
-    return
-  }
-  const { deviceId } = await res.json()
-
-  // 4) Persist your new deviceId so we don’t repeat this
-  localStorage.setItem("deviceId", deviceId)
-}
-
-export async function ensureKeysAndDevice() {
-  const jwt = localStorage.getItem("token")!
-  if (!jwt) throw new Error("Missing auth token")
-
-  const existingPrivPem = localStorage.getItem("privateKey")
-  const existingDevId = localStorage.getItem("deviceId")
-
-  // If we already have both, nothing to do
-  if (existingPrivPem && existingDevId) {
-    return
-  }
-
-  let privPem = existingPrivPem!
-  let pubPem: string
-
-  // 1) Make sure we have a keypair
-  const existing = localStorage.getItem("privateKey")
-  if (!existing) {
-    const { publicKey, privateKey } = await generateKeyPair()
-    pubPem = await exportPublicKey(publicKey)
-    privPem = await exportPrivateKey(privateKey)
-
-    // persist in browser
-    localStorage.setItem("privateKey", privPem)
-
-    // push into legacy user.publicKey if it was never set:
-    //   GET current user to see if publicKey is missing
-    const me = await apiFetch<{ publicKey: string | null }>(
-      `/api/messaging/get-public-key`,
-      { headers: { Authorization: `Bearer ${jwt}` } }
-    )
-    if (!me.publicKey) {
-      await apiFetch("/api/messaging/public-key", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${jwt}` },
-        body: { publicKey: pubPem },
+  // Encrypt private key with KEK and upload to server for future recovery
+  if (kek) {
+    try {
+      const encryptedBlob = await encryptWithKEK(privPem, kek)
+      await apiFetch("/api/user-keys/private-key", {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` },
+        body: { encryptedPrivateKey: encryptedBlob, publicKey: pubPem },
       })
+      console.log("Backed up encrypted private key to server")
+    } catch (err) {
+      console.error("Failed to backup private key to server", err)
     }
+  }
+
+  // Register device
+  try {
+    const deviceRes = await apiFetch<{ deviceId: string }>("/api/devices", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: { publicKey: pubPem },
+    })
+    localStorage.setItem("deviceId", deviceRes.deviceId)
+  } catch (err) {
+    console.error("Failed to register device", err)
+  }
+
+  // Push public key to messaging-service
+  try {
+    await apiFetch("/api/messaging/public-key", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: { publicKey: pubPem },
+    })
+  } catch (err) {
+    console.error("Failed to store public key in messaging-service", err)
   }
 }

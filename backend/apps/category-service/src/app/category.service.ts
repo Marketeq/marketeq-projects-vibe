@@ -51,6 +51,17 @@ export class CategoryService {
     private readonly contentService: ContentService,
   ) {}
 
+  public async findByUuid(uuid: string): Promise<CategoryEntity> {
+    const found = await this.catRepo.findOne({
+      where: { uuid },
+      relations: ['parent', 'tags'],
+    });
+    if (!found) {
+      throw new NotFoundException(`Category with uuid ${uuid} not found`);
+    }
+    return found;
+  }
+
   // ---------------------------------------------------------
   // CMS -> Nest upsert
   // ---------------------------------------------------------
@@ -660,17 +671,22 @@ export class CategoryService {
       ...(parentId ? { parent: parentId } : { parent: null }),
     };
 
-    if (existing) {
-      const url = `${this.baseCmsUrl()}/api/categories/${existing.id}`;
-      const res = await this.http.axiosRef.patch(url, payload, { headers: this.authHeader() });
-      this.logger.log(`Updated CMS category #${existing.id} from Nest`);
-      return { id: res.data?.doc?.id ?? res.data?.id ?? existing.id };
-    } else {
-      const url = `${this.baseCmsUrl()}/api/categories`;
-      const res = await this.http.axiosRef.post(url, payload, { headers: this.authHeader() });
-      const id = res.data?.doc?.id ?? res.data?.id;
-      this.logger.log(`Created CMS category #${id} from Nest`);
-      return { id };
+    try {
+      if (existing) {
+        const url = `${this.baseCmsUrl()}/api/categories/${existing.id}`;
+        const res = await this.http.axiosRef.patch(url, payload, { headers: this.authHeader() });
+        this.logger.log(`Updated CMS category #${existing.id} from Nest`);
+        return { id: res.data?.doc?.id ?? res.data?.id ?? existing.id };
+      } else {
+        const url = `${this.baseCmsUrl()}/api/categories`;
+        const res = await this.http.axiosRef.post(url, payload, { headers: this.authHeader() });
+        const id = res.data?.doc?.id ?? res.data?.id;
+        this.logger.log(`Created CMS category #${id} from Nest`);
+        return { id };
+      }
+    } catch (error) {
+      this.logger.error('Error pushing category to CMS:', error?.response?.data || error?.message || error);
+      throw error;
     }
   }
 

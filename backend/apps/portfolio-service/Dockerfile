@@ -3,9 +3,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/portfolio-service/package*.json ./apps/portfolio-service/
 COPY shared/ ./shared/
-RUN npm install
+RUN npm ci
 COPY . .
-RUN npm run build -w apps/portfolio-service
+RUN npx nest build portfolio-service
 
 FROM node:20-alpine
 WORKDIR /app

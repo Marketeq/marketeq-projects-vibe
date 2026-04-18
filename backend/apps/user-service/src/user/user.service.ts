@@ -47,7 +47,10 @@ export class UserService {
   }
 
   async getUserById(id: string): Promise<User> {
-    const user = await this.userRepository.findOne({ where: { id } });
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: ['skills'],
+    });
     if (!user) throw new NotFoundException('User not found');
     return user;
   }
@@ -253,6 +256,8 @@ export class UserService {
       Object.assign(existingById, {
         email: dto.email ?? existingById.email,
         role: resolvedRole ?? existingById.role,
+        ...(dto.firstName && { firstName: dto.firstName }),
+        ...(dto.lastName && { lastName: dto.lastName }),
         provider: dto.provider ?? existingById.provider ?? resolvedProvider,
         hasPassword: dto.hasPassword ?? existingById.hasPassword ?? resolvedHasPassword,
       });
@@ -286,11 +291,26 @@ export class UserService {
       email: dto.email,
       username: normalizedIncomingUsername ?? fallbackUsername,
       role: resolvedRole,
+      ...(dto.firstName && { firstName: dto.firstName }),
+      ...(dto.lastName && { lastName: dto.lastName }),
       provider: resolvedProvider,
       hasPassword: resolvedHasPassword,
     });
 
     return this.userRepository.save(user);
+  }
+
+  // Load a user with skills + languages relations for the internal
+  // profile endpoint. getUserById intentionally skips relations for
+  // perf on the auth-gated path; this variant pays the join cost only
+  // when the caller explicitly needs the nested data.
+  async getUserWithRelations(id: string): Promise<User> {
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: ['skills', 'languages'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return user;
   }
 
   /* ── Aliases used by vibe controllers (me.controller, internal.controller) ── */

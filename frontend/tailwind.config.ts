@@ -7,6 +7,7 @@ const config: Config = {
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./stories/**/*.{js,ts,jsx,tsx,mdx}",
+    "./lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
@@ -115,6 +116,18 @@ const config: Config = {
           700: "#027A48",
           800: "#05603A",
           900: "#000000",
+        },
+        "project": {
+          mint: "#A1EDD3",
+          salmon: "#FFB4C1",
+          lavender: "#D4B8F7",
+          cyan: "#B8F3F7",
+          gold: "#FFE4A2",
+          yellow: "#FFF7A2",
+          pink: "#FFB8D2",
+          teal: "#8DF7E1",
+          sage: "#88DDAF",
+          lime: "#D3FFA2",
         },
       },
       screens: {

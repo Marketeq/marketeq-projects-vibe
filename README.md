@@ -35,7 +35,10 @@ Vibe Coding Marketeq Projects talent network platform.
 - py -m pip install fastapi uvicorn transformers torch pillow
 - py -m pip install python-multipart
 - py --version
-- npm install -w apps/notification-service nodemailer @types/nodemailer --legacy-peer-deps
+- npm install nodemailer @types/nodemailer --legacy-peer-deps
+
+### Install the Brevo (Sendinblue) Node.js SDK in your
+- npm install sib-api-v3-sdk  
 
 ### Build:
 - npx nest build api-gateway
@@ -55,6 +58,31 @@ Vibe Coding Marketeq Projects talent network platform.
 - npx nest start notification-service
 - npx nest start invitations-service
 - npx nest start favorites-service
+- npx nest start category-service
+
+### Start CMS service
+cd backend/apps/cms-service  
+npm run start:dev
+or
+npx ts-node src/server.ts
+
+###  boot CMS
+cd backend/apps/cms-service  
+node -r ts-node/register/transpile-only src/server.ts
+
+#### Log in to Payload CMS admin at
+http://localhost:3020/admin
+
+Open DevTools → Application → Cookies → payload-token
+Copy the value of the payload-token cookie.
+This is your JWT.
+Set this value as CMS_API_KEY in your .env for category-service
+OR 
+http://localhost:3020/api/users/login
+{
+  "email": "*****@gmail.com",
+  "password": "********"
+}
 
 ### Using npm:
 ```npm exec nest -- start listings-service --watch```
@@ -65,6 +93,10 @@ Vibe Coding Marketeq Projects talent network platform.
 
 ### Rabbitmq:
 ```docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management```
+``` docker start rabbitmq ```
+
+### PAYLOAD_SECRET
+```node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" ```
 
 ### Fast API:
 ```py -m uvicorn clip_moderation_api:app --host 0.0.0.0 --port 8000 --app-dir apps/content-moderation-service/src/filters/python```
@@ -221,12 +253,46 @@ Located at `backend/apps/content-moderation-service/src/filters/python/`:
 | Bad image + good content | ok | ok | Image rejected |
 | Good content + good image | ok | ok | Clean pass |
 
+
+- good video - samplelib.com/lib/preview/mp4/sample-5s.mp4   
+- bad video - pub-4789db6a57d64de3ad7b5e8c316d125b.r2.dev/projects/318fd0e8-0d86-455d-bebb-656bd0530c70/media/angry_face-58e0a31f-c8d7-447a-b1d7-06cfda191980.mp4
+
 ### Invitation Email Delivery (notification-service)
 - Invitation accept URL (UI): `http://localhost:3000/invite/accept?token=YOUR_TOKEN`
 - `POST http://localhost:4000/invitations/accept {"token":""}`
 - Open this URL in browser while signed in with the invited email account.
 - If you are signed in with a different account, click Sign In With Invited Email on the accept page.
-- Primary transport: SendGrid (`SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`)
+- Primary transport: SendGrid (`SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`) — currently commented out
 - Fallback transport: SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`)
 - If SendGrid key is missing/invalid, service automatically attempts SMTP.
 - Restart notification-service after changing env values.
+
+### Email Provider: Brevo (Active for Testing)
+
+The notification-service and invitations-service now use **Brevo** for transactional emails.
+SendGrid code is commented out but preserved for future use.
+
+#### Required env vars (per service `.env`):
+```
+BREVO_API_KEY=xkeysib-...
+BREVO_FROM_EMAIL=your-verified-sender@example.com
+BREVO_FROM_NAME=YourName
+```
+
+#### Services that need Brevo config:
+- `backend/apps/notification-service/.env` — handles RabbitMQ-routed emails (team invitations, notifications)
+- `backend/apps/invitations-service/.env` — direct Brevo send for testing invitations
+
+#### How invitation emails flow:
+1. **invitations-service** creates the invite in DB
+2. **invitations-service** emits `notification.email.team_invitation` via RabbitMQ → **notification-service** picks it up and sends via Brevo
+3. **invitations-service** also sends a direct Brevo email (for testing, can be commented out)
+
+#### Brevo sender setup:
+- The `BREVO_FROM_EMAIL` must be a **verified sender** in Brevo dashboard → Settings → Senders, domains, IPs
+- The from email must be a verified sender in your Brevo account
+
+#### Switching back to SendGrid:
+- Uncomment SendGrid imports and calls in `notification.service.ts`
+- Comment out the Brevo calls
+- Set `SENDGRID_API_KEY` and `SENDGRID_FROM_EMAIL` in the notification-service `.env`

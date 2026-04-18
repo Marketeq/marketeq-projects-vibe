@@ -273,15 +273,19 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
     if (!user.hasPassword || !user.password) {
-      throw new UnauthorizedException(
-        'Password login is not enabled for this account. Please set a password first or use dev-login in local development.',
-      );
+      throw new UnauthorizedException('Incorrect email or password');
     }
 
     const isMatch = await bcrypt.compare(dto.password, user.password);
     if (!isMatch) throw new UnauthorizedException('Invalid credentials');
 
-    await this.syncUserProfile(user);
+    try {
+      await this.syncUserProfile(user);
+    } catch (error) {
+      this.logger.warn(
+        `login: user profile sync failed for ${user.email}; continuing with auth user. reason=${(error as Error)?.message}`,
+      );
+    }
 
     const tokens = await this.issueTokens({ sub: user.id, email: user.email });
 
@@ -611,9 +615,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       await this.syncUserProfile(user, { firstName, lastName });
     } catch (error) {
       if (createdUser) {
+        // New user: rollback the auth record so the user can retry cleanly.
         await this.userRepository.delete({ id: user.id });
+        throw error;
       }
-      throw error;
+      // Existing user: profile already exists in user-service — do not
+      // block login just because the sync refresh failed.
+      this.logger.warn(
+        `[google] sync failed for existing user ${user.id} but proceeding with login`,
+      );
     }
 
     const tokens = await this.issueTokens({
@@ -724,8 +734,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       if (createdUser) {
         await this.userRepository.delete({ id: user.id });
+        throw error;
       }
-      throw error;
+      this.logger.warn(
+        `[linkedin] sync failed for existing user ${user.id} but proceeding with login`,
+      );
     }
 
     const tokens = await this.issueTokens({

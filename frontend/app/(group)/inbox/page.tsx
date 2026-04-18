@@ -2,15 +2,16 @@
 
 import React, { useCallback, useMemo, useState } from "react"
 import { useEffect } from "react"
-import { importPrivateKey } from "@/src/crypto/keys"
+import { ensureEncryptionKeysExist, importPrivateKey } from "@/src/crypto/keys"
 import { apiFetch } from "@/src/lib/api"
+import { getAccessToken } from "@/utils/auth"
 import { useToggle } from "react-use"
-import { parseJwt } from "@/src/lib/jwt"
 import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
 import { User } from "@/types/user"
 import { ChatsContextProvider } from "@/components/chat"
 import { EditContextProvider } from "@/components/inbox-comps"
+import { EditContextProvider as StoriesEditContextProvider } from "@/stories/inbox.stories"
 import { Chats } from "./components/chats-comp"
 import LeftSidebar from "./components/left-sidebar"
 import RightSidebar from "./components/right-sidebar"
@@ -82,7 +83,9 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
 
   return (
     <EditContextProvider value={editContextValue}>
-      <ChatsContextProvider value={value}>{children}</ChatsContextProvider>
+      <StoriesEditContextProvider value={editContextValue}>
+        <ChatsContextProvider value={value}>{children}</ChatsContextProvider>
+      </StoriesEditContextProvider>
     </EditContextProvider>
   )
 }
@@ -96,32 +99,38 @@ export default function InboxRoot() {
     Record<string, Message[]>
   >({})
 
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("token") || "" : ""
+  const [token, setToken] = useState("")
+  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
+  useEffect(() => {
+    setToken(getAccessToken() || "")
+  }, [])
 
   useEffect(() => {
     ;(async () => {
-      if (!token) {
-        console.error("No JWT token available")
+      if (!token) return
+
+      // 0) Fetch full user profile (includes username)
+      try {
+        const me = await apiFetch<any>("/user/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        setCurrentUserProfile(me)
+      } catch (err) {
+        console.error("Failed to fetch user profile", err)
+      }
+
+      // 1) Ensure keypair exists, device registered, public key pushed
+      await ensureEncryptionKeysExist()
+
+      // 2) Load private key from localStorage
+      const privPem = localStorage.getItem("privateKey")
+      if (!privPem) {
+        console.error("No private key found after key setup")
         return
       }
 
-      // 1) Parse userId if you still need it for other things
-      const { sub: userId } = parseJwt<{ sub: string }>(token)
-
-      // 2) Hit the single endpoint; get back clear‑text PEM
-      const { publicKey, privateKeyPem } = await apiFetch<{
-        publicKey: string
-        privateKeyPem: string
-      }>("/api/user-keys", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-
-      // 3) Import into CryptoKey and keep in memory
-      const key = await importPrivateKey(privateKeyPem)
-
+      const key = await importPrivateKey(privPem)
       setPrivateKey(key)
-      localStorage.setItem("privateKey", privateKeyPem)
     })()
   }, [token])
 
@@ -148,9 +157,10 @@ export default function InboxRoot() {
           selectedConversation={selectedConversation}
           jwtToken={token}
           privateKey={privateKey}
+          currentUserProfile={currentUserProfile}
         />
 
-        <RightSidebar />
+        <RightSidebar selectedConversation={selectedConversation} jwtToken={token} />
       </div>
     </Inbox>
   )

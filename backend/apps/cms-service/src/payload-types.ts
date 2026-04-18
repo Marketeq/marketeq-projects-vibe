@@ -480,11 +480,11 @@ export interface CategoryPage {
   /**
    * Top banner. Same blue overlay/animation as the home page hero.
    */
-  heroBanner: {
+  heroBanner?: {
     /**
-     * Banner background image. Stored in Cloudflare R2.
+     * Banner background image override. If blank, the frontend uses its default L1 banner. Stored in Cloudflare R2.
      */
-    image: number | Media;
+    image?: (number | null) | Media;
     /**
      * Optional override for the hero title. Falls back to categoryRef.name if blank.
      */

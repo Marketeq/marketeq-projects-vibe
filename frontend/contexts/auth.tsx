@@ -19,6 +19,9 @@ type DashboardResolvableUser = {
   userType?: string | null
   accountType?: string | null
   role?: string | null
+  onboardingDismissed?: boolean | null
+  onboardedAt?: string | Date | null
+  hasCompletedOnboarding?: boolean | null
 }
 
 export const resolveDashboardRole = (
@@ -59,6 +62,19 @@ export const resolveDashboardRoute = (
   }
 
   if (dashboardRole === ROLE.CLIENT) {
+    return "/client-dashboard"
+  }
+
+  // Returning users who have already completed/dismissed onboarding must
+  // never be bounced back to /onboarding just because the /me payload is
+  // missing role/accountType/userType. Default them to client-dashboard
+  // — the account switcher can flip them to talent if needed.
+  const hasCompletedOnboarding =
+    user?.hasCompletedOnboarding === true ||
+    user?.onboardingDismissed === true ||
+    user?.onboardedAt != null
+
+  if (hasCompletedOnboarding) {
     return "/client-dashboard"
   }
 
@@ -114,6 +130,9 @@ function useProvideAuth() {
       return
     }
 
+    // Ensure cookie is always set with path="/" so it's available on all routes
+    Cookies.set("access_token", accessToken, { path: "/" })
+
     UserAPI.me()
       .then((response) => {
         if (response?.status === 200) {
@@ -121,6 +140,14 @@ function useProvideAuth() {
             response?.data?.user ?? response?.data?.data?.user ?? response?.data
 
           if (nextUser && typeof nextUser === "object") {
+            // Merge localStorage onboarding flag in case the API didn't persist it
+            if (
+              !nextUser.onboardingDismissed &&
+              typeof window !== "undefined" &&
+              window.localStorage.getItem("marketeq-onboarding-dismissed") === "true"
+            ) {
+              nextUser.onboardingDismissed = true
+            }
             setUser(nextUser)
           }
         }
@@ -154,6 +181,7 @@ function useProvideAuth() {
       document.cookie =
         "access_token=; Path=/; Max-Age=0; SameSite=None; Secure"
       document.cookie = "accessToken=; Path=/; Max-Age=0; SameSite=None; Secure"
+      try { window.localStorage.removeItem("marketeq-onboarding-dismissed") } catch {}
     } catch (err: any) {
       toast({
         title:

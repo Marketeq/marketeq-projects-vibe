@@ -1,0 +1,247 @@
+name: Post-Merge SOP Audit
+
+# The free GitHub org plan cannot block merges on failing checks, so we
+# enforce the SOP POST-HOC: every push to a protected branch triggers
+# this workflow, which checks whether the merged PR had failing SOP
+# checks. If yes, it opens an automatic revert PR and tags the CTO.
+#
+# This is the strongest enforcement available on the free plan. The
+# merge technically happens, but a bypass gets auto-reverted within
+# minutes and the bypass author is publicly called out.
+
+on:
+  push:
+    branches: [dev-main, staging, live-mvp]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  audit:
+    name: Audit merged PR for SOP compliance
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect forced push
+        id: force
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FORCED="${{ github.event.forced }}"
+          echo "forced=$FORCED" >> "$GITHUB_OUTPUT"
+          if [ "$FORCED" = "true" ]; then
+            echo "🚨 FORCED PUSH DETECTED on ${{ github.ref }} by ${{ github.actor }}"
+          fi
+
+      - name: Alert on forced push
+        if: steps.force.outputs.forced == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "🚨 URGENT: forced push to ${{ github.ref_name }} by @${{ github.actor }}" \
+            --label "urgent,force-push-violation" \
+            --assignee "CTorres9800" \
+            --body "$(cat <<EOF
+## 🚨 Forced push detected
+
+**Branch:** \`${{ github.ref_name }}\`
+**Actor:** @${{ github.actor }}
+**Before SHA:** \`${{ github.event.before }}\`
+**After SHA:** \`${{ github.event.after }}\`
+**Timestamp:** $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+Per Code Review SOP §1 and §6, force-pushing to protected branches is **not allowed**. The previous history may have been rewritten or erased.
+
+**CTO action required:**
+1. Review the force push: \`git log --oneline ${{ github.event.before }}..${{ github.event.after }}\`
+2. Determine if legitimate commits were lost
+3. Restore from \`${{ github.event.before }}\` if necessary
+4. Publicly address the bypass with @${{ github.actor }}
+5. Close this issue only after verification
+
+🤖 Auto-opened by \`.github/workflows/post-merge-audit.yml\`
+EOF
+)"
+          exit 1
+
+      - name: Find associated PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          PR_NUMBER=$(gh pr list --state merged --search "$COMMIT_SHA" --limit 1 --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -z "$PR_NUMBER" ]; then
+            PR_NUMBER=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/pulls" --jq '.[0].number' 2>/dev/null || echo "")
+          fi
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          if [ -n "$PR_NUMBER" ]; then
+            echo "Associated PR: #$PR_NUMBER"
+          else
+            echo "Direct push (no PR) — this is itself a bypass on a protected branch"
+          fi
+
+      - name: Fail loudly on direct push to protected branch
+        if: steps.pr.outputs.number == '' && github.actor != 'CTorres9800'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "🚨 Direct push to ${{ github.ref_name }} bypassed PR review" \
+            --label "urgent,sop-violation" \
+            --assignee "CTorres9800" \
+            --body "$(cat <<EOF
+## Direct push bypass
+
+**Branch:** \`${{ github.ref_name }}\`
+**Actor:** @${{ github.actor }}
+**Commit:** \`${{ github.sha }}\`
+
+A commit was pushed to a protected branch without going through a pull request. Per Code Review SOP §6, all changes must flow through a squash-merged PR with required SOP and AI Breakage checks.
+
+**CTO action required:** review and revert if necessary.
+
+🤖 Auto-opened by \`.github/workflows/post-merge-audit.yml\`
+EOF
+)"
+          exit 1
+
+      - name: Pass — repo owner direct push
+        if: steps.pr.outputs.number == '' && github.actor == 'CTorres9800'
+        run: echo "✅ Direct push by repo owner (@CTorres9800). Audit skipped."
+
+      - name: Check status of required checks on merged PR
+        id: checks
+        if: steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          # Get all check runs for the PR head
+          PR_JSON=$(gh pr view "$PR_NUMBER" --json headRefOid,statusCheckRollup,reviewDecision,author)
+          HEAD_SHA=$(echo "$PR_JSON" | jq -r '.headRefOid')
+          AUTHOR=$(echo "$PR_JSON" | jq -r '.author.login')
+          REVIEW=$(echo "$PR_JSON" | jq -r '.reviewDecision')
+
+          # Get each required check's status
+          CHECKS=$(echo "$PR_JSON" | jq -c '.statusCheckRollup[]? | {name, status, conclusion}')
+
+          FAILED=()
+          for needed in "Enforce Code Review SOP" "Regression risk analysis" "Scan for committed secrets"; do
+            STATUS=$(echo "$PR_JSON" | jq -r --arg n "$needed" '.statusCheckRollup[]? | select(.name == $n) | .conclusion // "missing"' | head -n1)
+            if [ -z "$STATUS" ] || [ "$STATUS" = "missing" ]; then
+              FAILED+=("$needed (not run)")
+            elif [ "$STATUS" != "SUCCESS" ] && [ "$STATUS" != "NEUTRAL" ] && [ "$STATUS" != "SKIPPED" ]; then
+              FAILED+=("$needed ($STATUS)")
+            fi
+          done
+
+          {
+            echo "head_sha=$HEAD_SHA"
+            echo "author=$AUTHOR"
+            echo "review=$REVIEW"
+            echo "failed_count=${#FAILED[@]}"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ ${#FAILED[@]} -gt 0 ]; then
+            {
+              echo "failed_list<<FAIL_EOF"
+              for f in "${FAILED[@]}"; do echo "- $f"; done
+              echo "FAIL_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ ${#FAILED[@]} -gt 0 ] || [ "$REVIEW" = "CHANGES_REQUESTED" ]; then
+            echo "status=violation" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=ok" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Auto-revert bypassed merge
+        if: steps.checks.outputs.status == 'violation'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          AUTHOR: ${{ steps.checks.outputs.author }}
+          FAILED_LIST: ${{ steps.checks.outputs.failed_list }}
+          COMMIT_SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -e
+          git config user.name  "SOP Audit Bot"
+          git config user.email "sop-audit@marketeq.local"
+
+          REVERT_BRANCH="revert/pr-${PR_NUMBER}-sop-violation"
+
+          # Loudly comment on the original PR
+          gh pr comment "$PR_NUMBER" --body "$(cat <<EOF
+## 🚨 MERGED DESPITE FAILING SOP CHECKS
+
+This PR was merged to \`${BRANCH}\` by @${{ github.actor }} even though one or more required checks had not succeeded:
+
+${FAILED_LIST}
+
+Per Code Review SOP §6, this is an **unauthorized merge bypass**. An automatic revert PR is being opened. Only the CTO (@CTorres9800) may decide to re-merge this work — and only after every failing check is resolved.
+
+🤖 Auto-flagged by \`.github/workflows/post-merge-audit.yml\`
+EOF
+)"
+
+          # Create the revert branch
+          git checkout -b "$REVERT_BRANCH"
+          if ! git revert --no-edit "$COMMIT_SHA"; then
+            echo "Revert failed (likely due to follow-on commits). Opening an issue instead."
+            gh issue create \
+              --title "🚨 Cannot auto-revert PR #${PR_NUMBER} (SOP bypass) — manual action required" \
+              --label "urgent,sop-violation" \
+              --assignee "CTorres9800" \
+              --body "Could not automatically revert commit ${COMMIT_SHA} (PR #${PR_NUMBER}) because of follow-on commits. Please manually revert. Failing checks:\n\n${FAILED_LIST}"
+            exit 1
+          fi
+
+          git push origin "$REVERT_BRANCH"
+
+          # Open the revert PR
+          gh pr create \
+            --base "$BRANCH" \
+            --head "$REVERT_BRANCH" \
+            --title "[SOP AUTO-REVERT] Revert #${PR_NUMBER} — merged despite failing checks" \
+            --assignee "CTorres9800" \
+            --body "$(cat <<EOF
+## 🚨 Automatic SOP-violation revert
+
+PR #${PR_NUMBER} was merged to \`${BRANCH}\` by @${{ github.actor }} despite one or more required SOP checks failing.
+
+**Failing checks:**
+${FAILED_LIST}
+
+**Commit being reverted:** \`${COMMIT_SHA}\`
+**Merge author:** @${{ github.actor }}
+**Original PR author:** @${AUTHOR}
+
+### What this PR does
+Reverts the offending merge so \`${BRANCH}\` returns to a known-good state.
+
+### What happens next
+- CTO (@CTorres9800) reviews this auto-revert
+- If the original intent was legitimate, the author fixes the failing checks on a new branch and re-opens a PR
+- This auto-revert is merged after CTO confirmation
+
+### Why this exists
+Per Code Review SOP, red checks mean "do not merge". On the free GitHub org plan we cannot technically block the Merge button — so this workflow undoes bypasses post-hoc.
+
+🤖 Auto-opened by \`.github/workflows/post-merge-audit.yml\`
+EOF
+)"
+
+      - name: Post-merge audit — all clear
+        if: steps.checks.outputs.status == 'ok'
+        run: echo "✅ PR #${{ steps.pr.outputs.number }} passed all required SOP checks before merge."

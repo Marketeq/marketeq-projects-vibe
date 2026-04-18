@@ -95,8 +95,11 @@ export const UserDetail = ({
     useChatsContext()
 
   //jwt token
-  const jwtToken =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null
+  const jwtToken = (() => {
+    if (typeof window === "undefined") return null
+    const Cookies = require("js-cookie")
+    return Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("token") || null
+  })()
 
   const [isPinned, setIsPinned] = useControllableState({
     defaultValue: false,
@@ -143,7 +146,10 @@ export const UserDetail = ({
             showCheckbox && "hidden"
           )}
         >
-          <AvatarImage src="/man.jpg" alt="Man" />
+          <AvatarImage
+            src={(conversation as any).participantAvatarUrl || undefined}
+            alt={conversation.participantUsername || "User"}
+          />
           <AvatarFallbackIcon />
         </Avatar>
         <div
@@ -232,9 +238,9 @@ export const UserDetail = ({
 
         <div className="flex gap-x-1.5 self-stretch items-end justify-between">
           <span className="group-data-[state=active]/chat:text-dark-blue-500 text-gray-500 text-[11px] line-clamp-2 leading-[13.31px] group-data-[state=active]/chat:font-medium">
-            Ad reprehenderit deserunt in qui ut esse magna ipsum fugiat qui
-            aliqua aliquip Lorem, ipsum dolor Lorem ipsum dolor sit, amet
-            consectetur adipisicing elit. Repudiandae, odit.
+            {(conversation as any).lastMessagePreview ||
+              ((conversation as any).lastMessage?.m_content) ||
+              ((conversation as any).lastMessage?.m_ciphertext ? "Encrypted message" : "No messages yet")}
           </span>
 
           <Favorite

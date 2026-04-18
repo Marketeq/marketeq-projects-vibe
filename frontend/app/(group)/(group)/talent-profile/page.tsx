@@ -1,8 +1,10 @@
 "use client"
 
 import React, { Suspense, useCallback, useEffect, useRef, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { apiFetch } from "@/src/lib/api"
+import { getAccessToken, getCurrentUser } from "@/utils/auth"
 import { UserAPI } from "@/service/http/user"
 import type { UserProfile } from "@/types/user"
 import { getComputedStyle } from "@/utils/dom-utils"
@@ -63,6 +65,7 @@ import {
   AffiliatedTeamsDialog,
 } from "@/components/edit-profile-modals"
 import { LikeDislike } from "@/components/like-dislike"
+import { HireMeButton } from "@/components/hire-me-button"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
@@ -395,6 +398,7 @@ export default function TalentProfilePage() {
 
 function Default() {
   const { user } = useAuth()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const usernameParam = searchParams.get("username")
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -455,6 +459,7 @@ function Default() {
           })
         return
       }
+
 
       // No user yet from auth — try /user/me directly as fallback
       setIsProfileLoading(true)
@@ -908,46 +913,7 @@ function Default() {
                       </>
                     ) : (
                       <>
-                        <TooltipProvider delayDuration={0}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button size="md">
-                                <Plus className="size-[15px]" />
-                                Hire Me
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent
-                              visual="white"
-                              size="md"
-                              className="group text-gray-700 p-6 max-w-[344px] border border-gray-200 shadow-[0px_24px_48px_-12px_rgba(16,24,40,.18)]"
-                              sideOffset={14}
-                              side="bottom"
-                            >
-                              <div className="flex items-center mt-3 gap-x-2">
-                                <Clock className="size-4" />
-                                <p className="text-sm leading-none font-extralight text-dark-blue-400">
-                                  {profile?.firstName ?? "This talent"}{" "}
-                                  is currently{" "}
-                                  <span className={`font-medium ${profile?.availability === "unavailable" ? "text-error-600" : "text-success-600"}`}>
-                                    {profile?.availability === "unavailable" ? "not available" : "available"}
-                                  </span>{" "}
-                                  for hire
-                                </p>
-                              </div>
-
-                              <Button
-                                className="mt-3 group"
-                                size="md"
-                                variant="link"
-                              >
-                                View similar talent{" "}
-                                <ArrowRight className="size-3 transition duration-300 group-hover:translate-x-[4px]" />
-                              </Button>
-
-                              <span className="absolute inline-block size-4 border-b border-r border-gray-200 bg-white rotate-45 group-data-[side=bottom]:border-r-0 group-data-[side=bottom]:border-b-0 group-data-[side=bottom]:border-l group-data-[side=bottom]:border-t inset-x-0 mx-auto group-data-[side=top]:-bottom-2 group-data-[side=bottom]:-top-2" />
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                        <HireMeButton profile={profile} />
 
                         <SaveButton />
                       </>
@@ -1188,45 +1154,7 @@ function Default() {
                       </>
                     ) : (
                       <>
-                        <TooltipProvider delayDuration={0}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button size="md">
-                                <Plus className="size-[15px]" />
-                                Hire Me
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent
-                              visual="white"
-                              size="md"
-                              className="text-gray-700 p-6 max-w-[344px] border border-gray-200 shadow-[0px_24px_48px_-12px_rgba(16,24,40,.18)]"
-                              sideOffset={14}
-                              side="bottom"
-                            >
-                              <TooltipArrow className="fill-white" />
-                              <div className="flex items-center mt-3 gap-x-[9px]">
-                                <Clock className="size-4" />
-                                <p className="text-sm leading-none font-extralight text-dark-blue-400">
-                                  {profile?.firstName ?? "This talent"}{" "}
-                                  is currently{" "}
-                                  <span className={`font-medium ${profile?.availability === "unavailable" ? "text-error-600" : "text-success-600"}`}>
-                                    {profile?.availability === "unavailable" ? "not available" : "available"}
-                                  </span>{" "}
-                                  for hire
-                                </p>
-                              </div>
-
-                              <Button
-                                className="mt-3 group"
-                                size="md"
-                                variant="link"
-                              >
-                                View similar talent{" "}
-                                <ArrowRight className="size-3 transition duration-300 group-hover:translate-x-[4px]" />
-                              </Button>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                        <HireMeButton profile={profile} />
 
                         <SaveButton />
                       </>
@@ -8281,7 +8209,24 @@ function Default() {
                       </span>
                     </div>
 
-                    <button className="w-full mt-5 duration-300 transition focus-visible:outlin-none text-sm leading-5 font-semibold shrink-0 h-10 flex items-center justify-center gap-x-2 rounded-[5px] px-4 bg-white border-2 text-primary-500 hover:text-white hover:bg-primary-500 border-primary-500 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]">
+                    <button
+                      className="w-full mt-5 duration-300 transition focus-visible:outlin-none text-sm leading-5 font-semibold shrink-0 h-10 flex items-center justify-center gap-x-2 rounded-[5px] px-4 bg-white border-2 text-primary-500 hover:text-white hover:bg-primary-500 border-primary-500 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]"
+                      onClick={async () => {
+                        const currentUser = getCurrentUser()
+                        const token = getAccessToken()
+                        if (!currentUser?.id || !profile?.id || currentUser.id === profile.id) return
+                        try {
+                          const thread = await apiFetch<{ id: string }>("/v1/threads", {
+                            method: "POST",
+                            headers: token ? { Authorization: `Bearer ${token}` } : {},
+                            body: { participantIds: [currentUser.id, profile.id], isGroup: false },
+                          })
+                          router.push("/inbox")
+                        } catch (err) {
+                          console.error("Failed to start conversation:", err)
+                        }
+                      }}
+                    >
                       <MessageSquare01 className="size-[15px]" /> Message Me
                     </button>
                   </div>

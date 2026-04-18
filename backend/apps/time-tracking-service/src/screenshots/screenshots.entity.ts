@@ -38,8 +38,8 @@ export class Screenshot {
   @Column({ name: 'captured_at', type: 'timestamptz', nullable: true })
   capturedAt!: Date | null;
 
-  @Column({ name: 'project_id', type: 'text', nullable: true })
-  projectId!: string | null;
+  @Column({ name: 'contract_id', type: 'text', nullable: true })
+  contractId!: string | null;
 
   @Column({ name: 'task_id', type: 'text', nullable: true })
   taskId!: string | null;

@@ -38,6 +38,7 @@ import { Grid, List, SortAs } from "@/components/icons"
 import { Logo4 } from "@/components/icons/logo-4"
 import { SearchCard } from "@/components/search-card"
 import { SearchCardLandscape } from "@/components/search-card-landscape"
+import { ListingCard, ListingCardProps } from "@/components/listing-card"
 import {
   Badge,
   Button,
@@ -57,6 +58,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
   Favorite,
+  FavoriteRoot,
   IconButton,
   Input,
   InputGroup,
@@ -70,7 +72,13 @@ import {
   Toggle,
   inputVariants,
 } from "@/components/ui"
-import { Sidebar } from "./sidebar"
+import {
+  Sidebar,
+  SidebarJobs,
+  SidebarServices,
+  SidebarTalent,
+  SidebarTeams,
+} from "./sidebar"
 
 const GRID_LAYOUT = "GRID"
 const LIST_LAYOUT = "LIST"
@@ -112,48 +120,195 @@ function getHitMeta(hit: SearchHit): string {
   return ""
 }
 
-const SearchResultCard = ({ hit }: { hit: SearchHit }) => {
-  return (
-    <article className="rounded-[8px] border bg-white border-gray-[#122A4B]/[.15] overflow-hidden shadow-[0px_2px_5px_0px_theme(colors.black/.04)]">
-      <div className="relative h-[140px] bg-gray-100">
-        {hit.image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={hit.image}
-            alt={getHitTitle(hit)}
-            className="absolute inset-0 size-full object-cover"
-          />
-        ) : null}
-      </div>
-      <div className="p-5">
-        <h1 className="text-base leading-[18.75px] font-bold text-dark-blue-400 line-clamp-2">
-          {getHitTitle(hit)}
-        </h1>
-        <p className="text-sm mt-3 font-light text-[#667085] line-clamp-2">
-          {getHitSubtitle(hit)}
-        </p>
-        <div className="flex items-center justify-between mt-[19px]">
-          <p className="text-sm font-light text-[#667085]">{getHitMeta(hit)}</p>
-        </div>
-      </div>
-    </article>
-  )
+/**
+ * Convert a raw Algolia hit into ListingCard props for the given entity kind.
+ * The master ListingCard dispatches to the correct visual treatment (project,
+ * service, talent, or team). This mapper is intentionally forgiving because
+ * hit field names vary across indexes.
+ */
+function hitToListingCardProps(
+  hit: SearchHit,
+  kind: "project" | "service" | "talent" | "team",
+  cardVariant: "default" | "job" | "job-grid" = "default"
+): ListingCardProps {
+  const id = String(hit.objectID ?? hit.id ?? "")
+
+  if (kind === "project" || kind === "service") {
+    const isJobPlaceholder =
+      (cardVariant === "job" || cardVariant === "job-grid") &&
+      String(hit.objectID ?? hit.id ?? "").startsWith("placeholder-")
+
+    return {
+      kind,
+      id,
+      title: isJobPlaceholder
+        ? cardVariant === "job-grid"
+          ? "The Ultimate Mobile App Experience"
+          : "Corporate Dashboard Project"
+        : getHitTitle(hit),
+      description: isJobPlaceholder
+        ? cardVariant === "job-grid"
+          ? "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
+          : "Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."
+        : hit.description || hit.overview || hit.headline || "",
+      mediaUrl: hit.image || hit.cover_image || hit.media_url || undefined,
+      budget:
+        kind === "service"
+          ? hit.monthly_price
+            ? `$${hit.monthly_price}/month`
+            : hit.price_range
+              ? `${hit.price_range}/month`
+              : hit.budget_range || "$5,000/month"
+          : hit.budget_range || hit.budget || "$50,000 budget",
+      duration: hit.timeline || hit.duration || hit.project_duration,
+      rating: typeof hit.rating === "number" ? hit.rating : 4.9,
+      reviewCount:
+        typeof hit.review_count === "number"
+          ? hit.review_count
+          : typeof hit.nb_reviews === "number"
+            ? hit.nb_reviews
+            : 5,
+      collaborators: Array.isArray(hit.collaborators)
+        ? hit.collaborators
+        : Array.isArray(hit.team_avatars)
+          ? hit.team_avatars
+          : undefined,
+      badge: kind === "service" ? "Service" : undefined,
+      favoriteSlot: (
+        <FavoriteRoot>
+          {() => <Favorite />}
+        </FavoriteRoot>
+      ),
+      cardVariant,
+    }
+  }
+
+  if (kind === "talent") {
+    return {
+      kind,
+      id,
+      username: String(hit.username || hit.handle || id),
+      name: hit.name || hit.full_name,
+      handle: hit.handle || (hit.username ? `@${hit.username}` : undefined),
+      role: hit.role || hit.job_title || hit.title,
+      photo: hit.photo || hit.avatar_url || hit.image,
+      rate: hit.hourly_rate
+        ? `$${hit.hourly_rate}/hr`
+        : hit.rate_range || "$85 - $120/hr",
+      experience:
+        hit.years_of_experience != null
+          ? `${hit.years_of_experience} years of experience`
+          : hit.experience,
+      country: hit.country || hit.location,
+      localTime: hit.local_time,
+      rating: typeof hit.rating === "number" ? hit.rating : undefined,
+      projects:
+        typeof hit.projects_count === "number"
+          ? hit.projects_count
+          : typeof hit.project_count === "number"
+            ? hit.project_count
+            : undefined,
+      allStars: Boolean(hit.all_stars ?? hit.is_all_star),
+      skills: Array.isArray(hit.skills) ? hit.skills : undefined,
+    }
+  }
+
+  // team
+  return {
+    kind: "team",
+    id,
+    name: hit.team_name || hit.name || "Team Name",
+    handle: hit.handle ? `@${String(hit.handle).replace(/^@/, "")}` : undefined,
+    tagline: hit.tagline || hit.team_type || "Development team",
+    experience:
+      hit.average_years_of_experience != null
+        ? `Average ${hit.average_years_of_experience} years of experience`
+        : hit.experience,
+    rate: hit.rate_range
+      ? `${hit.rate_range}/hr`
+      : hit.hourly_rate
+        ? `$${hit.hourly_rate}/hr`
+        : "$85 - $120/hr",
+    locations: Array.isArray(hit.locations)
+      ? hit.locations.join(", ")
+      : hit.location,
+    rating: typeof hit.rating === "number" ? hit.rating : undefined,
+    projectCount:
+      typeof hit.projects_count === "number"
+        ? hit.projects_count
+        : typeof hit.project_count === "number"
+          ? hit.project_count
+          : undefined,
+    skills: Array.isArray(hit.skills) ? hit.skills : undefined,
+    memberAvatars: Array.isArray(hit.member_avatars)
+      ? hit.member_avatars
+      : Array.isArray(hit.team_avatars)
+        ? hit.team_avatars
+        : undefined,
+    previousClientLogos: Array.isArray(hit.previous_client_logos)
+      ? hit.previous_client_logos
+      : Array.isArray(hit.client_logos)
+        ? hit.client_logos
+        : undefined,
+    favoriteSlot: (
+      <FavoriteRoot>
+        {() => <Favorite />}
+      </FavoriteRoot>
+    ),
+  }
 }
 
-const SearchResultCardLandscape = ({ hit }: { hit: SearchHit }) => {
-  return (
-    <article className="rounded-[8px] border bg-white border-gray-[#122A4B]/[.15] overflow-hidden shadow-[0px_2px_5px_0px_theme(colors.black/.04)] p-5">
-      <h1 className="text-base leading-[18.75px] font-bold text-dark-blue-400">
-        {getHitTitle(hit)}
-      </h1>
-      <p className="text-sm mt-3 font-light text-[#667085]">
-        {getHitSubtitle(hit)}
-      </p>
-      <p className="text-sm mt-3 font-light text-[#667085]">
-        {getHitMeta(hit)}
-      </p>
-    </article>
-  )
+/**
+ * Minimal placeholder record used when the backend returns no hits — keeps
+ * the grid populated with the correct card shape for the active entity so
+ * users see what the search page will look like once data flows.
+ */
+function placeholderHit(
+  kind: "project" | "service" | "talent" | "team",
+  i: number
+): SearchHit {
+  if (kind === "talent") {
+    return {
+      objectID: `placeholder-${kind}-${i}`,
+      name: "Anika",
+      username: "BlueberryBelle",
+      handle: "BlueberryBelle",
+      role: "Database Administrator",
+      hourly_rate: "85 - $120",
+      years_of_experience: 9,
+      country: "United States",
+      local_time: "7:39am local time",
+      rating: 4.2,
+      projects_count: 11,
+      all_stars: true,
+      skills: ["UX Research", "Web Design", "Content Design", "Frontend Development"],
+    }
+  }
+  if (kind === "team") {
+    return {
+      objectID: `placeholder-${kind}-${i}`,
+      team_name: "Team Name",
+      handle: "Tech_Sential",
+      team_type: "Development team",
+      average_years_of_experience: 10,
+      rate_range: "$85 - $120",
+      locations: ["UK", "USA", "Brazil", "Philippines"],
+      rating: 4.9,
+      projects_count: 16,
+      skills: ["iOS", "E-commerce", "Mobile Application", "Small Business", "Software Development"],
+    }
+  }
+  return {
+    objectID: `placeholder-${kind}-${i}`,
+    project_title: "The Ultimate Mobile App Experience",
+    service_title: "The Ultimate Mobile App Experience",
+    description:
+      "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.",
+    budget_range: kind === "service" ? "$5,000/month" : "$50,000 budget",
+    timeline: kind === "project" ? "Starting from 12 weeks" : undefined,
+    rating: 4.9,
+    review_count: 5,
+  }
 }
 
 export default function SearchPage() {
@@ -164,8 +319,36 @@ export default function SearchPage() {
   )
 }
 
-function Search() {
-  const [value, setValue] = useState([GRID_LAYOUT])
+type SearchProps = {
+  defaultCategory?: string
+  defaultQuery?: string
+  forcedSidebarCategory?: SearchCategoryType | "all" | "jobs"
+}
+
+export function SearchPageContent({
+  defaultCategory = "",
+  defaultQuery = "Swift Development",
+  forcedSidebarCategory,
+}: SearchProps) {
+  return (
+    <Suspense fallback={null}>
+      <Search
+        defaultCategory={defaultCategory}
+        defaultQuery={defaultQuery}
+        forcedSidebarCategory={forcedSidebarCategory}
+      />
+    </Suspense>
+  )
+}
+
+function Search({
+  defaultCategory = "",
+  defaultQuery = "Swift Development",
+  forcedSidebarCategory,
+}: SearchProps) {
+  const [value, setValue] = useState([
+    forcedSidebarCategory === "jobs" ? LIST_LAYOUT : GRID_LAYOUT,
+  ])
   const [isOpen, toggleIsOpen] = useToggle(false)
 
   // Ensure the search page always loads scrolled to the very top, regardless
@@ -178,8 +361,13 @@ function Search() {
 
   // Read search params so clicks from "Popular Searches" etc. reflect in the page.
   const searchParams = useSearchParams()
-  const query = searchParams?.get("q") ?? "Swift Development"
-  const categorySlug = searchParams?.get("category") ?? ""
+  const skillParam = searchParams?.get("skill") ?? ""
+  // Fall back to the skill query when no explicit `q` is provided so that
+  // /search?skill=Docker renders "Docker" as the displayed search term
+  // instead of the hardcoded "Swift Development" placeholder.
+  const query =
+    searchParams?.get("q") ?? (skillParam ? skillParam : defaultQuery)
+  const categorySlug = searchParams?.get("category") ?? defaultCategory
   const categoryLabel = categorySlug
     ? categorySlug
         .split("-")
@@ -260,6 +448,58 @@ function Search() {
 
   const resultsCount = totalHits ?? 147
 
+  // Resolve the card kind for the current category. "all" and unknown
+  // fall back to "project" so a generic /search URL still renders something
+  // sensible. Teams/talent need their dedicated card treatments.
+  const cardKind: "project" | "service" | "talent" | "team" = useMemo(() => {
+    switch (backendCategory) {
+      case "talent":
+        return "talent"
+      case "teams":
+        return "team"
+      case "services":
+        return "service"
+      case "projects":
+      case "all":
+      default:
+        return "project"
+    }
+  }, [backendCategory])
+
+  // Render the correct sidebar variant for the active category
+  const renderSidebar = (sidebarClassName?: string) => {
+    switch (forcedSidebarCategory ?? backendCategory) {
+      case "jobs":
+        return <SidebarJobs className={sidebarClassName} />
+      case "services":
+        return <SidebarServices className={sidebarClassName} />
+      case "talent":
+        return <SidebarTalent className={sidebarClassName} />
+      case "teams":
+        return <SidebarTeams className={sidebarClassName} />
+      case "projects":
+      case "all":
+      default:
+        return <Sidebar className={sidebarClassName} />
+    }
+  }
+
+  // Build the list that will actually be rendered — real hits when available,
+  // placeholders of the same kind otherwise so the grid isn't empty.
+  const rendered: SearchHit[] =
+    searchHits.length > 0
+      ? searchHits
+      : Array.from({ length: 8 }).map((_, i) => placeholderHit(cardKind, i))
+  // Jobs uses the same search surface, but the result card itself follows a
+  // dedicated landscape treatment instead of the project/service tile.
+  const listingCardVariant =
+    forcedSidebarCategory === "jobs" &&
+    (cardKind === "project" || cardKind === "service")
+      ? getFirstItem(value) === GRID_LAYOUT
+        ? "job-grid"
+        : "job"
+      : "default"
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
@@ -281,7 +521,7 @@ function Search() {
             className="h-full"
             scrollBar={<ScrollBar className="w-4 p-1" />}
           >
-            <Sidebar className="block w-full px-5" />
+            {renderSidebar("block w-full px-5")}
           </ScrollArea>
           <div className="h-12 absolute border-t border-gray-200 bg-white bottom-0 inset-x-0 flex items-center justify-between pl-3.5 p-1">
             <Button
@@ -325,10 +565,12 @@ function Search() {
       */}
 
       <div className="lg:p-[50px] lg:flex gap-x-[50px]">
-        <Sidebar />
+        {renderSidebar()}
 
         <div className="flex-auto">
-          {/* Contextual search banner — appears directly above the results count. */}
+          {/* Contextual search banner hidden for now. Keep this block in place so
+              we can restore it later without changing the surrounding layout. */}
+          {/*
           <div className="mb-5 rounded-lg overflow-hidden">
             <img
               src="/search-banner-swift.png"
@@ -336,6 +578,7 @@ function Search() {
               className="w-full h-auto block"
             />
           </div>
+          */}
 
           <div className="hidden lg:inline-flex items-center gap-x-3">
             <h1 className="text-base leading-[19.36px] font-light text-dark-blue-400">
@@ -528,27 +771,40 @@ function Search() {
 
           <div className="mt-5 xs:max-md:pb-5 md:max-lg:pb-6 lg:mt-8 xs:max-md:px-3.5 md:max-lg:px-6">
             {getFirstItem(value) === GRID_LAYOUT ? (
-              <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-[15px] lg:gap-5">
-                {searchHits.length > 0
-                  ? searchHits.map((hit) => (
-                      <SearchResultCard key={hit.objectID} hit={hit} />
-                    ))
-                  : Array.from({ length: 8 }).map((_, i) => (
-                      <SearchCard key={i} />
-                    ))}
+              <div
+                className={cn(
+                  "grid gap-[15px] lg:gap-5",
+                  listingCardVariant === "job"
+                    ? "grid-cols-1 md:grid-cols-1 lg:grid-cols-1"
+                    : "",
+                  cardKind === "talent" || cardKind === "team"
+                    ? "md:grid-cols-3 lg:grid-cols-4"
+                    : "md:grid-cols-2 lg:grid-cols-3"
+                )}
+              >
+                {rendered.map((hit) => (
+                  <ListingCard
+                    key={String(hit.objectID)}
+                    {...(hitToListingCardProps(
+                      hit,
+                      cardKind,
+                      listingCardVariant
+                    ) as ListingCardProps)}
+                  />
+                ))}
               </div>
             ) : (
               <div className="grid gap-y-[15px] lg:gap-y-5">
-                {searchHits.length > 0
-                  ? searchHits.map((hit) => (
-                      <SearchResultCardLandscape
-                        key={hit.objectID}
-                        hit={hit}
-                      />
-                    ))
-                  : Array.from({ length: 5 }).map((_, i) => (
-                      <SearchCardLandscape key={i} />
-                    ))}
+                {rendered.map((hit) => (
+                  <ListingCard
+                    key={String(hit.objectID)}
+                    {...(hitToListingCardProps(
+                      hit,
+                      cardKind,
+                      listingCardVariant
+                    ) as ListingCardProps)}
+                  />
+                ))}
               </div>
             )}
           </div>

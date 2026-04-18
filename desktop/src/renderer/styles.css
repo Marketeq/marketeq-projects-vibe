@@ -1,0 +1,34 @@
+/* src/renderer/styles.css
+ * Phase 6 — Marketeq Time Tracker desktop UI styles.
+ * Tailwind handles all utility classes. Legacy view-specific CSS below
+ * is scoped to .login / .wizard so it does NOT conflict with the
+ * desktop-tracker Tailwind components.
+ */
+
+@import "tailwindcss" source("../renderer/");
+@config "../../tailwind.config.ts";
+
+:root {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #fff;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Draggable title bar region ───────────────────────────────────── */
+.drag-region {
+  -webkit-app-region: drag;
+}
+.drag-region button,
+.drag-region a,
+.drag-region input {
+  -webkit-app-region: no-drag;
+}

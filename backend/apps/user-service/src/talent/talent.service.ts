@@ -12,6 +12,7 @@ import { CreateTalentDto } from './dto/create-talent.dto';
 import { R2Service } from '../storage/r2.service';
 import { Skill } from '../skills/skills.entity';
 import { Experience } from '../experience/experience.entity';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class TalentService {
@@ -25,14 +26,30 @@ export class TalentService {
     @InjectRepository(Experience)
     private readonly experienceRepository: Repository<Experience>,
     private readonly r2Service: R2Service,
+    private readonly userService: UserService,
   ) {}
 
   async createTalent(
-    userId: string,
+    userClaims: { id: string; email?: string },
     dto: CreateTalentDto,
     avatar?: Express.Multer.File,
   ) {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
+    const userId = userClaims.id;
+
+    let user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user && userClaims.email) {
+      user = await this.userRepository.findOne({ where: { email: userClaims.email } });
+    }
+
+    // Keep onboarding resilient when auth-service has a user but user-service is missing it.
+    if (!user && userClaims.id && userClaims.email) {
+      await this.userService.syncFromAuth({
+        id: userClaims.id,
+        email: userClaims.email,
+      });
+      user = await this.userRepository.findOne({ where: { id: userClaims.id } });
+    }
+
     if (!user) {
       throw new NotFoundException('User not found');
     }

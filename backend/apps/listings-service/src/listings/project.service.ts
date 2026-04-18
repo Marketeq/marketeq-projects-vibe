@@ -14,7 +14,7 @@ export class ProjectService {
     return this.projectRepository.create({
       title: data.title,
       subtitle: null,
-      strapiId: null,
+      cmsId: null,
       shortDescription: null,
       fullDescription: null,
       budget: null,

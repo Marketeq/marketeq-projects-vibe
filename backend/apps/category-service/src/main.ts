@@ -25,6 +25,19 @@ async function bootstrap() {
         },
         noAck: false,
         prefetchCount: 1,
+        // cms-service publishes raw payloads via amqp-connection-manager —
+        // `{ event: 'category.saved', ...fields }` — straight to the
+        // `cms.events` topic exchange. NestJS's default RMQ deserializer
+        // expects its own `{ pattern, data }` envelope and nacks anything
+        // else with "Pattern: undefined". This deserializer lifts the
+        // publisher's `event` field into the `pattern` slot so
+        // @EventPattern handlers fire correctly.
+        deserializer: {
+          deserialize: (value: unknown) => {
+            const v = (value ?? {}) as { event?: string };
+            return { pattern: v.event, data: value };
+          },
+        },
       },
     })
     logger.log('RabbitMQ microservice connected (queue: cms.category.category)')

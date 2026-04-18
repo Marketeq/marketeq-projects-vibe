@@ -1,0 +1,76 @@
+name: Vercel Deploy (Public Toggle)
+
+on:
+  push:
+    branches:
+      - dev-main
+      - staging
+      - live-mvp
+    paths:
+      - 'frontend/**'
+      - 'package.json'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: vercel-deploy-${{ github.ref_name }}
+      cancel-in-progress: true
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Map branch to Vercel project
+        id: map
+        run: |
+          case "${{ github.ref_name }}" in
+            dev-main)  echo "project=marketeq-projects-dev" >> $GITHUB_OUTPUT ;;
+            staging)   echo "project=marketeq-projects-staging" >> $GITHUB_OUTPUT ;;
+            live-mvp)  echo "project=marketeq-projects-live-mvp" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Make repo public
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ADMIN_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }} -X PATCH -f visibility=public --silent
+          echo "Repo set to public"
+
+      - name: Wait for Vercel deployment to complete
+        run: |
+          PROJECT="${{ steps.map.outputs.project }}"
+          echo "Waiting for Vercel to detect push and start building $PROJECT..."
+          sleep 15
+
+          # Poll Vercel for up to 10 minutes until the deployment finishes
+          MAX_ATTEMPTS=60
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            LATEST=$(curl -sf -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "https://api.vercel.com/v6/deployments?project=$PROJECT&limit=1&target=production" \
+              | jq -r '.deployments[0].state // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
+
+            echo "Attempt $i/$MAX_ATTEMPTS: deployment state = $LATEST"
+
+            case "$LATEST" in
+              READY)
+                echo "Deployment succeeded!"
+                exit 0
+                ;;
+              ERROR|CANCELED)
+                echo "Deployment failed with state: $LATEST"
+                exit 1
+                ;;
+              *)
+                sleep 10
+                ;;
+            esac
+          done
+          echo "Timed out waiting for deployment"
+          exit 1
+
+      - name: Make repo private
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ADMIN_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }} -X PATCH -f visibility=private --silent
+          echo "Repo set back to private"

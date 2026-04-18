@@ -17,7 +17,7 @@
 - time-tracking-service – complete service, code review fixes, QA tested all endpoints
 
 ## In Progress
-(none currently — agents: claim your service here before starting)
+- homepage (api-gateway module + frontend SSR) — ~85% complete, backend done, frontend wired, tests pending
 
 ## Available Now (no blocking dependencies)
 These can be built immediately in parallel:
@@ -56,9 +56,10 @@ These can be built immediately in parallel:
 - time-tracking-service → contracts-service
 
 ## Frontend Progress
+- Homepage: SSR page fetches from api-gateway `/homepage`, renders dynamic sections (projects, services, teams, talent), hero, banner, categories, SEO metadata. Uses `ListingCard`/`ListingCardCompact` components. Types aligned with backend.
 - Inbox/messaging UI: fully wired to backend APIs, E2E encryption integrated (client-side AES encrypt/decrypt, key exchange, cookie-based auth)
 - UI component library: complete (/components/ui/)
-- Types: defined for user, talent, client, project, conversation, message, auth
+- Types: defined for user, talent, client, project, conversation, message, auth, homepage
 - E2E tests: Playwright + Cucumber setup, auth tests written
 
 ## Setup Notes (for new devs)

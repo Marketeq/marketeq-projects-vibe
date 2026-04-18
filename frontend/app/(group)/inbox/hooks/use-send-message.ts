@@ -4,14 +4,10 @@ import { decryptWithPrivateKey, encryptAES } from "@/src/crypto/e2ee"
 import { exportPrivateKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
-import { keyframes } from "framer-motion"
 import type { Message } from "@/types/message"
 
-/// Response type for the send endpoint
-interface SendResponse {
-  message: string
-  data: Message
-}
+/// Backend returns the message directly
+type SendResponse = Message
 
 /**
  * Returns a `send` function that AES‐encrypts a plaintext
@@ -33,53 +29,47 @@ export function useSendMessage(
     if (!convId || !token) {
       throw new Error("Missing conversation ID or auth token")
     }
-    if (!privateKey) {
-      throw new Error("No private key available")
-    }
-    // 1) Attempt to load the AES key
-    let key: Uint8Array
+
+    // If no private key or no AES key available, send as plaintext fallback
+    let key: Uint8Array | null = null
     try {
-      key = await loadKey(convId)
+      key = loadKey(convId)
     } catch {
-      console.log("No key found, fetching from server…")
-      // fetch + unwrap exactly as before
-      const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-        `/api/messaging/conversations/${convId}/key?isGroup=${isGroup}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-
-      // 1b) base64→Uint8Array
-      const wrapped = Uint8Array.from(atob(encryptedKey), (c) =>
-        c.charCodeAt(0)
-      )
-
-      // 1c) RSA‑OAEP unwrap using your CryptoKey
-      const rawBuffer = await crypto.subtle.decrypt(
-        { name: "RSA-OAEP" },
-        privateKey,
-        wrapped
-      )
-      key = new Uint8Array(rawBuffer)
-
-      // 1d) cache it for next time
-      const b64 = btoa(String.fromCharCode(...key))
-      saveKey(convId, b64)
-      //end test
+      // no cached key
     }
 
-    // 2) encrypt the plaintext
-    const ciphertext = await encryptAES(plaintext, key)
-
-    // 3) POST to your send endpoint
-    const payload = await apiFetch<SendResponse>(
-      `/api/messaging/${convId}/send`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: { ciphertext },
+    if (!key && privateKey) {
+      try {
+        const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
+          `/api/messaging/conversations/${convId}/key?isGroup=${isGroup}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        const wrapped = Uint8Array.from(atob(encryptedKey), (c) =>
+          c.charCodeAt(0)
+        )
+        const rawBuffer = await crypto.subtle.decrypt(
+          { name: "RSA-OAEP" },
+          privateKey,
+          wrapped
+        )
+        key = new Uint8Array(rawBuffer)
+        const b64 = btoa(String.fromCharCode(...key))
+        saveKey(convId, b64)
+      } catch {
+        // key exchange not available yet, fall through to plaintext
       }
-    )
+    }
 
-    return payload
+    // Encrypt or fail — never send plaintext
+    if (!key) {
+      throw new Error("Encryption key not available. Please wait and try again.")
+    }
+
+    const ciphertext = await encryptAES(plaintext, key)
+    return apiFetch<SendResponse>(`/v1/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: { threadId: convId, ciphertext },
+    })
   }
 }

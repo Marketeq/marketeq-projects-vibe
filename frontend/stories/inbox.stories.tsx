@@ -43,8 +43,11 @@ const meta: Meta = {
 
 export default meta
 
-const getJwtToken = () =>
-  typeof window !== "undefined" ? localStorage.getItem("token") : null
+const getJwtToken = () => {
+  if (typeof window === "undefined") return null
+  const Cookies = require("js-cookie")
+  return Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("token") || null
+}
 
 const formatConversationDate = (isoDateStr: string) => {
   const date = parseISO(isoDateStr)
@@ -69,7 +72,7 @@ const handlePinMessage = async (messageId: string) => {
   const jwtToken = getJwtToken()
   try {
     await apiFetch<{ message: string }>(
-      `/api/messaging/messages/${messageId}/pin`,
+      `/v1/messages/${messageId}/pin`,
       {
         method: "POST",
         headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
@@ -84,10 +87,14 @@ export const Bubble = ({
   message,
   currentUser,
   participantUsername,
+  participantName,
+  onForward,
 }: {
   message: Message
   currentUser: CurrentUser
   participantUsername?: string
+  participantName?: string
+  onForward?: (message: Message) => void
 }) => {
   const [value, setValue] = useState(message.content)
   const { onChatChange, chat, isSaved, onUnsave } = useEditContext()
@@ -98,10 +105,14 @@ export const Bubble = ({
 
   // Determine sender name
   const isMe = message.senderId === currentUser.id
-  const senderName = isMe ? "You" : participantUsername || "Unknown"
+  const senderName = isMe
+    ? "Me"
+    : participantName || participantUsername || "Unknown"
   const senderUsername = isMe
-    ? "@" + currentUser.username
-    : "@" + participantUsername
+    ? (currentUser.username ? "@" + currentUser.username : "")
+    : participantUsername
+      ? "@" + participantUsername
+      : ""
 
   // Format timestamp
   const formattedTime = formatConversationDate(message.createdAt)
@@ -146,7 +157,7 @@ export const Bubble = ({
       setIsPinned((prev) => !prev)
 
       await apiFetch<{ message: string }>(
-        `/api/messaging/messages/${message.id}/pin`,
+        `/v1/messages/${message.id}/pin`,
         {
           method: "POST",
           headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
@@ -163,8 +174,8 @@ export const Bubble = ({
     try {
       setIsDeleted(true) // Optimistic UI
       setDeletedAt(Date.now())
-      await apiFetch(`/api/messaging/messages/${message.id}/delete`, {
-        method: "PATCH",
+      await apiFetch(`/v1/messages/${message.id}`, {
+        method: "DELETE",
         headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
       })
     } catch (err) {
@@ -177,7 +188,7 @@ export const Bubble = ({
     const jwtToken = getJwtToken()
     try {
       setIsDeleted(false) // Optimistic UI
-      await apiFetch(`/api/messaging/messages/${message.id}/undo-delete`, {
+      await apiFetch(`/v1/messages/${message.id}`, {
         method: "PATCH",
         headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
       })
@@ -223,7 +234,7 @@ export const Bubble = ({
                   <DropdownMenuItem onSelect={handlePinMessage}>
                     <Edit03 className="h-4 w-4" /> {isPinned ? "Unpin" : "Pin"}
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onForward?.(message)}>
                     <Send03 className="h-4 w-4" /> Forward
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
@@ -287,10 +298,16 @@ export const YourBubble = ({
   message,
   currentUser,
   participantUsername,
+  participantName,
+  participantAvatarUrl,
+  onForward,
 }: {
   message: Message
   currentUser: CurrentUser
   participantUsername?: string
+  participantName?: string
+  participantAvatarUrl?: string
+  onForward?: (message: Message) => void
 }) => {
   const [isPinned, setIsPinned] = useState(!!message.isPinned)
   const [isDeleted, setIsDeleted] = useState(!!message.isDeleted)
@@ -311,7 +328,7 @@ export const YourBubble = ({
       setIsPinned((prev) => !prev)
 
       await apiFetch<{ message: string }>(
-        `/api/messaging/messages/${message.id}/pin`,
+        `/v1/messages/${message.id}/pin`,
         {
           method: "POST",
           headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
@@ -324,10 +341,14 @@ export const YourBubble = ({
   }
 
   const isMe = message.senderId === currentUser.id
-  const senderName = isMe ? "You" : participantUsername || "Unknown"
+  const senderName = isMe
+    ? "Me"
+    : participantName || participantUsername || "Unknown"
   const senderUsername = isMe
-    ? "@" + currentUser.username
-    : "@" + participantUsername
+    ? (currentUser.username ? "@" + currentUser.username : "")
+    : participantUsername
+      ? "@" + participantUsername
+      : ""
 
   // Format timestamp
   const formattedTime = formatConversationDate(message.createdAt)
@@ -339,7 +360,10 @@ export const YourBubble = ({
         className="hover:ring-0 active:ring-primary-100"
         isOnline
       >
-        <AvatarImage src="/man.jpg" alt="Man" />
+        <AvatarImage
+          src={participantAvatarUrl || undefined}
+          alt={participantName || "User"}
+        />
         <AvatarFallbackIcon />
       </Avatar>
 
@@ -376,12 +400,8 @@ export const YourBubble = ({
                   <DropdownMenuItem onSelect={handlePinMessage}>
                     <Edit03 className="h-4 w-4" /> {isPinned ? "Unpin" : "Pin"}
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onForward?.(message)}>
                     <Send03 className="h-4 w-4" /> Forward
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem visual="destructive">
-                    <Trash2 className="h-4 w-4" /> Delete
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

@@ -1,7 +1,7 @@
 // src/hooks/useConversationKey.ts
 import { useEffect, useState } from "react"
 import { decryptWithPrivateKey } from "@/src/crypto/e2ee"
-import { saveKey } from "@/src/crypto/indexedDb"
+import { saveKey } from "@/src/crypto/storage"
 
 export function useConversationKey(
   convId: string,

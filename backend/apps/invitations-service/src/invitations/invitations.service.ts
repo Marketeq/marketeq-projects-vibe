@@ -1,3 +1,4 @@
+import { BrevoService } from '../../../notification-service/src/brevo/brevo.service';
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Inject, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan } from 'typeorm';
@@ -56,6 +57,8 @@ export class InvitationsService {
     private readonly userService: UserServiceClient,
     @Inject('RABBITMQ_CLIENT')
     private readonly rabbitmq: ClientProxy,
+    // Add BrevoService for direct email sending
+    private readonly brevoService: BrevoService,
   ) {
     this.expDays = parseInt(config.get('INVITE_EXP_DAYS') ?? '7', 10);
     this.appBaseUrl = config.get('APP_BASE_URL') ?? 'http://localhost:3000';
@@ -103,12 +106,11 @@ export class InvitationsService {
     };
   }
 
-  // NOTE: invitation note is temporarily disabled.
-  // private normalizeInvitationNote(note?: string): string | null {
-  //   if (typeof note !== 'string') return null;
-  //   const trimmed = note.trim();
-  //   return trimmed.length > 0 ? trimmed : null;
-  // }
+  private normalizeInvitationNote(note?: string): string | null {
+    if (typeof note !== 'string') return null;
+    const trimmed = note.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
 
   createInviteLink(
     dto: CreateInviteLinkDto,
@@ -189,8 +191,7 @@ export class InvitationsService {
 
   async createInvites(dto: CreateInvitationsDto, inviter: { id: string; email: string }) {
     const results = [];
-    // NOTE: invitation note is temporarily disabled.
-    // const normalizedNote = this.normalizeInvitationNote(dto.note);
+    const normalizedNote = this.normalizeInvitationNote(dto.note);
     for (const email of dto.emails) {
       const existing = await this.repo.findOne({
         where: { teamId: dto.teamId, invitedEmail: email, status: InvitationStatus.PENDING },
@@ -210,23 +211,40 @@ export class InvitationsService {
           teamId: dto.teamId,
           invitedEmail: email,
           role: dto.role,
-          // NOTE: invitation note is temporarily disabled.
-          // note: normalizedNote ?? undefined,
+          note: normalizedNote ?? undefined,
           token,
           expiresAt,
           createdByUserId: inviter.id,
         }),
       );
 
+
+      // --- Send invitation via RabbitMQ (existing logic) ---
       this.rabbitmq.emit('notification.email.team_invitation', {
         to: email,
         teamName: dto.teamId,
         role: dto.role,
         acceptUrl: `${this.appBaseUrl}/invite/accept?token=${token}`,
         inviterEmail: inviter.email,
-        // NOTE: invitation note is temporarily disabled.
-        // note: normalizedNote ?? undefined,
+        note: normalizedNote ?? undefined,
       });
+
+      // --- Direct Brevo email for testing (comment out when switching back to SendGrid) ---
+      this.logger.log(
+        `[DirectBrevo] Sending invitation email: to=${email} teamId=${dto.teamId} role=${dto.role} inviter=${inviter.email} token=${token.substring(0, 8)}...`,
+      );
+      try {
+        await this.brevoService.sendNotificationEmail(
+          email,
+          `You're invited to join team ${dto.teamId}`,
+          `You have been invited as ${dto.role}.`,
+          `${this.appBaseUrl}/invite/accept?token=${token}`
+        );
+        this.logger.log(`[DirectBrevo] Invitation email sent successfully: to=${email}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(`[DirectBrevo] Failed to send invitation email: to=${email} error=${message}`);
+      }
 
       // Publish notification event to RabbitMQ
       this.rabbitmq.emit('notification.send', {
@@ -236,7 +254,7 @@ export class InvitationsService {
         event: 'invitation.sent',
         title: `Invitation sent to ${email}`,
         body: `You've invited ${email} to join your team as ${dto.role}`,
-        link: `/my-team`,
+        link: `${this.appBaseUrl}/my-team`,
         metadata: { invitedEmail: email, teamId: dto.teamId, role: dto.role },
         delivery: { inApp: true, email: false },
       });
@@ -312,8 +330,7 @@ export class InvitationsService {
       role: inv.role,
       acceptUrl: `${this.appBaseUrl}/invite/accept?token=${inv.token}`,
       inviterEmail: '',
-      // NOTE: invitation note is temporarily disabled.
-      // note: inv.note,
+      note: inv.note,
     });
 
     return inv;

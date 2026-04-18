@@ -9,6 +9,9 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   listings: 'listings',
   checkout: 'checkout',
   messages: 'messages',
+  messaging: 'messages',
+  'user-keys': 'users',
+  devices: 'users',
   notifications: 'notifications',
   search: 'search',
   algolia: 'algolia',
@@ -28,6 +31,11 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   categories: 'categories',      // category taxonomy service
   tags: 'categories',            // tags managed by category-service
   'category-pages': 'categories', // category page assembly
+  tasks: 'timeTracking',          // time-tracking-service contract task endpoints
+  screenshots: 'timeTracking',   // time-tracking-service screenshot endpoints
+  'time-tracking': 'timeTracking', // time-tracking-service general endpoints
+  sessions: 'timeTracking',      // time-tracking-service session endpoints
+  metadata: 'timeTracking',      // time-tracking-service metadata/tooltips
 }
 
 @Controller()
@@ -59,6 +67,8 @@ export class ProxyController {
       prefix = 'users'
     } else if (prefix === 'v1' && (segments[1] === 'projects' || segments[1] === 'services')) {
       prefix = 'listings'
+    } else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {
+      prefix = 'messages'
     }
 
     const serviceName = SERVICE_PREFIX_MAP[prefix]
