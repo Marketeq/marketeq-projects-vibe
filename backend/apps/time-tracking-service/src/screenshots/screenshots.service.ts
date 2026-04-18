@@ -44,7 +44,7 @@ export class ScreenshotsService {
       mimeType: dto.mimeType,
       bytes: dto.bytes,
       capturedAt: dto.timestamp ? new Date(dto.timestamp) : null,
-      projectId: dto.projectId ?? null,
+      contractId: dto.contractId ?? null,
       taskId: dto.taskId ?? null,
       keyboard,
       mouse,
@@ -138,7 +138,7 @@ export class ScreenshotsService {
 
     const qb = this.repo.createQueryBuilder('s').where('s.isDeleted = false');
     if (userId) qb.andWhere('s.userId = :userId', { userId });
-    if (query.projectId) qb.andWhere('s.projectId = :projectId', { projectId: query.projectId });
+    if (query.contractId) qb.andWhere('s.contractId = :contractId', { contractId: query.contractId });
     if (query.taskId) qb.andWhere('s.taskId = :taskId', { taskId: query.taskId });
     if (query.from) qb.andWhere('s.createdAt >= :from', { from: new Date(query.from) });
     if (query.to) qb.andWhere('s.createdAt <= :to', { to: new Date(query.to) });
@@ -151,7 +151,7 @@ export class ScreenshotsService {
       timestamp: 's.createdAt',
       keyboard: 's.keyboard',
       mouse: 's.mouse',
-      project: 's.projectId',
+      project: 's.contractId',
     }[query.sortBy ?? 'timestamp'] ?? 's.createdAt';
 
     qb.orderBy(sortField, query.sortOrder ?? 'DESC');
@@ -211,7 +211,7 @@ export class ScreenshotsService {
       return [];
     }
 
-    if (query.projectId) qb.andWhere('s.projectId = :p', { p: query.projectId });
+    if (query.contractId) qb.andWhere('s.contractId = :p', { p: query.contractId });
     if (query.taskId) qb.andWhere('s.taskId = :t', { t: query.taskId });
 
     if (query.from && query.to) {
@@ -247,7 +247,7 @@ export class ScreenshotsService {
       timestamp: 's.capturedAt',
       keyboard: 's.keyboard',
       mouse: 's.mouse',
-      project: 's.projectId',
+      project: 's.contractId',
     }[query.sortBy ?? 'timestamp'] ?? 's.capturedAt';
 
     qb.orderBy(sortField, query.sortOrder ?? 'DESC');
@@ -291,7 +291,7 @@ export class ScreenshotsService {
       if (!settings.allowReassign) throw new ForbiddenException('Reassigning project/task is not allowed by admin settings');
     }
 
-    if (dto.projectId !== undefined) screenshot.projectId = dto.projectId;
+    if (dto.contractId !== undefined) screenshot.contractId = dto.contractId;
     if (dto.taskId !== undefined) screenshot.taskId = dto.taskId;
     return this.repo.save(screenshot);
   }
@@ -308,7 +308,7 @@ export class ScreenshotsService {
     }
 
     const updates: Partial<Screenshot> = {};
-    if (dto.projectId !== undefined) updates.projectId = dto.projectId;
+    if (dto.contractId !== undefined) updates.contractId = dto.contractId;
     if (dto.taskId !== undefined) updates.taskId = dto.taskId;
 
     const qb = this.repo.createQueryBuilder()

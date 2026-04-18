@@ -253,12 +253,12 @@ function transformScreenshotsToTimeBlocks(cards: ScreenshotCardDTO[]): TimeBlock
     hourMap.get(hourKey)!.cards.push(card)
   }
 
-  // Color assignment by projectId
+  // Color assignment by contractId
   const projectColorMap = new Map<string, ProjectColor>()
   let colorIdx = 0
 
-  const getProjectColor = (projectId: string | null): ProjectColor => {
-    const key = projectId ?? "__none__"
+  const getProjectColor = (contractId: string | null): ProjectColor => {
+    const key = contractId ?? "__none__"
     if (!projectColorMap.has(key)) {
       projectColorMap.set(key, PROJECT_COLORS[colorIdx % PROJECT_COLORS.length])
       colorIdx++
@@ -280,10 +280,10 @@ function transformScreenshotsToTimeBlocks(cards: ScreenshotCardDTO[]): TimeBlock
       year: "numeric",
     })
 
-    // Group by projectId within this hour
+    // Group by contractId within this hour
     const projectMap = new Map<string, ScreenshotCardDTO[]>()
     for (const c of hourCards) {
-      const pid = c.projectId ?? "__none__"
+      const pid = c.contractId ?? "__none__"
       if (!projectMap.has(pid)) projectMap.set(pid, [])
       projectMap.get(pid)!.push(c)
     }
@@ -1727,7 +1727,7 @@ export default function TimeTrackingPage() {
         pageSize: 100,
       }
       if (contractFilter !== "all") {
-        params.projectId = contractFilter
+        params.contractId = contractFilter
       }
       const res = await getScreenshotCards(params)
       if (res.data && res.data.length > 0) {

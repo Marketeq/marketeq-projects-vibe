@@ -115,7 +115,7 @@ export function createEventBridge(deps: EventBridgeDeps) {
             bytes: e.bytes,
             timestamp: new Date(e.takenAt).toISOString(),
             monitorId: e.displayId,
-            projectId: contract?.contractId ?? undefined,
+            contractId: contract?.contractId ?? undefined,
             taskId: contract?.taskId ?? undefined,
           },
         });
