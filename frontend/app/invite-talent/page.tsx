@@ -308,13 +308,12 @@ export default function InviteTalentPage() {
                         <div className="border-b border-gray-200 p-3">
                           <SearchField className="w-full">
                             <SearchFieldInput
-                              size="md"
                               className="pr-[42px]"
                               placeholder="Search"
                               value={locationSearch}
                               onChange={(event) => setLocationSearch(event.target.value)}
                             />
-                            <SearchFieldButton size="md">
+                            <SearchFieldButton>
                               <FilterLines className="size-4 text-gray-400" />
                             </SearchFieldButton>
                           </SearchField>
