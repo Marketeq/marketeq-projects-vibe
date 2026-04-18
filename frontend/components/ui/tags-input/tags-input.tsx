@@ -125,11 +125,19 @@ export const TagsInputInput = React.forwardRef<
   }
 >(
   (
-    { className, options, onInputValueChange, allowCreateOption, ...props },
+    {
+      className,
+      options,
+      onInputValueChange,
+      allowCreateOption,
+      onKeyDown,
+      ...props
+    },
     ref
   ) => {
     const { inputValue, setInputValue, addValue, clearInputValue, focus } =
       useTagsInputContext()
+    const onInputValueChangeRef = React.useRef(onInputValueChange)
     const [open, { off, on }] = useToggle(false)
     const isInputValueValid = inputValue !== ""
     const normalizedInputValue = inputValue.trim()
@@ -143,10 +151,22 @@ export const TagsInputInput = React.forwardRef<
       !options?.some(
         (option) => option.toLowerCase() === normalizedInputValue.toLowerCase()
       )
+    const exactMatchedOption = options?.find(
+      (option) => option.toLowerCase() === normalizedInputValue.toLowerCase()
+    )
+    const enterOptionValue = exactMatchedOption ?? (canCreateOption ? normalizedInputValue : null)
 
     useUpdateEffect(() => {
       isInputValueValid ? on() : off()
     }, [isInputValueValid])
+
+    useUpdateEffect(() => {
+      onInputValueChangeRef.current = onInputValueChange
+    }, [onInputValueChange])
+
+    useUpdateEffect(() => {
+      onInputValueChangeRef.current?.(inputValue)
+    }, [inputValue])
 
     return (
       <>
@@ -156,13 +176,25 @@ export const TagsInputInput = React.forwardRef<
               "text-base leading-6 grow text-gray-900 placeholder:text-gray-500 font-normal focus-visible:outline-none border-0 focus:ring-0 p-0 h-max",
               className
             )}
+            onKeyDown={(event) => {
+              onKeyDown?.(event)
+              if (event.defaultPrevented) return
+              if (event.key !== "Enter" || event.nativeEvent.isComposing) return
+              if (!enterOptionValue) return
+
+              event.preventDefault()
+              addValue(enterOptionValue)
+              clearInputValue()
+              focus()
+              off()
+            }}
             {...props}
             ref={ref}
           />
 
           <ScaleOutIn show={open}>
             <div className="absolute left-0 mt-2 w-[202px] px-0 pt-0 z-50 bg-white rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
-              <Command>
+              <Command shouldFilter={false}>
                 <CommandInput
                   placeholder="Search"
                   containerClassName="sr-only"
@@ -170,7 +202,6 @@ export const TagsInputInput = React.forwardRef<
                   value={inputValue}
                   onValueChange={(value) => {
                     setInputValue(value)
-                    onInputValueChange?.(value)
                   }}
                 />
                 <CommandList>

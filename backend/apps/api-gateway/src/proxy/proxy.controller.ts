@@ -87,6 +87,9 @@ export class ProxyController {
     if (segments[0] === 'v1' && segments[1] === 'users') {
       downstreamPath = '/' + segments.slice(1).join('/')
     }
+    if (serviceName === 'categories') {
+      downstreamPath = `/api${downstreamPath}`
+    }
     if (req.url.includes('?')) {
       downstreamPath += '?' + req.url.split('?').slice(1).join('?')
     }
