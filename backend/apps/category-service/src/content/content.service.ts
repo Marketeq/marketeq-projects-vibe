@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { cmsClient, findCmsCategoryIdByUuid, getAllPages } from './cms-client';
-import { CONTENT_TYPES, ContentTypeConfig } from './content.types';
+import { Injectable, Logger } from "@nestjs/common";
+import { cmsClient, findCmsCategoryIdByUuid, getAllPages } from "./cms-client";
+import { CONTENT_TYPES, ContentTypeConfig } from "./content.types";
 
 @Injectable()
 export class ContentService {
@@ -43,7 +43,10 @@ export class ContentService {
 
   /** Preview sample items that would be reassigned (category addressed by UUID) */
   async preview(categoryUuid: string, limit = 20) {
-    const preview: Record<string, Array<{ id: number | string; title: string }>> = {};
+    const preview: Record<
+      string,
+      Array<{ id: number | string; title: string }>
+    > = {};
     const cmsId = await findCmsCategoryIdByUuid(categoryUuid);
     if (cmsId == null) {
       for (const cfg of CONTENT_TYPES) preview[cfg.name] = [];
@@ -87,7 +90,9 @@ export class ContentService {
     // reassignChildrenToParent iterates over each child and a single missing
     // CMS counterpart used to abort the whole batch.
     if (fromId == null) {
-      this.logger.log(`No CMS counterpart for fromUuid=${fromUuid} — nothing to reassign.`);
+      this.logger.log(
+        `No CMS counterpart for fromUuid=${fromUuid} — nothing to reassign.`,
+      );
       return;
     }
     if (toId == null) {
@@ -99,7 +104,7 @@ export class ContentService {
     for (const cfg of CONTENT_TYPES) {
       await this.reassignForType(cfg, fromId, toId);
     }
-    this.logger.log('Reassignment completed.');
+    this.logger.log("Reassignment completed.");
   }
 
   private async reassignForType(
@@ -132,13 +137,17 @@ export class ContentService {
 
       await Promise.all(
         chunk.map(async (doc: any) => {
-          if (cfg.relation === 'single') {
+          if (cfg.relation === "single") {
             await cmsClient.patch(`${cfg.api}/${doc.id}`, {
               [cfg.categoryField]: toCatId,
             });
           } else {
-            const current: Array<number | string> = Array.isArray(doc[cfg.categoryField])
-              ? doc[cfg.categoryField].map((r: any) => (typeof r === 'object' ? r.id : r))
+            const current: Array<number | string> = Array.isArray(
+              doc[cfg.categoryField],
+            )
+              ? doc[cfg.categoryField].map((r: any) =>
+                  typeof r === "object" ? r.id : r,
+                )
               : [];
             const keep = current.filter((x) => String(x) !== String(fromCatId));
             const newIds = Array.from(new Set([...keep, toCatId]));
