@@ -8,7 +8,7 @@ export const Bool01 = z.union([z.literal(0), z.literal(1)]);
 export const Millis = z.number().int().nonnegative();
 
 export const UserRow = z.object({
-  id: z.string().startsWith('usr_'),
+  id: z.string().min(1),
   email: z.string().email(),
   display_name: z.string().min(1),
   avatar_url: z.string().nullable(),
@@ -20,7 +20,7 @@ export const UserRow = z.object({
 export type UserRow = z.infer<typeof UserRow>;
 
 export const DeviceSelfRow = z.object({
-  id: z.string().startsWith('dev_'),
+  id: z.string().min(1),
   installation_uuid: z.string().min(1),
   os_name: z.enum(['mac', 'win']),
   os_version: z.string().min(1),
@@ -31,7 +31,7 @@ export const DeviceSelfRow = z.object({
 export type DeviceSelfRow = z.infer<typeof DeviceSelfRow>;
 
 export const ContractRow = z.object({
-  id: z.string().startsWith('con_'),
+  id: z.string().min(1),
   name: z.string().min(1),
   client_name: z.string().min(1),
   status: z.enum(['active', 'paused', 'ended']),
@@ -46,8 +46,8 @@ export const ContractRow = z.object({
 export type ContractRow = z.infer<typeof ContractRow>;
 
 export const TaskRow = z.object({
-  id: z.string().startsWith('tsk_'),
-  contract_id: z.string().startsWith('con_'),
+  id: z.string().min(1),
+  contract_id: z.string().min(1),
   name: z.string().min(1),
   archived: Bool01,
   mirrored_at: Millis,
@@ -65,11 +65,11 @@ export const SessionEndReason = z.enum([
 ]);
 
 export const SessionRow = z.object({
-  id: z.string().startsWith('ses_'),
-  user_id: z.string().startsWith('usr_'),
-  contract_id: z.string().startsWith('con_'),
-  task_id: z.string().startsWith('tsk_'),
-  device_id: z.string().startsWith('dev_'),
+  id: z.string().min(1),
+  user_id: z.string().min(1),
+  contract_id: z.string().min(1),
+  task_id: z.string().min(1),
+  device_id: z.string().min(1),
   started_at: Millis,
   ended_at: Millis.nullable(),
   end_reason: SessionEndReason.nullable(),
@@ -85,8 +85,8 @@ export const SessionRow = z.object({
 export type SessionRow = z.infer<typeof SessionRow>;
 
 export const TimeEntryRow = z.object({
-  id: z.string().startsWith('ent_'),
-  session_id: z.string().startsWith('ses_'),
+  id: z.string().min(1),
+  session_id: z.string().min(1),
   started_at: Millis,
   ended_at: Millis.nullable(),
   duration_seconds: z.number().int().nonnegative(),
@@ -95,8 +95,8 @@ export const TimeEntryRow = z.object({
 export type TimeEntryRow = z.infer<typeof TimeEntryRow>;
 
 export const BreakEventRow = z.object({
-  id: z.string().startsWith('brk_'),
-  session_id: z.string().startsWith('ses_'),
+  id: z.string().min(1),
+  session_id: z.string().min(1),
   kind: z.enum(['paid', 'unpaid']),
   started_at: Millis,
   ended_at: Millis.nullable(),
@@ -105,8 +105,8 @@ export const BreakEventRow = z.object({
 export type BreakEventRow = z.infer<typeof BreakEventRow>;
 
 export const IdleEventRow = z.object({
-  id: z.string().startsWith('idl_'),
-  session_id: z.string().startsWith('ses_'),
+  id: z.string().min(1),
+  session_id: z.string().min(1),
   started_at: Millis,
   ended_at: Millis,
   seconds: z.number().int().nonnegative(),
@@ -116,8 +116,8 @@ export const IdleEventRow = z.object({
 export type IdleEventRow = z.infer<typeof IdleEventRow>;
 
 export const ScreenshotRow = z.object({
-  id: z.string().startsWith('shot_'),
-  session_id: z.string().startsWith('ses_'),
+  id: z.string().min(1),
+  session_id: z.string().min(1),
   taken_at: Millis,
   local_path: z.string().nullable(),
   r2_key: z.string().nullable(),
@@ -150,8 +150,8 @@ export const PermissionGrantRow = z.object({
 export type PermissionGrantRow = z.infer<typeof PermissionGrantRow>;
 
 export const ActivityMinuteRow = z.object({
-  id: z.string().startsWith('act_'),
-  session_id: z.string().startsWith('ses_'),
+  id: z.string().min(1),
+  session_id: z.string().min(1),
   minute_start_at: Millis,
   active: Bool01,
   synced_at: Millis.nullable(),
@@ -159,8 +159,8 @@ export const ActivityMinuteRow = z.object({
 export type ActivityMinuteRow = z.infer<typeof ActivityMinuteRow>;
 
 export const DisputeRow = z.object({
-  id: z.string().startsWith('dsp_'),
-  session_id: z.string().startsWith('ses_'),
+  id: z.string().min(1),
+  session_id: z.string().min(1),
   reason: z.enum(['inaccurate_time', 'wrong_task', 'tech_issue', 'other']),
   note: z.string().nullable(),
   created_at: Millis,
@@ -169,7 +169,7 @@ export const DisputeRow = z.object({
 export type DisputeRow = z.infer<typeof DisputeRow>;
 
 export const SyncQueueRow = z.object({
-  id: z.string().startsWith('req_'),
+  id: z.string().min(1),
   created_at: Millis,
   method: z.enum(['POST', 'PUT', 'PATCH', 'DELETE']),
   path: z.string().min(1),
@@ -204,7 +204,7 @@ export type InstallMetaRow = z.infer<typeof InstallMetaRow>;
 
 export const AuthSessionRow = z.object({
   id: z.string().min(1),
-  user_id: z.string().startsWith('usr_'),
+  user_id: z.string().min(1),
   access_token_expires_at: Millis,
   refresh_token_ref: z.string().min(1),
   created_at: Millis,

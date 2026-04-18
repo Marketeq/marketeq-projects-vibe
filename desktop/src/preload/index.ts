@@ -13,6 +13,7 @@ import type {
   AuthNeedsLoginPayload,
   AuthStatus,
   AuthStatusChangedPayload,
+  BackendContract,
   BreakExpiredPayload,
   BreakExpiringPayload,
   CaptureHealth,
@@ -222,6 +223,11 @@ const dtt = {
       ipcRenderer.on(IPC.onboardingStateChanged, handler);
       return () => ipcRenderer.off(IPC.onboardingStateChanged, handler);
     },
+  },
+
+  contracts: {
+    getMine: (): Promise<BackendContract[]> =>
+      ipcRenderer.invoke(IPC.contractsGetMine),
   },
 
   sync: {
