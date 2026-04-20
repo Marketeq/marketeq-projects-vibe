@@ -452,7 +452,6 @@ const Skills = ({
       >
         <InputGroup>
           <ComboboxPrimitive.Input
-            placeholder="Add skills by keyword"
             placeholder={placeholder}
             className={cn(
               inputVariants({
@@ -836,6 +835,7 @@ const DropdownFacetSection = ({
   options: string[]
   initialSelected?: string[]
 }) => {
+  const [open, setOpen] = useState(false)
   const [selections, setSelections] = useState<Record<string, boolean>>(
     Object.fromEntries(
       options.map((option) => [option, initialSelected.includes(option)])

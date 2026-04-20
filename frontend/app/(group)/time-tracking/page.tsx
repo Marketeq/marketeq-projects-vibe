@@ -7,6 +7,8 @@ import {
   type ScreenshotCardDTO,
   type ScreenshotCardsParams,
 } from "@/service/http/screenshots"
+import { getContractsForTalent, getContractsForClient, type ContractDTO } from "@/service/http/contracts"
+import { useAuth } from "@/contexts/auth"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   ArrowLeft,
@@ -251,12 +253,12 @@ function transformScreenshotsToTimeBlocks(cards: ScreenshotCardDTO[]): TimeBlock
     hourMap.get(hourKey)!.cards.push(card)
   }
 
-  // Color assignment by projectId
+  // Color assignment by contractId
   const projectColorMap = new Map<string, ProjectColor>()
   let colorIdx = 0
 
-  const getProjectColor = (projectId: string | null): ProjectColor => {
-    const key = projectId ?? "__none__"
+  const getProjectColor = (contractId: string | null): ProjectColor => {
+    const key = contractId ?? "__none__"
     if (!projectColorMap.has(key)) {
       projectColorMap.set(key, PROJECT_COLORS[colorIdx % PROJECT_COLORS.length])
       colorIdx++
@@ -278,10 +280,10 @@ function transformScreenshotsToTimeBlocks(cards: ScreenshotCardDTO[]): TimeBlock
       year: "numeric",
     })
 
-    // Group by projectId within this hour
+    // Group by contractId within this hour
     const projectMap = new Map<string, ScreenshotCardDTO[]>()
     for (const c of hourCards) {
-      const pid = c.projectId ?? "__none__"
+      const pid = c.contractId ?? "__none__"
       if (!projectMap.has(pid)) projectMap.set(pid, [])
       projectMap.get(pid)!.push(c)
     }
@@ -1406,8 +1408,7 @@ function ScreenshotDetailsDialog({
 //   doc 30 — Auto-Update & Release Channels  (GitHub releases feed)
 //   doc 41 — In-App Help, Empty States & Onboarding Copy
 
-// Current stable release (updated at build time from GitHub releases)
-const DTT_VERSION = "0.2.0"
+// Versionless artifact names from electron-builder.yml — URLs stay stable across releases
 const DTT_RELEASES_BASE = "https://github.com/Marketeq/desktop-time-tracker/releases/latest/download"
 
 type DesktopPlatform = "mac-arm64" | "mac-x64" | "win-x64" | "win-arm64"
@@ -1421,42 +1422,38 @@ interface PlatformOption {
   downloadUrl: string
 }
 
-// Artifact names follow electron-builder config from doc 29 §1.1:
-//   mac:  "Marketeq Time Tracker-${version}-${arch}.dmg"
-//   win NSIS:  "Marketeq Time Tracker-Setup-${version}-${arch}.exe"
-//   win portable:  "Marketeq Time Tracker-${version}-${arch}-portable.exe"
 const platformOptions: Record<DesktopPlatform, PlatformOption> = {
   "mac-arm64": {
     value: "mac-arm64",
     os: "mac",
     label: "macOS — Apple Silicon (M1/M2/M3)",
-    fileName: `Marketeq Time Tracker-${DTT_VERSION}-arm64.dmg`,
-    fileSize: "118.2 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Time-Tracker-${DTT_VERSION}-arm64.dmg`,
+    fileName: "Marketeq-mac-arm64.dmg",
+    fileSize: "102 MB",
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-mac-arm64.dmg`,
   },
   "mac-x64": {
     value: "mac-x64",
     os: "mac",
     label: "macOS — Intel",
-    fileName: `Marketeq Time Tracker-${DTT_VERSION}-x64.dmg`,
-    fileSize: "124.6 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Time-Tracker-${DTT_VERSION}-x64.dmg`,
+    fileName: "Marketeq-mac-x64.dmg",
+    fileSize: "107 MB",
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-mac-x64.dmg`,
   },
   "win-x64": {
     value: "win-x64",
     os: "windows",
     label: "Windows 10/11 — 64-bit",
-    fileName: `Marketeq Time Tracker-Setup-${DTT_VERSION}-x64.exe`,
-    fileSize: "96.8 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Time-Tracker-Setup-${DTT_VERSION}-x64.exe`,
+    fileName: "Marketeq-Setup-win-x64.exe",
+    fileSize: "~97 MB",
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Setup-win-x64.exe`,
   },
   "win-arm64": {
     value: "win-arm64",
     os: "windows",
     label: "Windows 10/11 — ARM64",
-    fileName: `Marketeq Time Tracker-Setup-${DTT_VERSION}-arm64.exe`,
-    fileSize: "94.3 MB",
-    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Time-Tracker-Setup-${DTT_VERSION}-arm64.exe`,
+    fileName: "Marketeq-Setup-win-arm64.exe",
+    fileSize: "~94 MB",
+    downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Setup-win-arm64.exe`,
   },
 }
 
@@ -1506,9 +1503,12 @@ function DownloadDesktopTrackerDialog({
   }, [open])
 
   const triggerDownload = () => {
-    // In production this would navigate to the GitHub releases asset URL
-    // to start the browser download. We avoid creating <a> elements here
-    // and just surface a toast + flip the "started" flag for the fallback.
+    const a = document.createElement("a")
+    a.href = selected.downloadUrl
+    a.download = selected.fileName
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
     setDownloadStarted(true)
     toast({
       title: "Download started",
@@ -1520,6 +1520,12 @@ function DownloadDesktopTrackerDialog({
   useEffect(() => {
     if (!open || downloadStarted) return
     const t = setTimeout(() => {
+      const a = document.createElement("a")
+      a.href = selected.downloadUrl
+      a.download = selected.fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
       setDownloadStarted(true)
       toast({
         title: "Download started",
@@ -1601,7 +1607,7 @@ function DownloadDesktopTrackerDialog({
                 {selected.fileName}
               </div>
               <div className="text-xs text-gray-500">
-                v{DTT_VERSION}  {selected.fileSize}  Stable channel
+                {selected.fileSize}  Stable channel
               </div>
             </div>
             <Button
@@ -1693,6 +1699,19 @@ export default function TimeTrackingPage() {
   const [showDownloadTracker, setShowDownloadTracker] = useState(false)
   const [appliedFilters, setAppliedFilters] = useState<AppliedFilters>(emptyAppliedFilters)
 
+  // --- Real contracts from API ---
+  const { user } = useAuth()
+  const [realContracts, setRealContracts] = useState<ContractDTO[]>([])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const role = (user as any).role?.toUpperCase?.() || (user as any).accountType?.toUpperCase?.() || ""
+    const fetcher = role === "CLIENT" ? getContractsForClient : getContractsForTalent
+    fetcher(user.id)
+      .then((contracts) => setRealContracts(contracts))
+      .catch(() => {})
+  }, [user?.id])
+
   // --- Real data fetching ---
   const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>(sampleTimeBlocks)
   const [isLoading, setIsLoading] = useState(true)
@@ -1708,7 +1727,7 @@ export default function TimeTrackingPage() {
         pageSize: 100,
       }
       if (contractFilter !== "all") {
-        params.projectId = contractFilter
+        params.contractId = contractFilter
       }
       const res = await getScreenshotCards(params)
       if (res.data && res.data.length > 0) {
@@ -1835,10 +1854,18 @@ export default function TimeTrackingPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Contracts</SelectItem>
-                  <SelectItem value="project1">Project 1</SelectItem>
-                  <SelectItem value="project2">Project 2</SelectItem>
-                  <SelectItem value="project3">Project 3</SelectItem>
-                  <SelectItem value="project4">Project 4</SelectItem>
+                  {realContracts.length > 0
+                    ? realContracts.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.title || "Untitled"}
+                        </SelectItem>
+                      ))
+                    : [
+                        <SelectItem key="project1" value="project1">Project 1</SelectItem>,
+                        <SelectItem key="project2" value="project2">Project 2</SelectItem>,
+                        <SelectItem key="project3" value="project3">Project 3</SelectItem>,
+                        <SelectItem key="project4" value="project4">Project 4</SelectItem>,
+                      ]}
                 </SelectContent>
               </Select>
 

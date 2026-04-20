@@ -279,7 +279,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const isMatch = await bcrypt.compare(dto.password, user.password);
     if (!isMatch) throw new UnauthorizedException('Invalid credentials');
 
-    await this.syncUserProfile(user);
+    try {
+      await this.syncUserProfile(user);
+    } catch (error) {
+      this.logger.warn(
+        `login: user profile sync failed for ${user.email}; continuing with auth user. reason=${(error as Error)?.message}`,
+      );
+    }
 
     const tokens = await this.issueTokens({ sub: user.id, email: user.email });
 

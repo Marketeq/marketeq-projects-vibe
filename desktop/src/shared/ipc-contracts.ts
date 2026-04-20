@@ -99,6 +99,16 @@ export const IPC = {
   windowHide: 'window:hide',
   windowQuit: 'window:quit',
 
+  // --- Phase 7 Updater (doc 28) ---
+  updaterGetStatus: 'updater:get-status',
+  updaterCheckNow: 'updater:check-now',
+  updaterSetChannel: 'updater:set-channel',
+  updaterDownload: 'updater:download',
+  updaterQuitAndInstall: 'updater:quit-and-install',
+
+  // --- Contracts (fetched from backend API) ---
+  contractsGetMine: 'contracts:get-mine',
+
   // --- Shell helpers ---
   shellOpenExternal: 'shell:open-external',
 } as const;
@@ -400,3 +410,26 @@ export const NotificationPrefsSchema = z.object({
   permissionChanges: z.boolean(),
   authAlerts: z.boolean(),
 });
+
+// ---------- Contracts (from backend API) ----------
+
+export interface BackendContract {
+  id: string;
+  groupId: string;
+  clientId: string;
+  talentId: string;
+  title: string;
+  rate: number;
+  schedule: string;
+  duration: string;
+  status: string;
+  startAtISO: string | null;
+  endAtISO: string | null;
+  projectId: string | null;
+  serviceId: string | null;
+  teamId: string | null;
+  jobId: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

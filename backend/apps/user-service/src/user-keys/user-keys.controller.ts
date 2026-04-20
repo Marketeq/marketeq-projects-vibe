@@ -8,11 +8,6 @@ import { StoreEncryptedPrivateKeyDto } from './dtos/store-encrypted-private-key.
 export class UserKeysController {
   constructor(private readonly userKeysService: UserKeysService) {}
 
-  @Get()
-  getUserKeys(@CurrentUser() user: JwtUser) {
-    return this.userKeysService.getUserKeys(user.sub);
-  }
-
   @Get('private-key')
   getEncryptedPrivateKey(@CurrentUser() user: JwtUser) {
     return this.userKeysService.getEncryptedPrivateKey(user.sub);

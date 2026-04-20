@@ -40,8 +40,11 @@ import { createFetchAuthHttpPort } from './services/auth/http-port';
 import { registerAuthIpc } from './services/auth/register-ipc';
 import { collectBroadcastTargets } from './ipc/timer';
 import { ipcMain } from 'electron';
+import { randomUUID } from 'node:crypto';
+import os from 'node:os';
 import { createOnboardingService } from './services/onboarding/onboarding-service';
 import { registerOnboardingIpc } from './services/onboarding/register-ipc';
+import { registerContractsIpc } from './services/contracts/register-ipc';
 
 const isDev = !app.isPackaged;
 
@@ -98,10 +101,15 @@ async function bootstrap(): Promise<void> {
     runMigrations(db);
     logger.info('db ready, migrations applied');
   } catch (err) {
+    console.error('FATAL: failed to initialize local database', err);
     logger.error({ err }, 'fatal: failed to initialize local database');
     app.exit(1);
     return;
   }
+
+  // Forward-declare authService so the timer's lazy getUserId callback
+  // can reference it (assigned in Phase 5 below).
+  let authService: ReturnType<typeof createAuthService> | null = null;
 
   // --- Phase 2: Timer service (9-state FSM) ----------------------------
   let timerService: TimerService | null = null;
@@ -109,7 +117,31 @@ async function bootstrap(): Promise<void> {
   try {
     const db = initDatabase();
     const repos = createRepos(db);
-    timerService = createTimerService({ db, repos, logger });
+
+    // Ensure device_self has a row — required for session creation.
+    if (!repos.device.findSelf()) {
+      const deviceId = `dev_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
+      repos.device.insert({
+        id: deviceId,
+        installation_uuid: randomUUID(),
+        os_name: process.platform === 'darwin' ? 'mac' : 'win',
+        os_version: os.release(),
+        app_version: app.getVersion(),
+        arch: process.arch === 'arm64' ? 'arm64' : 'x64',
+        created_at: Date.now(),
+      });
+      logger.info({ deviceId }, 'seeded device_self row');
+    }
+
+    timerService = createTimerService({
+      db,
+      repos,
+      logger,
+      // Lazy callbacks — auth is wired after timer, so these close
+      // over the authService variable that gets assigned later.
+      getUserId: () => authService?.getCurrentUser()?.id ?? repos.user.findFirst()?.id ?? null,
+      getDeviceId: () => repos.device.findSelf()?.id ?? null,
+    });
     // Restore any open session that was left behind by a previous crash.
     timerService.restoreFromDb();
     detachIpcHandlers = registerIpcHandlers({ timer: timerService });
@@ -125,7 +157,7 @@ async function bootstrap(): Promise<void> {
     const db = initDatabase();
     const repos = createRepos(db);
     const httpPort = createFetchAuthHttpPort({ logger });
-    const authService = createAuthService({
+    authService = createAuthService({
       logger,
       repos,
       http: httpPort,
@@ -167,6 +199,26 @@ async function bootstrap(): Promise<void> {
     logger.error({ err }, 'failed to initialize auth service');
   }
 
+  // --- Contracts IPC (fetches from backend API, not local DB) -----------
+  let detachContractsIpc: (() => void) | null = null;
+  try {
+    const db = initDatabase();
+    const repos = createRepos(db);
+    const apiBaseUrl =
+      process.env.DTT_API_BASE_URL ?? 'http://localhost:4000';
+    detachContractsIpc = registerContractsIpc({
+      logger,
+      getAccessToken: () => authService?.getAccessToken() ?? null,
+      getUserId: () => authService?.getCurrentUser()?.id ?? null,
+      apiBaseUrl,
+      contractRepo: repos.contract,
+      taskRepo: repos.task,
+    });
+    logger.info('contracts IPC wired');
+  } catch (err) {
+    logger.error({ err }, 'failed to initialize contracts IPC');
+  }
+
   // --- Phase 6: onboarding wizard --------------------------------------
   let detachOnboardingIpc: (() => void) | null = null;
   try {
@@ -191,6 +243,7 @@ async function bootstrap(): Promise<void> {
   let stopCaptureIpc: (() => void) | null = null;
   let captureSupervisor: ReturnType<typeof createCaptureSupervisor> | null =
     null;
+  let screenshotService: ReturnType<typeof createScreenshotService> | null = null;
   try {
     const db = initDatabase();
     const repos = createRepos(db);
@@ -198,7 +251,7 @@ async function bootstrap(): Promise<void> {
       logger,
       permissionGrantRepo: repos.permissionGrant,
     });
-    const screenshotService = createScreenshotService({
+    screenshotService = createScreenshotService({
       logger,
       screenshotRepo: repos.screenshot,
       sessionRepo: repos.session,
@@ -247,7 +300,7 @@ async function bootstrap(): Promise<void> {
     const db = initDatabase();
     const repos = createRepos(db);
     const apiBaseUrl =
-      process.env.DTT_API_BASE_URL ?? 'https://api.marketeq.com/tts/v1';
+      process.env.DTT_API_BASE_URL ?? 'http://localhost:4000';
     const api = createApiClient({
       baseUrl: apiBaseUrl,
       logger,
@@ -256,6 +309,10 @@ async function bootstrap(): Promise<void> {
       store: createSqliteOutboxStore(db),
       logger,
     });
+    // Wire the auth token into the API client so sync requests are authenticated
+    if (authService) {
+      authService.setApiClient({ setAuthToken: (t) => api.setAuthToken(t) });
+    }
     const network = createNetworkMonitor({ api, logger });
     const worker = createSyncWorker({
       api,
@@ -276,7 +333,9 @@ async function bootstrap(): Promise<void> {
       detachEventBridge = createEventBridge({
         outbox,
         timer: timerService,
+        screenshotService: screenshotService ?? undefined,
         getDeviceId: () => repos.device.findSelf()?.id ?? null,
+        getUserId: () => authService?.getCurrentUser()?.id ?? null,
         logger,
       }).detach;
     }
@@ -343,6 +402,11 @@ async function bootstrap(): Promise<void> {
       logger.warn({ err }, 'error while detaching onboarding ipc');
     }
     try {
+      detachContractsIpc?.();
+    } catch (err) {
+      logger.warn({ err }, 'error while detaching contracts ipc');
+    }
+    try {
       timerService?.dispatch({ type: 'APP_QUIT' }).catch(() => undefined);
       timerService?.dispose();
       detachIpcHandlers?.();
@@ -381,6 +445,7 @@ app.on('window-all-closed', () => {
 // tries to persist permission-grant rows against an already-closed DB.
 
 void bootstrap().catch((err) => {
+  console.error('BOOTSTRAP FAILED:', err);
   logger.error({ err }, 'bootstrap failed');
   app.exit(1);
 });

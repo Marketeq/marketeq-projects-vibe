@@ -129,6 +129,37 @@ jobs:
           git reset --hard "origin/$SOURCE_BRANCH"
           git push origin "$TARGET_BRANCH" --force
 
+      - name: Patch Vercel staging env vars to staging backend
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          PROJECT_ID="prj_zxwZ4cEzY1kRsMbPst6nAoMWTxTG"
+          BASE="https://marketeq-vibe-backend-staging.onrender.com/api"
+
+          # Fetch current env var IDs for the keys we need to fix
+          ENVS=$(curl -sf -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/$PROJECT_ID/env")
+
+          for KEY in NEXT_PUBLIC_AUTH_URL NEXT_PUBLIC_API_URL NEXT_PUBLIC_USER_URL; do
+            ID=$(echo "$ENVS" | jq -r --arg k "$KEY" '.envs[] | select(.key == $k) | .id')
+            if [ -n "$ID" ]; then
+              curl -sf -X PATCH \
+                -H "Authorization: Bearer $VERCEL_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{\"value\":\"$BASE\",\"target\":[\"production\",\"preview\"]}" \
+                "https://api.vercel.com/v9/projects/$PROJECT_ID/env/$ID" > /dev/null
+              echo "Patched $KEY → $BASE"
+            else
+              # Create it if missing
+              curl -sf -X POST \
+                -H "Authorization: Bearer $VERCEL_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{\"key\":\"$KEY\",\"value\":\"$BASE\",\"type\":\"plain\",\"target\":[\"production\",\"preview\"]}" \
+                "https://api.vercel.com/v9/projects/$PROJECT_ID/env" > /dev/null
+              echo "Created $KEY → $BASE"
+            fi
+          done
+
       - name: Notify team (commit comment)
         if: always()
         env:

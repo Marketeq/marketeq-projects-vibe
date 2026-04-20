@@ -31,6 +31,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   categories: 'categories',      // category taxonomy service
   tags: 'categories',            // tags managed by category-service
   'category-pages': 'categories', // category page assembly
+  tasks: 'timeTracking',          // time-tracking-service contract task endpoints
   screenshots: 'timeTracking',   // time-tracking-service screenshot endpoints
   'time-tracking': 'timeTracking', // time-tracking-service general endpoints
   sessions: 'timeTracking',      // time-tracking-service session endpoints
@@ -85,6 +86,9 @@ export class ProxyController {
     let downstreamPath = normalizedPath
     if (segments[0] === 'v1' && segments[1] === 'users') {
       downstreamPath = '/' + segments.slice(1).join('/')
+    }
+    if (serviceName === 'categories') {
+      downstreamPath = `/api${downstreamPath}`
     }
     if (req.url.includes('?')) {
       downstreamPath += '?' + req.url.split('?').slice(1).join('?')

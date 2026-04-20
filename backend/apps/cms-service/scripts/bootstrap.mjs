@@ -23,14 +23,25 @@ const existing = await payload.find({
 })
 
 if (existing.totalDocs === 0) {
+  const adminEmail = process.env.CMS_ADMIN_EMAIL
+  const adminPassword = process.env.CMS_ADMIN_PASSWORD
+
+  if (!adminEmail || !adminPassword) {
+    throw new Error(
+      'CMS_ADMIN_EMAIL and CMS_ADMIN_PASSWORD are required to create the first admin user.',
+    )
+  }
+
   await payload.create({
     collection: 'users',
     overrideAccess: true,
     data: {
-      email: process.env.CMS_ADMIN_EMAIL || 'chris@marketeqdigital.com',
-      password: process.env.CMS_ADMIN_PASSWORD || 'ChangeMe123!',
-      name: 'Chris Torres',
+      email: adminEmail,
+      password: adminPassword,
+      name: process.env.CMS_ADMIN_NAME || 'CMS Admin',
+      userType: 'admin',
       role: 'admin',
+      status: 'active',
     },
   })
   console.log('✔ Created first admin user.')
