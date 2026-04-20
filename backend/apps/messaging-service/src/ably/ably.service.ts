@@ -3,13 +3,19 @@ import * as Ably from 'ably';
 
 @Injectable()
 export class AblyService {
-  private readonly client: Ably.Rest;
+  private readonly client: Ably.Rest | null;
 
   constructor() {
-    this.client = new Ably.Rest({ key: process.env.ABLY_API_KEY });
+    this.client = process.env.ABLY_API_KEY
+      ? new Ably.Rest({ key: process.env.ABLY_API_KEY })
+      : null;
+    if (!this.client) {
+      console.warn('[AblyService] ABLY_API_KEY not set — real-time publish disabled');
+    }
   }
 
   async createTokenRequest(userId: string, threadIds: string[] = []) {
+    if (!this.client) return null;
     const capability: Record<string, string[]> = {
       [`user:${userId}`]: ['subscribe'],
     };
@@ -25,6 +31,7 @@ export class AblyService {
   }
 
   async publish(channel: string, event: string, data: unknown) {
+    if (!this.client) return;
     const ch = this.client.channels.get(channel);
     await ch.publish(event, data);
   }
