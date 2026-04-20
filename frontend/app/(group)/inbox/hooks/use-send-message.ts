@@ -25,7 +25,7 @@ export function useSendMessage(
    * @param convId   the conversation UUID
    * @param plaintext the message body
    */
-  return async function send(convId: string, plaintext: string) {
+  return async function send(convId: string, plaintext: string, replyToMessageId?: string) {
     if (!convId || !token) {
       throw new Error("Missing conversation ID or auth token")
     }
@@ -69,7 +69,7 @@ export function useSendMessage(
     return apiFetch<SendResponse>(`/v1/messages`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
-      body: { threadId: convId, ciphertext },
+      body: { threadId: convId, ciphertext, ...(replyToMessageId && { replyToMessageId }) },
     })
   }
 }

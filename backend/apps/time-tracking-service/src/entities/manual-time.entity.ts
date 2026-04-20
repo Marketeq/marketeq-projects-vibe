@@ -18,8 +18,8 @@ export class ManualTime {
   @Column({ name: 'user_id', type: 'text' })
   userId: string;
 
-  @Column({ name: 'project_id', type: 'text', nullable: true })
-  projectId: string | null;
+  @Column({ name: 'contract_id', type: 'text', nullable: true })
+  contractId: string | null;
 
   @Column({ name: 'task_id', type: 'text', nullable: true })
   taskId: string | null;

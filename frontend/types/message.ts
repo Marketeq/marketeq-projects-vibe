@@ -16,6 +16,8 @@ export interface Message {
   messageType?: string
   edited?: boolean
   starred?: boolean
+  replyToMessageId?: string
+  forwardedFromId?: string
 }
 
 // Extended Message type to include file attachments

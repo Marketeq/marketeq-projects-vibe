@@ -5,6 +5,11 @@ import {
   isEditor,
   readPublishedOrCmsUser,
 } from '../access/roles';
+import {
+  syncProjectToListings,
+  deleteProjectFromListings,
+} from '../hooks/afterChange/syncProjects';
+import { computeProjectFields } from '../hooks/beforeChange/computeProjectFields';
 
 /**
  * Projects — dedicated CMS collection for the "Projects" listing type.
@@ -125,17 +130,50 @@ export const Projects: CollectionConfig = {
             },
             {
               name: 'deliverables',
-              type: 'richText',
-              admin: { description: 'Bullet list or table of project deliverables.' },
+              type: 'array',
+              labels: { singular: 'Phase', plural: 'Phases' },
+              admin: {
+                description:
+                  'Project deliverables grouped by phase. Each phase has a label (e.g. "Phase One"), a name (e.g. "Research"), and a list of check items rendered on the project details page.',
+              },
+              fields: [
+                {
+                  name: 'phaseLabel',
+                  type: 'text',
+                  required: true,
+                  admin: { description: 'e.g. "Phase One", "Phase Two"' },
+                },
+                {
+                  name: 'phaseName',
+                  type: 'text',
+                  required: true,
+                  admin: { description: 'e.g. "Research", "Design", "Front-End"' },
+                },
+                {
+                  name: 'items',
+                  type: 'array',
+                  labels: { singular: 'Item', plural: 'Items' },
+                  required: true,
+                  minRows: 1,
+                  fields: [
+                    { name: 'text', type: 'text', required: true },
+                  ],
+                },
+              ],
             },
             {
               name: 'faqQuestions',
               type: 'array',
               labels: { singular: 'FAQ', plural: 'FAQs' },
               admin: { description: 'Common questions answered by the team. Editable by team lead, must pass moderation.' },
+              // Per docs/md/.../creation/Strapi Integration:196 §FAQItem the
+              // answer is spec'd as Rich Text, so editors can add bold,
+              // lists, inline links etc. — listings-service reuses the same
+              // Lexical→HTML converter used for fullDescription (no extra
+              // code path, same sanitiser).
               fields: [
                 { name: 'question', type: 'text', required: true },
-                { name: 'answer', type: 'textarea', required: true },
+                { name: 'answer', type: 'richText', required: true },
               ],
             },
             {
@@ -147,6 +185,13 @@ export const Projects: CollectionConfig = {
               },
               fields: [{ name: 'question', type: 'text', required: true }],
             },
+            // NOTE: The "About the Team" section is intentionally NOT a CMS
+            // field. Per docs/md/CMS Service/projects/details/03 PHASE 1 §1
+            // and data-dictionary.csv:12/32, team composition is *derived*
+            // from `project_tasks.assignee` (user IDs), not authored in the
+            // CMS. The listings-service will expose GET /projects/:id/team
+            // once project_tasks lands. Until then the frontend renders a
+            // static fallback (see project-details/[slug]/page.tsx).
           ],
         },
 
@@ -250,6 +295,104 @@ export const Projects: CollectionConfig = {
               defaultValue: false,
               admin: { description: 'Show Klarna installment options at checkout.' },
             },
+            // ── Scope Builder ────────────────────────────────────────────────
+            // Per docs/md/CMS Service/projects/creation/Strapi Integration §Step 3
+            // Scope Builder. Phase { phase_name, order, tasks[] } and
+            // Task { title, role_name, location, experience_level, estimated_hours }
+            // are the primary data the entire pricing + deliverables +
+            // skills + duration pipeline derives from.
+            //
+            // The spec's warning applies verbatim:
+            //   ⛔ Do NOT add editable fields for duration, weeks, start day,
+            //      or end day. These are calculated automatically based on
+            //      task hours and work schedules.
+            {
+              name: 'scope',
+              type: 'array',
+              labels: { singular: 'Phase', plural: 'Scope (phases)' },
+              admin: {
+                description:
+                  'Ordered list of phases. Each phase contains tasks with role, experience, and estimated hours. Pricing and duration are computed from this tree — do not add duration fields here.',
+              },
+              fields: [
+                {
+                  name: 'phaseName',
+                  type: 'text',
+                  required: true,
+                  admin: { description: 'e.g. "Research", "Design", "Front-End"' },
+                },
+                {
+                  name: 'order',
+                  type: 'number',
+                  required: true,
+                  min: 1,
+                  admin: {
+                    description:
+                      'Phase order (1-indexed). Used to sort phases on the project details page.',
+                  },
+                },
+                {
+                  name: 'tasks',
+                  type: 'array',
+                  required: true,
+                  minRows: 1,
+                  labels: { singular: 'Task', plural: 'Tasks' },
+                  fields: [
+                    { name: 'title', type: 'text', required: true },
+                    {
+                      name: 'roleName',
+                      type: 'text',
+                      required: true,
+                      admin: { description: 'Role required for this task (e.g. "Senior Designer").' },
+                    },
+                    {
+                      name: 'location',
+                      type: 'text',
+                      admin: { description: 'Country preference (optional).' },
+                    },
+                    {
+                      name: 'experienceLevel',
+                      type: 'select',
+                      required: true,
+                      defaultValue: 'Medior',
+                      options: [
+                        { label: 'Student', value: 'Student' },
+                        { label: 'Junior', value: 'Junior' },
+                        { label: 'Medior', value: 'Medior' },
+                        { label: 'Senior', value: 'Senior' },
+                        { label: 'Guru', value: 'Guru' },
+                      ],
+                    },
+                    {
+                      name: 'estimatedHours',
+                      type: 'number',
+                      required: true,
+                      min: 1,
+                      admin: { description: 'Estimated hours for this task. Drives pricing + duration.' },
+                    },
+                    // Hybrid team model (see GAP-ANALYSIS §3.3): the
+                    // assignee lives on the Task, not in a separate
+                    // assignedTeam component. The team emerges as
+                    // unique(scope[].tasks[].assigneeEmail).
+                    //
+                    // Per spec §16 TeamMemberAssignment L96: the author
+                    // types `user_email`, NOT a UUID. Emails are safe
+                    // to expose in the admin (editors already know them)
+                    // and don't leak the internal UUID space. The sync
+                    // hook and hydrateTeam both resolve emails →
+                    // user-service profiles at read time.
+                    {
+                      name: 'assigneeEmail',
+                      type: 'email',
+                      admin: {
+                        description:
+                          'Email of the user assigned to this task. Resolved to a profile at render time via user-service. Leave empty if unassigned.',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
           ],
         },
 
@@ -282,13 +425,18 @@ export const Projects: CollectionConfig = {
               fields: [{ name: 'value', type: 'text', required: true }],
             },
             {
+              // Per data-dictionary.csv:11 — "Generated by AI based on
+              // task breakdown and assigned roles." Spec says computed,
+              // but we keep it editable as a manual fallback until the
+              // AI skill-extraction pipeline (§14.11 HuggingFace) lands.
+              // Once that's wired, flip to `admin: { readOnly: true }`.
               name: 'projectSkills',
               type: 'array',
               maxRows: 25,
               labels: { singular: 'Skill', plural: 'Skills' },
               admin: {
                 description:
-                  'Skills associated with the project scope. Seeded by AI from task breakdown; editable.',
+                  'Spec: AI-generated from task breakdown (§14.11). Currently editable as manual fallback — will flip to readOnly when AI pipeline lands.',
               },
               fields: [{ name: 'value', type: 'text', required: true }],
             },
@@ -321,6 +469,35 @@ export const Projects: CollectionConfig = {
                   required: false,
                 },
               ],
+            },
+            // Per creation/Strapi Integration §60 + creation/Fields That
+            // Require Autocomplete §3: industries are distinct from
+            // categories and rendered as "industry badges" on the details
+            // page (doc §13 L52). Sourced from the same autocomplete
+            // library as categories (filterLevel=1 or 2).
+            {
+              name: 'industries',
+              type: 'array',
+              maxRows: 5,
+              labels: { singular: 'Industry', plural: 'Industries' },
+              admin: {
+                description:
+                  'Industry tags shown as badges. Max 5. Distinct from project categories.',
+              },
+              fields: [{ name: 'value', type: 'text', required: true }],
+            },
+            // Per spec §16 L139 + creation §208: editor-curated list of
+            // related projects. M2M self-reference so the admin can pick
+            // from the same Projects collection.
+            {
+              name: 'relatedProjects',
+              type: 'relationship',
+              relationTo: 'projects' as any,
+              hasMany: true,
+              admin: {
+                description:
+                  'Manually curated related projects. Shown in the "You might also like" rail on the details page.',
+              },
             },
           ],
         },
@@ -408,7 +585,11 @@ export const Projects: CollectionConfig = {
             {
               name: 'projectDurationLabel',
               type: 'text',
-              admin: { readOnly: true, description: 'Human-readable duration (e.g. "12 weeks").' },
+              admin: {
+                readOnly: true,
+                description:
+                  'Human-readable duration. Unit pivots per spec §01 L98-104: <7 days → "N days", <4 weeks → "N weeks", else "N months".',
+              },
             },
             {
               name: 'projectHistoryRatings',
@@ -421,12 +602,210 @@ export const Projects: CollectionConfig = {
               },
             },
             {
+              // Derived in computeProjectFields from
+              // unique(scope[].tasks[].assigneeEmail). The gateway
+              // hydrates each email into a full profile via
+              // user-service at request time. Emails (not UUIDs)
+              // match spec §16 L96 and avoid leaking the UUID space
+              // to CMS editors.
+              name: 'teamEmails',
+              type: 'json',
+              admin: {
+                readOnly: true,
+                description:
+                  'Derived from scope task assignees. Array of email addresses — the canonical team identifiers per spec §16.',
+              },
+            },
+            {
               name: 'datePublished',
               type: 'date',
               admin: {
                 readOnly: true,
                 description: 'Auto-set when the project is first published.',
               },
+            },
+          ],
+        },
+
+        // ── 6. Admin & moderation ─────────────────────────────────────────
+        // Per docs/md/.../16 - Strapi Integration §Basic Project Info L44-51
+        // + §SEO & Admin L137-149. Fields here are internal-only (not
+        // synced to listings or rendered on the frontend) except where
+        // the sync hook explicitly reads them.
+        {
+          label: 'Admin & Moderation',
+          description:
+            'Internal fields for project governance. Not shown to public visitors.',
+          fields: [
+            {
+              type: 'row',
+              fields: [
+                {
+                  name: 'visibility',
+                  type: 'select',
+                  defaultValue: 'public',
+                  options: [
+                    { label: 'Public', value: 'public' },
+                    { label: 'Private', value: 'private' },
+                    { label: 'Unlisted', value: 'unlisted' },
+                  ],
+                  admin: {
+                    width: '33%',
+                    description:
+                      'Distinct from draft/published. "Private" hides from search; "Unlisted" is accessible by direct URL only.',
+                  },
+                },
+                {
+                  name: 'moderationStatus',
+                  type: 'select',
+                  defaultValue: 'approved',
+                  options: [
+                    { label: 'Pending', value: 'pending' },
+                    { label: 'Approved', value: 'approved' },
+                    { label: 'Rejected', value: 'rejected' },
+                    { label: 'Escalated', value: 'escalated' },
+                  ],
+                  admin: {
+                    width: '33%',
+                    description:
+                      'Content-moderation status, separate from Payload\'s draft/published workflow. Set automatically by the FlagScore hook (§14.12).',
+                  },
+                },
+                {
+                  name: 'ownerId',
+                  type: 'text',
+                  admin: {
+                    width: '33%',
+                    description:
+                      'UUID of the project owner from user-service. Links this project to a real user for team, audit, and permissions.',
+                  },
+                },
+              ],
+            },
+            {
+              type: 'row',
+              fields: [
+                {
+                  name: 'isFlagged',
+                  type: 'checkbox',
+                  defaultValue: false,
+                  admin: {
+                    width: '33%',
+                    description: 'Internal flag for admin review.',
+                  },
+                },
+                {
+                  name: 'forceReviewOnEdit',
+                  type: 'checkbox',
+                  defaultValue: true,
+                  admin: {
+                    width: '33%',
+                    description:
+                      'When true, editing sensitive fields (title, description, deliverables, tags, skills, video) sets moderationStatus back to "pending" (§14.13).',
+                  },
+                },
+                {
+                  name: 'previewToken',
+                  type: 'text',
+                  admin: {
+                    width: '33%',
+                    readOnly: true,
+                    description:
+                      'Auto-generated shareable token for previewing unpublished drafts. Set on first create by the beforeChange hook.',
+                  },
+                },
+              ],
+            },
+            {
+              name: 'adminNotes',
+              type: 'richText',
+              admin: {
+                description:
+                  'Internal notes visible only to admins. Not synced to listings or shown publicly.',
+              },
+            },
+            {
+              name: 'adminTags',
+              type: 'array',
+              labels: { singular: 'Admin Tag', plural: 'Admin Tags' },
+              admin: {
+                description: 'Internal categorization tags for admin use only.',
+              },
+              fields: [
+                { name: 'value', type: 'text', required: true },
+              ],
+            },
+            {
+              name: 'activityLog',
+              type: 'array',
+              labels: { singular: 'Entry', plural: 'Activity Log' },
+              admin: {
+                readOnly: true,
+                description:
+                  'Audit trail appended automatically on every save. Shape per spec §14.16 / §11.',
+                components: {
+                  RowLabel: ({ data, index }: { data?: Record<string, unknown>; index?: number }) => {
+                    const row = (data ?? {}) as {
+                      actionType?: string;
+                      performedBy?: string;
+                      timestamp?: string;
+                      fieldChanged?: string;
+                    };
+                    const num = String((index ?? 0) + 1).padStart(2, '0');
+                    const when = row.timestamp
+                      ? new Date(row.timestamp).toLocaleString(undefined, {
+                          month: 'short',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : '—';
+                    const action = row.actionType
+                      ? row.actionType.charAt(0).toUpperCase() + row.actionType.slice(1)
+                      : 'Change';
+                    const actor = row.performedBy || 'system';
+                    const field = row.fieldChanged && row.fieldChanged !== '(save)' ? ` · ${row.fieldChanged}` : '';
+                    return `#${num}  ·  ${when}  ·  ${action}  ·  ${actor}${field}`;
+                  },
+                },
+              },
+              fields: [
+                {
+                  name: 'actionType',
+                  type: 'select',
+                  options: [
+                    { label: 'Create', value: 'create' },
+                    { label: 'Update', value: 'update' },
+                    { label: 'Publish', value: 'publish' },
+                    { label: 'Unpublish', value: 'unpublish' },
+                    { label: 'Flag', value: 'flag' },
+                    { label: 'Moderate', value: 'moderate' },
+                  ],
+                },
+                { name: 'performedBy', type: 'text' },
+                { name: 'timestamp', type: 'date' },
+                { name: 'fieldChanged', type: 'text' },
+              ],
+            },
+            // SEO — per spec §16 L137-138. The @payloadcms/plugin-seo is
+            // installed globally but not targeted at this collection, so
+            // adding inline fields for now.
+            {
+              type: 'row',
+              fields: [
+                {
+                  name: 'seoTitle',
+                  type: 'text',
+                  maxLength: 70,
+                  admin: { width: '50%', description: 'Max 70 chars. Defaults to project title if empty.' },
+                },
+                {
+                  name: 'seoDescription',
+                  type: 'textarea',
+                  maxLength: 160,
+                  admin: { width: '50%', description: 'Max 160 chars. Defaults to shortDescription if empty.' },
+                },
+              ],
             },
           ],
         },
@@ -444,26 +823,45 @@ export const Projects: CollectionConfig = {
       },
     },
     {
+      // Per data-dictionary.csv:14 — "True only if at least one assigned
+      // team member is online." Spec says runtime-computed, but we keep
+      // it as an admin override toggle so editors can force-disable the
+      // widget for specific projects. The frontend ANDs this with the
+      // real-time presence check when messaging-service lands.
       name: 'chatEnabled',
       type: 'checkbox',
       defaultValue: false,
       admin: {
         position: 'sidebar',
         description:
-          'Show the live-chat widget. Effective state is computed at runtime from team online status.',
+          'Spec: runtime-computed from team online status. Currently an admin override — frontend will AND with real-time presence when messaging-service lands.',
       },
     },
     {
+      // Per data-dictionary.csv:25 — "Visible to logged-in users only."
+      // Spec treats this as a frontend feature, not a per-project CMS
+      // toggle. Kept for backwards compat with the sync pipeline, but
+      // the spec intent is that the report button always exists for
+      // logged-in users.
       name: 'reportButtonEnabled',
       type: 'checkbox',
       defaultValue: true,
-      admin: { position: 'sidebar' },
+      admin: {
+        position: 'sidebar',
+        description: 'Spec: frontend-only feature. Kept as admin override for edge cases (e.g. disable on internal projects).',
+      },
     },
     {
+      // Per data-dictionary.csv:26 — "Always true for public projects."
+      // Spec says not configurable. Kept for backwards compat; default
+      // true matches spec intent.
       name: 'shareButtonEnabled',
       type: 'checkbox',
       defaultValue: true,
-      admin: { position: 'sidebar' },
+      admin: {
+        position: 'sidebar',
+        description: 'Spec: always true for public projects. Kept as admin override; default matches spec.',
+      },
     },
     {
       name: 'helpButtonEnabled',
@@ -474,9 +872,10 @@ export const Projects: CollectionConfig = {
   ],
 
   hooks: {
-    afterChange: [
-      // CmsEventPublisher will be wired in a follow-up task (RMQ-01).
-      // Stub left intentionally empty so collection compiles standalone.
-    ],
+    // Derive Computed-tab fields from the authored doc before persistence.
+    // See docs/md/CMS Service/projects/GAP-ANALYSIS.md §2 + §7 Tier 1.
+    beforeChange: [computeProjectFields],
+    afterChange: [syncProjectToListings],
+    afterDelete: [deleteProjectFromListings],
   },
 }

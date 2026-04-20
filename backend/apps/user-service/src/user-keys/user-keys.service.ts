@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as crypto from 'crypto';
@@ -8,27 +8,12 @@ import { RegisterDeviceDto } from './dtos/register-device.dto';
 
 @Injectable()
 export class UserKeysService {
-  private readonly logger = new Logger(UserKeysService.name);
-
   constructor(
     @InjectRepository(UserKey)
     private readonly userKeyRepo: Repository<UserKey>,
     @InjectRepository(UserDevice)
     private readonly userDeviceRepo: Repository<UserDevice>,
   ) {}
-
-  async getUserKeys(userId: string): Promise<{ publicKey: string; privateKeyPem: string }> {
-    const userKey = await this.userKeyRepo.findOne({ where: { userId } });
-    if (!userKey) {
-      return { publicKey: '', privateKeyPem: '' };
-    }
-
-    const privateKeyPem = userKey.encryptedPrivateKey
-      ? this.decryptPrivateKey(userKey.encryptedPrivateKey)
-      : '';
-
-    return { publicKey: userKey.publicKey, privateKeyPem };
-  }
 
   async registerDevice(
     userId: string,
@@ -62,11 +47,6 @@ export class UserKeysService {
     return { deviceId: savedDevice.id };
   }
 
-  async getPublicKey(userId: string): Promise<string> {
-    const userKey = await this.userKeyRepo.findOne({ where: { userId } });
-    return userKey?.publicKey ?? '';
-  }
-
   async getEncryptedPrivateKey(userId: string): Promise<{ encryptedPrivateKey: string | null }> {
     const userKey = await this.userKeyRepo.findOne({ where: { userId } });
     return { encryptedPrivateKey: userKey?.encryptedPrivateKey ?? null };
@@ -91,8 +71,9 @@ export class UserKeysService {
   private encryptPrivateKey(plaintext: string): string {
     const secret = process.env.E2EE_SERVER_SECRET;
     if (!secret) {
-      // Dev mode: store as-is
-      return plaintext;
+      throw new Error(
+        'E2EE_SERVER_SECRET is not configured. Refusing to store private-key material without it.',
+      );
     }
 
     const key = crypto.scryptSync(secret, 'e2ee-salt', 32);
@@ -101,37 +82,6 @@ export class UserKeysService {
     const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
     const authTag = cipher.getAuthTag();
 
-    // Format: base64(iv):base64(authTag):base64(encrypted)
     return `${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted.toString('base64')}`;
-  }
-
-  private decryptPrivateKey(ciphertext: string): string {
-    const secret = process.env.E2EE_SERVER_SECRET;
-    if (!secret) {
-      // Dev mode: stored as-is
-      return ciphertext;
-    }
-
-    try {
-      const parts = ciphertext.split(':');
-      if (parts.length !== 3) {
-        // Not encrypted (legacy or dev data), return as-is
-        return ciphertext;
-      }
-
-      const iv = Buffer.from(parts[0], 'base64');
-      const authTag = Buffer.from(parts[1], 'base64');
-      const encrypted = Buffer.from(parts[2], 'base64');
-
-      const key = crypto.scryptSync(secret, 'e2ee-salt', 32);
-      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-      decipher.setAuthTag(authTag);
-      const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
-
-      return decrypted.toString('utf8');
-    } catch (err) {
-      this.logger.warn('Failed to decrypt private key, returning as-is');
-      return ciphertext;
-    }
   }
 }

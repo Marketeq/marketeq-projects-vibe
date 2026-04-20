@@ -54,8 +54,8 @@ export class Project {
   @Column({ nullable: true, type: 'text' })
   videoUrl: string;
 
-  @Column('text', { array: true, default: [] })
-  deliverables: string[];
+  @Column('jsonb', { nullable: true, default: () => "'[]'" })
+  deliverables: Array<{ phaseLabel: string; phaseName: string; items: string[] }>;
 
   @Column('jsonb', { nullable: true, default: '[]' })
   faqs: { question: string; answer: string }[];
