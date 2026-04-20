@@ -8221,7 +8221,7 @@ function Default() {
                             headers: token ? { Authorization: `Bearer ${token}` } : {},
                             body: { participantIds: [currentUser.id, profile.id], isGroup: false },
                           })
-                          router.push("/inbox")
+                          router.push(`/inbox?threadId=${thread.id}`)
                         } catch (err) {
                           console.error("Failed to start conversation:", err)
                         }
