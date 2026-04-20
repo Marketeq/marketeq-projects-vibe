@@ -35,5 +35,5 @@ function getOtherParticipantId(
   conv: Conversation,
   me: string
 ): string | undefined {
-  return conv.participants.find((p) => p.userId !== me)?.userId
+  return conv.participantIds?.find((id) => id !== me)
 }

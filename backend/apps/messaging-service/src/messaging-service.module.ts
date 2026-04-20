@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { Thread } from './threads/entities/thread.entity';
 import { ThreadUserState } from './threads/entities/thread-user-state.entity';
 import { ThreadList } from './threads/entities/thread-list.entity';
@@ -16,10 +17,12 @@ import { MessagesController } from './messages/messages.controller';
 import { ThreadsService } from './threads/threads.service';
 import { ThreadsController } from './threads/threads.controller';
 import { EncryptionModule } from './encryption/encryption.module';
+import { TrashCleanupService } from './threads/trash-cleanup.service';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
@@ -34,6 +37,6 @@ import { EncryptionModule } from './encryption/encryption.module';
     EncryptionModule,
   ],
   controllers: [MessagesController, ThreadsController],
-  providers: [AblyService, MessagesService, ThreadsService],
+  providers: [AblyService, MessagesService, ThreadsService, TrashCleanupService],
 })
 export class MessagingServiceModule {}

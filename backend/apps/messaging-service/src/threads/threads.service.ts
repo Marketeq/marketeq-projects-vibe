@@ -159,13 +159,17 @@ export class ThreadsService {
     await this.assertParticipant(threadId, userId);
     let state = await this.stateRepo.findOne({ where: { threadId, userId } });
     if (!state) {
-      state = this.stateRepo.create({ threadId, userId });
+      state = this.stateRepo.create({ threadId, userId, ...patch });
+      const saved = await this.stateRepo.save(state);
+      this.ably.publishThreadStateChanged(userId, threadId, patch).catch(() => undefined);
+      return saved;
     }
-    Object.assign(state, patch);
-    const saved = await this.stateRepo.save(state);
-    // Per Doc 05 EC-1.4: fan out state changes on user:{userId} so other devices sync.
+    // Partial UPDATE only — avoids race where concurrent save() overwrites
+    // fields it didn't intend to change (e.g. markRead resetting isTrashed).
+    await this.stateRepo.update({ id: state.id }, patch);
+    const updated = await this.stateRepo.findOne({ where: { id: state.id } });
     this.ably.publishThreadStateChanged(userId, threadId, patch).catch(() => undefined);
-    return saved;
+    return updated!;
   }
 
   async setFlag(threadId: string, userId: string, flag: StateFlag, value: boolean) {

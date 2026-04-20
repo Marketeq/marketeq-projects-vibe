@@ -28,6 +28,12 @@ export class MessagesController {
     return this.service.delete(id, req.user?.id);
   }
 
+  @Patch(':id/restore')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  restore(@Param('id') id: string, @Req() req: any) {
+    return this.service.restore(id, req.user?.id);
+  }
+
   @Patch(':id/read')
   @HttpCode(HttpStatus.OK)
   markRead(@Param('id') id: string, @Req() req: any) {

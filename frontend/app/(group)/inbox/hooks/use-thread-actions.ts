@@ -2,6 +2,21 @@ import { useCallback } from "react"
 import { apiFetch } from "@/src/lib/api"
 
 type JsonOpts = { method: "POST" | "DELETE" | "PATCH"; token: string }
+export type ThreadBulkAction =
+  | "star"
+  | "unstar"
+  | "pin"
+  | "unpin"
+  | "archive"
+  | "unarchive"
+  | "spam"
+  | "unspam"
+  | "mute"
+  | "unmute"
+  | "trash"
+  | "untrash"
+  | "mark-unread"
+  | "mark-read"
 
 async function call(path: string, { method, token }: JsonOpts) {
   return apiFetch(path, {
@@ -53,10 +68,28 @@ export function useThreadActions(token: string) {
     (threadId: string) => call(`/v1/threads/${threadId}/spam`, { method: "POST", token }),
     [token]
   )
+  const unspam = useCallback(
+    (threadId: string) => call(`/v1/threads/${threadId}/spam`, { method: "DELETE", token }),
+    [token]
+  )
   const trash = useCallback(
     (threadId: string) => call(`/v1/threads/${threadId}/trash`, { method: "POST", token }),
     [token]
   )
+  const untrash = useCallback(
+    (threadId: string) => call(`/v1/threads/${threadId}/trash`, { method: "DELETE", token }),
+    [token]
+  )
 
-  return { pin, unpin, star, unstar, archive, unarchive, markUnread, markRead, spam, trash }
+  const bulk = useCallback(
+    (ids: string[], action: ThreadBulkAction) =>
+      apiFetch(`/v1/threads/bulk`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+        body: { ids, action },
+      }),
+    [token]
+  )
+
+  return { pin, unpin, star, unstar, archive, unarchive, markUnread, markRead, spam, unspam, trash, untrash, bulk }
 }

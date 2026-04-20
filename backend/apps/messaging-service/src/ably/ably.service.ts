@@ -41,6 +41,10 @@ export class AblyService {
     return this.publish(`chat:thread-${threadId}`, 'message:delete', { messageId });
   }
 
+  publishMessageRestore(threadId: string, messageId: string) {
+    return this.publish(`chat:thread-${threadId}`, 'message:restore', { messageId });
+  }
+
   publishMessageRead(userId: string, messageId: string) {
     return this.publish(`user:${userId}`, 'message:read', { messageId });
   }

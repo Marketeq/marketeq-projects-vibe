@@ -46,6 +46,8 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
     []
   )
 
+  const resetCheckedChats = useCallback(() => setCheckedChats(0), [])
+
   const value = useMemo(
     () => ({
       pinnedChats,
@@ -54,6 +56,7 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
       showPinnedIcon,
       toggleShowPinnedIcon,
       onChatChecked,
+      resetCheckedChats,
       checkedChats,
     }),
     [
@@ -62,6 +65,7 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
       showPinnedIcon,
       toggleShowPinnedIcon,
       onChatChecked,
+      resetCheckedChats,
       checkedChats,
     ]
   )
@@ -160,7 +164,7 @@ export default function InboxRoot() {
 
   return (
     <Inbox>
-      <div className="flex bg-white flex-auto">
+      <div className="flex bg-white" style={{ minHeight: "calc(100vh - 65px)" }}>
         <LeftSidebar
           selectedConversation={selectedConversation}
           setSelectedConversation={setSelectedConversation}

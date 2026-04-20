@@ -75,6 +75,15 @@ export class MessagesService {
     await this.ablyService.publishMessageDelete(message.threadId, id);
   }
 
+  async restore(id: string, userId: string) {
+    const message = await this.messageRepo.findOne({ where: { id } });
+    if (!message) throw new NotFoundException('Message not found');
+    if (message.senderId !== userId) throw new ForbiddenException('Cannot restore others messages');
+
+    await this.messageRepo.update(id, { deleted: false });
+    await this.ablyService.publishMessageRestore(message.threadId, id);
+  }
+
   async markRead(messageId: string, userId: string) {
     const message = await this.messageRepo.findOne({ where: { id: messageId } });
     if (!message) throw new NotFoundException('Message not found');
