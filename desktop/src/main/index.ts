@@ -1,14 +1,13 @@
 // src/main/index.ts
 // Electron main process entry point for the Marketeq Time Tracker.
-// Responsibilities:
+// Responsibilities (Phase 1):
 //   1. Enforce single-instance lock.
 //   2. Initialize logging.
 //   3. Initialize the local SQLite database and run migrations.
-//   4. Register typed IPC handlers (timer/capture/sync/auth/onboarding).
-//   5. Create the main BrowserWindow via the Phase 6 window manager,
-//      wire tray + notifications.
+//   4. Register the typed IPC handlers.
+//   5. Create the main BrowserWindow.
 
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { ensureSingleInstance } from './lifecycle/single-instance';
 import { logger } from './logger';
@@ -18,7 +17,6 @@ import { registerIpcHandlers } from './ipc';
 import { createRepos } from './db/repos';
 import {
   createTimerService,
-  TIMER_CHANNELS,
   type TimerService,
 } from './services/timer/timer-service';
 import { createPermissionsService } from './services/permissions/permissions-service';
@@ -41,13 +39,9 @@ import { createAuthService } from './services/auth/auth-service';
 import { createFetchAuthHttpPort } from './services/auth/http-port';
 import { registerAuthIpc } from './services/auth/register-ipc';
 import { collectBroadcastTargets } from './ipc/timer';
-import {
-  createWindowManager,
-  resolveRendererPaths,
-  type WindowManager,
-} from './services/window/window-manager';
-import { createTrayService } from './services/tray/tray-service';
-import { createNotificationService } from './services/notifications/notification-service';
+import { ipcMain } from 'electron';
+import { randomUUID } from 'node:crypto';
+import os from 'node:os';
 import { createOnboardingService } from './services/onboarding/onboarding-service';
 import { registerOnboardingIpc } from './services/onboarding/register-ipc';
 import {
@@ -60,10 +54,53 @@ import { registerUpdaterIpc } from './services/updater/register-ipc';
 import type { ReleaseChannel } from './services/updater/channels';
 import { createErrorHandler } from './services/error-handler';
 import { createPowerMonitorService } from './services/power-monitor';
+import { registerContractsIpc } from './services/contracts/register-ipc';
 
 const isDev = !app.isPackaged;
 
-let windowManager: WindowManager | null = null;
+async function createMainWindow(): Promise<BrowserWindow> {
+  const win = new BrowserWindow({
+    width: 340,
+    height: 580,
+    minWidth: 320,
+    minHeight: 480,
+    show: true,
+    title: 'Marketeq',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 14, y: 14 },
+    webPreferences: {
+      // `__dirname` at runtime is `dist/main/main/`, so we need three `..`
+      // jumps to reach `dist/preload/preload/index.js`:
+      //   dist/main/main -> dist/main -> dist -> dist/preload/preload/index.js
+      preload: path.join(__dirname, '..', '..', 'preload', 'preload', 'index.js'),
+      contextIsolation: true,
+      sandbox: false,
+      nodeIntegration: false,
+    },
+  });
+
+  if (isDev && process.env.VITE_DEV_SERVER_URL) {
+    await win.loadURL(process.env.VITE_DEV_SERVER_URL);
+    win.webContents.openDevTools({ mode: 'detach' });
+  } else {
+    const rendererIndex = path.join(
+      __dirname,
+      '..',
+      '..',
+      'renderer',
+      'index.html',
+    );
+    await win.loadFile(rendererIndex);
+  }
+
+  win.once('ready-to-show', () => {
+    win.show();
+    win.focus();
+    win.moveTop();
+    app.dock?.bounce?.('informational');
+  });
+  return win;
+}
 
 let detachErrorHandler: (() => void) | null = null;
 let detachPowerMonitor: (() => void) | null = null;
@@ -88,10 +125,15 @@ async function bootstrap(): Promise<void> {
     runMigrations(db);
     logger.info('db ready, migrations applied');
   } catch (err) {
+    console.error('FATAL: failed to initialize local database', err);
     logger.error({ err }, 'fatal: failed to initialize local database');
     app.exit(1);
     return;
   }
+
+  // Forward-declare authService so the timer's lazy getUserId callback
+  // can reference it (assigned in Phase 5 below).
+  let authService: ReturnType<typeof createAuthService> | null = null;
 
   // --- Phase 2: Timer service (9-state FSM) ----------------------------
   let timerService: TimerService | null = null;
@@ -99,7 +141,31 @@ async function bootstrap(): Promise<void> {
   try {
     const db = initDatabase();
     const repos = createRepos(db);
-    timerService = createTimerService({ db, repos, logger });
+
+    // Ensure device_self has a row — required for session creation.
+    if (!repos.device.findSelf()) {
+      const deviceId = `dev_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
+      repos.device.insert({
+        id: deviceId,
+        installation_uuid: randomUUID(),
+        os_name: process.platform === 'darwin' ? 'mac' : 'win',
+        os_version: os.release(),
+        app_version: app.getVersion(),
+        arch: process.arch === 'arm64' ? 'arm64' : 'x64',
+        created_at: Date.now(),
+      });
+      logger.info({ deviceId }, 'seeded device_self row');
+    }
+
+    timerService = createTimerService({
+      db,
+      repos,
+      logger,
+      // Lazy callbacks — auth is wired after timer, so these close
+      // over the authService variable that gets assigned later.
+      getUserId: () => authService?.getCurrentUser()?.id ?? repos.user.findFirst()?.id ?? null,
+      getDeviceId: () => repos.device.findSelf()?.id ?? null,
+    });
     // Restore any open session that was left behind by a previous crash.
     timerService.restoreFromDb();
     detachIpcHandlers = registerIpcHandlers({ timer: timerService });
@@ -143,7 +209,7 @@ async function bootstrap(): Promise<void> {
     const authBaseUrl =
       process.env.DTT_API_BASE_URL ?? 'https://api.marketeq.com/tts/v1';
     const httpPort = createFetchAuthHttpPort({ logger, baseUrl: authBaseUrl });
-    const authService = createAuthService({
+    authService = createAuthService({
       logger,
       repos,
       http: httpPort,
@@ -185,10 +251,51 @@ async function bootstrap(): Promise<void> {
     logger.error({ err }, 'failed to initialize auth service');
   }
 
+  // --- Contracts IPC (fetches from backend API, not local DB) -----------
+  let detachContractsIpc: (() => void) | null = null;
+  try {
+    const db = initDatabase();
+    const repos = createRepos(db);
+    const apiBaseUrl =
+      process.env.DTT_API_BASE_URL ?? 'http://localhost:4000';
+    detachContractsIpc = registerContractsIpc({
+      logger,
+      getAccessToken: () => authService?.getAccessToken() ?? null,
+      getUserId: () => authService?.getCurrentUser()?.id ?? null,
+      apiBaseUrl,
+      contractRepo: repos.contract,
+      taskRepo: repos.task,
+    });
+    logger.info('contracts IPC wired');
+  } catch (err) {
+    logger.error({ err }, 'failed to initialize contracts IPC');
+  }
+
+  // --- Phase 6: onboarding wizard --------------------------------------
+  let detachOnboardingIpc: (() => void) | null = null;
+  try {
+    const db = initDatabase();
+    const repos = createRepos(db);
+    const onboardingService = createOnboardingService({
+      db,
+      logger,
+    });
+    detachOnboardingIpc = registerOnboardingIpc({
+      ipcMain,
+      logger,
+      service: onboardingService,
+      getBroadcastTargets: () => collectBroadcastTargets(),
+    });
+    logger.info('phase 6 onboarding service wired');
+  } catch (err) {
+    logger.error({ err }, 'failed to initialize onboarding service');
+  }
+
   // --- Phase 3: capture pipeline ---------------------------------------
   let stopCaptureIpc: (() => void) | null = null;
   let captureSupervisor: ReturnType<typeof createCaptureSupervisor> | null =
     null;
+  let screenshotService: ReturnType<typeof createScreenshotService> | null = null;
   try {
     const db = initDatabase();
     const repos = createRepos(db);
@@ -196,7 +303,7 @@ async function bootstrap(): Promise<void> {
       logger,
       permissionGrantRepo: repos.permissionGrant,
     });
-    const screenshotService = createScreenshotService({
+    screenshotService = createScreenshotService({
       logger,
       screenshotRepo: repos.screenshot,
       sessionRepo: repos.session,
@@ -245,7 +352,7 @@ async function bootstrap(): Promise<void> {
     const db = initDatabase();
     const repos = createRepos(db);
     const apiBaseUrl =
-      process.env.DTT_API_BASE_URL ?? 'https://api.marketeq.com/tts/v1';
+      process.env.DTT_API_BASE_URL ?? 'http://localhost:4000';
     const api = createApiClient({
       baseUrl: apiBaseUrl,
       logger,
@@ -254,6 +361,10 @@ async function bootstrap(): Promise<void> {
       store: createSqliteOutboxStore(db),
       logger,
     });
+    // Wire the auth token into the API client so sync requests are authenticated
+    if (authService) {
+      authService.setApiClient({ setAuthToken: (t) => api.setAuthToken(t) });
+    }
     const network = createNetworkMonitor({ api, logger });
     const worker = createSyncWorker({
       api,
@@ -274,7 +385,9 @@ async function bootstrap(): Promise<void> {
       detachEventBridge = createEventBridge({
         outbox,
         timer: timerService,
+        screenshotService: screenshotService ?? undefined,
         getDeviceId: () => repos.device.findSelf()?.id ?? null,
+        getUserId: () => authService?.getCurrentUser()?.id ?? null,
         logger,
       }).detach;
     }
@@ -317,7 +430,6 @@ async function bootstrap(): Promise<void> {
   }
 
   // --- Phase 6: window manager, onboarding, tray, notifications --------
-  let detachOnboardingIpc: (() => void) | null = null;
   let trayService: ReturnType<typeof createTrayService> | null = null;
   let detachTimerBus: (() => void) | null = null;
   try {
@@ -337,13 +449,6 @@ async function bootstrap(): Promise<void> {
       rendererIndexPath,
       getTimerState: () =>
         timerService ? timerService.getCurrentState() : 'Idle',
-    });
-
-    detachOnboardingIpc = registerOnboardingIpc({
-      ipcMain,
-      logger,
-      service: onboardingService,
-      getBroadcastTargets: () => collectBroadcastTargets(),
     });
 
     const notificationService = createNotificationService({
@@ -495,6 +600,7 @@ async function bootstrap(): Promise<void> {
       return;
     }
 
+
     // Fire off the async sync shutdown but don't block the quit path —
     // Electron gives us ~2 s before force-killing anyway.
     if (stopSync) {
@@ -519,15 +625,9 @@ async function bootstrap(): Promise<void> {
       logger.warn({ err }, 'error while detaching onboarding ipc');
     }
     try {
-      detachTimerBus?.();
-      trayService?.destroy();
+      detachContractsIpc?.();
     } catch (err) {
-      logger.warn({ err }, 'error while stopping tray service');
-    }
-    try {
-      windowManager?.closeAll();
-    } catch (err) {
-      logger.warn({ err }, 'error while closing windows');
+      logger.warn({ err }, 'error while detaching contracts ipc');
     }
     try {
       updaterSvc?.dispose();
@@ -552,6 +652,14 @@ async function bootstrap(): Promise<void> {
     } catch (err) {
       logger.warn({ err }, 'error while detaching error handler');
     }
+    // IMPORTANT: closeDatabase MUST be the last thing we do in shutdown,
+    // otherwise capture-supervisor / timer / sync-worker handlers above
+    // will try to persist state against a closed connection and throw.
+    try {
+      closeDatabase();
+    } catch (err) {
+      logger.warn({ err }, 'error while closing database on quit');
+    }
   });
 
   logger.info('waiting for app.whenReady()...');
@@ -567,32 +675,30 @@ async function bootstrap(): Promise<void> {
 
   if (windowManager) {
     await windowManager.ensureMainWindow();
+  } else {
+    await createMainWindow();
   }
 
   app.on('activate', () => {
-    if (windowManager) {
-      void windowManager.showMainWindow();
-    } else if (BrowserWindow.getAllWindows().length === 0) {
-      // Shouldn't happen, but keep a safety net.
+    if (BrowserWindow.getAllWindows().length === 0) {
+      void createMainWindow();
     }
   });
 }
 
 app.on('window-all-closed', () => {
-  // Phase 6: close-to-tray — keep the app alive so the tray menu remains
-  // accessible on both platforms. Users quit explicitly via tray → Quit
-  // or the File menu, which calls `windowManager.prepareToQuit()` first.
+  if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
-  try {
-    closeDatabase();
-  } catch (err) {
-    logger.warn({ err }, 'error while closing database on quit');
-  }
-});
+// NOTE: the `before-quit` handler that closes the DB is registered inside
+// `bootstrap()` AFTER the capture / sync / timer teardown steps. A module-level
+// handler here would fire BEFORE the bootstrap handler (Electron invokes
+// listeners in registration order, and module code runs before the async
+// bootstrap completes), causing a shutdown race where capture-supervisor
+// tries to persist permission-grant rows against an already-closed DB.
 
 void bootstrap().catch((err) => {
+  console.error('BOOTSTRAP FAILED:', err);
   logger.error({ err }, 'bootstrap failed');
   app.exit(1);
 });

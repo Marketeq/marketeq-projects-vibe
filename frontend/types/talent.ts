@@ -6,6 +6,18 @@ export enum AVAILABILITY {
   CUSTOM = "CUSTOM",
 }
 
+export type CustomAvailabilityTimeSlot = {
+  startTime?: string
+  startTimeDayPeriod?: string
+  endTime?: string
+  endTimeDayPeriod?: string
+}
+
+export type CustomAvailabilityDay = {
+  day?: DAYS | string
+  times?: CustomAvailabilityTimeSlot[]
+}
+
 export type CreateTalentType = {
   avatar?: File
   username?: string
@@ -19,13 +31,5 @@ export type CreateTalentType = {
   isStudent?: boolean
   projectTypes?: string[]
   availability?: AVAILABILITY
-  customAvailability?: {
-    day?: string | undefined
-    times?: {
-      startTime?: string
-      startTimeDayPeriod?: string
-      endTime?: string
-      endTimeDayPeriod?: string
-    }[]
-  }[]
+  customAvailability?: CustomAvailabilityDay[]
 }

@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
 import { AutocompleteEntry } from './entities/autocomplete-entry.entity';
 import { AutocompleteReviewQueue } from './entities/autocomplete-review-queue.entity';
 import { AutocompleteCategory } from './entities/autocomplete-category.entity';
@@ -9,11 +12,17 @@ import { AutocompleteService } from './autocomplete.service';
 import { AutocompleteController } from './autocomplete.controller';
 import { EntryFilter } from './filters/entry.filter';
 
+const envPaths = [
+  resolve(process.cwd(), 'apps/autocomplete-service/.env'),
+  resolve(process.cwd(), '.env'),
+].filter((candidate) => existsSync(candidate));
+
 @Module({
   imports: [
+    HttpModule,
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['apps/autocomplete-service/.env', '.env'],
+      envFilePath: envPaths,
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],

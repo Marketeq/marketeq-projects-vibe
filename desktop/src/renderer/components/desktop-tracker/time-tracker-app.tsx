@@ -564,6 +564,7 @@ export function TimeTrackerApp({
     })
   }, [])
   const [days, setDays] = React.useState<DayGroup[]>(initialDays || SEED_DAYS)
+  const [contractsLoaded, setContractsLoaded] = React.useState(false)
   const [expandedContracts, setExpandedContracts] = React.useState<Set<string>>(new Set())
   const [collapsedDays, setCollapsedDays] = React.useState<Set<number>>(new Set())
 
@@ -635,6 +636,53 @@ export function TimeTrackerApp({
   const [showManualTime, setShowManualTime] = React.useState(false)
 
   const hourlyRate = days[0]?.hourlyRate || 75
+
+  // ── Fetch real contracts from backend API ──────────────────────────────
+  React.useEffect(() => {
+    let cancelled = false
+    async function fetchContracts() {
+      try {
+        const contracts = await window.dtt?.contracts?.getMine?.()
+        if (cancelled || !contracts || contracts.length === 0) return
+
+        // Convert backend contracts into the DayGroup format the UI expects.
+        // Group all active contracts under "Today" so they appear in the picker.
+        const today = new Date()
+        const fullDate = today.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+        const uiContracts: Contract[] = contracts
+          .filter((c) => c.status === 'ACTIVE' || c.status === 'active')
+          .map((c) => ({
+            id: c.id,
+            name: c.title || "Untitled Contract",
+            clientHandle: c.clientId?.slice(0, 12) || "client",
+            tasks: [
+              {
+                id: `task-${c.id}`,
+                name: c.title || "General work",
+                timeRange: "Not started",
+                duration: "00:00:00",
+              },
+            ],
+          }))
+
+        if (uiContracts.length > 0) {
+          const todayGroup: DayGroup = {
+            label: "Today",
+            fullDate,
+            totalHours: "0",
+            hourlyRate: Number(contracts[0]?.rate) || 75,
+            contracts: uiContracts,
+          }
+          setDays([todayGroup])
+          setContractsLoaded(true)
+        }
+      } catch (err) {
+        console.error("Failed to fetch contracts:", err)
+      }
+    }
+    fetchContracts()
+    return () => { cancelled = true }
+  }, [])
 
   // ── Live clock ──────────────────────────────────────────────────────────
   React.useEffect(() => {
@@ -801,6 +849,12 @@ export function TimeTrackerApp({
     setSearchValue("")
     setActiveTaskCleared(false)
     setView("main")
+
+    // Start the main process timer → creates a session → enables screenshots
+    window.dtt?.timer?.start?.({
+      contractId,
+      taskId: taskId || contractId,
+    }).catch((err: unknown) => console.error("timer.start failed:", err))
   }
 
   const startTimer = (taskName: string, contractName: string, contractId: string, taskId?: string, clientHandle?: string) => {
@@ -838,10 +892,18 @@ export function TimeTrackerApp({
   }
 
   const handlePause = () => {
+    if (isPaused) {
+      window.dtt?.timer?.resume?.().catch((err: unknown) => console.error("timer.resume failed:", err))
+    } else {
+      window.dtt?.timer?.pause?.().catch((err: unknown) => console.error("timer.pause failed:", err))
+    }
     setIsPaused(!isPaused)
   }
 
   const handleStop = () => {
+    // Stop the main process timer → closes the session
+    window.dtt?.timer?.stop?.({ reason: 'user_stop' }).catch((err: unknown) => console.error("timer.stop failed:", err))
+
     if (!isRunning || !activeTask || !trackingStartTime) {
       setIsRunning(false)
       setIsPaused(false)

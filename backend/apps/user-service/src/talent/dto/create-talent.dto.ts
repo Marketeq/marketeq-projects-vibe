@@ -16,6 +16,10 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { AVAILABILITY } from '../enum/availability.enum';
+import {
+  hasOverlappingCustomAvailability,
+  hasValidTimeRange,
+} from '../../user/availability-validation';
 
 export enum DAYS {
   Sunday = 'Sunday',
@@ -37,29 +41,24 @@ const USERNAME_RULE_MESSAGE =
 class IsValidTimeRangeConstraint implements ValidatorConstraintInterface {
   validate(_: unknown, args: ValidationArguments) {
     const obj = args.object as CustomAvailabilityDto;
-    const { startTime, startTimeDayPeriod, endTime, endTimeDayPeriod } = obj;
-
-    if (!startTime || !endTime || !startTimeDayPeriod || !endTimeDayPeriod) {
-      return true;
-    }
-
-    const to24HourMinutes = (time: string, period: string) => {
-      let [hours, minutes] = time.split(':').map(Number);
-
-      if (period === 'PM' && hours !== 12) hours += 12;
-      if (period === 'AM' && hours === 12) hours = 0;
-
-      return hours * 60 + minutes;
-    };
-
-    return (
-      to24HourMinutes(endTime, endTimeDayPeriod) >
-      to24HourMinutes(startTime, startTimeDayPeriod)
-    );
+    return hasValidTimeRange(obj);
   }
 
   defaultMessage(_: ValidationArguments) {
     return 'End time must be after start time and on the same day.';
+  }
+}
+
+@ValidatorConstraint({ name: 'HasNoOverlappingCustomAvailability', async: false })
+class HasNoOverlappingCustomAvailabilityConstraint
+  implements ValidatorConstraintInterface
+{
+  validate(value?: CustomAvailabilityDto[]) {
+    return !hasOverlappingCustomAvailability(value);
+  }
+
+  defaultMessage() {
+    return 'Custom availability slots cannot overlap on the same day.';
   }
 }
 
@@ -213,6 +212,7 @@ export class CreateTalentDto {
   @IsOptional()
   @IsArray({ message: 'Custom availability is required' })
   @ValidateNested({ each: true, message: 'Each custom availability entry must be valid.' })
+  @Validate(HasNoOverlappingCustomAvailabilityConstraint)
   @Type(() => CustomAvailabilityDto)
   @Transform(({ value }) => {
     const toDto = (obj: any): CustomAvailabilityDto => {

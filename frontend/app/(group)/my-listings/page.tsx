@@ -100,19 +100,20 @@ const newListingOptions = [
   },
 ]
 
-// Unsplash fallback images (stable IDs, hotlink-friendly `w=800` variant).
+// Local fallback images supplied for the My Listings project thumbnails.
 // Used to fill in featured images for draft listings that were saved without
-// a selected image — publish-project strips File objects on autosave, so we
-// assign a deterministic image here based on the draft id.
+// a selected image so the page always renders with platform-approved artwork.
 const FALLBACK_IMAGES = [
-  "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=60", // team collaborating
-  "https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=800&q=60", // team meeting
-  "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?auto=format&fit=crop&w=800&q=60", // team working at desk
-  "https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&w=800&q=60", // standup
-  "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=800&q=60", // whiteboard strategy
-  "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=800&q=60", // collaborative work
-  "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=800&q=60", // devs at computers
-  "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=800&q=60", // design team
+  "/my-listings-thumbnails/project-thumbnail-0.png",
+  "/my-listings-thumbnails/project-thumbnail-1.png",
+  "/my-listings-thumbnails/project-thumbnail-2.png",
+  "/my-listings-thumbnails/project-thumbnail-3.png",
+  "/my-listings-thumbnails/project-thumbnail-4.png",
+  "/my-listings-thumbnails/project-thumbnail-5.png",
+  "/my-listings-thumbnails/project-thumbnail-6.png",
+  "/my-listings-thumbnails/project-thumbnail-7.png",
+  "/my-listings-thumbnails/project-thumbnail-8.png",
+  "/my-listings-thumbnails/project-thumbnail-9.png",
 ]
 
 // Team-oriented placeholder titles used when a draft has no title yet.
@@ -151,7 +152,7 @@ const TEAM_SEED_LISTINGS: Listing[] = [
       "Assemble a PM, designer, full-stack devs, and growth marketer to take a SaaS product from beta to public launch in 10 weeks.",
     budget: "$45,000 budget",
     duration: "10 week engagement",
-    mediaUrl: "/meeting-1.jpeg",
+    mediaUrl: "/my-listings-thumbnails/project-thumbnail-0.png",
   },
   {
     id: "seed-team-design-system",
@@ -163,7 +164,7 @@ const TEAM_SEED_LISTINGS: Listing[] = [
       "A 4-person team of product designers and frontend engineers builds a Figma design system + React component library for your brand.",
     budget: "$28,000 budget",
     duration: "8 week engagement",
-    mediaUrl: "/working-2.jpeg",
+    mediaUrl: "/my-listings-thumbnails/project-thumbnail-1.png",
   },
   {
     id: "seed-team-ai-integration",
@@ -175,7 +176,7 @@ const TEAM_SEED_LISTINGS: Listing[] = [
       "ML engineers, data scientists, and a backend lead integrate an LLM workflow into your product with evals, guardrails, and observability.",
     budget: "$62,000 budget",
     duration: "12 week engagement",
-    mediaUrl: "/artificial-intelligence.jpeg",
+    mediaUrl: "/my-listings-thumbnails/project-thumbnail-2.png",
   },
   {
     id: "seed-team-growth-retainer",
@@ -187,7 +188,7 @@ const TEAM_SEED_LISTINGS: Listing[] = [
       "A growth lead, paid media specialist, content strategist, and SEO engineer run your acquisition funnel end-to-end each month.",
     budget: "$12,500 / month",
     duration: "Rolling monthly retainer",
-    mediaUrl: "/working-3.jpeg",
+    mediaUrl: "/my-listings-thumbnails/project-thumbnail-3.png",
   },
   {
     id: "seed-team-mobile-app",
@@ -199,7 +200,7 @@ const TEAM_SEED_LISTINGS: Listing[] = [
       "A shipped-together pod of iOS, Android, and backend engineers (plus a QA lead) delivers new app features on a 2-week sprint cadence.",
     budget: "$18,000 / sprint",
     duration: "2 week sprints",
-    mediaUrl: "/working-1.jpeg",
+    mediaUrl: "/my-listings-thumbnails/project-thumbnail-4.png",
   },
   {
     id: "seed-team-brand-sprint",
@@ -211,7 +212,7 @@ const TEAM_SEED_LISTINGS: Listing[] = [
       "A brand strategist, visual designer, copywriter, and webflow developer deliver a full brand refresh and marketing site in 6 weeks.",
     budget: "$22,000 flat",
     duration: "6 week sprint",
-    mediaUrl: "/meeting-2.jpeg",
+    mediaUrl: "/my-listings-thumbnails/project-thumbnail-5.png",
   },
 ]
 
@@ -314,7 +315,7 @@ export default function MyListingsPage() {
             const draftId = d?.id || key
             // publish-project strips File-typed featured images on autosave,
             // so drafts almost always come back with no mediaUrl. Fall back
-            // to a deterministic Unsplash team image so every card shows one.
+            // to a deterministic local project image so every card shows one.
             const draftMediaUrl =
               d?.media?.featuredImageUrl ||
               d?.media?.coverImageUrl ||

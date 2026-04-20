@@ -31,9 +31,9 @@ export class CreateClientDto {
   @IsNotEmpty({ message: 'Last name is required' })
   lastName: string;
 
-  @ApiProperty()
-  @IsString({ message: 'Username is required' })
-  @IsNotEmpty({ message: 'Username is required' })
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString({ message: 'Username must be a string' })
   @MinLength(3, { message: 'Username must be at least 3 characters long' })
   @Matches(USERNAME_PATTERN, {
     message: USERNAME_RULE_MESSAGE,
@@ -41,7 +41,7 @@ export class CreateClientDto {
   @Transform(({ value }) =>
     typeof value === 'string' ? value.toLowerCase().trim() : value,
   )
-  username: string;
+  username?: string;
 
   @ApiProperty()
   @IsString({ message: 'Team name is required' })
@@ -63,9 +63,9 @@ export class CreateClientDto {
   @ArrayMinSize(1, { message: 'Business types are required' })
   businessTypes: string[];
 
-  @ApiProperty({ type: [String] })
-  @IsArray({ message: 'Teammates emails are required' })
-  @ArrayMinSize(3, { message: 'Teammates emails must be 3' })
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray({ message: 'Teammates emails must be an array' })
   @IsEmail(
     {},
     {
@@ -73,7 +73,7 @@ export class CreateClientDto {
       message: 'Invalid teammates email',
     },
   )
-  teammateEmails: string[];
+  teammateEmails?: string[];
 
   @ApiProperty({ type: [String] })
   @IsArray({ message: 'Industries are required' })

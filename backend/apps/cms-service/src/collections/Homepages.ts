@@ -32,6 +32,48 @@ export const Homepages: CollectionConfig = {
         } catch (err) {
           req.payload.logger.error({ err }, `Failed to publish homepage.saved for "${doc.slug}"`);
         }
+
+        // On-demand ISR: tell Next.js to bust the cached homepage paths.
+        // Mirrors the projects hook — without this, edits to the Homepages
+        // collection only show up after the 60s revalidate TTL on
+        // frontend/app/(group)/(group)/page.tsx expires.
+        const revalidateUrl = process.env.FRONTEND_REVALIDATE_URL;
+        const revalidateSecret = process.env.REVALIDATE_SECRET;
+        if (revalidateUrl && revalidateSecret) {
+          try {
+            const res = await fetch(revalidateUrl, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                secret: revalidateSecret,
+                // `/` is the default homepage; other variants would live at
+                // /c/:l1 etc. once A/B testing is wired. Starting with / is
+                // enough for the current routes.
+                paths: ['/'],
+              }),
+            });
+            if (!res.ok) {
+              const text = await res.text();
+              req.payload.logger.warn(
+                `[Homepages] revalidate webhook ${res.status}: ${text}`,
+              );
+            } else {
+              req.payload.logger.info(
+                `[Homepages] Revalidated frontend "/" for "${doc.slug}"`,
+              );
+            }
+          } catch (revErr) {
+            req.payload.logger.warn(
+              { err: revErr },
+              `[Homepages] Failed to call revalidate webhook for "${doc.slug}"`,
+            );
+          }
+        } else {
+          req.payload.logger.warn(
+            '[Homepages] FRONTEND_REVALIDATE_URL or REVALIDATE_SECRET not set — skipping revalidate',
+          );
+        }
+
         return doc;
       },
     ],

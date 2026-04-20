@@ -25,7 +25,7 @@ export function useSendMessage(
    * @param convId   the conversation UUID
    * @param plaintext the message body
    */
-  return async function send(convId: string, plaintext: string) {
+  return async function send(convId: string, plaintext: string, replyToMessageId?: string) {
     if (!convId || !token) {
       throw new Error("Missing conversation ID or auth token")
     }
@@ -60,20 +60,16 @@ export function useSendMessage(
       }
     }
 
-    // If we have a key, encrypt. Otherwise send plaintext content.
-    if (key) {
-      const ciphertext = await encryptAES(plaintext, key)
-      return apiFetch<SendResponse>(`/v1/messages`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: { threadId: convId, ciphertext },
-      })
+    // Encrypt or fail — never send plaintext
+    if (!key) {
+      throw new Error("Encryption key not available. Please wait and try again.")
     }
 
+    const ciphertext = await encryptAES(plaintext, key)
     return apiFetch<SendResponse>(`/v1/messages`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
-      body: { threadId: convId, content: plaintext },
+      body: { threadId: convId, ciphertext, ...(replyToMessageId && { replyToMessageId }) },
     })
   }
 }

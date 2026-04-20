@@ -30,8 +30,9 @@ export function createFetchAuthHttpPort(
   const logger = deps.logger.child({ module: 'auth/http-port' });
   const baseUrl =
     deps.baseUrl ??
+    process.env.DTT_API_BASE_URL ??
     process.env.TTS_API_URL ??
-    'https://api.marketeq.com/tts/v1';
+    'http://localhost:4000';
   const fetchFn = deps.fetchImpl ?? globalThis.fetch;
 
   if (!fetchFn) {

@@ -69,11 +69,34 @@ Schema: `messaging` (synchronize: true in dev)
 - user-service needs `user_keys` and `user_devices` tables (migration at `user-service/src/migrations/1775000000000-CreateUserKeysAndDevices.ts`, but must be run manually since synchronize: false)
 - Gateway needs `messaging`, `user-keys`, `devices` in SERVICE_PREFIX_MAP + v1 threads/messages routing
 
-## Gotchas / Notes
-- Forward copies ciphertext encrypted with source thread's AES key — recipient in destination thread can't decrypt. Forward button not in UI yet, so not a current issue. Fix: client-side re-encrypt on forward.
+## Known Limitations
+
+### ⚠️ Single-device only (no multi-device support)
+The current implementation works for **one device per user**. Each browser generates its own RSA keypair on first login and stores the private key in localStorage. The server stores the user's public key (and refuses to overwrite it once set, to protect existing wrapped keys).
+
+**What breaks**:
+- Logging in on a second device/browser generates new keys, but the server rejects the upload, so the new device has keys that don't match any wrapped conversation keys
+- User sees encrypted messages they can't decrypt
+- Private/incognito browsers count as new devices
+
+**Workarounds** (dev/testing only):
+- Manually copy `localStorage.privateKey`, `publicKey`, `deviceId` from the first browser to the second
+- Use one user per browser session for testing
+
+**Proper fix** (not implemented): password-based key backup
+1. On signup, derive KEK from user password via PBKDF2
+2. Encrypt private key with KEK, upload encrypted blob to server
+3. On new device login, download blob, decrypt with password, restore private key
+4. Scaffolding exists in `frontend/src/crypto/backup.ts` but `systemSecret` is empty and flow isn't wired
+
+### Other gotchas
+- Forward copies ciphertext encrypted with source thread's AES key — recipient in destination thread can't decrypt. Forward button not in UI yet. Fix: client-side re-encrypt on forward.
 - `stories/inbox.stories.tsx` exports Bubble/YourBubble components used by the actual inbox page — not just storybook. API paths and token reading must work there too.
 - user-service has synchronize: false, so encryption tables need manual migration. messaging-service has synchronize: true in dev.
-- The `ensureEncryptionKeysExist()` function always pushes the public key to messaging-service (not just on first keygen) to handle cases where messaging-service was down during initial registration.
+- `ensureEncryptionKeysExist()` always pushes the public key to messaging-service (not just on first keygen) to handle cases where messaging-service was down during initial registration.
+- `storePublicKey()` refuses to overwrite existing public keys (prevents second device from breaking the first). Key rotation would need a dedicated endpoint that also re-wraps all conversation keys.
 
 ## Agent Log
 - 2026-04-07: Implemented full E2E encryption — encryption module, key management, frontend hooks, API wiring, auth checks, gateway routes. PR #43 merged to dev-main.
+- 2026-04-08: PR reverted pending code review (commit 2602439).
+- 2026-04-10: Revert reverted after review approval, follow-up fixes in PR `fix/inbox-follow-ups` (textarea height, empty/loading states, Ably stability, right sidebar dynamic profile, left sidebar last message preview, pinned decrypt, talent profile "Message Me" button, public key no-overwrite protection, thread dedupe, last message in thread list).

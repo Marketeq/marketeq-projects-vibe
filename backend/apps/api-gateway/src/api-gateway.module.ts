@@ -6,6 +6,7 @@ import { PassportModule } from '@nestjs/passport'
 import { ProxyService } from './proxy/proxy.service'
 import { ProxyController } from './proxy/proxy.controller'
 import { TalentUploadController } from './controllers/talent-upload.controller'
+import { UserAvatarUploadController } from './controllers/user-avatar-upload.controller'
 import { PublishMediaController } from './controllers/publish-media.controller'
 import { HomepageModule } from './homepage/homepage.module'
 import { HomepageController } from './homepage/homepage.controller'
@@ -42,7 +43,13 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
     }),
   ],
   providers: [ProxyService, JwtStrategy],
-  controllers: [HomepageController, TalentUploadController, PublishMediaController, ProxyController],
+  controllers: [
+    HomepageController,
+    TalentUploadController,
+    UserAvatarUploadController,
+    PublishMediaController,
+    ProxyController,
+  ],
 })
 export class ApiGatewayModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

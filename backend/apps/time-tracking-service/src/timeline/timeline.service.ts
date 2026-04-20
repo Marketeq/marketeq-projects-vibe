@@ -26,7 +26,7 @@ export class TimelineService {
     return new Date(d).toISOString();
   }
 
-  async buildTimeline(params: { userId: string; projectId?: string; from: string; to: string }) {
+  async buildTimeline(params: { userId: string; contractId?: string; from: string; to: string }) {
     const startDate = new Date(params.from);
     const endDate = new Date(params.to);
     if (isNaN(startDate.getTime())) throw new BadRequestException(`Invalid "from" date: ${params.from}`);

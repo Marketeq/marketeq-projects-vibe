@@ -22,16 +22,45 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const req = context.switchToHttp().getRequest();
+
+    // Trust gateway-forwarded user context (x-user-id header)
+    const gwUserId = req.headers['x-user-id'];
+    if (gwUserId) {
+      req.user = {
+        userId: gwUserId,
+        sub: gwUserId,
+        email: req.headers['x-user-email'] || '',
+        role: req.headers['x-user-role'] || 'user',
+      };
+      return true;
+    }
+
     const authHeader = req.headers['authorization'];
     if (!authHeader)
       throw new UnauthorizedException('Missing Authorization header');
 
     const token = authHeader.split(' ')[1];
+
+    // Try RS256 with public key first (auth-service signs with RS256),
+    // fall back to HS256 with JWT_SECRET for M2M tokens
+    const publicKey = process.env.AUTH_JWT_PUBLIC_KEY?.replace(/\\n/g, '\n');
     try {
-      const payload = jwt.verify(token, process.env.JWT_SECRET!);
-      req.user = payload;
+      if (publicKey) {
+        req.user = jwt.verify(token, publicKey, { algorithms: ['RS256'] });
+      } else {
+        req.user = jwt.verify(token, process.env.JWT_SECRET!);
+      }
       return true;
     } catch {
+      // If RS256 failed, try HS256 fallback
+      if (publicKey) {
+        try {
+          req.user = jwt.verify(token, process.env.JWT_SECRET!);
+          return true;
+        } catch {
+          // both failed
+        }
+      }
       throw new UnauthorizedException('Invalid or expired token');
     }
   }

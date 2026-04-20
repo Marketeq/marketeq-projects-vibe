@@ -15,12 +15,25 @@
  * implements the full grid layout with skills, rating, avatar, etc.
  */
 
-import { Briefcase, Clock, Edit03, MarkerPin02, Star, Users } from "@blend-metrics/icons"
-import { Badge } from "@/components/ui"
+import {
+  Briefcase,
+  Check,
+  ChevronDown,
+  Clock,
+  DollarSign,
+  Edit03,
+  File02,
+  HelpCircle,
+  MarkerPin02,
+  RefreshCw01,
+  Star,
+  Users,
+} from "@blend-metrics/icons"
 import { Money } from "@/components/money"
 import { NextImage } from "@/components/next-image"
 import { NextLink } from "@/components/next-link"
 import {
+  jobDetailsUrl,
   projectDetailsUrl,
   serviceDetailsUrl,
   talentProfileUrl,
@@ -32,6 +45,14 @@ import {
   AvatarFallback,
   AvatarGroup,
   AvatarImage,
+  Badge,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   IconButton,
 } from "@/components/ui"
 import { TalentSearchCard } from "@/components/talent-search-card"
@@ -47,6 +68,7 @@ export type ListingStatus =
   | "Needs Update"
 
 export type ListingMode = "browse" | "owned"
+export type ListingCardVariant = "default" | "job" | "job-grid"
 
 interface ProjectLikeProps {
   kind: "project" | "service"
@@ -75,6 +97,8 @@ interface ProjectLikeProps {
   onEdit?: () => void
   /** "browse" mode: slot for a favorite button (FavoriteRoot, etc.). */
   favoriteSlot?: React.ReactNode
+  /** Search pages can opt into the jobs-specific landscape treatment. */
+  cardVariant?: ListingCardVariant
 }
 
 interface TalentCardProps {
@@ -180,14 +204,384 @@ function ProjectListingCard({
   mode = "browse",
   onEdit,
   favoriteSlot,
+  cardVariant = "default",
 }: ProjectLikeProps) {
   const computedHref =
     href ??
-    (mode === "owned" && status && status !== "Active"
+    (cardVariant === "job" || cardVariant === "job-grid"
+      ? jobDetailsUrl(id)
+      : mode === "owned" && status && status !== "Active"
       ? `/publish-project?type=${kind}&draftId=${id}`
       : kind === "service"
         ? serviceDetailsUrl(id)
         : projectDetailsUrl(id))
+
+  const getStableVariantIndex = (value: string, total: number) => {
+    let hash = 0
+    for (const char of value) {
+      hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+    }
+    return hash % total
+  }
+
+  // Jobs search reuses the shared ListingCard entry point, but swaps to this
+  // grid layout when the shared search toggle is in grid mode.
+  if (cardVariant === "job-grid") {
+    const jobDescription =
+      description ||
+      "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
+    const primarySkills = ["Visual Design", "Tailwind CSS", "Next.js"]
+    const secondarySkills = ["Wireframing", "Figma"]
+    const gridVariantIndex = getStableVariantIndex(id, 4)
+    const earningsVariantIndex = getStableVariantIndex(`${id}-earnings`, 3)
+    const showPaymentVerified =
+      gridVariantIndex === 1 || gridVariantIndex === 3
+    const showNdaRequired = gridVariantIndex === 2 || gridVariantIndex === 3
+    const showServiceBadge = gridVariantIndex === 0 || gridVariantIndex === 3
+
+    return (
+      <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+        <div className="flex items-start justify-between gap-4">
+          <NextLink
+            href={computedHref}
+            className="max-w-[195px] text-[16px] font-bold leading-normal text-dark-blue-400 focus-visible:outline-none hover:underline"
+          >
+            {title || "The Ultimate Mobile App Experience"}
+          </NextLink>
+
+          <div className="shrink-0 self-start text-right">
+            {earningsVariantIndex === 0 && (
+              <>
+                <div className="text-[18px] font-bold leading-7 text-dark-blue-400">
+                  $90,200
+                </div>
+                <div className="text-[13px] font-light leading-5 text-gray-500">
+                  Earnings Opportunity
+                </div>
+              </>
+            )}
+
+            {earningsVariantIndex === 1 && (
+              <div className="inline-flex items-center justify-end gap-2 pt-1 text-xs font-medium leading-[18px] text-dark-blue-400">
+                <HelpCircle className="size-[14px] shrink-0 text-gray-400" />
+                <span>Earnings Unavailable</span>
+              </div>
+            )}
+
+            {earningsVariantIndex === 2 && (
+              <>
+                <div className="text-[18px] font-bold leading-7 text-dark-blue-400">
+                  $90,200/mo
+                </div>
+                <div className="text-[13px] font-light leading-5 text-gray-500">
+                  Earnings Opportunity
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {(showPaymentVerified || showNdaRequired) && (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {showPaymentVerified && (
+              <Button
+                type="button"
+                variant="outlined"
+                visual="gray"
+                size="sm"
+                className="h-auto rounded-[5px] px-3 py-1 text-xs font-semibold leading-[18px] text-dark-blue-400 shadow-none"
+                leftIcon={<DollarSign className="size-[14px] text-success-600" />}
+              >
+                Payment Verified
+              </Button>
+            )}
+
+            {showNdaRequired && (
+              <Button
+                type="button"
+                variant="outlined"
+                visual="gray"
+                size="sm"
+                className="h-auto rounded-[5px] px-3 py-1 text-xs font-semibold leading-[18px] text-dark-blue-400 shadow-none"
+                leftIcon={<File02 className="size-[14px] text-primary-500" />}
+              >
+                NDA Required
+              </Button>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-[13px] font-medium leading-5 text-dark-blue-400">
+            1 matching role
+          </span>
+          <NextLink
+            href={computedHref}
+            className="text-sm font-semibold leading-5 text-primary-500 focus-visible:outline-none hover:underline"
+          >
+            UX Researcher
+          </NextLink>
+        </div>
+
+        <p className="mt-4 text-sm font-light leading-normal text-dark-blue-400">
+          {jobDescription}
+        </p>
+
+        <div className="mt-auto pt-6">
+          <div className="text-[13px] font-medium leading-5 text-dark-blue-400">
+            2 of 9 skills match
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {primarySkills.map((skill, index) => (
+              <Badge
+                key={skill}
+                className="gap-x-1.5 bg-gray-100 text-dark-blue-400"
+                visual="gray"
+              >
+                {index < 2 && <Check className="size-3.5 text-primary-500" />}
+                {skill}
+              </Badge>
+            ))}
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {secondarySkills.map((skill) => (
+              <Badge
+                key={skill}
+                className="bg-gray-100 text-dark-blue-400"
+                visual="gray"
+              >
+                {skill}
+              </Badge>
+            ))}
+            <Button
+              type="button"
+              variant="link"
+              visual="gray"
+              className="font-medium text-dark-blue-400 no-underline hover:no-underline"
+            >
+              + 10 more
+            </Button>
+          </div>
+
+          <div className="mt-6 flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outlined"
+                visual="gray"
+                size="sm"
+                className="h-auto rounded-full px-3 py-1 text-xs font-semibold leading-[18px] text-dark-blue-400 shadow-none"
+                leftIcon={<File02 className="size-[14px] text-gray-400" />}
+              >
+                Mobile Application
+              </Button>
+
+              {showServiceBadge && (
+                <Button
+                  type="button"
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  className="h-auto rounded-[5px] px-3 py-1 text-xs font-semibold leading-[18px] text-primary-500 shadow-none"
+                  leftIcon={<RefreshCw01 className="size-[14px]" />}
+                >
+                  Service
+                </Button>
+              )}
+            </div>
+
+            <IconButton
+              variant="ghost"
+              visual="gray"
+              size="sm"
+              className="h-auto w-auto p-0 text-gray-300 hover:bg-transparent hover:text-gray-400 focus:bg-transparent"
+            >
+              <Star className="size-[18px]" />
+            </IconButton>
+          </div>
+        </div>
+      </article>
+    )
+  }
+
+  // Jobs search reuses the shared ListingCard entry point, but swaps to this
+  // landscape layout so /find-jobs can evolve independently from project cards.
+  if (cardVariant === "job") {
+    const jobDescription =
+      description ||
+      "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."
+    const jobSkills = ["Visual Design", "Tailwind CSS", "Next.js", "E-commerce"]
+
+    return (
+      <article className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+        <div className="p-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <NextLink
+                  href={computedHref}
+                  className="truncate text-base font-bold leading-normal text-dark-blue-400 focus-visible:outline-none hover:underline"
+                >
+                  {title || "Corporate Dashboard Project"}
+                </NextLink>
+
+                <span className="text-sm leading-5 text-gray-500">2 days ago</span>
+              </div>
+
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="text-[13px] font-medium leading-5 text-dark-blue-400">
+                  1 matching role
+                </span>
+                <NextLink
+                  href={computedHref}
+                  className="text-sm font-semibold leading-5 text-primary-500 focus-visible:outline-none hover:underline"
+                >
+                  UX Researcher
+                </NextLink>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center gap-5">
+              <Button
+                type="button"
+                variant="outlined"
+                visual="gray"
+                size="sm"
+                className="h-auto rounded-full px-3 py-1 text-xs font-semibold leading-[18px] text-dark-blue-400 shadow-none"
+                leftIcon={<File02 className="size-[14px] text-gray-400" />}
+              >
+                Mobile Application
+              </Button>
+
+              <div className="inline-flex items-center gap-x-2 text-xs font-medium leading-[18px] text-dark-blue-400">
+                <HelpCircle className="size-[14px] text-gray-400" />
+                <span>Earnings Unavailable</span>
+              </div>
+            </div>
+          </div>
+
+          <p className="mt-4 text-sm font-light leading-normal text-dark-blue-400">
+            {jobDescription}
+          </p>
+
+          <div className="mt-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <span className="mr-2 text-[13px] font-medium leading-5 text-dark-blue-400">
+                2 of 9 skills match
+              </span>
+
+              {jobSkills.map((skill, index) => (
+                <Badge
+                  key={skill}
+                  className="gap-x-1.5 bg-gray-100 text-dark-blue-400"
+                  visual="gray"
+                >
+                  {index < 2 && <Check className="size-3.5 text-primary-500" />}
+                  {skill}
+                </Badge>
+              ))}
+
+              <Button
+                type="button"
+                variant="link"
+                visual="gray"
+                className="font-medium text-dark-blue-400 no-underline hover:no-underline"
+              >
+                + 10 more
+              </Button>
+            </div>
+
+            <Button
+              type="button"
+              variant="outlined"
+              visual="gray"
+              size="sm"
+              className="h-auto shrink-0 px-3 py-1 text-xs font-semibold leading-[18px] text-primary-500 shadow-none"
+              leftIcon={<RefreshCw01 className="size-[14px]" />}
+            >
+              Service
+            </Button>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-200 bg-gray-50 px-6 py-3 md:h-11 md:overflow-x-auto md:py-0">
+          <div className="flex min-h-5 flex-col gap-3 text-[13px] leading-5 md:h-full md:w-full md:flex-row md:flex-nowrap md:items-center md:justify-between md:gap-0">
+            <div className="flex items-center gap-x-2 whitespace-nowrap md:shrink-0">
+              <span className="font-light text-gray-500">Open Roles</span>
+              <span className="font-bold text-dark-blue-400">7</span>
+            </div>
+
+            <span className="hidden h-5 w-px shrink-0 bg-gray-200 md:block" />
+
+            <div className="flex items-center gap-x-2 whitespace-nowrap md:shrink-0">
+              <span className="font-light text-gray-500">Duration</span>
+              <span className="font-bold text-dark-blue-400">Ongoing</span>
+            </div>
+
+            <span className="hidden h-5 w-px shrink-0 bg-gray-200 md:block" />
+
+            <div className="flex items-center gap-x-2 whitespace-nowrap md:shrink-0">
+              <span className="font-light text-gray-500">Work Schedule</span>
+              <span className="font-bold text-dark-blue-400">Full-Time</span>
+            </div>
+
+            <span className="hidden h-5 w-px shrink-0 bg-gray-200 md:block" />
+
+            <div className="flex items-center gap-x-2 whitespace-nowrap md:shrink-0">
+              <span className="font-light text-gray-500">Client Rating</span>
+              <Star className="size-4 text-gray-400" />
+              <span className="font-bold text-dark-blue-400">4.8</span>
+            </div>
+
+            <span className="hidden h-5 w-px shrink-0 bg-gray-200 md:block" />
+
+            <DropdownMenu>
+              <div className="flex items-center whitespace-nowrap md:shrink-0">
+                <Button
+                  type="button"
+                  variant="link"
+                  visual="gray"
+                  size="sm"
+                  className="h-auto gap-x-1.5 px-0 py-0 text-[13px] font-semibold leading-5 text-dark-blue-400 hover:text-dark-blue-400"
+                  leftIcon={<Star className="size-[18px] text-gray-300" />}
+                >
+                  Save
+                </Button>
+
+                <DropdownMenuTrigger asChild>
+                  <IconButton
+                    variant="ghost"
+                    visual="gray"
+                    size="sm"
+                    className="h-auto w-auto p-0 text-gray-500 hover:bg-transparent focus:bg-transparent"
+                  >
+                    <ChevronDown className="size-4" />
+                  </IconButton>
+                </DropdownMenuTrigger>
+              </div>
+
+              <DropdownMenuContent align="end" side="bottom">
+                <DropdownMenuRadioGroup value="">
+                  <DropdownMenuRadioTrigger value="digital-marketing">
+                    Digital Marketing
+                  </DropdownMenuRadioTrigger>
+                  <DropdownMenuRadioTrigger value="customer-service">
+                    Customer Service
+                  </DropdownMenuRadioTrigger>
+                  <DropdownMenuRadioTrigger value="email-marketing">
+                    Email Marketing
+                  </DropdownMenuRadioTrigger>
+                </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      </article>
+    )
+  }
 
   return (
     <article className="h-full flex flex-col p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
@@ -209,8 +603,8 @@ function ProjectListingCard({
               <Briefcase className="size-10 text-gray-300" />
             </div>
           )}
-          {badge && (
-            <span className="absolute top-2 right-2 inline-flex items-center rounded-md bg-dark-blue-400/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
+          {badge?.trim() && (
+            <span className="absolute top-2 right-2 inline-flex max-w-[60%] items-center truncate rounded-md bg-dark-blue-400/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
               {badge}
             </span>
           )}
@@ -447,13 +841,20 @@ function TeamListingCard({
             <div className="mt-2 flex items-center flex-wrap gap-3">
               {previousClientLogos.map((logo, i) => (
                 <div
-                  key={i}
+                  key={`${logo}-${i}`}
                   className="size-[25px] rounded-full shrink-0 relative bg-gray-50 overflow-hidden flex items-center justify-center"
                 >
                   <img
                     src={logo}
                     alt="Previous client"
+                    width={25}
+                    height={25}
+                    loading="lazy"
+                    decoding="async"
                     className="size-full object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none"
+                    }}
                   />
                 </div>
               ))}

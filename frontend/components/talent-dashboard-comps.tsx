@@ -49,6 +49,10 @@ import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import SecuritySettingsStepper from "@/components/security-settings"
 import {
+  ClientAccountSidebar,
+  TalentAccountSidebar,
+} from "@/components/account-sidebars"
+import {
   Avatar,
   AvatarFallback,
   AvatarGroup,
@@ -157,97 +161,11 @@ export const WalletBold = ({
 }
 
 export const LeftSidebar = () => {
-  const pathname = usePathname()
   const { user } = useAuth()
   const dashboardRole = resolveDashboardRole(user)
   const isTalent = dashboardRole === ROLE.TALENT
 
-  const linkClass = (href: string) =>
-    cn(
-      "flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none px-3",
-      pathname === href || pathname?.startsWith(href + "/")
-        ? "bg-gray-100"
-        : "hover:bg-gray-100"
-    )
-
-  return (
-    <div className="w-[224px] shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r space-y-6 border-gray-200 p-[15px]">
-      <div className="flex flex-col gap-y-2">
-        <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
-          Work
-        </span>
-
-        <div className="flex flex-col gap-y-1">
-          <NextLink className={linkClass("/talent-dashboard")} href="/talent-dashboard">
-            <Home03 className="size-[18px] text-dark-blue-400/50" />
-            Home
-          </NextLink>
-          <NextLink className={linkClass("/find-jobs")} href="/find-jobs">
-            <Search className="size-[18px] text-dark-blue-400/50" />
-            Find Jobs
-          </NextLink>
-          <NextLink className={linkClass("/my-listings")} href="/my-listings">
-            <Briefcase className="size-[18px] text-dark-blue-400/50" />
-            My Projects
-          </NextLink>
-          <NextLink className={linkClass("/my-contracts")} href="/my-contracts">
-            <FileCheck02 className="size-[18px] text-dark-blue-400/50" />
-            My Contracts
-          </NextLink>
-          <NextLink className={linkClass("/publish-project")} href="/publish-project">
-            <Plus className="size-[18px] text-dark-blue-400/50" />
-            Create a Project
-          </NextLink>
-          <NextLink
-            className={linkClass(isTalent ? "/earnings" : "/payments")}
-            href={isTalent ? "/earnings" : "/payments"}
-          >
-            <CurrencyDollar className="size-[18px] text-dark-blue-400/50" />
-            {isTalent ? "Transactions" : "Payments"}
-          </NextLink>
-          <NextLink className={linkClass("/stats")} href="/stats">
-            <BarChartSquare02 className="size-[18px] text-dark-blue-400/50" />
-            Stats & Trends
-          </NextLink>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-y-2">
-        <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
-          Account
-        </span>
-
-        <div className="flex flex-col gap-y-1">
-          <NextLink className={linkClass("/talent-profile")} href="/talent-profile">
-            <UserCircle className="size-[18px] text-dark-blue-400/50" />
-            Profile
-          </NextLink>
-          <NextLink className={linkClass("/inbox")} href="/inbox">
-            <Mail01 className="size-[18px] text-dark-blue-400/50" />
-            Inbox
-            <Badge className="rounded-full ml-auto" size="md" visual="error">
-              3
-            </Badge>
-          </NextLink>
-          <NextLink className={linkClass("/notifications")} href="/notifications">
-            <AlertCircle className="size-[18px] text-dark-blue-400/50" />
-            Notifications
-            <Badge className="rounded-full ml-auto" size="md" visual="error">
-              2
-            </Badge>
-          </NextLink>
-          <NextLink className={linkClass("/billing")} href="/billing">
-            <CoinStack className="size-[18px] text-dark-blue-400/50" />
-            Billing
-          </NextLink>
-          <NextLink className={linkClass("/settings")} href="/settings">
-            <Settings02 className="size-[18px] text-dark-blue-400/50" />
-            Settings
-          </NextLink>
-        </div>
-      </div>
-    </div>
-  )
+  return isTalent ? <TalentAccountSidebar /> : <ClientAccountSidebar />
 }
 
 export const RightDrawer = ({ className, onCompleteProfile, profileProgress = 0 }: { className?: string; onCompleteProfile?: () => void; profileProgress?: number }) => {

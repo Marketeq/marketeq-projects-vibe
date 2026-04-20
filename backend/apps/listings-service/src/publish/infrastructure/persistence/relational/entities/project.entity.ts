@@ -40,6 +40,12 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   @Column({ type: String, array: true, default: [] })
   subCategories: string[];
 
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  categorySelections: {
+    category: string;
+    subCategories: string[];
+  }[];
+
   @Column({ type: String, array: true, default: [] })
   industries: string[];
 

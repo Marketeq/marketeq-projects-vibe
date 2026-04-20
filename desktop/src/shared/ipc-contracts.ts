@@ -99,7 +99,7 @@ export const IPC = {
   windowHide: 'window:hide',
   windowQuit: 'window:quit',
 
-  // --- Phase 7 Updater (doc 30) ---
+  // --- Phase 7 Updater ---
   updaterGetStatus: 'updater:get-status',
   updaterCheckNow: 'updater:check-now',
   updaterSetChannel: 'updater:set-channel',
@@ -108,6 +108,9 @@ export const IPC = {
   updaterStatusChanged: 'updater:status-changed',
   updaterProgress: 'updater:progress',
   updaterError: 'updater:error',
+
+  // --- Contracts (fetched from backend API) ---
+  contractsGetMine: 'contracts:get-mine',
 
   // --- Shell helpers ---
   shellOpenExternal: 'shell:open-external',
@@ -464,26 +467,25 @@ export const IPC_POWER = {
   errorFatal: 'error:fatal',
 } as const;
 
-// ---------- Phase 7 Updater contracts ----------
+// ---------- Contracts (from backend API) ----------
 
-export type UpdaterReleaseChannel = 'stable' | 'beta' | 'alpha';
-
-export type UpdaterStateName = 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
-
-export interface UpdaterProgressInfo {
-  total: number;
-  delta: number;
-  transferred: number;
-  percent: number;
-  bytesPerSecond: number;
-}
-
-export interface UpdaterStatusDTO {
-  currentVersion: string;
-  channel: UpdaterReleaseChannel;
-  state: UpdaterStateName;
-  availableVersion: string | null;
-  progress: UpdaterProgressInfo | null;
-  lastError: string | null;
-  lastCheckAt: number | null;
+export interface BackendContract {
+  id: string;
+  groupId: string;
+  clientId: string;
+  talentId: string;
+  title: string;
+  rate: number;
+  schedule: string;
+  duration: string;
+  status: string;
+  startAtISO: string | null;
+  endAtISO: string | null;
+  projectId: string | null;
+  serviceId: string | null;
+  teamId: string | null;
+  jobId: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

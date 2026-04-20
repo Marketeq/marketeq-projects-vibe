@@ -5,7 +5,7 @@ interface ContractCreatedPayload {
   contractId: string;
   clientId: string;
   freelancerId: string;
-  projectId?: string;
+  contractId?: string;
 }
 
 interface ContractEndedPayload {

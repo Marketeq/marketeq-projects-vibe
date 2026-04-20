@@ -13,6 +13,7 @@ import type {
   AuthNeedsLoginPayload,
   AuthStatus,
   AuthStatusChangedPayload,
+  BackendContract,
   BreakExpiredPayload,
   BreakExpiringPayload,
   CaptureHealth,
@@ -37,8 +38,6 @@ import type {
   TimerStartArgs,
   TimerStopArgs,
   TimerTickPayload,
-  UpdaterProgressInfo,
-  UpdaterStatusDTO,
 } from '../shared/ipc-contracts';
 import type { AppInfo, PingResult } from '../shared/types';
 
@@ -47,6 +46,11 @@ const dtt = {
   ping: (echo: string): Promise<PingResult> =>
     ipcRenderer.invoke(IPC.ping, echo),
   listDbTables: (): Promise<string[]> => ipcRenderer.invoke(IPC.dbTablesList),
+
+  shell: {
+    openExternal: (url: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.shellOpenExternal, url),
+  },
 
   permissions: {
     check: (kind: PermissionKindShort): Promise<PermissionStatusShort> =>
@@ -219,6 +223,11 @@ const dtt = {
       ipcRenderer.on(IPC.onboardingStateChanged, handler);
       return () => ipcRenderer.off(IPC.onboardingStateChanged, handler);
     },
+  },
+
+  contracts: {
+    getMine: (): Promise<BackendContract[]> =>
+      ipcRenderer.invoke(IPC.contractsGetMine),
   },
 
   sync: {
