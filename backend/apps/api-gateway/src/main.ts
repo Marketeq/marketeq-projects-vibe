@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core'
 import { ValidationPipe, Logger } from '@nestjs/common'
 import { MicroserviceOptions, Transport } from '@nestjs/microservices'
 import * as cookieParser from 'cookie-parser'
+import { json, urlencoded } from 'express'
 import { ApiGatewayModule } from './api-gateway.module'
 import { GlobalExceptionFilter } from './filters/global-exception.filter'
 
@@ -9,6 +10,8 @@ async function bootstrap() {
   const app = await NestFactory.create(ApiGatewayModule)
   const logger = new Logger('ApiGateway')
 
+  app.use(json({ limit: '1mb' }))
+  app.use(urlencoded({ limit: '1mb', extended: true }))
   app.use(cookieParser())
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
   app.useGlobalFilters(new GlobalExceptionFilter())
