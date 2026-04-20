@@ -8,8 +8,8 @@ export const Users: CollectionConfig = {
   // Key" toggle + "Generate New API Key" button under each user in the admin,
   // and three columns to the users table (enable_a_p_i_key, api_key,
   // api_key_index). Additive — email/password login and /admin UI behaviour
-  // are unchanged. Header format for consumers is `Authorization: users
-  // API-Key <key>` (collection-slug prefix is required by Payload).
+  // are unchanged. Service-to-service callers in this repo send
+  // `Authorization: API-Key <key>`.
   auth: { useAPIKey: true },
   admin: {
     useAsTitle: 'name',
@@ -19,7 +19,10 @@ export const Users: CollectionConfig = {
     read: ({ req: { user } }) => {
       if (!user) return false;
       const role = (user as any)?.role;
+      // Admin and Developer can read all users.
       if (role === 'admin' || role === 'developer') return true;
+      // All other authenticated users can only read their own record
+      // (required for /api/users/me).
       return { id: { equals: user.id } };
     },
     create: isAdmin,
