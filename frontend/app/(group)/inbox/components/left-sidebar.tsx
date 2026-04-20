@@ -309,50 +309,6 @@ const LeftSidebar = ({
           }
         }
 
-        // Handle ?participantId=: find existing 1:1 thread or create a new one.
-        if (initialParticipantId && currentUserId && !cancelled) {
-          const match = placeholders.find(
-            (c) => !c.isGroup && c.participantIds?.includes(initialParticipantId)
-          )
-          if (match) {
-            if (match.isTrashed) {
-              threadActions.untrash(match.id).catch(() => {})
-              const restored = { ...match, isTrashed: false }
-              setConversations((prev) =>
-                prev.map((c) => (c.id === match.id ? restored : c))
-              )
-              setSelectedConversation(restored)
-            } else {
-              setSelectedConversation(match)
-            }
-            router.replace("/inbox", { scroll: false })
-          } else {
-            // No existing thread — create one then select it.
-            try {
-              const newThread = await apiFetch<Conversation>("/v1/threads", {
-                method: "POST",
-                headers: { Authorization: `Bearer ${token}` },
-                body: {
-                  participantIds: [currentUserId, initialParticipantId],
-                  isGroup: false,
-                },
-              })
-              if (!cancelled) {
-                const placeholder = {
-                  ...newThread,
-                  participantUsername: "…",
-                  lastMessagePreview: "",
-                } as Conversation
-                setConversations((prev) => [placeholder, ...prev])
-                setSelectedConversation(placeholder)
-                router.replace("/inbox", { scroll: false })
-              }
-            } catch (err) {
-              console.error("[LeftSidebar] failed to create thread:", err)
-            }
-          }
-        }
-
         // Load the private key once per pass; share across all unwraps.
         const privKeyRef: { current: CryptoKey | null } = { current: null }
         if (currentUserId) {
@@ -382,7 +338,50 @@ const LeftSidebar = ({
     return () => {
       cancelled = true
     }
-  }, [currentUserId, token, initialThreadId, initialParticipantId])
+  }, [currentUserId, token, initialThreadId])
+
+  // Handle ?participantId= independently of the thread-list fetch so it works
+  // even when GET /v1/threads is unavailable. POST /v1/threads is idempotent —
+  // it returns the existing 1:1 thread if one already exists.
+  useEffect(() => {
+    if (!initialParticipantId || !currentUserId || !token) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const thread = await apiFetch<Conversation>("/v1/threads", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: { participantIds: [currentUserId, initialParticipantId], isGroup: false },
+        })
+        if (cancelled) return
+        setConversations((prev) => {
+          const existing = prev.find((c) => c.id === thread.id)
+          if (existing) {
+            if (!existing.isTrashed) {
+              setSelectedConversation(existing)
+            } else {
+              threadActions.untrash(existing.id).catch(() => {})
+              const restored = { ...existing, isTrashed: false }
+              setSelectedConversation(restored)
+              return prev.map((c) => (c.id === restored.id ? restored : c))
+            }
+            return prev
+          }
+          const placeholder = {
+            ...thread,
+            participantUsername: "…",
+            lastMessagePreview: "",
+          } as Conversation
+          setSelectedConversation(placeholder)
+          return [placeholder, ...prev]
+        })
+        router.replace("/inbox", { scroll: false })
+      } catch (err) {
+        console.error("[LeftSidebar] participantId thread create failed:", err)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [currentUserId, token, initialParticipantId])
 
   // Live-sync: apply server state-change broadcasts (pin/star/archive/...)
   useUserChannel({
