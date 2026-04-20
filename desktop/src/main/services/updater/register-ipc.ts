@@ -4,7 +4,7 @@
 import type { IpcMain } from 'electron';
 import type { Logger } from 'pino';
 import { z } from 'zod';
-import { IPC } from '../../shared/ipc-contracts';
+import { IPC } from '../../../shared/ipc-contracts';
 import type { UpdaterService } from './updater-service';
 import { isValidChannel, type ReleaseChannel } from './channels';
 

@@ -16,6 +16,7 @@ export type ProjectModerationInput = {
   fullDescription?: string | null;
   categories?: string[] | null;
   subCategories?: string[] | null;
+  categorySelections?: { category: string; subCategories: string[] }[] | null;
   tags?: string[] | null;
   imageUrl?: string | null; // Add imageUrl for moderation
 };
@@ -448,6 +449,5 @@ export class ProjectModerationService {
     }
   }
 }
-
 
 

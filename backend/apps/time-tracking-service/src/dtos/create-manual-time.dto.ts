@@ -9,7 +9,7 @@ import {
 export class CreateManualTimeDto {
   @IsOptional()
   @IsString()
-  projectId?: string;
+  contractId?: string;
 
   @IsOptional()
   @IsString()

@@ -155,3 +155,4 @@ vite.config.ts.timestamp-*
 .mcp.json
 build/
 .vercel
+.DS_Store

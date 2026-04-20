@@ -3,7 +3,7 @@
 // reference IPC names via src/shared/ipc-contracts.ts so there's only one
 // source of truth.
 
-import { app, ipcMain } from 'electron';
+import { app, ipcMain, shell } from 'electron';
 import { IPC } from '../shared/ipc-contracts';
 import type { AppInfo, PingResult } from '../shared/types';
 import { SCHEMA_VERSION } from '../shared/constants';
@@ -28,6 +28,22 @@ export function registerIpcHandlers(opts?: {
     return { ok: true, receivedAt: Date.now(), echo };
   });
 
+  ipcMain.handle(
+    IPC.shellOpenExternal,
+    async (_evt, url: string): Promise<void> => {
+      // Whitelist: only http(s) URLs, to prevent abuse (file://, etc.)
+      if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+        logger.warn({ url }, 'ipc shell:open-external refused non-http url');
+        return;
+      }
+      try {
+        await shell.openExternal(url);
+      } catch (err) {
+        logger.warn({ err, url }, 'ipc shell:open-external failed');
+      }
+    },
+  );
+
   ipcMain.handle(IPC.dbTablesList, (): string[] => {
     const db = getDb();
     const rows = db
@@ -51,6 +67,7 @@ export function registerIpcHandlers(opts?: {
     ipcMain.removeHandler(IPC.appInfo);
     ipcMain.removeHandler(IPC.ping);
     ipcMain.removeHandler(IPC.dbTablesList);
+    ipcMain.removeHandler(IPC.shellOpenExternal);
     detachTimer?.();
   };
 }

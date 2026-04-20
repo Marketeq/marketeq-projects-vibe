@@ -209,9 +209,20 @@ export default function AcceptInvitationPage() {
             <div className="mt-6 space-y-2">
               <Button
                 className="w-full"
-                onClick={() => router.push("/my-team")}
+                onClick={() => {
+                  const onboardingDone =
+                    user?.onboardingDismissed ?? false
+                  const hasRole = !!resolveDashboardRole(user)
+                  if (!hasRole || !onboardingDone) {
+                    router.push("/onboarding")
+                  } else {
+                    router.push("/my-team")
+                  }
+                }}
               >
-                Go to My Team
+                {(!user?.onboardingDismissed || !resolveDashboardRole(user))
+                  ? "Continue Onboarding"
+                  : "Go to My Team"}
               </Button>
               <Button
                 variant="outlined"

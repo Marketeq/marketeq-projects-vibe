@@ -98,6 +98,19 @@ export const IPC = {
   windowShow: 'window:show',
   windowHide: 'window:hide',
   windowQuit: 'window:quit',
+
+  // --- Phase 7 Updater (doc 28) ---
+  updaterGetStatus: 'updater:get-status',
+  updaterCheckNow: 'updater:check-now',
+  updaterSetChannel: 'updater:set-channel',
+  updaterDownload: 'updater:download',
+  updaterQuitAndInstall: 'updater:quit-and-install',
+
+  // --- Contracts (fetched from backend API) ---
+  contractsGetMine: 'contracts:get-mine',
+
+  // --- Shell helpers ---
+  shellOpenExternal: 'shell:open-external',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
@@ -398,26 +411,25 @@ export const NotificationPrefsSchema = z.object({
   authAlerts: z.boolean(),
 });
 
-// ---------- Phase 7 Updater contracts ----------
+// ---------- Contracts (from backend API) ----------
 
-export type UpdaterReleaseChannel = 'stable' | 'beta' | 'alpha';
-
-export type UpdaterStateName = 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
-
-export interface UpdaterProgressInfo {
-  total: number;
-  delta: number;
-  transferred: number;
-  percent: number;
-  bytesPerSecond: number;
-}
-
-export interface UpdaterStatusDTO {
-  currentVersion: string;
-  channel: UpdaterReleaseChannel;
-  state: UpdaterStateName;
-  availableVersion: string | null;
-  progress: UpdaterProgressInfo | null;
-  lastError: string | null;
-  lastCheckAt: number | null;
+export interface BackendContract {
+  id: string;
+  groupId: string;
+  clientId: string;
+  talentId: string;
+  title: string;
+  rate: number;
+  schedule: string;
+  duration: string;
+  status: string;
+  startAtISO: string | null;
+  endAtISO: string | null;
+  projectId: string | null;
+  serviceId: string | null;
+  teamId: string | null;
+  jobId: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

@@ -10,18 +10,20 @@ Vibe Coding Marketeq Projects talent network platform.
 
 ### Backend:
 ### Ports:
-- Auth: 3001
+- Frontend: 3000
 - Gateway: 4000
+- Auth: 3001
 - User: 3002
 - Listings: 3003
 - Messaging: 3005
-- Checkout: 3009
 - Notification: 3006
-- Favorites: 3012
+- Checkout: 3009
 - Contracts: 3010
-- Autocomplete: 3019
-- Content moderation: 3014
+- Favorites: 3012
 - Invitations: 3013
+- Content moderation: 3014
+- Transaction: 3018
+- Autocomplete: 3019
 - Python moderation API: 8000
 
 ### Dependencies:
@@ -32,6 +34,9 @@ Vibe Coding Marketeq Projects talent network platform.
 - npm install -D @types/superagent @types/multer @types/express --legacy-peer-deps
 - npm install @nestjs/platform-express multer --legacy-peer-deps
 - npm install sharp --legacy-peer-deps
+- npm install @nestjs/event-emitter --legacy-peer-deps
+- npm install @golevelup/nestjs-rabbitmq --legacy-peer-deps
+- npm install prom-client --legacy-peer-deps
 - py -m pip install fastapi uvicorn transformers torch pillow
 - py -m pip install python-multipart
 - py --version
@@ -59,6 +64,7 @@ Vibe Coding Marketeq Projects talent network platform.
 - npx nest start invitations-service
 - npx nest start favorites-service
 - npx nest start category-service
+- npx nest start transaction-service
 
 ### Start CMS service
 cd backend/apps/cms-service  
@@ -85,16 +91,29 @@ http://localhost:3020/api/users/login
 ### Using npm:
 ```npm exec nest -- start listings-service --watch```
 
+### Create Schema:
+psql -U postgres -d transaction_db -c "CREATE SCHEMA transaction_service;"
+
+### Database creation:
+psql -U postgres -c "CREATE DATABASE transaction_db;"
+
 ### Run Migration:
 ```npx typeorm-ts-node-commonjs -d apps/user-service/src/data-source.ts migration:run```
 ```npx typeorm-ts-node-commonjs -d apps/invitations-service/src/data-source.ts migration:run```
+```npx typeorm-ts-node-commonjs -d apps/transaction-service/src/data-source.ts migration:run ```
 
 ### Rabbitmq:
 ```docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management```
 ``` docker start rabbitmq ```
 
+### Redis:
+docker run -d --name redis -p 6379:6379 redis:7
+
 ### PAYLOAD_SECRET
 ```node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" ```
+
+### Internal service token
+```node -e "console.log(require('crypto').randomUUID())"```
 
 ### Fast API:
 ```py -m uvicorn clip_moderation_api:app --host 0.0.0.0 --port 8000 --app-dir apps/content-moderation-service/src/filters/python```

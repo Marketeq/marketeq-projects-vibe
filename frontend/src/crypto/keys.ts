@@ -1,6 +1,50 @@
 import { apiFetch } from "../../src/lib/api"
 import { getAccessToken } from "../../utils/auth"
 import { deriveKEK, encryptWithKEK, decryptWithKEK } from "./backup"
+import { openDB, type IDBPDatabase } from "idb"
+
+const DB_NAME = "marketeq-e2ee"
+const DB_VERSION = 1
+const STORE = "keys"
+
+let dbPromise: Promise<IDBPDatabase> | null = null
+
+function getDb(): Promise<IDBPDatabase> {
+  if (typeof indexedDB === "undefined") {
+    return Promise.reject(
+      new Error("IndexedDB unavailable (non-browser environment)")
+    )
+  }
+  if (!dbPromise) {
+    dbPromise = openDB(DB_NAME, DB_VERSION, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains(STORE)) {
+          db.createObjectStore(STORE)
+        }
+      },
+    })
+  }
+  return dbPromise
+}
+
+async function idbSet(key: string, value: string): Promise<void> {
+  const db = await getDb()
+  await db.put(STORE, value, key)
+}
+
+async function idbGet(key: string): Promise<string | null> {
+  const db = await getDb()
+  const value = await db.get(STORE, key)
+  return typeof value === "string" ? value : null
+}
+
+function privateKeyIdbKey(userId: string) {
+  return `private-${userId}`
+}
+
+function publicKeyIdbKey(userId: string) {
+  return `public-${userId}`
+}
 
 export async function generateKeyPair() {
   return await window.crypto.subtle.generateKey(
@@ -68,36 +112,74 @@ export async function importPrivateKey(pem: string): Promise<CryptoKey> {
   )
 }
 
-// In keys.ts
-export async function savePrivateKey(key: CryptoKey) {
+export async function savePrivateKey(
+  userId: string,
+  key: CryptoKey
+): Promise<void> {
+  if (!userId) throw new Error("savePrivateKey requires userId")
   const pem = await exportPrivateKey(key)
-  localStorage.setItem("privateKey", pem)
+  await idbSet(privateKeyIdbKey(userId), pem)
 }
 
-export async function savePublicKey(key: CryptoKey) {
+export async function savePublicKey(
+  userId: string,
+  key: CryptoKey
+): Promise<void> {
+  if (!userId) throw new Error("savePublicKey requires userId")
   const pem = await exportPublicKey(key)
-  localStorage.setItem("publicKey", pem)
+  await idbSet(publicKeyIdbKey(userId), pem)
 }
 
-export async function loadPrivateKey(): Promise<CryptoKey | null> {
-  const pem = localStorage.getItem("privateKey")
+export async function loadPrivateKey(
+  userId: string
+): Promise<CryptoKey | null> {
+  if (!userId) return null
+  const pem = await idbGet(privateKeyIdbKey(userId))
   return pem ? await importPrivateKey(pem) : null
 }
 
-export async function loadPublicKey(): Promise<CryptoKey | null> {
-  const pem = localStorage.getItem("publicKey")
+export async function loadPublicKey(
+  userId: string
+): Promise<CryptoKey | null> {
+  if (!userId) return null
+  const pem = await idbGet(publicKeyIdbKey(userId))
   return pem ? await importPublicKey(pem) : null
 }
 
+async function savePrivateKeyPem(userId: string, pem: string): Promise<void> {
+  await idbSet(privateKeyIdbKey(userId), pem)
+}
+
+async function savePublicKeyPem(userId: string, pem: string): Promise<void> {
+  await idbSet(publicKeyIdbKey(userId), pem)
+}
+
+async function loadPrivateKeyPem(userId: string): Promise<string | null> {
+  return await idbGet(privateKeyIdbKey(userId))
+}
+
+async function loadPublicKeyPem(userId: string): Promise<string | null> {
+  return await idbGet(publicKeyIdbKey(userId))
+}
+
+function parseUserIdFromToken(token: string): string | undefined {
+  try {
+    return JSON.parse(atob(token.split(".")[1])).sub as string | undefined
+  } catch {
+    return undefined
+  }
+}
+
 /**
- * Ensures a usable RSA keypair exists in localStorage.
+ * Ensures a usable RSA keypair exists for the current user in IndexedDB.
  *
  * Flow (per spec doc "Seamless Key Recovery"):
- *  1. If privateKey already in localStorage → done (fast path).
+ *  1. If privateKey+publicKey already in IndexedDB → done (fast path, with
+ *     best-effort server-sync of public-key and encrypted backup).
  *  2. Otherwise, try to restore from server:
  *     a. Derive KEK deterministically from userId + SYSTEM_SECRET.
  *     b. Download the encrypted private key blob from /user-keys/private-key.
- *     c. If found → decrypt with KEK → store in localStorage. Done.
+ *     c. If found → decrypt with KEK → store in IndexedDB. Done.
  *  3. Otherwise (first-ever signup):
  *     a. Generate new RSA-4096 keypair.
  *     b. Encrypt private key with KEK → upload to /user-keys/private-key.
@@ -110,9 +192,17 @@ export async function ensureEncryptionKeysExist(userId?: string) {
     return
   }
 
-  // Fast path: already have keys locally
-  const existingPrivatePem = localStorage.getItem("privateKey")
-  const existingPublicPem = localStorage.getItem("publicKey")
+  const resolvedUserId = userId ?? parseUserIdFromToken(token)
+  if (!resolvedUserId) {
+    console.error("Cannot parse userId from token")
+    return
+  }
+  userId = resolvedUserId
+
+  // Fast path: IndexedDB already has the keys
+  const existingPrivatePem = await loadPrivateKeyPem(userId)
+  const existingPublicPem = await loadPublicKeyPem(userId)
+
   if (existingPrivatePem && existingPublicPem) {
     // Ensure messaging-service has the public key
     try {
@@ -133,7 +223,6 @@ export async function ensureEncryptionKeysExist(userId?: string) {
         { headers: { Authorization: `Bearer ${token}` } }
       )
       if (!encryptedPrivateKey) {
-        // Check server public key against ours before migrating
         let serverPub: string | null = null
         try {
           const res = await apiFetch<{ publicKey: string }>(
@@ -152,47 +241,25 @@ export async function ensureEncryptionKeysExist(userId?: string) {
             "Local public key differs from server — refusing to migrate stale private key to server backup"
           )
         } else {
-          // Parse userId for KEK derivation
-          let uid: string | undefined
           try {
-            uid = JSON.parse(atob(token.split(".")[1])).sub
-          } catch { /* ignore */ }
-          if (uid) {
-            try {
-              const kek = await deriveKEK(uid)
-              const blob = await encryptWithKEK(existingPrivatePem, kek)
-              await apiFetch("/api/user-keys/private-key", {
-                method: "PUT",
-                headers: { Authorization: `Bearer ${token}` },
-                body: { encryptedPrivateKey: blob, publicKey: existingPublicPem },
-              })
-              console.log("Migrated existing private key to server backup")
-            } catch (err) {
-              console.warn(
-                "Skipping private-key migration backup because KEK derivation is unavailable.",
-                err
-              )
-            }
+            const kek = await deriveKEK(userId)
+            const blob = await encryptWithKEK(existingPrivatePem, kek)
+            await apiFetch("/api/user-keys/private-key", {
+              method: "PUT",
+              headers: { Authorization: `Bearer ${token}` },
+              body: { encryptedPrivateKey: blob, publicKey: existingPublicPem },
+            })
+            console.log("Migrated existing private key to server backup")
+          } catch (err) {
+            console.warn(
+              "Skipping private-key migration backup because KEK derivation is unavailable.",
+              err
+            )
           }
         }
       }
     } catch { /* server backup is best-effort */ }
 
-    return
-  }
-
-  // Need userId to derive KEK
-  if (!userId) {
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]))
-      userId = payload.sub
-    } catch {
-      console.error("Cannot parse userId from token")
-      return
-    }
-  }
-  if (!userId) {
-    console.error("No userId available for KEK derivation")
     return
   }
 
@@ -216,19 +283,19 @@ export async function ensureEncryptionKeysExist(userId?: string) {
       )
 
       if (encryptedPrivateKey) {
-        // Decrypt and restore
         const privPem = await decryptWithKEK(encryptedPrivateKey, kek)
-        localStorage.setItem("privateKey", privPem)
-
-        // Validate private key imports cleanly (throws on malformed PEM)
+        // Validate and store in IndexedDB
         await importPrivateKey(privPem)
+        await savePrivateKeyPem(userId, privPem)
+
         // We can't derive public from private with WebCrypto, so fetch from server
         const { publicKey: serverPubKey } = await apiFetch<{ publicKey: string }>(
           "/api/messaging/get-public-key",
           { headers: { Authorization: `Bearer ${token}` } }
         )
         if (serverPubKey) {
-          localStorage.setItem("publicKey", serverPubKey)
+          await importPublicKey(serverPubKey)
+          await savePublicKeyPem(userId, serverPubKey)
         }
 
         console.log("Restored encryption keys from server backup")
@@ -245,8 +312,8 @@ export async function ensureEncryptionKeysExist(userId?: string) {
   const privPem = await exportPrivateKey(privateKey)
 
   // Store locally
-  localStorage.setItem("privateKey", privPem)
-  localStorage.setItem("publicKey", pubPem)
+  await savePrivateKeyPem(userId, privPem)
+  await savePublicKeyPem(userId, pubPem)
 
   // Encrypt private key with KEK and upload to server for future recovery
   if (kek) {

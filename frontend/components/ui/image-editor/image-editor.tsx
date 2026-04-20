@@ -500,7 +500,9 @@ export const ImageEditor = ({
     },
   })
 
-  // Restore a previously saved image (e.g. when navigating back to this step)
+  // Restore a previously saved image (e.g. when navigating back to this step).
+  // No ref gating needed: onChange above skips notification when acceptedFiles
+  // is empty, so this setDataUrl call won't clobber the form state.
   const defaultDataUrlApplied = useRef(false)
   useEffect(() => {
     if (defaultDataUrl && !defaultDataUrlApplied.current) {
@@ -666,7 +668,10 @@ export const ImageEditor = ({
           </div>
 
           <div className="mt-8">
-            <div className="border border-gray-200  rounded-[4px] py-4 px-6">
+            <div
+              className="border border-gray-200 rounded-[4px] py-4 px-6"
+              {...getRootProps()}
+            >
               <span className="block text-sm leading-5 text-center text-gray-600">
                 <button
                   className="font-semibold transition duration-300 text-dark-blue-400 hover:underline focus-visible:outline-none"

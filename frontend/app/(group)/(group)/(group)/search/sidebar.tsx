@@ -57,6 +57,8 @@ import {
   InputRightAddon,
   InputRightElement,
   Label,
+  RadioGroup,
+  RadioGroupItem,
   ScaleOutIn,
   ScrollArea,
   ScrollBar,
@@ -64,9 +66,17 @@ import {
   inputVariants,
 } from "@/components/ui"
 
-const Budget = () => {
-  const [minRate, setMinRate] = useState("")
-  const [maxRate, setMaxRate] = useState("")
+const Budget = ({
+  title = "Budget",
+  initialMinRate = "",
+  initialMaxRate = "",
+}: {
+  title?: string
+  initialMinRate?: string
+  initialMaxRate?: string
+}) => {
+  const [minRate, setMinRate] = useState(initialMinRate)
+  const [maxRate, setMaxRate] = useState(initialMaxRate)
   const onMinRateInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const {
       target: { value },
@@ -97,11 +107,29 @@ const Budget = () => {
     const digitsOnly = pastedText.replace(/\D/g, "")
     setMaxRate((prevValue) => prevValue + digitsOnly)
   }
+  const reset = () => {
+    setMinRate("")
+    setMaxRate("")
+  }
+  const hasValues = Boolean(minRate || maxRate)
   return (
     <div className="py-5 space-y-5">
-      <h1 className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
-        Budget
-      </h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
+          {title}
+        </h1>
+
+        {hasValues && (
+          <Button
+            className="text-[11px] leading-6 opacity-50 hover:opacity-100"
+            variant="link"
+            onClick={reset}
+            visual="gray"
+          >
+            Clear
+          </Button>
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-x-3">
         <div className="flex flex-col gap-y-1.5">
@@ -147,111 +175,72 @@ const Budget = () => {
   )
 }
 
-const Industry = () => {
-  const [industries, setIndustries] = React.useState({
-    Fintech: false,
-    "Real Estate": false,
-    Technology: false,
-    Healthcare: false,
-    Finance: false,
-    Education: false,
-  })
-  const reset = () => {
-    const nextState = keys(industries).reduce(
-      (prev, current) => ({ ...prev, [current]: false }),
-      {} as { [Property in Keys<typeof industries>]: boolean }
-    )
-    setIndustries(nextState)
-  }
+const Industry = ({
+  title = "Industry",
+  placeholder = "Select Industry",
+  options = [
+    "Fintech",
+    "Real Estate",
+    "Technology",
+    "Healthcare",
+    "Finance",
+    "Education",
+  ],
+  initialSelected = [],
+}: {
+  title?: string
+  placeholder?: string
+  options?: string[]
+  initialSelected?: string[]
+}) => (
+  <Category
+    title={title}
+    placeholder={placeholder}
+    options={options}
+    initialSelected={initialSelected}
+    breadcrumbs={[]}
+  />
+)
 
-  const enabledOptions = keys(industries).filter((item) => industries[item])
-  const disableOption = (key: Keys<typeof industries>) => {
-    setIndustries((prev) => ({ ...prev, [key]: false }))
-  }
-
-  return (
-    <div className="flex flex-col gap-y-3 py-5">
-      <div className="flex items-center justify-between">
-        <span className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
-          Industry
-        </span>
-
-        {keys(industries).some((key) => industries[key]) && (
-          <Button
-            className="text-[11px] leading-6 opacity-50 hover:opacity-100"
-            variant="link"
-            onClick={reset}
-            visual="gray"
-          >
-            Clear
-          </Button>
-        )}
-      </div>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            className="bg-white font-normal justify-between text-gray-500 px-3 py-2"
-            size="md"
-            variant="outlined"
-            visual="gray"
-          >
-            Select Industry
-            <ChevronDown className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="min-w-[335px] lg:min-w-[210px]">
-          {keys(industries).map((item, index) => (
-            <DropdownMenuCheckItem
-              checked={industries[item]}
-              onCheckedChange={(checked) =>
-                setIndustries((prev) => ({ ...prev, [item]: checked }))
-              }
-              key={index}
-            >
-              {item}
-            </DropdownMenuCheckItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {getIsNotEmpty(enabledOptions) && (
-        <div className="flex gap-3 flex-wrap">
-          {enabledOptions.map((option, index) => (
-            <Badge visual="primary" key={index}>
-              {option}
-              <button
-                className="focus-visible:outline-none"
-                onClick={() => disableOption(option)}
-              >
-                <X className="size-3 opacity-50 hover:opacity-100" />
-              </button>
-            </Badge>
-          ))}
-        </div>
-      )}
-    </div>
+const Category = ({
+  title = "Category",
+  placeholder = "Select Category",
+  options = [
+    "Mobile Wallet",
+    "Payment App",
+    "FinTech",
+    "SaaS",
+    "Product Management",
+  ],
+  initialSelected = [],
+  breadcrumbs = ["Mobile Development", "Swift Development"],
+  footerLinkLabel,
+}: {
+  title?: string
+  placeholder?: string
+  options?: string[]
+  initialSelected?: string[]
+  breadcrumbs?: string[]
+  footerLinkLabel?: string
+}) => {
+  const [open, setOpen] = useState(false)
+  const [categories, setCategories] = useState(
+    Object.fromEntries(
+      options.map((option) => [option, initialSelected.includes(option)])
+    ) as Record<string, boolean>
   )
-}
-
-const Category = () => {
-  const [categories, setCategories] = useState({
-    "Mobile Wallet": false,
-    "Payment App": false,
-    FinTech: false,
-    SaaS: false,
-    "Product Management": false,
-  })
   const reset = () => {
-    const nextState = keys(categories).reduce(
-      (prev, current) => ({ ...prev, [current]: false }),
-      {} as { [Property in Keys<typeof categories>]: boolean }
+    setCategories(
+      Object.fromEntries(options.map((option) => [option, false])) as Record<
+        string,
+        boolean
+      >
     )
-    setCategories(nextState)
   }
 
-  const enabledOptions = keys(categories).filter((item) => categories[item])
-  const disableOption = (key: Keys<typeof categories>) => {
+  const categoryOptions = Object.keys(categories)
+  const enabledOptions = categoryOptions.filter((item) => categories[item])
+  const disableOption = (key: string) => {
     setCategories((prev) => ({ ...prev, [key]: false }))
   }
 
@@ -259,10 +248,10 @@ const Category = () => {
     <div className="flex flex-col gap-y-[15px] pb-5">
       <div className="flex items-center justify-between">
         <span className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
-          Category
+          {title}
         </span>
 
-        {keys(categories).some((key) => categories[key]) && (
+        {categoryOptions.some((key) => categories[key]) && (
           <Button
             className="text-[11px] leading-6 opacity-50 hover:opacity-100"
             variant="link"
@@ -274,7 +263,7 @@ const Category = () => {
         )}
       </div>
 
-      <DropdownMenu>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             className="bg-white font-normal justify-between text-gray-500 px-3 py-2"
@@ -282,17 +271,18 @@ const Category = () => {
             variant="outlined"
             visual="gray"
           >
-            Select Category
+            {placeholder}
             <ChevronDown className="size-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="min-w-[335px] lg:min-w-[210px]">
-          {keys(categories).map((item, index) => (
+          {categoryOptions.map((item, index) => (
             <DropdownMenuCheckItem
               checked={categories[item]}
-              onCheckedChange={(checked) =>
+              onCheckedChange={(checked) => {
                 setCategories((prev) => ({ ...prev, [item]: checked }))
-              }
+                setOpen(false)
+              }}
               key={index}
             >
               {item}
@@ -301,16 +291,26 @@ const Category = () => {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <div className="flex flex-col items-start gap-y-[15px]">
-        <Button visual="gray" variant="link">
-          <ArrowLeft className="size-[15px]" />
-          Mobile Development
+      {breadcrumbs.length > 0 && (
+        <div className="flex flex-col items-start gap-y-[15px]">
+          {breadcrumbs.map((breadcrumb) => (
+            <Button key={breadcrumb} visual="gray" variant="link">
+              <ArrowLeft className="size-[15px]" />
+              {breadcrumb}
+            </Button>
+          ))}
+        </div>
+      )}
+
+      {footerLinkLabel && (
+        <Button
+          className="self-start justify-start p-0 underline decoration-current/30 underline-offset-2 hover:decoration-current"
+          visual="gray"
+          variant="link"
+        >
+          {footerLinkLabel}
         </Button>
-        <Button visual="gray" variant="link">
-          <ArrowLeft className="size-[15px]" />
-          Swift Development
-        </Button>
-      </div>
+      )}
 
       {enabledOptions.length > 0 && (
         <div className="flex gap-3 flex-wrap">
@@ -359,9 +359,19 @@ const skills = [
   "Web Security",
 ]
 
-const Skills = () => {
+const Skills = ({
+  title = "Skills",
+  placeholder = "Add skills by keyword",
+  suggestions = skills,
+  initialValues = [],
+}: {
+  title?: string
+  placeholder?: string
+  suggestions?: string[]
+  initialValues?: string[]
+}) => {
   const [inputValue, setInputValue] = useState("")
-  const [values, setValues] = useState<string[]>([])
+  const [values, setValues] = useState<string[]>(initialValues)
   const [selected, setSelected] = useState<string[]>([])
 
   const resetInputValue = () => setInputValue("")
@@ -402,7 +412,7 @@ const Skills = () => {
     if (key === HOT_KEYS.ENTER) addValue()
   }
 
-  const filteredSkills = skills.filter((skill) =>
+  const filteredSkills = suggestions.filter((skill) =>
     skill.toLowerCase().includes(inputValue.toLowerCase())
   )
 
@@ -419,7 +429,7 @@ const Skills = () => {
     <div className="space-y-3 py-5">
       <div className="flex items-center justify-between">
         <span className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
-          Skills
+          {title}
         </span>
 
         {getIsNotEmpty(values) && (
@@ -442,7 +452,7 @@ const Skills = () => {
       >
         <InputGroup>
           <ComboboxPrimitive.Input
-            placeholder="Add skills by keyword"
+            placeholder={placeholder}
             className={cn(
               inputVariants({
                 className: "h-10 text-xs rounded-r-none leading-6 font-normal",
@@ -509,131 +519,12 @@ const additionalTags = [
 ]
 
 const AdditionalTags = () => {
-  const [inputValue, setInputValue] = useState("")
-  const [values, setValues] = useState<string[]>([])
-  const [selected, setSelected] = useState<string[]>([])
-
-  const resetInputValue = () => setInputValue("")
-  const reset = () => {
-    setValues([])
-    setSelected([])
-  }
-  const addValue = () => {
-    if (!inputValue) return
-
-    setValues((prev) => {
-      return prev.includes(inputValue) ? prev : [...prev, inputValue]
-    })
-    resetInputValue()
-  }
-  const removeValue = (index: number) => {
-    const tag = values[index]
-
-    setValues((prev) => {
-      const nextState = prev.filter((_, i) => i !== index)
-      return nextState
-    })
-    setSelected((prev) => {
-      const nextState = prev.filter((value) => value !== tag)
-      return nextState
-    })
-  }
-
-  const onChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const {
-      target: { value },
-    } = event
-    setInputValue(value)
-  }
-
-  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    const { key } = event
-    if (key === HOT_KEYS.ENTER) addValue()
-  }
-
-  const filteredAdditionalTags = additionalTags.filter((additionalTag) =>
-    additionalTag.toLowerCase().includes(inputValue.toLowerCase())
-  )
-
-  useEffect(() => {
-    setValues((preValues) => {
-      const filteredSelected = selected.filter(
-        (value) => !preValues.includes(value)
-      )
-      return [...preValues, ...filteredSelected]
-    })
-  }, [selected])
-
   return (
-    <div className="space-y-3 py-5">
-      <div className="flex items-center justify-between">
-        <span className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
-          Additional Tags
-        </span>
-
-        {getIsNotEmpty(values) && (
-          <Button
-            className="text-[11px] leading-6 opacity-50 hover:opacity-100"
-            variant="link"
-            onClick={reset}
-            visual="gray"
-          >
-            Clear
-          </Button>
-        )}
-      </div>
-
-      <Combobox
-        className="w-full"
-        value={selected}
-        onChange={setSelected}
-        multiple
-      >
-        <InputGroup>
-          <ComboboxPrimitive.Input
-            placeholder="Enter Job Title"
-            className={cn(
-              inputVariants({
-                className: "h-10 text-xs rounded-r-none leading-6 font-normal",
-              })
-            )}
-            onChange={onChange}
-            onKeyDown={onKeyDown}
-            value={inputValue}
-          />
-          <InputRightAddon className="rounded-l-none size-10 bg-gray-100">
-            <button className="focus-visible:outline-none" onClick={addValue}>
-              <Plus className="size-4" />
-            </button>
-          </InputRightAddon>
-        </InputGroup>
-        <ScaleOutIn afterLeave={() => setInputValue("")}>
-          <ComboboxOptions>
-            <ScrollArea viewportClassName="max-h-[304px]">
-              {filteredAdditionalTags.map((additionalTag, index) => (
-                <ComboboxOption key={index} value={additionalTag}>
-                  {additionalTag}
-                </ComboboxOption>
-              ))}
-            </ScrollArea>
-          </ComboboxOptions>
-        </ScaleOutIn>
-      </Combobox>
-
-      <div className="flex flex-wrap gap-3">
-        {values.map((value, index) => (
-          <Badge visual="primary" key={index}>
-            {value}
-            <button
-              className="focus-visible:outline-none"
-              onClick={() => removeValue(index)}
-            >
-              <X2 className="h-3 w-3" />
-            </button>
-          </Badge>
-        ))}
-      </div>
-    </div>
+    <Skills
+      title="Additional Tags"
+      placeholder="Enter Job Title"
+      suggestions={additionalTags}
+    />
   )
 }
 
@@ -729,35 +620,77 @@ const ProjectType = () => {
 const CheckboxGroup = ({
   title,
   options,
+  initialSelected = [],
 }: {
   title: string
   options: string[]
-}) => (
-  <div className="space-y-5 py-5">
-    <div className="flex items-center justify-between">
-      <span className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
-        {title}
-      </span>
+  initialSelected?: string[]
+}) => {
+  const [open, setOpen] = useState(false)
+  const [selections, setSelections] = useState<Record<string, boolean>>(
+    Object.fromEntries(
+      options.map((option) => [option, initialSelected.includes(option)])
+    ) as Record<string, boolean>
+  )
+
+  const hasSelections = options.some((option) => selections[option])
+
+  const reset = () => {
+    setSelections(
+      Object.fromEntries(options.map((option) => [option, false])) as Record<
+        string,
+        boolean
+      >
+    )
+  }
+
+  return (
+    <div className="space-y-5 py-5">
+      <div className="flex items-center justify-between">
+        <span className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
+          {title}
+        </span>
+
+        {hasSelections && (
+          <Button
+            className="text-[11px] leading-6 opacity-50 hover:opacity-100"
+            variant="link"
+            onClick={reset}
+            visual="gray"
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+      <div className="space-y-3">
+        {options.map((opt) => {
+          const id = `${title}-${opt}`.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+          return (
+            <div key={id} className="flex items-center gap-x-3.5">
+              <Checkbox
+                id={id}
+                checked={selections[opt]}
+                onCheckedChange={(checked) =>
+                  setSelections((prev) => ({
+                    ...prev,
+                    [opt]: checked === true,
+                  }))
+                }
+              />
+              <Label
+                htmlFor={id}
+                className="font-normal text-[#667085]"
+                size="sm"
+              >
+                {opt}
+              </Label>
+            </div>
+          )
+        })}
+      </div>
     </div>
-    <div className="space-y-3">
-      {options.map((opt) => {
-        const id = `${title}-${opt}`.toLowerCase().replace(/[^a-z0-9]+/g, "-")
-        return (
-          <div key={id} className="flex items-center gap-x-3.5">
-            <Checkbox id={id} />
-            <Label
-              htmlFor={id}
-              className="font-normal text-[#667085]"
-              size="sm"
-            >
-              {opt}
-            </Label>
-          </div>
-        )
-      })}
-    </div>
-  </div>
-)
+  )
+}
 
 /* ─── Hourly Rate ─────────────────────────────────────────────────────── */
 
@@ -887,6 +820,325 @@ const LocationFilter = ({ label = "Location" }: { label?: string }) => {
           onChange={(e) => setValue(e.target.value)}
         />
       </InputGroup>
+    </div>
+  )
+}
+
+const DropdownFacetSection = ({
+  title,
+  placeholder,
+  options,
+  initialSelected = [],
+}: {
+  title: string
+  placeholder: string
+  options: string[]
+  initialSelected?: string[]
+}) => {
+  const [open, setOpen] = useState(false)
+  const [selections, setSelections] = useState<Record<string, boolean>>(
+    Object.fromEntries(
+      options.map((option) => [option, initialSelected.includes(option)])
+    )
+  )
+
+  const enabledOptions = Object.keys(selections).filter(
+    (option) => selections[option]
+  )
+
+  const reset = () => {
+    setSelections(
+      Object.fromEntries(options.map((option) => [option, false]))
+    )
+  }
+
+  const disableOption = (option: string) => {
+    setSelections((prev) => ({ ...prev, [option]: false }))
+  }
+
+  return (
+    <div className="flex flex-col gap-y-3 py-5">
+      <div className="flex items-center justify-between">
+        <span className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
+          {title}
+        </span>
+
+        {enabledOptions.length > 0 && (
+          <Button
+            className="text-[11px] leading-6 opacity-50 hover:opacity-100"
+            variant="link"
+            onClick={reset}
+            visual="gray"
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            className="bg-white font-normal justify-between text-gray-500 px-3 py-2"
+            size="md"
+            variant="outlined"
+            visual="gray"
+          >
+            {placeholder}
+            <ChevronDown className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="min-w-[335px] lg:min-w-[210px]">
+          {options.map((option) => (
+            <DropdownMenuCheckItem
+              checked={selections[option]}
+              onCheckedChange={(checked) => {
+                setSelections((prev) => ({ ...prev, [option]: checked }))
+                setOpen(false)
+              }}
+              key={option}
+            >
+              {option}
+            </DropdownMenuCheckItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {enabledOptions.length > 0 && (
+        <div className="flex gap-3 flex-wrap">
+          {enabledOptions.map((option) => (
+            <Badge visual="primary" key={option}>
+              {option}
+              <button
+                className="focus-visible:outline-none"
+                onClick={() => disableOption(option)}
+              >
+                <X className="size-3 opacity-50 hover:opacity-100" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const TagInputSection = ({
+  title,
+  placeholder,
+  suggestions,
+  initialValues = [],
+}: {
+  title: string
+  placeholder: string
+  suggestions: string[]
+  initialValues?: string[]
+}) => {
+  const [inputValue, setInputValue] = useState("")
+  const [values, setValues] = useState<string[]>(initialValues)
+  const [selected, setSelected] = useState<string[]>([])
+
+  const filteredOptions = suggestions.filter((option) =>
+    option.toLowerCase().includes(inputValue.toLowerCase())
+  )
+
+  useEffect(() => {
+    setValues((prevValues) => {
+      const nextValues = selected.filter((value) => !prevValues.includes(value))
+      return [...prevValues, ...nextValues]
+    })
+  }, [selected])
+
+  const addValue = () => {
+    if (!inputValue.trim()) return
+
+    setValues((prev) =>
+      prev.includes(inputValue.trim()) ? prev : [...prev, inputValue.trim()]
+    )
+    setInputValue("")
+  }
+
+  const removeValue = (target: string) => {
+    setValues((prev) => prev.filter((value) => value !== target))
+    setSelected((prev) => prev.filter((value) => value !== target))
+  }
+
+  const reset = () => {
+    setValues([])
+    setSelected([])
+    setInputValue("")
+  }
+
+  return (
+    <div className="space-y-3 py-5">
+      <div className="flex items-center justify-between">
+        <span className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
+          {title}
+        </span>
+
+        {values.length > 0 && (
+          <Button
+            className="text-[11px] leading-6 opacity-50 hover:opacity-100"
+            variant="link"
+            onClick={reset}
+            visual="gray"
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+
+      <Combobox
+        className="w-full"
+        value={selected}
+        onChange={setSelected}
+        multiple
+      >
+        <InputGroup>
+          <ComboboxPrimitive.Input
+            placeholder={placeholder}
+            className={cn(
+              inputVariants({
+                className: "h-10 text-xs rounded-r-none leading-6 font-normal",
+              })
+            )}
+            onChange={(event) => setInputValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === HOT_KEYS.ENTER) addValue()
+            }}
+            value={inputValue}
+          />
+          <InputRightAddon className="rounded-l-none size-10 bg-gray-100">
+            <button className="focus-visible:outline-none" onClick={addValue}>
+              <Plus className="size-4" />
+            </button>
+          </InputRightAddon>
+        </InputGroup>
+        <ScaleOutIn afterLeave={() => setInputValue("")}>
+          <ComboboxOptions>
+            <ScrollArea viewportClassName="max-h-[304px]">
+              {filteredOptions.map((option) => (
+                <ComboboxOption key={option} value={option}>
+                  {option}
+                </ComboboxOption>
+              ))}
+            </ScrollArea>
+          </ComboboxOptions>
+        </ScaleOutIn>
+      </Combobox>
+
+      <div className="flex flex-wrap gap-3">
+        {values.map((value) => (
+          <Badge visual="primary" key={value}>
+            {value}
+            <button
+              className="focus-visible:outline-none"
+              onClick={() => removeValue(value)}
+            >
+              <X2 className="h-3 w-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const CurrencyRangeSection = ({ title }: { title: string }) => {
+  const [minValue, setMinValue] = useState("5")
+  const [maxValue, setMaxValue] = useState("5")
+
+  return (
+    <div className="py-5 space-y-5">
+      <h1 className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
+        {title}
+      </h1>
+
+      <div className="grid grid-cols-2 gap-x-3">
+        <div className="flex flex-col gap-y-1.5">
+          <InputGroup>
+            <Input
+              id={`${title}-min`}
+              type="text"
+              className="pl-10 h-10 w-full"
+              value={minValue}
+              onChange={(event) =>
+                setMinValue(event.target.value.replace(/\D/g, ""))
+              }
+            />
+            <InputLeftElement className="w-10">
+              <DollarSign className="text-gray-500 size-4" />
+            </InputLeftElement>
+          </InputGroup>
+
+          <Label className="text-gray-500" htmlFor={`${title}-min`} size="sm">
+            Min
+          </Label>
+        </div>
+
+        <div className="flex flex-col gap-y-1.5">
+          <InputGroup>
+            <Input
+              id={`${title}-max`}
+              type="text"
+              className="pl-10 h-10 w-full"
+              value={maxValue}
+              onChange={(event) =>
+                setMaxValue(event.target.value.replace(/\D/g, ""))
+              }
+            />
+            <InputLeftElement className="w-10">
+              <DollarSign className="text-gray-500 size-4" />
+            </InputLeftElement>
+          </InputGroup>
+
+          <Label className="text-gray-500" htmlFor={`${title}-max`} size="sm">
+            Max
+          </Label>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const RadioSection = ({
+  title,
+  options,
+  defaultValue = "",
+}: {
+  title: string
+  options: string[]
+  defaultValue?: string
+}) => {
+  const [value, setValue] = useState(defaultValue)
+
+  return (
+    <div className="space-y-5 py-5">
+      <div className="flex items-center justify-between">
+        <span className="text-sm leading-[16.94px] text-dark-blue-400 font-bold">
+          {title}
+        </span>
+      </div>
+
+      <RadioGroup value={value} onValueChange={setValue} className="gap-y-3">
+        {options.map((option) => {
+          const id = `${title}-${option}`
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+
+          return (
+            <div key={id} className="flex items-center gap-x-3.5">
+              <RadioGroupItem id={id} value={option} />
+              <Label
+                htmlFor={id}
+                className="font-normal text-[#667085]"
+                size="sm"
+              >
+                {option}
+              </Label>
+            </div>
+          )
+        })}
+      </RadioGroup>
     </div>
   )
 }
@@ -1273,9 +1525,111 @@ export const SidebarTeams = ({ className }: { className?: string }) => {
   )
 }
 
+export const SidebarJobs = ({ className }: { className?: string }) => {
+  return (
+    <div
+      className={cn(
+        "flex-none divide-y lg:block hidden divide-gray-200 w-[210px]",
+        className
+      )}
+    >
+      <RadioSection
+        title="Date Posted"
+        defaultValue="Any time"
+        options={["Any time", "Past 24 hours", "Past week", "Past month"]}
+      />
+      <div className="pt-5">
+        <Category
+          title="Category"
+          placeholder="Select Category"
+          options={["Mobile Wallet", "Payment App", "FinTech", "SaaS"]}
+          breadcrumbs={[]}
+          footerLinkLabel="View All Categories"
+        />
+      </div>
+      <div className="pt-5">
+        <Category
+          title="Job Type"
+          placeholder="Select Job Type"
+          options={["Mobile App", "Desktop App", "Web App", "API"]}
+          breadcrumbs={[]}
+        />
+      </div>
+      <CheckboxGroup
+        title="NDA Required"
+        options={["NDA Required", "Payment Verified"]}
+      />
+      <CheckboxGroup
+        title="Experience Level"
+        options={[
+          "Junior (0 - 3 years)",
+          "Middle (3 - 5 years)",
+          "Senior (5 - 7 years)",
+          "Lead (7 - 10 years)",
+          "Super Senior (10+ years)",
+          "Custom Range",
+        ]}
+      />
+      <Budget
+        title="Earnings Opportunity"
+      />
+      <Skills
+        title="Skills"
+        placeholder="Add skills by keyword"
+      />
+      <Skills
+        title="Client Location"
+        placeholder="Add location"
+        suggestions={[
+          "Argentina",
+          "Berlin",
+          "New York",
+          "London",
+          "Toronto",
+          "Sao Paulo",
+        ]}
+      />
+      <RadioSection
+        title="Work Schedule"
+        defaultValue="Show All"
+        options={["Show All", "Full-Time", "Part-Time", "Custom Range"]}
+      />
+      <CheckboxGroup
+        title="Project Length"
+        options={[
+          "1 - 3 months",
+          "3 - 6 months",
+          "6 - 12 months",
+          "12 - 18 months",
+          "18 - 24 months",
+          "24 + months",
+        ]}
+      />
+      <div className="pt-5">
+        <Industry
+          title="Industry"
+          placeholder="Select Industry"
+          options={["Real Estate", "FinTech", "Healthcare", "Education"]}
+        />
+      </div>
+      <Skills
+        title="Languages"
+        placeholder="Add language"
+        suggestions={["English", "Spanish", "Portuguese", "German", "French"]}
+      />
+    </div>
+  )
+}
+
 /* ─── Category dispatcher ─────────────────────────────────────────────── */
 
-export type SidebarCategory = "projects" | "services" | "talent" | "teams" | "all"
+export type SidebarCategory =
+  | "projects"
+  | "services"
+  | "talent"
+  | "teams"
+  | "jobs"
+  | "all"
 
 export const CategorySidebar = ({
   category,
@@ -1291,6 +1645,8 @@ export const CategorySidebar = ({
       return <SidebarTalent className={className} />
     case "teams":
       return <SidebarTeams className={className} />
+    case "jobs":
+      return <SidebarJobs className={className} />
     case "projects":
     case "all":
     default:

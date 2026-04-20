@@ -8,18 +8,21 @@ export function useAblyChannel(
   onMessage: (data: any) => void,
   onPinToggled?: (data: { messageId: string; isPinned: boolean }) => void,
   onDelete?: (messageId: string) => void,
-  onUndelete?: (messageId: string) => void
+  onUndelete?: (messageId: string) => void,
+  onEdit?: (data: any) => void
 ) {
   // Stable refs so the effect doesn't tear down on every render
   const onMessageRef = useRef(onMessage)
   const onPinToggledRef = useRef(onPinToggled)
   const onDeleteRef = useRef(onDelete)
   const onUndeleteRef = useRef(onUndelete)
+  const onEditRef = useRef(onEdit)
 
   useEffect(() => { onMessageRef.current = onMessage }, [onMessage])
   useEffect(() => { onPinToggledRef.current = onPinToggled }, [onPinToggled])
   useEffect(() => { onDeleteRef.current = onDelete }, [onDelete])
   useEffect(() => { onUndeleteRef.current = onUndelete }, [onUndelete])
+  useEffect(() => { onEditRef.current = onEdit }, [onEdit])
 
   useEffect(() => {
     if (!threadId) return
@@ -53,13 +56,16 @@ export function useAblyChannel(
       if (msg.name === "message:new") {
         onMessageRef.current(msg.data)
       }
+      if (msg.name === "message:edit" && onEditRef.current) {
+        onEditRef.current(msg.data)
+      }
       if (msg.name === "message-pin-toggled" && onPinToggledRef.current) {
         onPinToggledRef.current(msg.data)
       }
-      if (msg.name === "message-deleted" && onDeleteRef.current) {
+      if (msg.name === "message:delete" && onDeleteRef.current) {
         onDeleteRef.current(msg.data.messageId)
       }
-      if (msg.name === "message-undeleted" && onUndeleteRef.current) {
+      if (msg.name === "message:restore" && onUndeleteRef.current) {
         onUndeleteRef.current(msg.data.messageId)
       }
     })

@@ -13,6 +13,14 @@ import { CategoryEntity } from './entities/category.entity';
 import { TagEntity } from './entities/tag.entity';
 import { CategoryDto } from './dto/category.dto';
 import { ContentService } from '../content/content.service';
+import {
+  checkDrugs,
+  checkGambling,
+  checkPorn,
+  checkProfanity,
+  checkTobacco,
+  validateSubcategory,
+} from './category.filters';
 
 /** tiny slugify helper */
 function slugify(s: string) {
@@ -390,6 +398,11 @@ export class CategoryService {
     }
 
     const cleanName = name.trim();
+    if (checkProfanity(cleanName)) throw new BadRequestException('Invalid subcategory: Profanity');
+    if (checkDrugs(cleanName)) throw new BadRequestException('Invalid subcategory: Drugs');
+    if (checkTobacco(cleanName)) throw new BadRequestException('Invalid subcategory: Tobacco');
+    if (checkPorn(cleanName)) throw new BadRequestException('Invalid subcategory: Pornography');
+    if (checkGambling(cleanName)) throw new BadRequestException('Invalid subcategory: Gambling');
 
     const parent = await this.catRepo.findOne({ where: { uuid: parentUuid } });
     if (!parent) throw new BadRequestException(`Parent category not found locally for uuid=${parentUuid}`);
@@ -434,17 +447,26 @@ export class CategoryService {
     }
 
     let parent: CategoryEntity | null = null;
+    let displayName = name.trim();
     if (parentUuid?.trim()) {
+      if (checkProfanity(displayName)) throw new BadRequestException('Invalid subcategory: Profanity');
+      if (checkDrugs(displayName)) throw new BadRequestException('Invalid subcategory: Drugs');
+      if (checkTobacco(displayName)) throw new BadRequestException('Invalid subcategory: Tobacco');
+      if (checkPorn(displayName)) throw new BadRequestException('Invalid subcategory: Pornography');
+      if (checkGambling(displayName)) throw new BadRequestException('Invalid subcategory: Gambling');
       parent = await this.catRepo.findOne({ where: { uuid: parentUuid } });
       if (!parent) {
         throw new BadRequestException(`Parent category not found locally for uuid=${parentUuid}`);
       }
     } else {
-      parent = await this.mapToLikelyParent(name);
-      if (!parent) throw new BadRequestException('No relevant parent found for this subcategory');
+      const validation = await validateSubcategory(name, this.catRepo);
+      if (!validation.valid) {
+        throw new BadRequestException(`Invalid subcategory: ${validation.reason}`);
+      }
+      displayName = validation.name;
+      parent = validation.parent;
     }
 
-    const displayName = name.trim();
     const slug = await this.generateUniqueSlug(fuzzySpellcheck(displayName));
 
     const newUuid = randomUUID();
@@ -587,8 +609,7 @@ export class CategoryService {
   private authHeader() {
     const key = this.cmsApiKey();
     if (!key) return {};
-    // Use 'API-Key' header for Payload CMS compatibility
-    return { 'API-Key': key };
+    return { Authorization: `API-Key ${key}` };
   }
 
   private formatHttpError(error: unknown): string {

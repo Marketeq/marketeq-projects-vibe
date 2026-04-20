@@ -564,6 +564,7 @@ export function TimeTrackerApp({
     })
   }, [])
   const [days, setDays] = React.useState<DayGroup[]>(initialDays || SEED_DAYS)
+  const [contractsLoaded, setContractsLoaded] = React.useState(false)
   const [expandedContracts, setExpandedContracts] = React.useState<Set<string>>(new Set())
   const [collapsedDays, setCollapsedDays] = React.useState<Set<number>>(new Set())
 
@@ -586,10 +587,6 @@ export function TimeTrackerApp({
   // Header collapse — scroll-based OR manual (clicking date row chevron)
   const [headerCollapsed, setHeaderCollapsed] = React.useState(false)
   const [headerManualCollapsed, setHeaderManualCollapsed] = React.useState(false)
-  // 0 = fully expanded, 1 = fully collapsed — drives button shrink
-  const [shrinkProgress, setShrinkProgress] = React.useState(0)
-  // true = chevron click (use CSS transition), false = scroll-driven (no transition)
-  const [useShrinkTransition, setUseShrinkTransition] = React.useState(false)
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const expandedHeaderRef = React.useRef<HTMLDivElement>(null)
   const runningContentRef = React.useRef<HTMLDivElement>(null)
@@ -640,6 +637,53 @@ export function TimeTrackerApp({
 
   const hourlyRate = days[0]?.hourlyRate || 75
 
+  // ── Fetch real contracts from backend API ──────────────────────────────
+  React.useEffect(() => {
+    let cancelled = false
+    async function fetchContracts() {
+      try {
+        const contracts = await window.dtt?.contracts?.getMine?.()
+        if (cancelled || !contracts || contracts.length === 0) return
+
+        // Convert backend contracts into the DayGroup format the UI expects.
+        // Group all active contracts under "Today" so they appear in the picker.
+        const today = new Date()
+        const fullDate = today.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+        const uiContracts: Contract[] = contracts
+          .filter((c) => c.status === 'ACTIVE' || c.status === 'active')
+          .map((c) => ({
+            id: c.id,
+            name: c.title || "Untitled Contract",
+            clientHandle: c.clientId?.slice(0, 12) || "client",
+            tasks: [
+              {
+                id: `task-${c.id}`,
+                name: c.title || "General work",
+                timeRange: "Not started",
+                duration: "00:00:00",
+              },
+            ],
+          }))
+
+        if (uiContracts.length > 0) {
+          const todayGroup: DayGroup = {
+            label: "Today",
+            fullDate,
+            totalHours: "0",
+            hourlyRate: Number(contracts[0]?.rate) || 75,
+            contracts: uiContracts,
+          }
+          setDays([todayGroup])
+          setContractsLoaded(true)
+        }
+      } catch (err) {
+        console.error("Failed to fetch contracts:", err)
+      }
+    }
+    fetchContracts()
+    return () => { cancelled = true }
+  }, [])
+
   // ── Live clock ──────────────────────────────────────────────────────────
   React.useEffect(() => {
     const id = setInterval(() => setUtcTime(formatUtcTime()), 10000)
@@ -658,21 +702,16 @@ export function TimeTrackerApp({
     }
   }, [isRunning, isPaused])
 
-  // ── Scroll handler — shrink buttons as header scrolls, show min header when out of view ──
+  // ── Scroll handler — show minimized bar once expanded header + controls scroll away ──
   const handleContentScroll = React.useCallback(() => {
     const el = scrollRef.current
     const header = expandedHeaderRef.current
     if (!el || !header) return
-    const scrollTop = el.scrollTop
-    const headerH = header.offsetHeight
-    // Shrink buttons over the first 80px of scroll
-    const shrinkRange = Math.min(80, headerH)
-    const progress = Math.min(1, Math.max(0, scrollTop / shrinkRange))
-    setUseShrinkTransition(false)
-    setShrinkProgress(progress)
-    // Show pinned minimized header when expanded header is fully scrolled out
-    setHeaderCollapsed(scrollTop >= headerH)
-  }, [])
+    // Measure the active controls section directly from DOM for accuracy
+    const controlsEl = isRunning ? runningContentRef.current : idleContentRef.current
+    const controlsHeight = controlsEl ? controlsEl.offsetHeight : 0
+    setHeaderCollapsed(el.scrollTop >= header.offsetHeight + controlsHeight)
+  }, [isRunning])
 
   // ── Derived ─────────────────────────────────────────────────────────────
   const hours = Math.floor(elapsed / 3600)
@@ -810,6 +849,12 @@ export function TimeTrackerApp({
     setSearchValue("")
     setActiveTaskCleared(false)
     setView("main")
+
+    // Start the main process timer → creates a session → enables screenshots
+    window.dtt?.timer?.start?.({
+      contractId,
+      taskId: taskId || contractId,
+    }).catch((err: unknown) => console.error("timer.start failed:", err))
   }
 
   const startTimer = (taskName: string, contractName: string, contractId: string, taskId?: string, clientHandle?: string) => {
@@ -847,10 +892,18 @@ export function TimeTrackerApp({
   }
 
   const handlePause = () => {
+    if (isPaused) {
+      window.dtt?.timer?.resume?.().catch((err: unknown) => console.error("timer.resume failed:", err))
+    } else {
+      window.dtt?.timer?.pause?.().catch((err: unknown) => console.error("timer.pause failed:", err))
+    }
     setIsPaused(!isPaused)
   }
 
   const handleStop = () => {
+    // Stop the main process timer → closes the session
+    window.dtt?.timer?.stop?.({ reason: 'user_stop' }).catch((err: unknown) => console.error("timer.stop failed:", err))
+
     if (!isRunning || !activeTask || !trackingStartTime) {
       setIsRunning(false)
       setIsPaused(false)
@@ -1100,77 +1153,12 @@ export function TimeTrackerApp({
           }}
         >
           {/* Single scroll container — everything scrolls together */}
-          <div ref={scrollRef} onScroll={handleContentScroll} className="flex-1 overflow-y-auto relative">
-            {/* ── Pinned minimized header — appears when expanded header scrolls out OR chevron clicked ── */}
-            {(headerCollapsed || headerManualCollapsed) && (
-              <div className="sticky top-0 z-50 mx-2 bg-gray-100 rounded-b-lg overflow-hidden animate-fade-in">
-                <div className="flex items-center justify-between px-4 py-2">
-                  <div className="flex items-center gap-2">
-                    {isRunning && activeTask && !isPaused && (
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-error-500" />
-                      </span>
-                    )}
-                    <span className="text-xs font-medium text-dark-blue-400">
-                      {isRunning && activeTask ? "Tracking time..." : dateStr}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-gray-500">{utcTime}</span>
-                    <svg className="h-3.5 w-3.5 text-gray-400" viewBox="0 0 14 14" fill="none">
-                      <path d="M3 9l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-                </div>
-                {/* Minimized running: timer left, buttons right */}
-                {isRunning && activeTask && (
-                  <div className="flex items-center justify-between px-4 pb-2">
-                    <div>
-                      <div className="text-[22px] font-bold text-primary-500 tabular-nums leading-tight">
-                        {String(hours).padStart(2, "0")}:{String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
-                      </div>
-                      <span className="text-[10px] text-gray-500">Amount Earned {amountEarned}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handlePause}
-                        className="flex items-center justify-center w-9 h-9 rounded-full bg-primary-500 text-white hover:bg-primary-600 transition"
-                      >
-                        {isPaused ? (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M8 5.14v13.72a1 1 0 001.5.86l11.04-6.86a1 1 0 000-1.72L9.5 4.28A1 1 0 008 5.14z" fill="currentColor" /></svg>
-                        ) : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" /><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" /></svg>
-                        )}
-                      </button>
-                      <button
-                        onClick={handleStop}
-                        className="flex items-center justify-center w-9 h-9 rounded-full border border-gray-300 bg-white text-gray-400 hover:border-gray-400 hover:text-gray-600 transition"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="4" y="4" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" /></svg>
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {/* Minimized idle: compact buttons */}
-                {!isRunning && (
-                  <div className="flex justify-center pb-2">
-                    <TimerControls shrinkProgress={1} useTransition={false} countdown={countdown} noTaskSelected={!selectedTask} onStart={handleStart} onPause={handlePause} onStop={handleStop} onManualTime={() => setView("manual-time")} />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Expanded header card — scrolls with content, buttons shrink as it scrolls */}
+          <div ref={scrollRef} onScroll={handleContentScroll} className="flex-1 overflow-y-auto">
+            {/* Header card — gray-100 bg, 8px radius: date bar + search + controls */}
             <div ref={expandedHeaderRef} className="mx-2 bg-gray-100 rounded-lg overflow-hidden">
               {/* Combined date/tracking row — single row that changes content based on state */}
               <button
-                onClick={() => {
-                  setUseShrinkTransition(true)
-                  const next = !headerManualCollapsed
-                  setHeaderManualCollapsed(next)
-                  setShrinkProgress(next ? 1 : 0)
-                }}
+                onClick={() => setHeaderManualCollapsed((v) => !v)}
                 className="flex items-center justify-between px-4 py-2.5 w-full bg-transparent hover:bg-gray-200/50 transition-colors"
               >
                 <div className="flex items-center gap-2">
@@ -1189,7 +1177,7 @@ export function TimeTrackerApp({
                   <svg
                     className={cn(
                       "h-3.5 w-3.5 text-gray-400 transition-transform duration-200",
-                      (headerManualCollapsed || headerCollapsed) && "rotate-180"
+                      headerManualCollapsed && "rotate-180"
                     )}
                     viewBox="0 0 14 14"
                     fill="none"
@@ -1198,8 +1186,9 @@ export function TimeTrackerApp({
                   </svg>
                 </div>
               </button>
-              {/* Collapsible: search + timer display — collapses on chevron or scroll */}
-              <Collapsible open={!(headerManualCollapsed || headerCollapsed)}>
+              {/* Collapsible section: search + controls — toggled by date row chevron */}
+              <Collapsible open={!headerManualCollapsed}>
+                {/* Search bar */}
                 <div className="px-3 pt-2 pb-1 relative z-[100]">
                   <TaskSearch
                     value={searchValue}
@@ -1239,7 +1228,7 @@ export function TimeTrackerApp({
                   />
                 </div>
 
-                {/* Running-state timer display */}
+                {/* Running-state controls + timer — height-animated */}
                 <div
                   className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
                   style={{
@@ -1248,41 +1237,123 @@ export function TimeTrackerApp({
                   }}
                 >
                   <div ref={runningContentRef}>
-                    <div className="flex flex-col items-center pt-1 pb-2 gap-1 relative z-30">
-                      <div key={activeTask?.taskId || "timer"} className="animate-fade-in">
+                    <div className="flex flex-col items-center py-3 gap-1 relative z-30">
+                      <TimerControls
+                        isRunning
+                        isPaused={isPaused}
+                        onPause={handlePause}
+                        onStop={handleStop}
+                        onManualTime={() => setView("manual-time")}
+                      />
+                      <div key={activeTask?.taskId || "timer"} className="mt-2 animate-fade-in">
                         <TimerDisplay hours={hours} minutes={minutes} seconds={seconds} size="lg" />
                       </div>
-                      <span className="text-xs text-gray-500 animate-fade-in">Amount Earned {amountEarned}</span>
+                      <span className="text-xs text-gray-500 mt-1 animate-fade-in">Amount Earned {amountEarned}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Idle-state controls — height-animated */}
+                <div
+                  className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
+                  style={{
+                    height: !isRunning ? (idleHeight || "auto") : 0,
+                    opacity: !isRunning ? 1 : 0,
+                  }}
+                >
+                  <div ref={idleContentRef}>
+                    <div className="py-2 relative z-50">
+                      <TimerControls countdown={countdown} noTaskSelected={!selectedTask} onStart={handleStart} onPause={handlePause} onStop={handleStop} onManualTime={() => setView("manual-time")} />
                     </div>
                   </div>
                 </div>
               </Collapsible>
-
-              {/* Running controls — shrink as header scrolls, hide when manually collapsed */}
-              {!headerManualCollapsed && (
-                <div
-                  className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
-                  style={{ height: isRunning && activeTask ? "auto" : 0, opacity: isRunning && activeTask ? 1 : 0 }}
-                >
-                  <div className="flex justify-center relative z-30 py-3">
-                    <TimerControls isRunning isPaused={isPaused} shrinkProgress={shrinkProgress} useTransition={useShrinkTransition} onPause={handlePause} onStop={handleStop} onManualTime={() => setView("manual-time")} />
-                  </div>
-                </div>
-              )}
-
-              {/* Idle controls — shrink as header scrolls, hide when manually collapsed */}
-              {!headerManualCollapsed && (
-                <div
-                  className="overflow-hidden transition-[height,opacity] duration-300 ease-in-out"
-                  style={{ height: !isRunning ? "auto" : 0, opacity: !isRunning ? 1 : 0 }}
-                >
-                  <div className="relative z-50 py-2">
-                    <TimerControls shrinkProgress={shrinkProgress} useTransition={useShrinkTransition} countdown={countdown} noTaskSelected={!selectedTask} onStart={handleStart} onPause={handlePause} onStop={handleStop} onManualTime={() => setView("manual-time")} />
-                  </div>
-                </div>
-              )}
             </div>
 
+            {/* Running-state sticky collapsed bar — Figma Variant7 layout */}
+            {isRunning && activeTask && (
+              <div
+                className="sticky top-0 z-50 bg-white overflow-hidden transition-[height] duration-200 ease-out border-b border-gray-100"
+                style={{ height: (headerCollapsed || headerManualCollapsed) ? "auto" : 0 }}
+              >
+                <div
+                  className="transition-[transform,opacity] duration-200 ease-out"
+                  style={{
+                    transform: (headerCollapsed || headerManualCollapsed) ? "translateY(0)" : "translateY(20px)",
+                    opacity: (headerCollapsed || headerManualCollapsed) ? 1 : 0,
+                  }}
+                >
+                  {/* Controls left, Timer + Earnings right */}
+                  <div className="flex items-center justify-between px-4 py-2">
+                    {/* Controls */}
+                    <div className="flex items-center gap-2">
+                      <MiniHeaderBtn onClick={handlePause} tooltip={isPaused ? "Resume Time" : "Pause Time"}>
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-500 text-white shadow-sm hover:bg-primary-600 transition">
+                          {isPaused ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M8 5.14v13.72a1 1 0 001.5.86l11.04-6.86a1 1 0 000-1.72L9.5 4.28A1 1 0 008 5.14z" fill="currentColor"/></svg>
+                          ) : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/></svg>
+                          )}
+                        </div>
+                      </MiniHeaderBtn>
+                      <MiniHeaderBtn onClick={() => setView("manual-time")} tooltip="Manual Time">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition">
+                          <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </div>
+                      </MiniHeaderBtn>
+                      <MiniHeaderBtn onClick={handleStop} tooltip="Stop Time">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition">
+                          <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><rect x="4" y="4" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/></svg>
+                        </div>
+                      </MiniHeaderBtn>
+                    </div>
+
+                    {/* Timer + Earnings */}
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-dark-blue-400 tabular-nums leading-tight">
+                        {String(hours).padStart(2, "0")}:{String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
+                      </p>
+                      <p className="text-[10px] text-dark-blue-400 leading-tight">Amount Earned {amountEarned}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Idle-state sticky collapsed bar — appears once scrolled past expanded header */}
+            {!isRunning && (
+              <div
+                className="sticky top-0 z-50 bg-white overflow-hidden transition-[height] duration-150 ease-out"
+                style={{ height: (headerCollapsed || headerManualCollapsed) ? 48 : 0 }}
+              >
+                <div
+                  className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 transition-[transform,opacity] duration-150 ease-out"
+                  style={{
+                    transform: (headerCollapsed || headerManualCollapsed) ? "translateY(0)" : "translateY(100%)",
+                    opacity: (headerCollapsed || headerManualCollapsed) ? 1 : 0,
+                  }}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <MiniHeaderBtn onClick={handleStart} tooltip="Start Time">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500 text-white shadow-sm hover:bg-primary-600 transition">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M8 5.14v13.72a1 1 0 001.5.86l11.04-6.86a1 1 0 000-1.72L9.5 4.28A1 1 0 008 5.14z" fill="currentColor"/></svg>
+                      </div>
+                    </MiniHeaderBtn>
+                    <MiniHeaderBtn onClick={() => setView("manual-time")} tooltip="Manual Time">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition">
+                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </div>
+                    </MiniHeaderBtn>
+                    <MiniHeaderBtn onClick={handleStop} tooltip="Stop Time">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition">
+                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><rect x="4" y="4" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/></svg>
+                      </div>
+                    </MiniHeaderBtn>
+                  </div>
+                  <TimerDisplay hours={0} minutes={0} seconds={0} size="sm" />
+                </div>
+              </div>
+            )}
             {days.map((day, dayIdx) => {
               const dayCollapsed = collapsedDays.has(dayIdx)
               return (

@@ -191,8 +191,12 @@ export interface HomepagePayload {
 
 /** Max description length for card summaries */
 export const CARD_DESCRIPTION_MAX_LENGTH = 120;
-/** Carousel minimum: only render carousel if items >= gridSize * CAROUSEL_MIN_PAGES */
-export const CAROUSEL_MIN_PAGES = 3;
+/** Carousel minimum: only render carousel if items >= gridSize * CAROUSEL_MIN_PAGES.
+ *  Set to 1 so any section with at least GRID_SIZE items (4) stays as a carousel
+ *  — matches the Figma homepage which shows themed sections (Online Sales Funnels,
+ *  Customer Service Solutions, etc.) as horizontal carousels even when they only
+ *  have 5–8 items. */
+export const CAROUSEL_MIN_PAGES = 1;
 export const GRID_SIZE = 4;
 
 // ── Section configuration (replaces CMS later) ─────────────────────────────
