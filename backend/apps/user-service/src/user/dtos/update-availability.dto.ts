@@ -7,10 +7,18 @@ import {
   IsNotEmpty,
   IsString,
   Matches,
+  Validate,
   ValidateIf,
   ValidateNested,
+  ValidationArguments,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
 } from 'class-validator';
 import { AVAILABILITY } from '../../talent/enum/availability.enum';
+import {
+  hasOverlappingCustomAvailability,
+  hasValidTimeRange,
+} from '../availability-validation';
 
 enum DAYS {
   Sunday = 'Sunday',
@@ -25,12 +33,38 @@ enum DAYS {
 const TIME_REGEX = /^\d{2}:\d{2}$/;
 const TIME_PERIOD_REGEX = /^(AM|PM)$/;
 
+@ValidatorConstraint({ name: 'IsValidTimeRange', async: false })
+class IsValidTimeRangeConstraint implements ValidatorConstraintInterface {
+  validate(_: unknown, args: ValidationArguments) {
+    const obj = args.object as CustomAvailabilityDto;
+    return hasValidTimeRange(obj);
+  }
+
+  defaultMessage(_: ValidationArguments) {
+    return 'End time must be after start time and on the same day.';
+  }
+}
+
+@ValidatorConstraint({ name: 'HasNoOverlappingCustomAvailability', async: false })
+class HasNoOverlappingCustomAvailabilityConstraint
+  implements ValidatorConstraintInterface
+{
+  validate(value?: CustomAvailabilityDto[]) {
+    return !hasOverlappingCustomAvailability(value);
+  }
+
+  defaultMessage() {
+    return 'Custom availability slots cannot overlap on the same day.';
+  }
+}
+
 class CustomAvailabilityDto {
   @ApiProperty({ enum: DAYS })
   @IsNotEmpty()
   @IsEnum(DAYS)
   day: string;
 
+  @Validate(IsValidTimeRangeConstraint)
   @ApiProperty()
   @IsString({ message: 'Start time required' })
   @IsNotEmpty({ message: 'Start time required' })
@@ -75,6 +109,7 @@ export class UpdateAvailabilityDto {
   @IsArray({ message: 'customAvailability must be an array' })
   @ArrayNotEmpty({ message: 'customAvailability cannot be empty' })
   @ValidateNested({ each: true })
+  @Validate(HasNoOverlappingCustomAvailabilityConstraint)
   @Transform(({ value }) => {
     const parseValue = (raw: any): any[] => {
       if (typeof raw === 'string') {

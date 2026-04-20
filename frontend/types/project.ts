@@ -24,6 +24,10 @@ export type CreateProjectType = {
   title: string
   categories?: string[]
   subCategories?: string[]
+  categorySelections?: {
+    category: string
+    subCategories: string[]
+  }[]
   industries?: string[]
   tags?: string[]
   skills?: string[]

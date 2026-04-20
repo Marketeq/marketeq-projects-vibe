@@ -79,9 +79,9 @@ Grandchild level category page.
 
 ---
 
-### POST /api/category-pages/strapi-sync
+### POST /api/category-pages/cms-sync
 
-Webhook endpoint for Strapi category/tag synchronization.
+Webhook endpoint for CMS (Payload) category/tag synchronization. Requires `x-service-token` header.
 
 ---
 
@@ -211,9 +211,9 @@ Webhook endpoint for Strapi category/tag synchronization.
 │  └──┬────┬────┬────┬───────────┘ │
 │     │    │    │    │              │
 │  ┌──▼──┐ │ ┌──▼──┐ │             │
-│  │Strap│ │ │List │ │ ┌────────┐ │
-│  │i    │ │ │ing  │ │ │Suggest.│ │
-│  │Mock │ │ │Mock │ │ │Mock    │ │
+│  │CMS  │ │ │List │ │ ┌────────┐ │
+│  │Adapt│ │ │ing  │ │ │Suggest.│ │
+│  │er   │ │ │Mock │ │ │Mock    │ │
 │  └─────┘ │ └─────┘ │ └────────┘ │
 │       ┌──▼──┐   ┌──▼──┐          │
 │       │User │   │Eval │          │
@@ -231,7 +231,7 @@ All external dependencies abstracted behind adapter interfaces for easy integrat
 
 | Adapter | Purpose | Status |
 |---------|---------|--------|
-| **StrapiAdapter** | Fetch taxonomy rules and editorial content |  Interface + Mock |
+| **CmsAdapter** | Fetch taxonomy rules and editorial content |  Interface + Mock + Real |
 | **ListingAdapter** | Fetch projects, services, teams |  Interface + Mock |
 | **UserAdapter** | Fetch talent profiles |  Interface + Mock |
 | **SuggestionsAdapter** | Generate category and skill recommendations |  Interface + Mock |
@@ -247,8 +247,9 @@ src/category-pages/
 ├── adapters/
 │   ├── listing.adapter.ts              # Interface
 │   ├── listing.adapter.mock.ts         # Mock (50 items each)
-│   ├── strapi.adapter.ts               # Interface
-│   ├── strapi.adapter.mock.ts          # Mock (taxonomy + editorial)
+│   ├── cms.adapter.ts                  # Interface
+│   ├── cms.adapter.mock.ts             # Mock (taxonomy + editorial)
+│   ├── cms.adapter.real.ts             # Real (Payload CMS REST API)
 │   ├── user.adapter.ts                 # Interface
 │   └── user.adapter.mock.ts            # Mock (talent profiles)
 ├── evaluators/
@@ -331,7 +332,7 @@ decodeCursor("eyJpZCI6...")
 ### 3. Rule Evaluator System
 
 **Flow**:
-1. Service fetches taxonomy groups from Strapi (via adapter)
+1. Service fetches taxonomy groups from CMS (via adapter)
 2. Each taxonomy group contains ordered list of rules
 3. EvaluatorFactory executes each rule by calling appropriate adapter
 4. Rules filtered by `pageKind` parameter
@@ -375,7 +376,7 @@ decodeCursor("eyJpZCI6...")
 - Courses (3 items with duration)
 - FAQ (6 question/answer pairs)
 
-**Integration**: Fetched via `strapiAdapter.getEditorial()`, included in every category page response.
+**Integration**: Fetched via `cmsAdapter.getEditorial()`, included in every category page response.
 
 ---
 
@@ -419,11 +420,11 @@ interface EditorialContent {
 
 ## Integration Points
 
-### For Jayesh (Strapi + Services Integration)
+### CMS Integration
 
 **What's Ready**:
 - All adapter interfaces defined
-- Mock implementations working end-to-end
+- Mock + Real implementations working
 - Service logic complete and tested
 - Full documentation of expected data formats
 
@@ -431,8 +432,8 @@ interface EditorialContent {
 ```typescript
 // In category-pages.module.ts
 {
-  provide: StrapiAdapter,
-  useClass: StrapiAdapterReal,  // Change from StrapiAdapterMock
+  provide: CmsAdapter,
+  useClass: CmsAdapterReal,  // Change from CmsAdapterMock
 }
 ```
 
@@ -441,10 +442,9 @@ interface EditorialContent {
 ## Environment Variables
 ```bash
 # Required for real adapter integration
-STRAPI_URL=https://strapi.production.com
-STRAPI_TOKEN=<your-token>
-LISTING_SERVICE_URL=https://listing.production.com
-USER_SERVICE_URL=https://user.production.com
+CMS_SERVICE_URL=http://localhost:3020
+CMS_API_KEY=<your-api-key>
+INTERNAL_SERVICE_TOKEN=<service-token>
 
 # Development (uses mocks)
 NODE_ENV=development
@@ -529,7 +529,7 @@ curl http://localhost:3000/api/category-pages/creative?limit=5
 - ✅ Swagger/OpenAPI documentation
 
 **Ready For**:
-- Integration with Strapi CMS
+- Integration with Payload CMS
 - Integration with Listing Service
 - Integration with User Service
 - Frontend consumption
@@ -545,6 +545,6 @@ curl http://localhost:3000/api/category-pages/creative?limit=5
 
 **Current State**: Fully functional with mock implementations. All features tested and working.
 
-**Next Steps**: Replace mock adapters with real implementations pointing to Strapi and microservices.
+**Next Steps**: Replace remaining mock adapters with real implementations pointing to CMS service and microservices.
 
 ---

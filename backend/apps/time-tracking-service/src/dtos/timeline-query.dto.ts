@@ -15,5 +15,5 @@ export class TimelineQueryDto {
 
   @IsOptional()
   @IsString()
-  projectId?: string;
+  contractId?: string;
 }

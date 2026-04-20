@@ -26,13 +26,14 @@ export class ProxyService {
       algolia: config.get('ALGOLIA_SERVICE_URL') || 'http://localhost:3008',
       favorites: config.get('FAVORITES_SERVICE_URL') || 'http://localhost:3012',
       portfolio: config.get('PORTFOLIO_SERVICE_URL') || 'http://localhost:3015',
-      invitations: config.get('INVITATIONS_SERVICE_URL') || 'http://localhost:3011',
+      invitations: config.get('INVITATIONS_SERVICE_URL') || 'http://localhost:3013',
       moderation: config.get('MODERATION_SERVICE_URL') || 'http://localhost:3014',
       autocomplete: config.get('AUTOCOMPLETE_SERVICE_URL') || 'http://localhost:3016',
       suggestions: config.get('SUGGESTIONS_SERVICE_URL') || 'http://localhost:3020',
       transactions: config.get('TRANSACTION_SERVICE_URL') || 'http://localhost:3018',
       contracts: config.get('CONTRACTS_SERVICE_URL') || 'http://localhost:3010',
       categories: config.get('CATEGORY_SERVICE_URL') || 'http://localhost:3023',
+      timeTracking: config.get('TIME_TRACKING_SERVICE_URL') || 'http://localhost:3017',
     }
   }
 
@@ -48,25 +49,26 @@ export class ProxyService {
       throw new BadGatewayException({ code: 'BAD_GATEWAY', message: `Unknown service: ${serviceName}` })
     }
 
-    const url = `${baseUrl}${path}`
+    // Time-tracking service uses a global /api prefix, so re-add it
+    const needsApiPrefix = serviceName === 'timeTracking' && !path.startsWith('/api')
+    const url = `${baseUrl}${needsApiPrefix ? '/api' : ''}${path}`
     const headers: Record<string, string> = {
       'content-type': req.headers['content-type'] as string || 'application/json',
+    }
+
+    // Always forward auth headers so downstream services can validate JWT
+    const authHeader = req.headers.authorization as string | undefined
+    const cookieToken = (req as any).cookies?.access_token as string | undefined
+    if (authHeader) {
+      headers['authorization'] = authHeader
+    } else if (cookieToken) {
+      headers['authorization'] = `Bearer ${cookieToken}`
     }
 
     if (user) {
       headers['x-user-id'] = user.userId
       headers['x-user-email'] = user.email
       if (user.role) headers['x-user-role'] = user.role
-      // Forward JWT for downstream services that validate JWT directly.
-      // If the client authenticated via cookie at the gateway, synthesize
-      // a Bearer header so downstream auth guards still work.
-      const authHeader = req.headers.authorization as string | undefined
-      const cookieToken = (req as any).cookies?.access_token as string | undefined
-      if (authHeader) {
-        headers['authorization'] = authHeader
-      } else if (cookieToken) {
-        headers['authorization'] = `Bearer ${cookieToken}`
-      }
     }
 
     const config: AxiosRequestConfig = {

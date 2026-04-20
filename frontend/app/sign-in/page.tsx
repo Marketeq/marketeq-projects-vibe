@@ -52,6 +52,7 @@ export default function SignIn() {
   const [isVisible, toggleIsVisible] = useToggle(false)
 
   const [isLoading, setIsLoading] = useState(false)
+  const [loginError, setLoginError] = useState<string | null>(null)
   const redirectTarget = searchParams.get("redirect")
   const nextRoute =
     redirectTarget && redirectTarget.startsWith("/") && !redirectTarget.startsWith("//")
@@ -75,10 +76,14 @@ export default function SignIn() {
   const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password }) => {
     setIsLoading(true)
 
+    setLoginError(null)
     AuthAPI.LoginWithEmail({ email, password })
       .then(async (response) => {
         if (response?.status === 200 && response?.data?.access_token) {
-          Cookies.set("access_token", response?.data?.access_token)
+          Cookies.set("access_token", response?.data?.access_token, { path: "/" })
+          if (response?.data?.refresh_token) {
+            Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
+          }
 
           let nextUser = response?.data?.user
           try {
@@ -90,10 +95,26 @@ export default function SignIn() {
                 meResponse?.data
 
               if (profileUser && typeof profileUser === "object") {
-                nextUser = {
+                // Merge profileUser over nextUser, but never let a
+                // null/undefined `role`, `accountType`, or `userType`
+                // from /me clobber a truthy value from the auth-service
+                // login payload — otherwise the downstream
+                // resolveDashboardRoute() falls through to /onboarding.
+                const merged: Record<string, unknown> = {
                   ...nextUser,
                   ...profileUser,
                 }
+                const preserveIfMissing = [
+                  "role",
+                  "accountType",
+                  "userType",
+                ] as const
+                for (const key of preserveIfMissing) {
+                  if (merged[key] == null && (nextUser as any)?.[key] != null) {
+                    merged[key] = (nextUser as any)[key]
+                  }
+                }
+                nextUser = merged as typeof nextUser
               }
             }
           } catch {
@@ -110,12 +131,12 @@ export default function SignIn() {
         }
       })
       .catch((error) => {
-        if (error?.response?.data?.errors?.message) {
-          toast({
-            title: error?.response?.data?.errors?.message,
-            variant: "destructive",
-          })
-        }
+        const msg =
+          error?.response?.data?.message ??
+          error?.response?.data?.errors?.message ??
+          error?.message ??
+          "Login failed"
+        setLoginError(msg)
       })
       .finally(() => {
         setIsLoading(false)
@@ -260,6 +281,10 @@ export default function SignIn() {
                   )}
                 />
               </div>
+
+              {loginError && (
+                <p className="mt-2 text-sm text-red-500">{loginError}</p>
+              )}
 
               <div className="mt-2 flex items-center justify-between">
                 <div className="flex items-center gap-x-2">

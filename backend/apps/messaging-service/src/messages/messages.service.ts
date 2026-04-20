@@ -13,12 +13,22 @@ export class MessagesService {
     private readonly ablyService: AblyService,
   ) {}
 
-  async getThreadMessages(threadId: string) {
+  async getThreadMessages(threadId: string, userId: string) {
+    await this.assertParticipant(threadId, userId);
     return this.messageRepo.find({
       where: { threadId, deleted: false },
       relations: ['attachments'],
       order: { createdAt: 'ASC' },
     });
+  }
+
+  private async assertParticipant(threadId: string, userId: string): Promise<Thread> {
+    const thread = await this.threadRepo.findOne({ where: { id: threadId } });
+    if (!thread) throw new NotFoundException('Thread not found');
+    if (!userId || !thread.participantIds.includes(userId)) {
+      throw new ForbiddenException('Not a participant of this thread');
+    }
+    return thread;
   }
 
   async send(dto: Partial<Message> & { threadId: string; senderId: string }) {
@@ -31,16 +41,26 @@ export class MessagesService {
     const message = this.messageRepo.create({ ...dto, status: 'sent' });
     const saved = await this.messageRepo.save(message);
 
-    await this.ablyService.publishMessageNew(dto.threadId, saved);
+    // Strip plaintext from Ably payload when ciphertext is present
+    if (saved.ciphertext) {
+      const { content: _plaintext, ...ciphertextOnly } = saved;
+      await this.ablyService.publishMessageNew(dto.threadId, ciphertextOnly);
+    } else {
+      await this.ablyService.publishMessageNew(dto.threadId, saved);
+    }
     return saved;
   }
 
-  async edit(id: string, content: string, userId: string) {
+  async edit(id: string, content: string, userId: string, ciphertext?: string) {
     const message = await this.messageRepo.findOne({ where: { id } });
     if (!message) throw new NotFoundException('Message not found');
     if (message.senderId !== userId) throw new ForbiddenException('Cannot edit others messages');
 
-    await this.messageRepo.update(id, { content, edited: true });
+    if (ciphertext) {
+      await this.messageRepo.update(id, { ciphertext, content: null as any, edited: true });
+    } else {
+      await this.messageRepo.update(id, { content, edited: true });
+    }
     const updated = await this.messageRepo.findOne({ where: { id } });
     await this.ablyService.publishMessageEdit(message.threadId, updated);
     return updated;
@@ -55,32 +75,55 @@ export class MessagesService {
     await this.ablyService.publishMessageDelete(message.threadId, id);
   }
 
+  async restore(id: string, userId: string) {
+    const message = await this.messageRepo.findOne({ where: { id } });
+    if (!message) throw new NotFoundException('Message not found');
+    if (message.senderId !== userId) throw new ForbiddenException('Cannot restore others messages');
+
+    await this.messageRepo.update(id, { deleted: false });
+    await this.ablyService.publishMessageRestore(message.threadId, id);
+  }
+
   async markRead(messageId: string, userId: string) {
-    await this.messageRepo.update(messageId, { status: 'read' });
     const message = await this.messageRepo.findOne({ where: { id: messageId } });
-    if (message) {
-      await this.ablyService.publishMessageRead(message.senderId, messageId);
+    if (!message) throw new NotFoundException('Message not found');
+
+    const thread = await this.threadRepo.findOne({ where: { id: message.threadId } });
+    if (!thread || !thread.participantIds.includes(userId)) {
+      throw new ForbiddenException('Not a participant of this thread');
     }
+
+    await this.messageRepo.update(messageId, { status: 'read' });
+    await this.ablyService.publishMessageRead(message.senderId, messageId);
   }
 
   async forward(messageId: string, toUserIds: string[], senderId: string) {
     if (toUserIds.length > 5) throw new ForbiddenException('Cannot forward to more than 5 users');
     const original = await this.messageRepo.findOne({ where: { id: messageId } });
     if (!original) throw new NotFoundException('Message not found');
+    await this.assertParticipant(original.threadId, senderId);
 
     const results = [];
     for (const userId of toUserIds) {
-      let thread = await this.threadRepo.findOne({
-        where: { isGroup: false },
-      });
-      // Find or create thread between sender and recipient
-      thread = await this.threadRepo.save(
-        this.threadRepo.create({ participantIds: [senderId, userId], isGroup: false }),
-      );
+      // Find existing 1:1 thread between sender and recipient
+      let thread = await this.threadRepo
+        .createQueryBuilder('t')
+        .where('t.isGroup = false')
+        .andWhere(':senderId = ANY(t.participantIds)', { senderId })
+        .andWhere(':userId = ANY(t.participantIds)', { userId })
+        .getOne();
+
+      if (!thread) {
+        thread = await this.threadRepo.save(
+          this.threadRepo.create({ participantIds: [senderId, userId], isGroup: false }),
+        );
+      }
+
       const msg = await this.send({
         threadId: thread.id,
         senderId,
         content: original.content,
+        ciphertext: original.ciphertext,
         messageType: original.messageType,
         forwardedFromId: messageId,
       });
@@ -89,23 +132,41 @@ export class MessagesService {
     return results;
   }
 
-  async pin(messageId: string) {
+  async pin(messageId: string, userId: string) {
+    await this.assertMessageParticipant(messageId, userId);
     await this.messageRepo.update(messageId, { pinned: true });
+    return { success: true };
   }
 
-  async unpin(messageId: string) {
+  async unpin(messageId: string, userId: string) {
+    await this.assertMessageParticipant(messageId, userId);
     await this.messageRepo.update(messageId, { pinned: false });
+    return { success: true };
   }
 
-  async star(messageId: string) {
+  async star(messageId: string, userId: string) {
+    await this.assertMessageParticipant(messageId, userId);
     await this.messageRepo.update(messageId, { starred: true });
   }
 
+  private async assertMessageParticipant(messageId: string, userId: string): Promise<void> {
+    const message = await this.messageRepo.findOne({ where: { id: messageId } });
+    if (!message) throw new NotFoundException('Message not found');
+    await this.assertParticipant(message.threadId, userId);
+  }
+
   async search(query: string, userId: string) {
+    if (!userId) throw new ForbiddenException('Authentication required');
+    const q = (query ?? '').slice(0, 128);
+    if (!q) return [];
     return this.messageRepo
       .createQueryBuilder('m')
-      .where('m.content ILIKE :q', { q: `%${query}%` })
+      .where('m.content ILIKE :q', { q: `%${q}%` })
       .andWhere('m.deleted = false')
+      .andWhere(
+        'EXISTS (SELECT 1 FROM messaging.threads t WHERE t.id = m."threadId" AND :userId = ANY(t."participantIds"))',
+        { userId },
+      )
       .orderBy('m.createdAt', 'DESC')
       .limit(50)
       .getMany();

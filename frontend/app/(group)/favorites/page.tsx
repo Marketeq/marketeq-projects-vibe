@@ -11,16 +11,19 @@ import { UserAPI } from "@/service/http/user"
 import { motion } from "framer-motion"
 import { cn, getFirstItem } from "@/utils/functions"
 import {
+  Briefcase,
   ChevronDown,
   Edit03,
   Link01,
   MessageSquare,
+  Monitor,
   MoreHorizontal,
   Plus,
   SearchMd,
   Share07,
   Star,
   Trash2,
+  Users,
 } from "@blend-metrics/icons"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Grid, List, SortAs } from "@/components/icons"
@@ -212,12 +215,14 @@ const formatGroupDateLong = (isoDate: string) => {
 const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete }: { groupId: string; groupName: string; talents: TalentCardData[]; createdAt: string; onRename: (groupId: string, newName: string) => void; onDelete: (groupId: string) => void }) => {
   const router = useRouter()
   // Show the most recently added talents (last in array = most recent)
-  const recentTalents = [...talents].reverse().slice(0, 5)
+  const recentTalents = [...talents].reverse().slice(0, 4)
   // Rotation angles for circular layout: positions around the circle
-  const rotationAngles = [0, -45, -90, -135, -180]
+  const avatarRotationAngles = [-135, -90, -45, 0]
+  const savedRotationAngle = -180
   const href = `/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=talent`
 
-  // Staggered entrance: avatars appear one-by-one from bottom
+  // Staggered entrance: same motion as before, but delay order is reversed so
+  // the cascade starts from the lower slot and rises upward.
   const avatarVariants = {
     hidden: { opacity: 0, scale: 0.3, y: 20 },
     visible: (i: number) => ({
@@ -256,15 +261,15 @@ const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete
             <motion.div
               key={talent.id}
               className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto"
-              style={{ rotate: `${rotationAngles[i]}deg` } as React.CSSProperties}
-              custom={i}
+              style={{ rotate: `${avatarRotationAngles[i]}deg` } as React.CSSProperties}
+              custom={i + 1}
               initial="hidden"
               animate="visible"
               variants={avatarVariants}
             >
               <Avatar
                 className="border-2 border-white size-[44.96px] lg:size-[61px] pointer-events-none !ring-0 hover:!ring-0"
-                style={{ rotate: `${-rotationAngles[i]}deg` } as React.CSSProperties}
+                style={{ rotate: `${-avatarRotationAngles[i]}deg` } as React.CSSProperties}
                 size="2xl"
               >
                 <AvatarImage src={talent.avatarUrl} alt={`${talent.firstName} ${talent.lastName}`} />
@@ -273,19 +278,19 @@ const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete
             </motion.div>
           ))}
 
-          {/* Saved count — fill remaining slot if fewer than 5 talents */}
+          {/* Saved count stays on the original bottom-center slot inside the ring. */}
           {recentTalents.length < 5 && (
             <motion.div
-              className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto"
-              style={{ rotate: `${rotationAngles[recentTalents.length]}deg` } as React.CSSProperties}
-              custom={recentTalents.length}
+              className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto z-10"
+              style={{ rotate: `${savedRotationAngle}deg` } as React.CSSProperties}
+              custom={0}
               initial="hidden"
               animate="visible"
               variants={avatarVariants}
             >
               <div
                 className="size-[44.96px] lg:size-[61px] bg-white border border-gray-300 flex rounded-full flex-col shrink-0 justify-center items-center"
-                style={{ rotate: `${-rotationAngles[recentTalents.length]}deg` } as React.CSSProperties}
+                style={{ rotate: `${-savedRotationAngle}deg` } as React.CSSProperties}
               >
                 <span className="inline-block text-[11.79px] leading-[14.27px] lg:text-base lg:leading-[19.36px] font-semibold text-dark-blue-400">
                   {talents.length}
@@ -772,6 +777,33 @@ const SortDropdown = ({ value, onChange }: { value: GroupSortOption; onChange: (
   )
 }
 
+/* ─── Empty State ─── */
+
+function EmptyState({
+  icon: Icon = Star,
+  title,
+  description,
+  action,
+}: {
+  icon?: React.ComponentType<{ className?: string }>
+  title: string
+  description: string
+  action?: React.ReactNode
+}) {
+  return (
+    <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-white py-16 px-6 flex flex-col items-center justify-center text-center">
+      <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center">
+        <Icon className="size-6 text-gray-400" />
+      </div>
+      <h3 className="mt-4 text-base font-semibold text-dark-blue-400">
+        {title}
+      </h3>
+      <p className="mt-1 max-w-md text-sm text-gray-500">{description}</p>
+      {action && <div className="mt-5">{action}</div>}
+    </div>
+  )
+}
+
 /* ─── Main Page ─── */
 
 export default function FavoritesPage() {
@@ -973,7 +1005,18 @@ export default function FavoritesPage() {
         {/* Talent Network Tab */}
         <TabsContent value="Talent Network">
           <div className="pt-[14px] lg:pt-6">
-            {getFirstItem(value) === GRID_LAYOUT ? (
+            {sortedSampleGroups.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="No favorite talent yet"
+                description="Build your talent network by saving professionals you&rsquo;d love to work with. Group them by project, specialty, or team for quick access."
+                action={
+                  <NextLink href="/talent">
+                    <Button>Browse Talent</Button>
+                  </NextLink>
+                }
+              />
+            ) : getFirstItem(value) === GRID_LAYOUT ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-6">
                 {sortedSampleGroups.map((group) => (
                   <TalentCard
@@ -1015,14 +1058,16 @@ export default function FavoritesPage() {
               ))}
             </div>
           ) : projectGroups.length === 0 ? (
-            <div className="text-center py-20">
-              <Star className="size-10 text-gray-300 mx-auto" />
-              <p className="text-dark-blue-400 mb-2 mt-4 font-medium">No saved projects</p>
-              <p className="text-sm text-gray-500 mb-4">Browse projects and click the star icon to save them</p>
-              <NextLink href="/c/research">
-                <Button>Browse Projects</Button>
-              </NextLink>
-            </div>
+            <EmptyState
+              icon={Briefcase}
+              title="No saved projects yet"
+              description="Browse projects and tap the star icon to save them here. Organize what you love into groups for easy access later."
+              action={
+                <NextLink href="/c/research">
+                  <Button>Browse Projects</Button>
+                </NextLink>
+              }
+            />
           ) : getFirstItem(value) === GRID_LAYOUT ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
               {sortedProjectGroups.map((group) => (
@@ -1047,14 +1092,16 @@ export default function FavoritesPage() {
               ))}
             </div>
           ) : serviceGroups.length === 0 ? (
-            <div className="text-center py-20">
-              <Star className="size-10 text-gray-300 mx-auto" />
-              <p className="text-dark-blue-400 mb-2 mt-4 font-medium">No saved services</p>
-              <p className="text-sm text-gray-500 mb-4">Browse services and click the star icon to save them</p>
-              <NextLink href="/c/research">
-                <Button>Browse Services</Button>
-              </NextLink>
-            </div>
+            <EmptyState
+              icon={Monitor}
+              title="No saved services yet"
+              description="Discover services from top talent and save the ones you&rsquo;re interested in. You can organize them into groups for easy comparison."
+              action={
+                <NextLink href="/c/research">
+                  <Button>Browse Services</Button>
+                </NextLink>
+              }
+            />
           ) : getFirstItem(value) === GRID_LAYOUT ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
               {sortedServiceGroups.map((group) => (

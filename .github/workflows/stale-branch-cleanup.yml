@@ -1,0 +1,72 @@
+name: Stale Branch Cleanup
+
+on:
+  schedule:
+    - cron: '0 14 * * 1'   # Every Monday 14:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find stale branches
+        id: stale
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          git fetch origin --prune
+          CUTOFF=$(date -u -d '30 days ago' +%s 2>/dev/null || date -u -v-30d +%s)
+
+          STALE=()
+          for branch in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin/ | grep -v HEAD); do
+            SHORT=${branch#origin/}
+            case "$SHORT" in
+              dev-main|staging|live-mvp) continue ;;
+            esac
+            LAST=$(git log -1 --format=%ct "$branch" 2>/dev/null || echo 0)
+            if [ "$LAST" -lt "$CUTOFF" ]; then
+              AUTHOR=$(git log -1 --format=%an "$branch" 2>/dev/null || echo "unknown")
+              STALE+=("$SHORT|$AUTHOR|$LAST")
+            fi
+          done
+
+          if [ ${#STALE[@]} -eq 0 ]; then
+            echo "count=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo "count=${#STALE[@]}"
+            echo "list<<STALE_EOF"
+            for s in "${STALE[@]}"; do echo "$s"; done
+            echo "STALE_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open tracking issue
+        if: steps.stale.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STALE_LIST: ${{ steps.stale.outputs.list }}
+          STALE_COUNT: ${{ steps.stale.outputs.count }}
+        run: |
+          BODY="## ${STALE_COUNT} stale branches (>30 days old)\n\nRun \`scripts/cleanup-stale-branches.sh\` or manually delete the branches below after confirming the work is either merged or abandoned.\n\n| Branch | Author | Last commit |\n|---|---|---|\n"
+          while IFS='|' read -r name author ts; do
+            [ -z "$name" ] && continue
+            DATE=$(date -u -d @"$ts" +%Y-%m-%d 2>/dev/null || date -u -r "$ts" +%Y-%m-%d)
+            BODY="${BODY}| \`${name}\` | ${author} | ${DATE} |\n"
+          done <<< "$STALE_LIST"
+          echo -e "$BODY" | gh issue create \
+            --title "🧹 Weekly stale branch audit — ${STALE_COUNT} branches" \
+            --label "stale-branch-audit" \
+            --body-file -

@@ -1,13 +1,15 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Req, Query, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Req, Query, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { MessagesService } from './messages.service';
+import { GatewayAuthGuard } from '../guards/gateway-auth.guard';
 
+@UseGuards(GatewayAuthGuard)
 @Controller('v1/messages')
 export class MessagesController {
   constructor(private readonly service: MessagesService) {}
 
   @Get('thread/:threadId')
-  getThreadMessages(@Param('threadId') threadId: string) {
-    return this.service.getThreadMessages(threadId);
+  getThreadMessages(@Param('threadId') threadId: string, @Req() req: any) {
+    return this.service.getThreadMessages(threadId, req.user?.id);
   }
 
   @Post()
@@ -16,14 +18,20 @@ export class MessagesController {
   }
 
   @Patch(':id')
-  edit(@Param('id') id: string, @Body('content') content: string, @Req() req: any) {
-    return this.service.edit(id, content, req.user?.id);
+  edit(@Param('id') id: string, @Body() body: { content?: string; ciphertext?: string }, @Req() req: any) {
+    return this.service.edit(id, body.content ?? '', req.user?.id, body.ciphertext);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   delete(@Param('id') id: string, @Req() req: any) {
     return this.service.delete(id, req.user?.id);
+  }
+
+  @Patch(':id/restore')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  restore(@Param('id') id: string, @Req() req: any) {
+    return this.service.restore(id, req.user?.id);
   }
 
   @Patch(':id/read')
@@ -38,18 +46,18 @@ export class MessagesController {
   }
 
   @Post(':id/pin')
-  pin(@Param('id') id: string) {
-    return this.service.pin(id);
+  pin(@Param('id') id: string, @Req() req: any) {
+    return this.service.pin(id, req.user?.id);
   }
 
   @Delete(':id/pin')
-  unpin(@Param('id') id: string) {
-    return this.service.unpin(id);
+  unpin(@Param('id') id: string, @Req() req: any) {
+    return this.service.unpin(id, req.user?.id);
   }
 
   @Post(':id/star')
-  star(@Param('id') id: string) {
-    return this.service.star(id);
+  star(@Param('id') id: string, @Req() req: any) {
+    return this.service.star(id, req.user?.id);
   }
 
   @Get('search')

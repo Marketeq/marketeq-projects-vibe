@@ -5,7 +5,6 @@ import { useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
-import industriesMock from "@/public/mock/industries.json"
 import jobTitlesMock from "@/public/mock/job_titles.json"
 import rawSkillSuggestions from "@/public/mock/skills.json"
 import { AuthAPI } from "@/service/http/auth"
@@ -30,8 +29,6 @@ import {
   AlertCircle,
   Briefcase02,
   Check,
-  Check1,
-  ChevronDown,
   ChevronRight,
   Home03,
   Info,
@@ -39,7 +36,6 @@ import {
   Mail,
   Plus,
   Plus1,
-  SearchMd,
   Trash03,
   User02,
   Users03,
@@ -64,6 +60,12 @@ import { ROLE, User } from "@/types/user"
 import { PictureEditor } from "@/components/ui/image-editor/image-editor"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { Logo } from "@/components/icons"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Pointer } from "@/components/icons/pointer"
 import NextLink from "@/components/next-link"
 import { Triangles } from "@/components/triangles"
@@ -88,14 +90,6 @@ import {
   ComboboxOption,
   ComboboxOptions,
   ComboboxTrigger,
-  DropdownCommand,
-  DropdownCommandEmpty,
-  DropdownCommandGroup,
-  DropdownCommandInput,
-  DropdownCommandItem,
-  DropdownPopover,
-  DropdownPopoverContent,
-  DropdownPopoverTrigger,
   ErrorMessage,
   IconButton,
   Input,
@@ -133,19 +127,31 @@ const getClientUsernameSuggestions = ({
 }) => {
   const safeEmail = typeof email === "string" ? email : ""
 
+  // Combine all available context for richer suggestions
+  const contextParts = [teamName, role, safeEmail]
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+
   const primarySuggestions = generateUsernameSuggestions(
     firstName ?? "",
     lastName ?? "",
-    `${teamName ?? ""} ${role ?? ""} ${safeEmail}`.trim()
+    contextParts
   )
 
   if (primarySuggestions.length > 0) {
-    return primarySuggestions
+    return Array.from(new Set(primarySuggestions))
   }
 
-  const localPart = safeEmail.split("@")[0]?.trim().toLowerCase() ?? ""
-  const normalized = localPart.replace(/[^a-z0-9_]/g, "")
-  return normalized ? [normalized] : []
+  // Fallback: try just with email if names were empty
+  if (safeEmail) {
+    const emailOnly = generateUsernameSuggestions("", "", safeEmail)
+    if (emailOnly.length > 0) {
+      return Array.from(new Set(emailOnly))
+    }
+  }
+
+  return []
 }
 
 const toNameCase = (value?: string | null) => {
@@ -188,7 +194,7 @@ const deriveClientProfileNames = (
   }
 }
 
-const isNonEmptyString = (value?: string | null) =>
+const isNonEmptyString = (value?: string | null): value is string =>
   Boolean(value && value.trim().length > 0)
 
 const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value)
@@ -198,7 +204,20 @@ const getClientPayloadValidationErrors = (data: CreateClientType) => {
 
   if (!isNonEmptyString(data.firstName)) errors.push("First name is required.")
   if (!isNonEmptyString(data.lastName)) errors.push("Last name is required.")
-  if (!isNonEmptyString(data.username)) errors.push("Username must be at least 3 characters.")
+  // Username is optional; only validate format when the user supplied one.
+  // The step-5 schema allows an empty username, so the final payload must
+  // not hard-require it — that would contradict a user who skipped that step.
+  const rawUsername = data.username
+  if (isNonEmptyString(rawUsername)) {
+    const u = rawUsername.trim()
+    if (u.length < 3 || u.length > 24) {
+      errors.push("Username must be between 3 and 24 characters.")
+    } else if (!/^[a-z][a-z0-9_]*$/.test(u)) {
+      errors.push(
+        "Username must start with a letter and contain only lowercase letters, numbers, and underscores."
+      )
+    }
+  }
   if (!isNonEmptyString(data.teamName)) errors.push("Team/company name is required.")
   if (!isNonEmptyString(data.role)) errors.push("Role/job title is required.")
   if (!isNonEmptyString(data.industry)) errors.push("Industry is required.")
@@ -249,7 +268,140 @@ const describeYourTeamFormSchema = z.object({
 
 type DescribeYourTeamFormValues = z.infer<typeof describeYourTeamFormSchema>
 
-const industryList = [...new Set(industriesMock.map((i) => i.label))]
+
+const InfoTooltip = ({ text }: { text: string }) => {
+  const [pinned, setPinned] = React.useState(false)
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip open={pinned || undefined}>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="shrink-0 text-gray-500 hover:text-gray-700 transition-colors"
+            aria-label="More information"
+            onClick={(e) => {
+              e.preventDefault()
+              setPinned((prev) => !prev)
+            }}
+          >
+            <Info className="size-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent size="md" visual="white" className="max-w-[280px]">
+          <p>{text}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+const ChipInput = ({
+  id,
+  label,
+  placeholder,
+  value,
+  onChange,
+  isInvalid,
+  children,
+}: {
+  id: string
+  label: string
+  placeholder: string
+  value: string
+  onChange: (value: string) => void
+  isInvalid?: boolean
+  children?: React.ReactNode
+}) => {
+  const [committed, setCommitted] = React.useState(Boolean(value))
+  const [draft, setDraft] = React.useState(value)
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    if (!committed && inputRef.current) {
+      inputRef.current.focus()
+    }
+  }, [committed])
+
+  const commitValue = () => {
+    const trimmed = draft.trim()
+    if (trimmed) {
+      onChange(trimmed)
+      setCommitted(true)
+    }
+  }
+
+  const clearValue = () => {
+    onChange("")
+    setDraft("")
+    setCommitted(false)
+  }
+
+  if (committed && draft.trim()) {
+    return (
+      <div className="flex flex-col gap-y-1.5">
+        <Label htmlFor={id} size="sm">
+          {label}
+        </Label>
+        <div
+          className={cn(
+            "flex items-center min-h-[44px] w-full rounded-[5px] border border-gray-300 bg-white py-2 px-3.5 shadow-xs",
+            "focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-50"
+          )}
+        >
+          <Badge
+            visual="primary"
+            size="md"
+            className="gap-x-1.5 max-w-full"
+          >
+            <span className="truncate">{draft.trim()}</span>
+            <button
+              type="button"
+              onClick={clearValue}
+              className="shrink-0 rounded-full hover:bg-primary-200 transition-colors"
+              aria-label={`Remove ${draft.trim()}`}
+            >
+              <X className="size-3.5" />
+            </button>
+          </Badge>
+        </div>
+        {children}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-y-1.5">
+      <Label htmlFor={id} size="sm">
+        {label}
+      </Label>
+      <Input
+        ref={inputRef}
+        id={id}
+        placeholder={placeholder}
+        value={draft}
+        onChange={(e) => {
+          setDraft(e.target.value)
+        }}
+        onBlur={() => {
+          const trimmed = draft.trim()
+          if (trimmed) {
+            onChange(trimmed)
+            setCommitted(true)
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault()
+            commitValue()
+          }
+        }}
+        isInvalid={isInvalid}
+      />
+      {children}
+    </div>
+  )
+}
 
 const DescribeYourTeam = ({
   sidebar,
@@ -281,19 +433,42 @@ const DescribeYourTeam = ({
   )
   const [showIndustrySuggestions, setShowIndustrySuggestions] =
     React.useState(false)
-  const { suggestions: industrySuggestions } =
-    useAutocomplete("industries", industryQuery)
+  const [industryCommitted, setIndustryCommitted] = React.useState(
+    Boolean(stepData?.industry)
+  )
+  const { suggestions: industrySuggestions } = useAutocomplete(
+    "industries",
+    industryQuery
+  )
   const industryRef = React.useRef<HTMLDivElement>(null)
+  const industryInputRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (industryRef.current && !industryRef.current.contains(e.target as Node)) {
+      if (
+        industryRef.current &&
+        !industryRef.current.contains(e.target as Node)
+      ) {
         setShowIndustrySuggestions(false)
+        if (industryQuery.trim()) {
+          setIndustryCommitted(true)
+        }
       }
     }
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
+  }, [industryQuery])
+
+  const clearIndustry = () => {
+    setIndustryQuery("")
+    setIndustryCommitted(false)
+    setValue("industry", "", {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    })
+    setTimeout(() => industryInputRef.current?.focus(), 0)
+  }
 
   const { toggleValidation } = useStepContext()
   const { nextStep, setStep } = useStepperContext()
@@ -320,6 +495,17 @@ const DescribeYourTeam = ({
     toggleValidation(true)
     const nextStepIndex = currentStep + 1
     setStep(nextStepIndex)
+  }
+
+  const setFieldValue = (
+    field: keyof DescribeYourTeamFormValues,
+    value: string
+  ) => {
+    setValue(field, value, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    })
   }
 
   return (
@@ -352,16 +538,14 @@ const DescribeYourTeam = ({
           </p>
 
           <div className="mt-10 2xl:mt-[50px] flex flex-col">
-            <div className="flex flex-col gap-y-1.5">
-              <Label htmlFor="your-team-name" size="sm">
-                What’s your team name?
-              </Label>
-              <Input
-                id="your-team-name"
-                placeholder="Enter your team or company name"
-                {...register("teamName")}
-                isInvalid={hookFormHasError({ errors, name: "teamName" })}
-              />
+            <ChipInput
+              id="your-team-name"
+              label="What’s your team name?"
+              placeholder="Enter your team or company name"
+              value={values.teamName}
+              onChange={(val) => setFieldValue("teamName", val)}
+              isInvalid={hookFormHasError({ errors, name: "teamName" })}
+            >
               <HookFormErrorMessage
                 errors={errors}
                 name="teamName"
@@ -369,85 +553,112 @@ const DescribeYourTeam = ({
                   <ErrorMessage size="sm">{message}</ErrorMessage>
                 )}
               />
-            </div>
-            <div className="flex flex-col gap-y-1.5 mt-6">
-              <Label htmlFor="your-role" size="sm">
-                What’s your role?
-              </Label>
-              <InputGroup>
-                <Input
-                  id="your-role"
-                  placeholder="Enter your job title"
-                  {...register("role")}
-                  isInvalid={hookFormHasError({ errors, name: "role" })}
+            </ChipInput>
+
+            <div className="mt-6">
+              <ChipInput
+                id="your-role"
+                label="What’s your role?"
+                placeholder="Enter your job title"
+                value={values.role}
+                onChange={(val) => setFieldValue("role", val)}
+                isInvalid={hookFormHasError({ errors, name: "role" })}
+              >
+                <HookFormErrorMessage
+                  errors={errors}
+                  name="role"
+                  render={({ message }) => (
+                    <ErrorMessage size="sm">{message}</ErrorMessage>
+                  )}
                 />
-                <InputRightElement>
-                  <Info className="text-gray-500 h-4 w-4" />
-                </InputRightElement>
-              </InputGroup>
-              <HookFormErrorMessage
-                errors={errors}
-                name="role"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
+              </ChipInput>
             </div>
+
             <div className="flex flex-col gap-y-1.5 mt-6">
               <Label htmlFor="your-industry" size="sm">
                 What’s your industry?
               </Label>
 
-              <DropdownPopover
-                selected={values?.industry}
-                onSelectedChange={(value) =>
-                  setValue("industry", value || "", {
-                    shouldDirty: true,
-                    shouldTouch: true,
-                    shouldValidate: true,
-                  })
-                }
-              >
-                <DropdownPopoverTrigger>
-                  {values?.industry ? (
-                    values?.industry
-                  ) : (
-                    <span className="text-gray-500">Select an industry</span>
+              {industryCommitted && industryQuery.trim() ? (
+                <div
+                  className={cn(
+                    "flex items-center min-h-[44px] w-full rounded-[5px] border border-gray-300 bg-white py-2 px-3.5 shadow-xs",
+                    "focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-50"
                   )}
-                  <ChevronDown className="ml-auto h-5 w-5 text-gray-500" />
-                </DropdownPopoverTrigger>
-                <DropdownPopoverContent>
-                  <DropdownCommand className="overflow-hidden">
-                    <InputGroup>
-                      <InputLeftElement className="w-8">
-                        <SearchMd className="h-[15] w-[15] text-gray-500" />
-                      </InputLeftElement>
-                      <DropdownCommandInput
-                        placeholder="Search..."
-                        className="pl-8"
-                      />
-                    </InputGroup>
-
-                    <DropdownCommandEmpty className="text-sm text-gray-900">
-                      No industry found.
-                    </DropdownCommandEmpty>
-
-                    <ScrollArea className="max-h-[200px] overflow-y-auto">
-                      <DropdownCommandGroup>
-                        {industryList.map((industry) => (
-                          <DropdownCommandItem
-                            key={industry}
-                            itemValue={industry}
+                >
+                  <Badge
+                    visual="primary"
+                    size="md"
+                    className="gap-x-1.5 max-w-full"
+                  >
+                    <span className="truncate">{industryQuery}</span>
+                    <button
+                      type="button"
+                      onClick={clearIndustry}
+                      className="shrink-0 rounded-full hover:bg-primary-200 transition-colors"
+                      aria-label={`Remove ${industryQuery}`}
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </Badge>
+                </div>
+              ) : (
+                <div ref={industryRef} className="relative">
+                  <Input
+                    ref={industryInputRef}
+                    id="your-industry"
+                    placeholder="Enter your industry (e.g. Technology, Healthcare, Retail)"
+                    value={industryQuery}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setIndustryQuery(val)
+                      setValue("industry", val, {
+                        shouldDirty: true,
+                        shouldTouch: true,
+                        shouldValidate: true,
+                      })
+                      setShowIndustrySuggestions(true)
+                    }}
+                    onFocus={() => setShowIndustrySuggestions(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        if (industryQuery.trim()) {
+                          setShowIndustrySuggestions(false)
+                          setIndustryCommitted(true)
+                        }
+                      }
+                    }}
+                    isInvalid={hookFormHasError({ errors, name: "industry" })}
+                    autoComplete="off"
+                  />
+                  {showIndustrySuggestions && industrySuggestions.length > 0 && (
+                    <ul className="absolute z-50 mt-1 w-full max-h-[200px] overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
+                      {industrySuggestions.map(
+                        (item: { label: string }, index: number) => (
+                          <li
+                            key={index}
+                            className="cursor-pointer px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            onMouseDown={() => {
+                              const label = item.label
+                              setIndustryQuery(label)
+                              setValue("industry", label, {
+                                shouldDirty: true,
+                                shouldTouch: true,
+                                shouldValidate: true,
+                              })
+                              setShowIndustrySuggestions(false)
+                              setIndustryCommitted(true)
+                            }}
                           >
-                            {industry}
-                            <Check1 className="ml-auto text-primary-500 opacity-0 group-data-[state=selected]:opacity-100" />
-                          </DropdownCommandItem>
-                        ))}
-                      </DropdownCommandGroup>
-                    </ScrollArea>
-                  </DropdownCommand>
-                </DropdownPopoverContent>
-              </DropdownPopover>
+                            {item.label}
+                          </li>
+                        )
+                      )}
+                    </ul>
+                  )}
+                </div>
+              )}
 
               <HookFormErrorMessage
                 errors={errors}
@@ -985,9 +1196,9 @@ const InviteYourTeam = ({
           <div className="mt-10 2xl:mt-[50px]">
             <div className="flex items-center gap-x-3">
               <span className="text-lg leading-[36px] font-semibold">
-                Add your teammates’ emails to invite them
+                Add your teammates&#39; emails to invite them
               </span>
-              <Info className="size-4 shrink-0 text-gray-500" />
+              <InfoTooltip text="Invite teammates so they can collaborate on projects, review proposals, and manage your team workspace." />
             </div>
 
             <div className="flex flex-col gap-y-1.5 mt-1.5">
@@ -1122,11 +1333,16 @@ const InviteYourTeam = ({
   )
 }
 
+const usernameRules = z.string().trim()
+  .min(3, "Username must be at least 3 characters.")
+  .max(24, "Username must be at most 24 characters.")
+  .regex(/^[a-z][a-z0-9_]*$/, "Username must start with a letter and contain only lowercase letters, numbers, and underscores.")
+
 const createYourUsernameFormSchema = z.object({
-  username: z.string().trim()
-    .min(3, "Username must be at least 3 characters.")
-    .max(24, "Username must be at most 24 characters.")
-    .regex(/^[a-z][a-z0-9_]*$/, "Username must start with a letter and contain only lowercase letters, numbers, and underscores."),
+  username: z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? "" : val),
+    z.union([z.literal(""), usernameRules])
+  ),
 })
 
 type CreateYourUsernameFormValues = z.infer<typeof createYourUsernameFormSchema>
@@ -1143,7 +1359,11 @@ const CreateYourUsername = ({
   const [show, toggleShow] = useToggle(false)
   const [isAvailable, setIsAvailable] = React.useState<boolean | null>(null)
   const [isUsernameLoading, setIsUsernameLoading] = useToggle(false)
+  const [usernameCommitted, setUsernameCommitted] = React.useState(
+    Boolean(stepData?.username)
+  )
   const { user } = useAuth()
+  const usernameInputRef = React.useRef<HTMLInputElement>(null)
 
   const {
     watch,
@@ -1162,10 +1382,17 @@ const CreateYourUsername = ({
   })
 
   const { username } = watch()
+  const { ref: registerRef, ...registerRest } = register("username")
 
   const usernameSuggestions = useMemo(
     () =>
-      getClientUsernameSuggestions(user?.email),
+      getClientUsernameSuggestions({
+        email: user?.email,
+        firstName: stepData?.firstName ?? user?.firstName,
+        lastName: stepData?.lastName ?? user?.lastName,
+        teamName: stepData?.teamName,
+        role: stepData?.role,
+      }),
     [
       stepData?.firstName,
       stepData?.lastName,
@@ -1175,6 +1402,62 @@ const CreateYourUsername = ({
       user?.firstName,
       user?.lastName,
     ]
+  )
+
+  const [checkedSuggestions, setCheckedSuggestions] = React.useState<
+    Record<string, boolean>
+  >({})
+  const [suggestionsChecking, setSuggestionsChecking] =
+    React.useState(false)
+
+  React.useEffect(() => {
+    if (usernameSuggestions.length === 0) return
+    let cancelled = false
+    setSuggestionsChecking(true)
+
+    // Cap in-flight availability checks so a large suggestion list doesn't
+    // produce a burst of parallel requests against the auth service. Three
+    // in flight at a time is a reasonable balance between latency and load.
+    const MAX_CONCURRENCY = 3
+    const run = async () => {
+      const map: Record<string, boolean> = {}
+      let cursor = 0
+      const worker = async () => {
+        while (!cancelled) {
+          const index = cursor++
+          if (index >= usernameSuggestions.length) return
+          const name = usernameSuggestions[index]
+          try {
+            const res = await AuthAPI.CheckUsername({ username: name })
+            map[name] =
+              res?.status === 200 && res?.data?.available === true
+          } catch {
+            map[name] = false
+          }
+        }
+      }
+      const workers = Array.from(
+        { length: Math.min(MAX_CONCURRENCY, usernameSuggestions.length) },
+        () => worker()
+      )
+      await Promise.all(workers)
+      if (cancelled) return
+      setCheckedSuggestions(map)
+      setSuggestionsChecking(false)
+    }
+    run()
+
+    return () => {
+      cancelled = true
+    }
+  }, [usernameSuggestions])
+
+  const availableSuggestions = Array.from(
+    new Set(
+      usernameSuggestions.filter(
+        (s) => checkedSuggestions[s] === true && s !== username?.trim()
+      )
+    )
   )
 
   const { toggleValidation } = useStepContext()
@@ -1187,6 +1470,8 @@ const CreateYourUsername = ({
   const progress = ((currentStep + 1) / totalSteps) * 100
 
   const onSubmit: SubmitHandler<CreateYourUsernameFormValues> = (values) => {
+    if (isAvailable === false || errors.username) return
+
     setStepData({
       ...stepData,
       username: values.username,
@@ -1195,12 +1480,18 @@ const CreateYourUsername = ({
     nextStep()
   }
 
-  const setFormValue: UseFormSetValue<CreateYourUsernameFormValues> = (
-    key,
-    value
-  ) => {
-    setValue(key, value)
-    trigger(key)
+  const setFormValue = (value: string) => {
+    setValue("username", value)
+    trigger("username")
+    setUsernameCommitted(true)
+  }
+
+  const clearUsername = () => {
+    setValue("username", "")
+    setIsAvailable(null)
+    setUsernameCommitted(false)
+    clearErrors("username")
+    setTimeout(() => usernameInputRef.current?.focus(), 0)
   }
 
   const skip = () => {
@@ -1217,15 +1508,22 @@ const CreateYourUsername = ({
     prevStep()
   }
 
-  const checkUsernameAvailability = () => {
-    if (username?.length > 2) {
-      setIsUsernameLoading(true)
-      clearErrors("username")
+  const hasValidationError = Boolean(errors.username)
 
-      AuthAPI.CheckUsername({ username })
+  const checkUsernameAvailability = () => {
+    const trimmed = username?.trim() ?? ""
+    if (!trimmed || !usernameRules.safeParse(trimmed).success) {
+      setIsAvailable(null)
+      return
+    }
+
+    if (trimmed.length > 2) {
+      setIsUsernameLoading(true)
+
+      AuthAPI.CheckUsername({ username: trimmed })
         .then((response) => {
           if (response?.status === 200 && response?.data?.available) {
-            setIsAvailable(response?.data?.available)
+            setIsAvailable(true)
           } else {
             setIsAvailable(false)
           }
@@ -1242,8 +1540,8 @@ const CreateYourUsername = ({
                 shouldFocus: true,
               }
             )
-            setIsAvailable(false)
           }
+          setIsAvailable(false)
         })
         .finally(() => {
           setIsUsernameLoading(false)
@@ -1254,6 +1552,9 @@ const CreateYourUsername = ({
   }
 
   useDebounce(checkUsernameAvailability, 700, [username])
+
+  const usernameHasError =
+    hasValidationError || isAvailable === false
 
   return (
     <div className="min-h-screen flex 2xl:pl-[480px]">
@@ -1287,49 +1588,107 @@ const CreateYourUsername = ({
 
           <div className="mt-10 2xl:mt-[50px]">
             <div className="flex flex-col gap-y-1.5">
-              <Label className="text-dark-blue-400" id="username" size="sm">
+              <Label
+                className={cn(
+                  "text-dark-blue-400",
+                  usernameHasError && "text-error-500"
+                )}
+                id="username"
+                size="sm"
+              >
                 Enter Your Username
               </Label>
-              <div className="relative">
-                <Input
-                  id="username"
-                  {...register("username")}
-                  isInvalid={hookFormHasError({ errors, name: "username" })}
-                  onKeyUp={(e) => {
-                    if (username?.length < 3) {
-                      setIsAvailable(null)
-                    }
-                  }}
-                  className="pr-32"
-                />
 
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                  {isUsernameLoading ? (
-                    <Spinner size={20} strokeWidth={2} />
-                  ) : (
-                    <>
-                      {isAvailable === false && (
-                        <ErrorMessage
-                          size="sm"
-                          className="flex flex-row items-center gap-0.5"
-                        >
-                          <X width={20} height={20} /> That username is already taken.
-                        </ErrorMessage>
-                      )}
-
-                      {isAvailable && (
-                        <ErrorMessage
-                          size="sm"
-                          className="text-emerald-600 flex flex-row items-center gap-0.5"
-                        >
-                          <Check />
-                          Available
-                        </ErrorMessage>
-                      )}
-                    </>
+              {usernameCommitted && username?.trim() && !hasValidationError ? (
+                <div
+                  className={cn(
+                    "flex items-center min-h-[44px] w-full rounded-[5px] border bg-white py-2 px-3.5 shadow-xs",
+                    isAvailable === true
+                      ? "border-success-300"
+                      : isAvailable === false
+                        ? "border-error-300"
+                        : "border-gray-300"
                   )}
+                >
+                  <Badge
+                    visual="primary"
+                    size="md"
+                    className="gap-x-1.5 max-w-full"
+                  >
+                    <span className="truncate">{username}</span>
+                    <button
+                      type="button"
+                      onClick={clearUsername}
+                      className="shrink-0 rounded-full hover:bg-primary-200 transition-colors"
+                      aria-label="Remove username"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </Badge>
+
+                  <div className="ml-auto pl-2 shrink-0">
+                    {isUsernameLoading ? (
+                      <Spinner size={20} strokeWidth={2} />
+                    ) : isAvailable === true ? (
+                      <span className="text-emerald-600 text-sm flex items-center gap-0.5">
+                        <Check className="size-4" /> Available
+                      </span>
+                    ) : isAvailable === false ? (
+                      <span className="text-error-500 text-sm flex items-center gap-0.5">
+                        <X className="size-4" /> Taken
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="relative">
+                  <Input
+                    id="username"
+                    ref={(el) => {
+                      registerRef(el)
+                      ;(usernameInputRef as React.MutableRefObject<HTMLInputElement | null>).current = el
+                    }}
+                    {...registerRest}
+                    isInvalid={usernameHasError}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        const trimmed = username?.trim()
+                        if (trimmed && !hasValidationError) {
+                          setUsernameCommitted(true)
+                        }
+                      }
+                    }}
+                    onChange={(e) => {
+                      registerRest.onChange(e)
+                      setIsAvailable(null)
+                      setUsernameCommitted(false)
+                    }}
+                    className="pr-32"
+                  />
+
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                    {isUsernameLoading ? (
+                      <Spinner size={20} strokeWidth={2} />
+                    ) : (
+                      <>
+                        {isAvailable === false && !hasValidationError && (
+                          <span className="text-error-500 text-sm flex items-center gap-0.5 whitespace-nowrap">
+                            <X className="size-4" /> Taken
+                          </span>
+                        )}
+
+                        {isAvailable === true && !hasValidationError && (
+                          <span className="text-emerald-600 text-sm flex items-center gap-0.5 whitespace-nowrap">
+                            <Check className="size-4" /> Available
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <HookFormErrorMessage
                 errors={errors}
                 name="username"
@@ -1339,63 +1698,97 @@ const CreateYourUsername = ({
               />
             </div>
 
-            {usernameSuggestions.length > 0 && (show ? (
-              <div className="mt-6">
-                {usernameSuggestions.map((username, index) => (
-                  <React.Fragment key={username}>
-                    <Button
-                      className="text-primary-500/50 hover:text-primary-500"
-                      size="lg"
-                      visual="gray"
-                      variant="link"
-                      type="button"
-                      onClick={() => setFormValue("username", username)}
-                    >
-                      {username}
-                    </Button>
+            {suggestionsChecking && usernameSuggestions.length > 0 && (
+              <p className="mt-4 text-sm text-gray-400">
+                Checking username suggestions...
+              </p>
+            )}
 
-                    {index !== usernameSuggestions.length - 1 && (
-                      <span>, </span>
-                    )}
-                  </React.Fragment>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-6">
-                <span className="block text-sm leading-[16.94px] text-gray-500">
-                  {usernameSuggestions.slice(0, 3).map((username, index) => (
-                    <React.Fragment key={username}>
+            {(() => {
+              // Show available suggestions if we have them; otherwise fall back to raw suggestions
+              const displaySuggestions =
+                availableSuggestions.length > 0
+                  ? availableSuggestions
+                  : !suggestionsChecking
+                    ? usernameSuggestions.filter((s) => s !== username?.trim())
+                    : []
+              const isVerified = availableSuggestions.length > 0
+
+              if (suggestionsChecking || displaySuggestions.length === 0)
+                return null
+
+              return show ? (
+                <div className="mt-6">
+                  {displaySuggestions.map((s, index) => (
+                    <React.Fragment key={s}>
                       <Button
                         className="text-primary-500/50 hover:text-primary-500"
                         size="lg"
                         visual="gray"
                         variant="link"
                         type="button"
-                        onClick={() => setFormValue("username", username)}
+                        onClick={() => setFormValue(s)}
                       >
-                        {username}
+                        @{s}
                       </Button>
 
-                      {index === 0 && <span>, </span>}
-                      {index === 1 && <span> and </span>}
+                      {index !== displaySuggestions.length - 1 && (
+                        <span>, </span>
+                      )}
                     </React.Fragment>
-                  ))}{" "}
-                  are available
-                </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-6">
+                  <span className="block text-sm leading-[16.94px] text-gray-500">
+                    {displaySuggestions
+                      .slice(0, 3)
+                      .map((s, index) => (
+                        <React.Fragment key={s}>
+                          <Button
+                            className="text-primary-500/50 hover:text-primary-500"
+                            size="lg"
+                            visual="gray"
+                            variant="link"
+                            type="button"
+                            onClick={() => setFormValue(s)}
+                          >
+                            @{s}
+                          </Button>
 
-                <Button
-                  className="mt-3"
-                  size="md"
-                  variant="link"
-                  type="button"
-                  visual="gray"
-                  onClick={toggleShow}
-                >
-                  <Plus className="size-[15px]" />
-                  More suggestions
-                </Button>
-              </div>
-            ))}
+                          {index === 0 &&
+                            displaySuggestions.length > 1 && (
+                              <span>, </span>
+                            )}
+                          {index === 1 &&
+                            displaySuggestions.length > 2 && (
+                              <span> and </span>
+                            )}
+                          {index === 1 &&
+                            displaySuggestions.length === 2 && (
+                              <span> and </span>
+                            )}
+                        </React.Fragment>
+                      ))}{" "}
+                    {isVerified ? "are available" : ""}
+                  </span>
+
+                  {displaySuggestions.length > 3 && (
+                    <Button
+                      className="mt-3"
+                      size="md"
+                      variant="link"
+                      type="button"
+                      visual="gray"
+                      onClick={toggleShow}
+                    >
+                      <Plus className="size-[15px]" />
+                      More Suggestions
+                    </Button>
+                  )}
+                </div>
+              )
+            })()}
 
             <div className="mt-10 2xl:mt-[50px]">
               <Alert>
@@ -1435,7 +1828,11 @@ const CreateYourUsername = ({
             >
               Skip
             </Button>
-            <Button size="md" visual="primary" disabled={isAvailable === false}>
+            <Button
+              size="md"
+              visual="primary"
+              disabled={usernameHasError || isUsernameLoading}
+            >
               Continue
             </Button>
           </div>
@@ -1529,7 +1926,16 @@ const RecommendationChips = ({
   selectedValues: string[]
   onSelect: (value: string) => void
 }) => {
-  if (!getIsNotEmpty(options)) return null
+  const selectedSet = new Set(selectedValues.map((v) => v.toLowerCase()))
+  const filtered = Array.from(
+    new Map(
+      options
+        .filter((o) => !selectedSet.has(o.toLowerCase()))
+        .map((o) => [o.toLowerCase(), o] as const)
+    ).values()
+  )
+
+  if (!getIsNotEmpty(filtered)) return null
 
   return (
     <div className="p-5 mt-5 bg-gray-50">
@@ -1538,31 +1944,17 @@ const RecommendationChips = ({
       </span>
 
       <div className="mt-3 flex gap-3 flex-wrap">
-        {options.map((option) => {
-          const isSelected = selectedValues.includes(option)
-
-          return (
-            <Badge
-              asChild
-              key={option}
-              visual={isSelected ? "primary" : "gray"}
+        {filtered.map((option) => (
+          <Badge asChild key={option} visual="gray">
+            <button
+              type="button"
+              className="transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 hover:bg-gray-200"
+              onClick={() => onSelect(option)}
             >
-              <button
-                type="button"
-                className={cn(
-                  "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40",
-                  isSelected
-                    ? "cursor-not-allowed opacity-70"
-                    : "hover:bg-gray-200"
-                )}
-                disabled={isSelected}
-                onClick={() => onSelect(option)}
-              >
-                {option}
-              </button>
-            </Badge>
-          )
-        })}
+              {option}
+            </button>
+          </Badge>
+        ))}
       </div>
     </div>
   )
@@ -1791,6 +2183,7 @@ const LookingToWorkWith = ({
           ))}
         </div>
       )}
+
     </div>
   )
 }
@@ -2167,7 +2560,7 @@ const OutlineYourInterests = ({
       ...stepData,
       firstName: user?.firstName ?? stepData?.firstName,
       lastName: user?.lastName ?? stepData?.lastName,
-      avatarUrl: user?.avatarUrl ?? undefined,
+      avatarUrl: stepData?.avatarUrl ?? user?.avatarUrl ?? undefined,
       budget: values.budget,
       skills: values?.skillsLookingFor,
       industries: Object.entries(values?.industriesOrVerticals)
@@ -2291,7 +2684,7 @@ const OutlineYourInterests = ({
                 <h1 className="text-lg leading-9 font-semibold text-dark-blue-400">
                   What industries or verticals do you work in?
                 </h1>
-                <AlertCircle className="size-6 text-gray-500" />
+                <InfoTooltip text="Select the industries you operate in. This helps us match you with talent who have relevant domain experience." />
               </div>
 
               <div className="grid grid-cols-2 gap-2.5">
@@ -2429,7 +2822,7 @@ const OutlineYourInterests = ({
                 <h1 className="text-lg leading-9 font-semibold text-dark-blue-400">
                   What types of projects are you interested in?
                 </h1>
-                <AlertCircle className="size-6 text-gray-500" />
+                <InfoTooltip text="Choose the project types that match your needs. This helps us recommend relevant talent and listings." />
               </div>
 
               <div className="grid grid-cols-2 gap-2.5">
@@ -2465,9 +2858,9 @@ const OutlineYourInterests = ({
             <div className="space-y-1.5 mt-10 2xl:mt-[50px]">
               <div className="flex items-center gap-x-3">
                 <h1 className="text-lg leading-9 font-semibold text-dark-blue-400">
-                  What’s your budget?
+                  What&apos;s your budget?
                 </h1>
-                <AlertCircle className="size-6 text-gray-500" />
+                <InfoTooltip text="Select a monthly budget range. This helps us recommend talent and projects within your price range." />
               </div>
 
               <div className="flex flex-col gap-y-1.5">
@@ -2553,43 +2946,43 @@ const DoNext = ({
   const router = useRouter()
   const { setUser, user } = useAuth()
   const [isLoading, setIsLoading] = React.useState(false)
+
+  const requiresPasswordSetup = (candidate?: User | null) => {
+    const safeUser = candidate as { provider?: string; hasPassword?: boolean } | null | undefined
+    return safeUser?.provider === "EMAIL" && !safeUser?.hasPassword
+  }
+
+  const getPostOnboardingRoute = (targetRoute: string, candidate?: User | null) => {
+    // Enforce password setup before allowing post-onboarding route jumps.
+    return requiresPasswordSetup(candidate) ? "/client-dashboard" : targetRoute
+  }
+
   const handleFinish = async () => {
+    setIsLoading(true)
+
+    // Always mark onboarding as dismissed locally so AuthenticatedRoute won't bounce back
+    const finishedUser = {
+      ...(clientUser ?? user),
+      onboardingDismissed: true,
+      userType: "client",
+    } as User
+    setUser(finishedUser)
+
+    // Persist to localStorage as a fallback in case the API call fails
+    try { window.localStorage.setItem("marketeq-onboarding-dismissed", "true") } catch {}
+
     try {
-      setIsLoading(true)
-      const response = await UserAPI.handleSkip({ role: ROLE.CLIENT })
-
-      let nextUser = response?.data?.user as User | undefined
-      if (!nextUser) {
-        const fallbackUser = clientUser ?? user
-        if (fallbackUser) {
-          nextUser = {
-            ...fallbackUser,
-            onboardingDismissed: true,
-            userType: "client",
-          }
-        }
+      await UserAPI.handleSkip({ role: ROLE.CLIENT })
+      const userResponse = await UserAPI.me()
+      if (userResponse?.data?.user) {
+        setUser(userResponse.data.user)
       }
-
-      if (nextUser) {
-        setUser(nextUser)
-      }
-
-      try {
-        const userResponse = await UserAPI.me()
-        if (userResponse?.data?.user) {
-          setUser(userResponse.data.user)
-        }
-      } catch (error) {
-        console.error("Failed to refresh user after onboarding", error)
-      }
-
-      router.push("/client-dashboard")
     } catch (error) {
       console.error("Failed to complete onboarding", error)
-      // Show error toast if needed
-    } finally {
-      setIsLoading(false)
     }
+
+    setIsLoading(false)
+    router.push("/client-dashboard")
   }
 
   return (
@@ -2652,7 +3045,7 @@ const DoNext = ({
                 if (clientUser) {
                   setUser(clientUser)
                 }
-                router.push("/client-dashboard")
+                router.push(getPostOnboardingRoute("/client-dashboard", clientUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -2836,21 +3229,35 @@ const IntroduceYourself = ({
   const { firstName, lastName } = watch()
   const { toggleValidation } = useStepContext()
   const { nextStep, setStep } = useStepperContext()
+  const { toast } = useToast()
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
   const { totalSteps, currentStep } = useStepRootContext()
   const initials = `${firstName?.[0] || ""}${lastName?.[0] || ""}`.trim()
-  const onSubmit: SubmitHandler<IntroduceYourselfFormValues> = ({
+  const onSubmit: SubmitHandler<IntroduceYourselfFormValues> = async ({
     avatar,
     firstName,
     lastName,
   }) => {
-    // If avatar[0] is a File, keep as is; if string, use as is
-    let avatarUrl: string | undefined = undefined
-    if (typeof avatar?.[0] === "string") {
-      avatarUrl = avatar[0]
-    } else if (avatar?.[0] instanceof File) {
-      // You may want to upload the file and get a URL here; for now, just set undefined
-      avatarUrl = undefined
+    let avatarUrl: string | undefined = stepData?.avatarUrl
+    const first = avatar?.[0]
+    if (typeof first === "string") {
+      avatarUrl = first
+    } else if (first instanceof File) {
+      try {
+        const response = await ClientAPI.UploadAvatar(first)
+        // Backend returns `{ url: null }` when object storage is not
+        // configured (local/dev). In that case we keep going without
+        // setting an avatar instead of blocking the step.
+        avatarUrl = response?.data?.url ?? undefined
+      } catch (error: any) {
+        toast({
+          title:
+            error?.response?.data?.message ||
+            "Failed to upload profile photo. Please try again.",
+          variant: "destructive",
+        })
+        return
+      }
     }
     setStepData({
       ...stepData,

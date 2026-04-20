@@ -22,7 +22,7 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
 
   @Index()
   @Column({ type: String, nullable: true, unique: true })
-  strapiId?: string;
+  cmsId?: string;
 
   @Index()
   @Column({ type: String, length: 120 })
@@ -39,6 +39,12 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
 
   @Column({ type: String, array: true, default: [] })
   subCategories: string[];
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  categorySelections: {
+    category: string;
+    subCategories: string[];
+  }[];
 
   @Column({ type: String, array: true, default: [] })
   industries: string[];

@@ -9,7 +9,7 @@ export class TagEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  // Strapi tag may or may not send uuid; keep unique when present
+  // CMS tag may or may not send uuid; keep unique when present
   @Column({ type: 'varchar', unique: true, nullable: true })
   uuid: string | null;
 

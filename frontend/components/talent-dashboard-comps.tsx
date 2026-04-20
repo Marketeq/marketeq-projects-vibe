@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { SVGProps } from "react"
+import { usePathname } from "next/navigation"
 import data from "@/public/mock/projects.json"
 import { ONE_SECOND } from "@/utils/constants"
 import { cn, getId, getIsEmpty, getIsNotEmpty } from "@/utils/functions"
@@ -14,6 +15,8 @@ import {
   Briefcase,
   Check,
   ChevronLeft,
+  CoinStack,
+  CurrencyDollar,
   ChevronRight,
   Clock,
   FileCheck02,
@@ -46,6 +49,10 @@ import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import SecuritySettingsStepper from "@/components/security-settings"
 import {
+  ClientAccountSidebar,
+  TalentAccountSidebar,
+} from "@/components/account-sidebars"
+import {
   Avatar,
   AvatarFallback,
   AvatarGroup,
@@ -74,7 +81,8 @@ import {
   EditablePreview,
   EditableRoot,
 } from "@/components/ui"
-import { useAuth } from "@/contexts/auth"
+import { useAuth, resolveDashboardRole } from "@/contexts/auth"
+import { ROLE } from "@/types/user"
 import { UserAPI } from "@/service/http/user"
 
 
@@ -153,96 +161,11 @@ export const WalletBold = ({
 }
 
 export const LeftSidebar = () => {
-  return (
-    <div className="w-[224px] shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r space-y-6 border-gray-200 p-[15px]">
-      <div className="flex flex-col gap-y-2">
-        <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
-          Work
-        </span>
+  const { user } = useAuth()
+  const dashboardRole = resolveDashboardRole(user)
+  const isTalent = dashboardRole === ROLE.TALENT
 
-        <div className="flex flex-col gap-y-1">
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/"
-          >
-            <Home03 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Home
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/search"
-          >
-            <Search className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Find Jobs
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/my-listings"
-          >
-            <Briefcase className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            My Listings
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/publish-project"
-          >
-            <Plus className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Create a Project
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/"
-          >
-            <BarChartSquare02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Stats & Trends
-          </NextLink>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-y-2">
-        <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
-          Account
-        </span>
-
-        <div className="flex flex-col gap-y-1">
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/talent-profile"
-          >
-            <UserCircle className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Profile
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/inbox"
-          >
-            <Mail01 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Inbox
-            <Badge className="rounded-full ml-auto" size="md" visual="error">
-              3
-            </Badge>
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/notifications"
-          >
-            <AlertCircle className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Notifications
-            <Badge className="rounded-full ml-auto" size="md" visual="error">
-              2
-            </Badge>
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/settings"
-          >
-            <Settings02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Settings
-          </NextLink>
-        </div>
-      </div>
-    </div>
-  )
+  return isTalent ? <TalentAccountSidebar /> : <ClientAccountSidebar />
 }
 
 export const RightDrawer = ({ className, onCompleteProfile, profileProgress = 0 }: { className?: string; onCompleteProfile?: () => void; profileProgress?: number }) => {

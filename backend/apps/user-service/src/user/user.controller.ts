@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dtos/create-user.dto';
@@ -23,6 +24,18 @@ export class UserController {
   @Post()
   createUser(@Body() dto: CreateUserDto) {
     return this.userService.createUser(dto);
+  }
+
+  @ApiOperation({ summary: 'List users' })
+  @Get()
+  listUsers(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const parsedLimit = Number(limit ?? '50');
+    const parsedOffset = Number(offset ?? '0');
+
+    return this.userService.listUsers(parsedLimit, parsedOffset);
   }
 
   @ApiOperation({ summary: 'Get user by id' })

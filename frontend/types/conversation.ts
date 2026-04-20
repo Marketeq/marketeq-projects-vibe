@@ -28,17 +28,18 @@ export interface Conversation {
   isGroup: boolean
   createdAt: string // ISO timestamp
   updatedAt: string // ISO timestamp
-  participants: ConversationParticipant[]
+  participantIds: string[]
   isStarred: boolean
+  isPinned: boolean
+  isArchived: boolean
+  isSpam: boolean
+  isMuted: boolean
+  isTrashed: boolean
+  markedUnread: boolean
+  lastReadAt: string | null
   group?: GroupInfo // only if isGroup is true
-  /**
-   * Optional array of messages (if you eagerly load them)
-   */
   messages?: Message[]
-
-  /**
-   * Convenience field you can attach on the client
-   * for the “other” user’s display name
-   */
   participantUsername?: string
+  participantAvatarUrl?: string
+  lastMessagePreview?: string
 }

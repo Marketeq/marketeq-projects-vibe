@@ -3,9 +3,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/favorites-service/package*.json ./apps/favorites-service/
 COPY shared/ ./shared/
-RUN npm install
+RUN npm ci
 COPY . .
-RUN npm run build -w apps/favorites-service
+RUN npx nest build favorites-service
 
 FROM node:20-alpine
 WORKDIR /app

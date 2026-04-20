@@ -29,7 +29,8 @@ Keep THIS file as an index only (under 150 lines). Write details to the topic fi
 ### Services
 - [services/auth-service.md](.claude/memory/services/auth-service.md)
 - [services/user-service.md](.claude/memory/services/user-service.md)
-- [services/listings-service.md](.claude/memory/services/listings-service.md)
+- [services/listings-service.md](.claude/memory/services/listings-service.md) — projects, services, teams all registered with scoring fields
+- [services/homepage-service.md](.claude/memory/services/homepage-service.md) — ~85% complete, backend done, frontend SSR wired, tests pending
 - [services/checkout-service.md](.claude/memory/services/checkout-service.md)
 - [services/messaging-service.md](.claude/memory/services/messaging-service.md)
 - [services/notification-service.md](.claude/memory/services/notification-service.md)
@@ -47,7 +48,6 @@ Keep THIS file as an index only (under 150 lines). Write details to the topic fi
 - Local Claude memory: /Users/christorres/.claude/projects/-Users-christorres-vibecoding/memory/
 
 ## Service Status Summary (see progress.md for full detail)
-**Implemented:** auth, user, listings, checkout, messaging, notification
-**Scaffolded (needs implementation):** api-gateway, admin, affiliate-referral, algolia,
-autocomplete, billing, content-moderation, contracts, earnings, favorites, invitations,
-payout, portfolio, search, suggestions, time-tracking, transaction
+**Implemented:** auth, user, listings (with teams/services/scoring), checkout, messaging, notification, contracts, time-tracking
+**In Progress:** homepage (api-gateway module + frontend SSR, ~85%)
+**Scaffolded:** admin, affiliate-referral, algolia, autocomplete, billing, content-moderation, earnings, favorites, invitations, payout, portfolio, search, suggestions, transaction

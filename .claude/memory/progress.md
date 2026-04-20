@@ -11,13 +11,13 @@
 - user-service – talent profile, certifications, education, experience, industries, languages, skills
 - listings-service – projects, services, jobs, teams, media
 - checkout-service – Stripe checkout, wallet, webhooks
-- messaging-service – Ably real-time, message threads, history
+- messaging-service – Ably real-time, message threads, history, E2E encryption (AES-256-GCM + RSA-4096-OAEP key wrapping)
 - notification-service – Ably push, SendGrid email, event handlers, preferences
 - contracts-service – contract groups, lifecycle (pending→active→ended/canceled/disputed), audit logging, CRON auto-cancel, RabbitMQ events
 - time-tracking-service – complete service, code review fixes, QA tested all endpoints
 
 ## In Progress
-(none currently — agents: claim your service here before starting)
+- homepage (api-gateway module + frontend SSR) — ~85% complete, backend done, frontend wired, tests pending
 
 ## Available Now (no blocking dependencies)
 These can be built immediately in parallel:
@@ -56,7 +56,13 @@ These can be built immediately in parallel:
 - time-tracking-service → contracts-service
 
 ## Frontend Progress
-- Inbox/messaging UI: hooks built (use-messages, use-send-message, use-file-upload, etc.)
+- Homepage: SSR page fetches from api-gateway `/homepage`, renders dynamic sections (projects, services, teams, talent), hero, banner, categories, SEO metadata. Uses `ListingCard`/`ListingCardCompact` components. Types aligned with backend.
+- Inbox/messaging UI: fully wired to backend APIs, E2E encryption integrated (client-side AES encrypt/decrypt, key exchange, cookie-based auth)
 - UI component library: complete (/components/ui/)
-- Types: defined for user, talent, client, project, conversation, message, auth
+- Types: defined for user, talent, client, project, conversation, message, auth, homepage
 - E2E tests: Playwright + Cucumber setup, auth tests written
+
+## Setup Notes (for new devs)
+- `E2EE_SERVER_SECRET` must be added to backend/.env for messaging-service
+- `user_keys` and `user_devices` tables must exist in user_service schema (run migration manually or execute SQL)
+- Gateway needs `messaging`, `user-keys`, `devices` route mappings (in proxy.controller.ts)

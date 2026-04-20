@@ -1,3 +1,5 @@
+import type { CustomAvailabilityDay } from "./talent"
+
 export enum AUTH_PROVIDERS {
   EMAIL = "EMAIL",
   GOOGLE = "GOOGLE",
@@ -26,6 +28,7 @@ export type User = {
   emailVerified: boolean
   onboardingDismissed: boolean
   gettingStartedStep?: number | null
+  customAvailability?: CustomAvailabilityDay[] | null
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null
@@ -83,6 +86,7 @@ export type UserProfile = User & {
   location?: string | null
   timezone?: string | null
   availability?: string | null
+  customAvailability?: CustomAvailabilityDay[] | null
   rateMin?: number | null
   rateMax?: number | null
   userType?: string | null

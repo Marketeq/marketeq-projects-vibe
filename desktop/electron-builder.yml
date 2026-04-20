@@ -1,0 +1,102 @@
+# electron-builder.yml
+# Phase 1 — unsigned builds only. Signing identity and notarization credentials
+# are intentionally omitted (see TODO below). Restore them per doc 29 §1.1
+# once Apple Developer ID + Windows EV cert are provisioned.
+
+appId: com.marketeq.time-tracker
+productName: Marketeq
+
+# Publish to a dedicated public release-only repo so the main codebase stays
+# private while the `releases/latest/download/<file>` URLs stay stable for the
+# frontend download dialog and electron-updater (doc 30 §2).
+publish:
+  - provider: github
+    owner: Marketeq
+    repo: desktop-time-tracker
+    releaseType: release
+
+directories:
+  buildResources: resources
+  output: dist
+
+# We keep the compiled output under dist/main, dist/preload, and dist/renderer.
+# Those dirs are what we ship inside the app.asar.
+files:
+  - dist/main/**
+  - dist/preload/**
+  - dist/renderer/**
+  - package.json
+  - '!**/*.map'
+  - '!**/*.ts'
+
+extraResources:
+  - from: src/main/db/migrations
+    to: migrations
+    filter:
+      - '**/*.sql'
+
+asar: true
+asarUnpack:
+  - 'node_modules/better-sqlite3/**/*'
+
+mac:
+  category: public.app-category.productivity
+  icon: resources/icon.png
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  # Versionless, URL-safe filename so the frontend can use a single stable
+  # `releases/latest/download/Marketeq-Time-Tracker-mac-${arch}.dmg` URL
+  # across versions (same pattern as Obsidian, Standard Notes, Linear).
+  artifactName: 'Marketeq-mac-${arch}.${ext}'
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  identity: null # TODO(doc 29 §1.1): set to "Developer ID Application: ... (TEAM_ID)" once cert provisioned
+  # TODO(doc 29 §1.1): re-enable notarize once APPLE_ID / APPLE_APP_PASSWORD / APPLE_TEAM_ID are set
+  # notarize:
+  #   teamId: TEAM_ID
+
+dmg:
+  icon: resources/icon.png
+  title: 'Marketeq Time Tracker'
+  window:
+    x: 100
+    y: 100
+    width: 540
+    height: 380
+  contents:
+    - x: 130
+      y: 220
+      type: file
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+win:
+  icon: resources/icon.png
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+    - target: portable
+      arch: [x64, arm64]
+  # TODO(doc 29 §1.1): configure certificateFile / certificatePassword via env for Authenticode
+  signtoolOptions:
+    signingHashAlgorithms:
+      - sha256
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Marketeq Time Tracker
+  installerIcon: resources/icon.png
+  uninstallerIcon: resources/icon.png
+  artifactName: 'Marketeq-Setup-win-${arch}.${ext}'
+  include: resources/installer.nsh
+
+portable:
+  artifactName: 'Marketeq-win-${arch}-portable.${ext}'

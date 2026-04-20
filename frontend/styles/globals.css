@@ -37,6 +37,18 @@
   --swiper-pagination-bottom: theme(size.4);
 }
 
+/* Use the document itself as the stable gray underlay during rubber-band
+   scrolling, while still allowing the page content to keep the native bounce. */
+html {
+  min-height: 100%;
+  background-color: theme(colors.gray.50);
+}
+
+body {
+  min-height: 100%;
+  background-color: transparent;
+}
+
 .react-international-phone-input-container
   .react-international-phone-country-selector-button {
   @apply mr-0;

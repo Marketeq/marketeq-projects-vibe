@@ -28,6 +28,8 @@ import { HireRequestsModule } from './hire-requests/hire-requests.module';
 import { MessageModule } from './message/message.module';
 import { ClientModule } from './client/client.module';
 import { OwnerTargetModule } from './owner-target/owner-target.module';
+import { TalentProfileModule } from './talent-profile/talent-profile.module';
+import { UserKeysModule } from './user-keys/user-keys.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -73,6 +75,8 @@ import { OwnerTargetModule } from './owner-target/owner-target.module';
     MessageModule,
     ClientModule,
     OwnerTargetModule,
+    TalentProfileModule,
+    UserKeysModule,
   ],
   controllers: [HealthController],
   providers: [

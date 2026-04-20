@@ -3,9 +3,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/suggestions-service/package*.json ./apps/suggestions-service/
 COPY shared/ ./shared/
-RUN npm install
+RUN npm ci
 COPY . .
-RUN npm run build -w apps/suggestions-service
+RUN npx nest build suggestions-service
 
 FROM node:20-alpine
 WORKDIR /app

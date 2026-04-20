@@ -14,13 +14,27 @@ export class R2Service {
 
   constructor(private readonly configService: ConfigService) {}
 
+  // The repo has accumulated multiple Cloudflare naming conventions across
+  // .env.example, seed-users.js, and individual services. Rather than force a
+  // rename across the codebase, read whichever form is present so any of the
+  // existing env files "just works".
+  private getEnv(...candidates: string[]): string | undefined {
+    for (const name of candidates) {
+      const value = this.configService.get<string>(name);
+      if (value) return value;
+    }
+    return undefined;
+  }
+
   async uploadAvatar(
     userId: string,
     file: Express.Multer.File,
   ): Promise<{ key: string; url?: string }> {
-    const bucket = this.configService.get<string>('CLOUDFLARE_R2_BUCKET');
-    const publicBaseUrl = this.configService.get<string>(
+    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
+    const publicBaseUrl = this.getEnv(
       'CLOUDFLARE_R2_PUBLIC_URL',
+      'CLOUDFLARE_PUBLIC_URL',
+      'R2_PUBLIC_URL',
     );
 
     if (!bucket) {
@@ -78,7 +92,7 @@ export class R2Service {
       return `${cdnBase.replace(/\/$/, '')}/blurred/${key}`;
     }
 
-    const bucket = this.configService.get<string>('CLOUDFLARE_R2_BUCKET');
+    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
     if (!bucket) {
       throw new InternalServerErrorException(
         'CLOUDFLARE_R2_BUCKET is required to presign GET URLs',
@@ -96,15 +110,23 @@ export class R2Service {
   private getClient(): S3Client {
     if (this.client) return this.client;
 
-    const accountId = this.configService.get<string>('CLOUDFLARE_ACCOUNT_ID');
-    const accessKeyId = this.configService.get<string>(
-      'CLOUDFLARE_R2_ACCESS_KEY_ID',
+    const accountId = this.getEnv(
+      'CLOUDFLARE_ACCOUNT_ID',
+      'CLOUDFLARE_R2_ACCOUNT_ID',
+      'R2_ACCOUNT_ID',
     );
-    const secretAccessKey = this.configService.get<string>(
+    const accessKeyId = this.getEnv(
+      'CLOUDFLARE_R2_ACCESS_KEY_ID',
+      'CLOUDFLARE_R2_ACCESS_KEY',
+      'R2_ACCESS_KEY_ID',
+    );
+    const secretAccessKey = this.getEnv(
       'CLOUDFLARE_R2_SECRET_ACCESS_KEY',
+      'CLOUDFLARE_R2_SECRET_KEY',
+      'R2_SECRET_ACCESS_KEY',
     );
     const endpoint =
-      this.configService.get<string>('CLOUDFLARE_R2_ENDPOINT') ??
+      this.getEnv('CLOUDFLARE_R2_ENDPOINT', 'R2_ENDPOINT') ??
       (accountId
         ? `https://${accountId}.r2.cloudflarestorage.com`
         : undefined);

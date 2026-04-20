@@ -12,6 +12,7 @@ import { CreateTalentDto } from './dto/create-talent.dto';
 import { R2Service } from '../storage/r2.service';
 import { Skill } from '../skills/skills.entity';
 import { Experience } from '../experience/experience.entity';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class TalentService {
@@ -25,17 +26,41 @@ export class TalentService {
     @InjectRepository(Experience)
     private readonly experienceRepository: Repository<Experience>,
     private readonly r2Service: R2Service,
+    private readonly userService: UserService,
   ) {}
 
   async createTalent(
-    userId: string,
+    userClaims: { id: string; email?: string },
     dto: CreateTalentDto,
     avatar?: Express.Multer.File,
   ) {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
+    // Resolve the user row using the same fallback strategy as ClientService:
+    // first by id, then by email (handles legacy rows where the auth-service
+    // user id was regenerated), and finally by syncing from auth-service for
+    // brand-new users who have authenticated but never hit a user-service
+    // endpoint yet. This prevents a spurious NotFoundException for users who
+    // exist in auth-service but not here.
+    let user = await this.userRepository.findOne({
+      where: { id: userClaims.id },
+    });
+    if (!user && userClaims.email) {
+      user = await this.userRepository.findOne({
+        where: { email: userClaims.email },
+      });
+    }
+    if (!user && userClaims.id && userClaims.email) {
+      await this.userService.syncFromAuth({
+        id: userClaims.id,
+        email: userClaims.email,
+      });
+      user = await this.userRepository.findOne({
+        where: { id: userClaims.id },
+      });
+    }
     if (!user) {
       throw new NotFoundException('User not found');
     }
+    const userId = user.id;
 
     const existingUsername = dto.username
       ? await this.userRepository.findOne({
@@ -112,18 +137,87 @@ export class TalentService {
     return { user: updated };
   }
 
+  /**
+   * Public listing of talent users for browse pages (homepage, /talent,
+   * /c/<category>). Returns the minimal projection the talent card needs:
+   * basic profile + first skills (so the card can render its skill row
+   * without N+1 queries from the frontend). Excludes users with no avatar
+   * so cards never fall back to the placeholder.
+   */
+  async listTalentUsers(limit = 24): Promise<any[]> {
+    const users = await this.userRepository.find({
+      where: { userType: 'talent' },
+      take: limit,
+      order: { onboardedAt: 'DESC' },
+    });
+
+    if (users.length === 0) return [];
+
+    const ids = users.map((u) => u.id);
+    const allSkills = await this.skillRepository.find({
+      where: ids.map((id) => ({ userId: id })),
+      select: { id: true, name: true, userId: true } as any,
+    });
+
+    const skillsByUser = new Map<string, string[]>();
+    for (const s of allSkills) {
+      if (!s.name) continue;
+      const list = skillsByUser.get(s.userId) ?? [];
+      list.push(s.name);
+      skillsByUser.set(s.userId, list);
+    }
+
+    return users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      avatarUrl: u.avatarUrl,
+      userType: u.userType,
+      location: u.location,
+      rateMin: u.rateMin,
+      rateMax: u.rateMax,
+      jobTitles: u.jobTitles,
+      recentJobTitle: u.recentJobTitle,
+      skills: (skillsByUser.get(u.id) ?? []).map((name) => ({ name })),
+    }));
+  }
+
   async getUserByUsername(username: string): Promise<User> {
     const user = await this.userRepository.findOne({ where: { username } });
     if (!user) throw new NotFoundException('User not found');
 
-    // Load related skills and experiences
-    const [skills, experiences] = await Promise.all([
-      this.skillRepository.find({ where: { userId: user.id } }),
-      this.experienceRepository.find({
+    // Load related skills and experiences. Both tables have historically
+    // drifted from the entity definitions in this schema (missing
+    // createdAt/updatedAt columns on skills; experiences table not yet
+    // migrated), so tolerate those failures and return what we have
+    // instead of 500-ing the entire profile fetch.
+    const skills = await this.skillRepository
+      .find({
+        where: { userId: user.id },
+        select: { id: true, name: true, proficiency: true, userId: true } as any,
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `skills fetch failed for user ${user.id}: ${
+            err instanceof Error ? err.message : 'unknown'
+          }`,
+        );
+        return [] as any[];
+      });
+    const experiences = await this.experienceRepository
+      .find({
         where: { userId: user.id },
         order: { startDate: 'ASC' },
-      }),
-    ]);
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `experiences fetch failed for user ${user.id}: ${
+            err instanceof Error ? err.message : 'unknown'
+          }`,
+        );
+        return [] as any[];
+      });
 
     // Flatten skills to simple string names for the frontend card
     const skillNames = skills

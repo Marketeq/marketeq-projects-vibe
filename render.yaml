@@ -1,21 +1,29 @@
 # render.yaml — Render Blueprint for marketeq-projects-vibe
 #
-# ONE service runs everything: gateway + auth + users + listings
-# in a single container. You pay for ONE Render service, not four.
+# TWO services: staging backend + production backend.
+# Both run the same container (gateway + all microservices).
+#
+#   staging  → deploys from `staging` branch  → https://marketeq-vibe-backend-staging.onrender.com
+#   live     → deploys from `live-mvp` branch → https://marketeq-backend.onrender.com
+#
+# Vercel frontend mapping:
+#   marketeq-projects-dev      (dev-main)  → staging Render backend
+#   marketeq-projects-staging  (staging)   → staging Render backend
+#   marketeq-projects-live-mvp (live-mvp)  → live Render backend
 #
 # Deploy: Render Dashboard → New → Blueprint → connect marketeq-projects-vibe repo
 #
 # After deploy:
 #   1. Go to Environment Group "marketeq-secrets" and fill in the secrets
-#   2. Set NEXT_PUBLIC_API_URL on Vercel to the gateway URL
-#      (e.g. https://marketeq-backend.onrender.com)
+#   2. Set NEXT_PUBLIC_API_URL on each Vercel project to the matching Render URL
 
 services:
+  # ── Staging backend ──
   - type: web
-    name: marketeq-backend
+    name: marketeq-vibe-backend-staging
     runtime: docker
     repo: https://github.com/Marketeq/marketeq-projects-vibe.git
-    branch: main
+    branch: staging
     dockerfilePath: backend/Dockerfile.all
     dockerContext: backend
     region: oregon
@@ -25,7 +33,25 @@ services:
       - key: NODE_ENV
         value: production
       - key: FRONTEND_URL
-        value: https://marketeq-mvp-live.vercel.app,https://marketeq-mvp-dev.vercel.app,https://marketeq-mvp-staging.vercel.app,https://dev-marketeq-projects.vercel.app,http://localhost:3000
+        value: https://live-marketeq-projects.vercel.app,https://staging-marketeq-projects.vercel.app,https://dev-marketeq-projects.vercel.app,https://marketeq-mvp-live.vercel.app,https://marketeq-mvp-dev.vercel.app,https://marketeq-mvp-staging.vercel.app,http://localhost:3000
+      - fromGroup: marketeq-secrets
+
+  # ── Production backend ──
+  - type: web
+    name: marketeq-backend
+    runtime: docker
+    repo: https://github.com/Marketeq/marketeq-projects-vibe.git
+    branch: live-mvp
+    dockerfilePath: backend/Dockerfile.all
+    dockerContext: backend
+    region: oregon
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://live-marketeq-projects.vercel.app,https://staging-marketeq-projects.vercel.app,https://dev-marketeq-projects.vercel.app,https://marketeq-mvp-live.vercel.app,https://marketeq-mvp-dev.vercel.app,https://marketeq-mvp-staging.vercel.app,http://localhost:3000
       - fromGroup: marketeq-secrets
 
 envVarGroups:
@@ -71,3 +97,13 @@ envVarGroups:
         sync: false
       - key: CLOUDFLARE_PUBLIC_URL
         value: https://pub-4789db6a57d64de3ad7b5e8c316d125b.r2.dev
+      # ── Email (Brevo) ──
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_FROM_EMAIL
+        sync: false
+      - key: BREVO_FROM_NAME
+        sync: false
+      # ── RabbitMQ ──
+      - key: RABBITMQ_URL
+        sync: false

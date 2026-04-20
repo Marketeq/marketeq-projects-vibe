@@ -16,6 +16,8 @@ import * as bcrypt from 'bcryptjs';
 import axios from 'axios';
 import type { StringValue } from 'ms';
 
+import { BrevoService } from '../brevo/brevo.service';
+
 import { User } from '../user/entities/user.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -78,6 +80,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     private readonly userRepository: Repository<User>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly brevoService: BrevoService,
   ) {}
 
   onModuleInit() {
@@ -269,10 +272,20 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
+    if (!user.hasPassword || !user.password) {
+      throw new UnauthorizedException('Incorrect email or password');
+    }
+
     const isMatch = await bcrypt.compare(dto.password, user.password);
     if (!isMatch) throw new UnauthorizedException('Invalid credentials');
 
-    await this.syncUserProfile(user);
+    try {
+      await this.syncUserProfile(user);
+    } catch (error) {
+      this.logger.warn(
+        `login: user profile sync failed for ${user.email}; continuing with auth user. reason=${(error as Error)?.message}`,
+      );
+    }
 
     const tokens = await this.issueTokens({ sub: user.id, email: user.email });
 
@@ -330,7 +343,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   async forgotPassword(dto: ForgotPasswordDto) {
     const user = await this.userRepository.findOne({
       where: { email: dto.email },
-      select: ['id', 'email'],
+      select: ['id', 'email', 'username'],
     });
 
     const message =
@@ -341,10 +354,31 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const resetToken = await this.issuePasswordResetToken(user);
+
+    const fallbackBase =
+      this.configService.get<string>('PASSWORD_RESET_URL') ??
+      (this.configService.get<string>('FRONTEND_URL')
+        ? `${this.configService.get<string>('FRONTEND_URL')!.replace(/\/$/, '')}/reset-password`
+        : undefined);
+
+    const base = dto.redirectUrl ?? fallbackBase;
     const resetUrl =
-      dto.redirectUrl && resetToken
-        ? `${dto.redirectUrl}${dto.redirectUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(resetToken)}`
+      base && resetToken
+        ? `${base}${base.includes('?') ? '&' : '?'}token=${encodeURIComponent(resetToken)}`
         : undefined;
+
+    if (resetUrl) {
+      try {
+        await this.brevoService.sendPasswordResetEmail(user.email, {
+          firstName: user.username,
+          resetUrl,
+        });
+      } catch (error) {
+        this.logger.error(
+          `forgotPassword: Brevo password reset email failed for ${user.email}: ${(error as Error)?.message}`,
+        );
+      }
+    }
 
     return {
       message,
@@ -581,9 +615,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       await this.syncUserProfile(user, { firstName, lastName });
     } catch (error) {
       if (createdUser) {
+        // New user: rollback the auth record so the user can retry cleanly.
         await this.userRepository.delete({ id: user.id });
+        throw error;
       }
-      throw error;
+      // Existing user: profile already exists in user-service — do not
+      // block login just because the sync refresh failed.
+      this.logger.warn(
+        `[google] sync failed for existing user ${user.id} but proceeding with login`,
+      );
     }
 
     const tokens = await this.issueTokens({
@@ -694,8 +734,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       if (createdUser) {
         await this.userRepository.delete({ id: user.id });
+        throw error;
       }
-      throw error;
+      this.logger.warn(
+        `[linkedin] sync failed for existing user ${user.id} but proceeding with login`,
+      );
     }
 
     const tokens = await this.issueTokens({
@@ -812,7 +855,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private getUserSyncEndpoint(): { url: string; token: string } {
     const baseUrl =
       this.configService.get<string>('USER_SERVICE_URL') ??
-      'http://localhost:3000';
+      'http://localhost:3002';
     const token = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
 
     if (!token) {
@@ -829,11 +872,22 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private async postUserProfileSync(payload: SyncUserProfilePayload) {
     const { url, token } = this.getUserSyncEndpoint();
-    await axios.post(url, payload, {
-      headers: {
-        'x-internal-token': token,
-      },
-    });
+    try {
+      await axios.post(url, payload, {
+        headers: {
+          'x-internal-token': token,
+        },
+      });
+    } catch (error) {
+      // user-service may return 409 when profile already exists; treat this as idempotent success.
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        this.logger.warn(
+          `[sync] user profile already exists in user-service; treating as success for user=${payload.id} email=${payload.email}`,
+        );
+        return;
+      }
+      throw error;
+    }
   }
 
   private getRetryKey(payload: SyncUserProfilePayload): string {

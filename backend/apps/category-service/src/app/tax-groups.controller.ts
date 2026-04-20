@@ -5,8 +5,9 @@ import { firstValueFrom } from 'rxjs';
 import { CategoryService } from './category.service';
 
 /**
- * Doc-named endpoint: GET /tax-groups/affected-by-subtree/:oldParentUuid
- * Requires Strapi `taxonomy-groups` content-type + STRAPI_TOKEN for full data.
+ * Endpoint: GET /tax-groups/affected-by-subtree/:oldParentUuid
+ * Fetches taxonomy-groups from CMS service (Payload CMS) that reference
+ * categories in a given subtree.
  */
 @ApiTags('Tax-Groups')
 @Controller('tax-groups')
@@ -20,26 +21,36 @@ export class TaxGroupsController {
   @ApiOperation({ summary: 'Taxonomy groups that reference categories in a subtree' })
   async affectedBySubtree(@Param('oldParentUuid') oldParentUuid: string) {
     const subtree = await this.categoryService.getSubtreeUuids(oldParentUuid);
-    const strapiUrl = (process.env.STRAPI_URL || 'http://localhost:1337').replace(/\/+$/, '');
-    const token = process.env.STRAPI_TOKEN || '';
-    const url = `${strapiUrl}/api/taxonomy-groups?populate=*`;
+    const cmsUrl = (process.env.CMS_SERVICE_URL || 'http://localhost:3020').replace(/\/+$/, '');
+    const apiKey = process.env.CMS_API_KEY || '';
+
+    // Payload CMS REST: GET /api/taxonomy-groups?depth=2
+    const url = `${cmsUrl}/api/taxonomy-groups?depth=2&limit=1000`;
 
     try {
+      const headers: Record<string, string> = {};
+      if (apiKey) {
+        headers['Authorization'] = `API-Key ${apiKey}`;
+      }
+
       const res = await firstValueFrom(
         this.http.get(url, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers,
           timeout: 15000,
         }),
       );
-      const groups = res.data?.data || [];
+
+      // Payload response: { docs: [...] }
+      const groups = res.data?.docs ?? res.data?.data ?? [];
+
       const affected = groups.filter((g: any) => {
-        const attrs = g.attributes || g;
-        const cats = attrs.categories?.data || attrs.categories || [];
+        const cats = g.categories ?? [];
         return cats.some((c: any) => {
-          const u = c.attributes?.uuid ?? c.uuid;
-          return u && subtree.includes(u);
+          const uuid = typeof c === 'object' ? (c.uuid || String(c.id)) : String(c);
+          return subtree.includes(uuid);
         });
       });
+
       return {
         oldParentUuid,
         subtreeCategoryUuids: subtree,
@@ -52,7 +63,7 @@ export class TaxGroupsController {
         subtreeCategoryUuids: subtree,
         affectedCount: 0,
         affected: [],
-        warning: e?.message || 'Could not load taxonomy-groups from Strapi (content-type or token missing).',
+        warning: e?.message || 'Could not load taxonomy-groups from CMS (collection or API key missing).',
       };
     }
   }

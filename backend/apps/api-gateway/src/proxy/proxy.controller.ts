@@ -9,6 +9,9 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   listings: 'listings',
   checkout: 'checkout',
   messages: 'messages',
+  messaging: 'messages',
+  'user-keys': 'users',
+  devices: 'users',
   notifications: 'notifications',
   search: 'search',
   algolia: 'algolia',
@@ -25,10 +28,14 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   publish: 'listings',          // project publish workflow lives in listings-service
   teams: 'users',               // team management lives in user-service
   'affiliated-teams': 'users',  // affiliated teams lives in user-service
-  client: 'users',              // client onboarding profile lives in user-service
   categories: 'categories',      // category taxonomy service
   tags: 'categories',            // tags managed by category-service
   'category-pages': 'categories', // category page assembly
+  tasks: 'timeTracking',          // time-tracking-service contract task endpoints
+  screenshots: 'timeTracking',   // time-tracking-service screenshot endpoints
+  'time-tracking': 'timeTracking', // time-tracking-service general endpoints
+  sessions: 'timeTracking',      // time-tracking-service session endpoints
+  metadata: 'timeTracking',      // time-tracking-service metadata/tooltips
 }
 
 @Controller()
@@ -60,6 +67,8 @@ export class ProxyController {
       prefix = 'users'
     } else if (prefix === 'v1' && (segments[1] === 'projects' || segments[1] === 'services')) {
       prefix = 'listings'
+    } else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {
+      prefix = 'messages'
     }
 
     const serviceName = SERVICE_PREFIX_MAP[prefix]
@@ -71,10 +80,15 @@ export class ProxyController {
 
     // Build downstream path from the normalized (api-stripped) path so
     // downstream services receive /auth/login, not /api/auth/login.
-    // Also strip /v1/ when gateway resolved it to user-service or listings-service.
+    // Strip /v1/ only for user-service — its controllers are mounted at /users.
+    // listings-service controllers are mounted at /v1/projects and /v1/services,
+    // so we forward the full /v1/... path unchanged.
     let downstreamPath = normalizedPath
-    if (segments[0] === 'v1' && (segments[1] === 'users' || segments[1] === 'projects' || segments[1] === 'services')) {
+    if (segments[0] === 'v1' && segments[1] === 'users') {
       downstreamPath = '/' + segments.slice(1).join('/')
+    }
+    if (serviceName === 'categories') {
+      downstreamPath = `/api${downstreamPath}`
     }
     if (req.url.includes('?')) {
       downstreamPath += '?' + req.url.split('?').slice(1).join('?')

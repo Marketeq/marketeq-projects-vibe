@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
 import { apiFetch } from "@/src/lib/api"
-import { getCurrentUser } from "@/utils/auth"
+import { getCurrentUser, getAccessToken } from "@/utils/auth"
 import * as Ably from "ably"
 
 export function useAblyChannel(
@@ -8,28 +8,38 @@ export function useAblyChannel(
   onMessage: (data: any) => void,
   onPinToggled?: (data: { messageId: string; isPinned: boolean }) => void,
   onDelete?: (messageId: string) => void,
-  onUndelete?: (messageId: string) => void
+  onUndelete?: (messageId: string) => void,
+  onEdit?: (data: any) => void
 ) {
-  const clientRef = useRef<Ably.Realtime | null>(null)
+  // Stable refs so the effect doesn't tear down on every render
+  const onMessageRef = useRef(onMessage)
+  const onPinToggledRef = useRef(onPinToggled)
+  const onDeleteRef = useRef(onDelete)
+  const onUndeleteRef = useRef(onUndelete)
+  const onEditRef = useRef(onEdit)
+
+  useEffect(() => { onMessageRef.current = onMessage }, [onMessage])
+  useEffect(() => { onPinToggledRef.current = onPinToggled }, [onPinToggled])
+  useEffect(() => { onDeleteRef.current = onDelete }, [onDelete])
+  useEffect(() => { onUndeleteRef.current = onUndelete }, [onUndelete])
+  useEffect(() => { onEditRef.current = onEdit }, [onEdit])
 
   useEffect(() => {
-    const currentUser = getCurrentUser()
+    if (!threadId) return
 
+    const currentUser = getCurrentUser()
     if (!currentUser) {
       console.error("No logged-in user; cannot subscribe to Ably")
       return
     }
 
     const client = new Ably.Realtime({
-      // we use authCallback instead of authUrl so we can use apiFetch
-
       authCallback: async (_tokenParams, callback) => {
         try {
-          const token = localStorage.getItem("token")
-          // your Nest endpoint returns the full Ably tokenDetails JSON
+          const token = getAccessToken()
           const tokenDetails = await apiFetch<any>(
-            `/api/messaging/ably?threadId=${threadId}`,
-            { method: "POST", headers: { Authorization: `Bearer ${token}` } }
+            `/v1/threads/ably-token?threadId=${threadId}`,
+            { method: "GET", headers: { Authorization: `Bearer ${token}` } }
           )
           callback(null, tokenDetails)
         } catch (err) {
@@ -40,25 +50,23 @@ export function useAblyChannel(
       clientId: currentUser.id,
     })
 
-    clientRef.current = client
-
-    const channel = client.channels.get(`thread-${threadId}`)
+    const channel = client.channels.get(`chat:thread-${threadId}`)
 
     channel.subscribe((msg) => {
-      console.log(`Ably received ${msg.name}:`, msg.data)
-
       if (msg.name === "message:new") {
-        onMessage(msg.data)
+        onMessageRef.current(msg.data)
       }
-      if (msg.name === "message-pin-toggled" && onPinToggled) {
-        onPinToggled(msg.data)
+      if (msg.name === "message:edit" && onEditRef.current) {
+        onEditRef.current(msg.data)
       }
-
-      if (msg.name === "message-deleted" && onDelete) {
-        onDelete(msg.data.messageId)
+      if (msg.name === "message-pin-toggled" && onPinToggledRef.current) {
+        onPinToggledRef.current(msg.data)
       }
-      if (msg.name === "message-undeleted" && onUndelete) {
-        onUndelete(msg.data.messageId)
+      if (msg.name === "message:delete" && onDeleteRef.current) {
+        onDeleteRef.current(msg.data.messageId)
+      }
+      if (msg.name === "message:restore" && onUndeleteRef.current) {
+        onUndeleteRef.current(msg.data.messageId)
       }
     })
 
@@ -66,5 +74,5 @@ export function useAblyChannel(
       channel.unsubscribe()
       client.close()
     }
-  }, [threadId, onMessage, onPinToggled, onDelete, onUndelete])
+  }, [threadId])
 }

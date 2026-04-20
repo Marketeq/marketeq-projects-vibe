@@ -165,6 +165,17 @@ const IntroduceYourself = ({
   stepData: CreateTalentType | null
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
 }) => {
+  const [formError, setFormError] = useState<string | null>(null)
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (stepData?.avatar instanceof File) {
+      const url = URL.createObjectURL(stepData.avatar)
+      setAvatarPreviewUrl(url)
+      return () => URL.revokeObjectURL(url)
+    }
+  }, [])
+
   const {
     register,
     formState: { errors, isValid },
@@ -196,16 +207,29 @@ const IntroduceYourself = ({
     firstName,
     lastName,
   }) => {
+    const hasAnyField = (avatar && avatar.length > 0) || firstName || lastName
+    if (!hasAnyField) {
+      setFormError("Please enter at least one field")
+      return
+    }
+    setFormError(null)
     setStepData({
       ...stepData,
       avatar: avatar?.[0],
       firstName,
       lastName,
     })
+    toggleValidation(true)
     nextStep()
   }
 
   const skip = () => {
+    setStepData({
+      ...stepData,
+      avatar: undefined,
+      firstName: undefined,
+      lastName: undefined,
+    })
     toggleValidation(true)
     const nextStepIndex = currentStep + 1
     setStep(nextStepIndex)
@@ -257,7 +281,8 @@ const IntroduceYourself = ({
                   render={({ field: { onChange } }) => (
                     <ImageEditor
                       onValueChange={onChange}
-                      startingPoint={({ dataUrl, open, style, onChangePhoto }: any) => (
+                      defaultDataUrl={avatarPreviewUrl}
+                      startingPoint={({ dataUrl, open, style }: any) => (
                         <div className="flex flex-col gap-y-3 sm:flex-row sm:items-center sm:gap-x-4">
                           <div className="relative overflow-hidden size-[96px] bg-gray-100 rounded-full inline-flex items-center justify-center shrink-0">
                             {dataUrl ? (
@@ -276,7 +301,7 @@ const IntroduceYourself = ({
                             <Button
                               className="rounded-full"
                               size="md"
-                              onClick={onChangePhoto}
+                              onClick={open}
                               type="button"
                               variant="filled"
                               visual="gray"
@@ -356,6 +381,10 @@ const IntroduceYourself = ({
                   />
                 </div>
               </div>
+
+              {formError && (
+                <ErrorMessage size="sm">{formError}</ErrorMessage>
+              )}
             </div>
           </div>
         </div>
@@ -1057,6 +1086,7 @@ const ShareYourLocation = ({
   stepData: CreateTalentType | null
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
 }) => {
+  const [formError, setFormError] = useState<string | null>(null)
   const initialDetectedLocation =
     stepData?.location?.trim() || LOCATION_FALLBACK_OPTIONS[0]
   const [detectedLocation, setDetectedLocation] = useState(
@@ -1277,11 +1307,19 @@ const ShareYourLocation = ({
     languages,
     location,
   }) => {
+    const hasLocation = location && location.length > 0 && location.some(l => l.trim())
+    const hasLanguages = languages && languages.length > 0
+    if (!hasLocation && !hasLanguages) {
+      setFormError("Please enter at least one field")
+      return
+    }
+    setFormError(null)
     setStepData({
       ...stepData,
       location: location?.join(", "),
       language: languages?.join(", "),
     })
+    toggleValidation(true)
     nextStep()
   }
 
@@ -1537,6 +1575,10 @@ const ShareYourLocation = ({
                   )}
                 />
               </div>
+
+              {formError && (
+                <ErrorMessage size="sm">{formError}</ErrorMessage>
+              )}
             </div>
           </div>
         </div>
@@ -1898,6 +1940,7 @@ const ShowcaseYourTalent = ({
   stepData: CreateTalentType | null
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
 }) => {
+  const [formError, setFormError] = useState<string | null>(null)
   const {
     formState: { errors, isValid },
     handleSubmit,
@@ -1955,23 +1998,13 @@ const ShowcaseYourTalent = ({
     )
   }, [industriesOptions, industriesQuery, selectedIndustries])
 
-  const addIndustryValue = async (nextValue: string) => {
+  const addIndustryValue = (nextValue: string) => {
     const value = nextValue.trim()
     if (!value) return
 
     const isKnownSuggestion = hasCaseInsensitiveExactMatch(industriesOptions, value)
     if (!isKnownSuggestion) {
-      const accepted = await submitAutocompleteValue("industries", value)
-      if (!accepted) {
-        setError("industriesWorkedWith", {
-          type: "manual",
-          message:
-            "This value is not a valid industry suggestion for this field.",
-        })
-        setIndustriesQuery("")
-        setIsIndustriesOpen(false)
-        return
-      }
+      void submitAutocompleteValue("industries", value)
     }
 
     clearErrors("industriesWorkedWith")
@@ -2082,6 +2115,12 @@ const ShowcaseYourTalent = ({
     industriesWorkedWith,
     yourTopSkills,
   }) => {
+    const hasAnyField = recentJobTitle || (industriesWorkedWith && industriesWorkedWith.length > 0) || (yourTopSkills && yourTopSkills.length > 0)
+    if (!hasAnyField) {
+      setFormError("Please enter at least one field")
+      return
+    }
+    setFormError(null)
     setStepData({
       ...stepData,
       recentJobTitle,
@@ -2089,6 +2128,7 @@ const ShowcaseYourTalent = ({
       industriesWorkedIn: industriesWorkedWith?.join(", "),
       lookingToWorkWith: yourTopSkills,
     })
+    toggleValidation(true)
     nextStep()
   }
 
@@ -2157,107 +2197,119 @@ const ShowcaseYourTalent = ({
                   control={control}
                   name="recentJobTitle"
                   render={({ field: { value, onChange } }) => (
-                    <Combobox
-                      className="w-full"
-                      value={value}
-                      onChange={(nextValue) => {
-                        onChange(nextValue)
-                        setJobTitleQuery("")
-                        setIsJobTitleOpen(false)
-                      }}
-                    >
-                      <ComboboxTrigger>
-                        <ComboboxInput
-                          id="recent-job-title"
-                          size="lg"
-                          className="pl-3.5"
-                          placeholder="e.g., Software Developer"
-                          value={jobTitleQuery || value || ""}
-                          onFocus={() => setIsJobTitleOpen(true)}
-                          onBlur={() =>
-                            setTimeout(() => setIsJobTitleOpen(false), 150)
-                          }
-                          onChange={(event) => {
-                            setJobTitleQuery(event.target.value)
-                            onChange(event.target.value)
-                            setIsJobTitleOpen(true)
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key !== HOT_KEYS.ENTER) return
-                            event.preventDefault()
-                            const activeOption = document.querySelector(
-                              '[role="option"][data-headlessui-state~="active"]'
-                            ) as HTMLElement | null
-                            const activeLabel =
-                              activeOption?.textContent?.trim() ?? ""
-                            const finalValue =
-                              activeLabel || jobTitleQuery.trim()
-                            if (!finalValue) return
-                            const isKnownSuggestion =
-                              hasCaseInsensitiveExactMatch(
-                                jobTitleOptions,
-                                finalValue
-                              )
-                            const applyValue = () => {
-                              onChange(finalValue)
-                              setJobTitleOptions((prev) =>
-                                getUniqueOptions([...prev, finalValue])
-                              )
-                              clearErrors("recentJobTitle")
-                              setJobTitleQuery("")
-                              setIsJobTitleOpen(false)
+                    <div className="space-y-3">
+                      <Combobox
+                        className="w-full"
+                        value={value}
+                        onChange={(nextValue) => {
+                          onChange(nextValue)
+                          setJobTitleQuery("")
+                          setIsJobTitleOpen(false)
+                        }}
+                      >
+                        <ComboboxTrigger>
+                          <ComboboxInput
+                            id="recent-job-title"
+                            size="lg"
+                            className="pl-3.5"
+                            placeholder="e.g., Software Developer"
+                            value={jobTitleQuery}
+                            onFocus={() => {
+                              if (!value) setIsJobTitleOpen(true)
+                            }}
+                            onBlur={() =>
+                              setTimeout(() => setIsJobTitleOpen(false), 150)
                             }
-
-                            if (isKnownSuggestion) {
-                              applyValue()
-                              return
-                            }
-
-                            void (async () => {
-                              const accepted = await submitAutocompleteValue(
-                                "job_titles",
-                                finalValue
-                              )
-                              if (!accepted) {
-                                setError("recentJobTitle", {
-                                  type: "manual",
-                                  message:
-                                    "This value is not a valid job title suggestion for this field.",
-                                })
+                            onChange={(event) => {
+                              setJobTitleQuery(event.target.value)
+                              if (value) onChange(undefined)
+                              setIsJobTitleOpen(true)
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key !== HOT_KEYS.ENTER) return
+                              event.preventDefault()
+                              const activeOption = document.querySelector(
+                                '[role="option"][data-headlessui-state~="active"]'
+                              ) as HTMLElement | null
+                              const activeLabel =
+                                activeOption?.textContent?.trim() ?? ""
+                              const finalValue =
+                                activeLabel || jobTitleQuery.trim()
+                              if (!finalValue) return
+                              const isKnownSuggestion =
+                                hasCaseInsensitiveExactMatch(
+                                  jobTitleOptions,
+                                  finalValue
+                                )
+                              const applyValue = () => {
+                                onChange(finalValue)
+                                setJobTitleOptions((prev) =>
+                                  getUniqueOptions([...prev, finalValue])
+                                )
+                                clearErrors("recentJobTitle")
                                 setJobTitleQuery("")
                                 setIsJobTitleOpen(false)
-                                return
                               }
+
                               applyValue()
-                            })()
-                          }}
-                          invalid={hookFormHasError({
-                            errors,
-                            name: "recentJobTitle",
-                          })}
-                        />
-                      </ComboboxTrigger>
-                      <ScaleOutIn show={isJobTitleOpen}>
-                        <ComboboxOptions>
-                          <ScrollArea viewportClassName="max-h-[304px]">
-                            {filteredJobTitles.map((item) => (
-                              <ComboboxOption
-                                key={item}
-                                value={item}
-                                onClick={() => {
-                                  onChange(item)
-                                  clearErrors("recentJobTitle")
-                                  setJobTitleQuery("")
-                                  setIsJobTitleOpen(false)
-                                }}
-                              >
-                                {item}
-                              </ComboboxOption>
-                            ))}
-                          </ScrollArea>
-                        </ComboboxOptions>
-                      </ScaleOutIn>
-                    </Combobox>
+
+                              if (!isKnownSuggestion) {
+                                void submitAutocompleteValue(
+                                  "job_titles",
+                                  finalValue
+                                )
+                              }
+                            }}
+                            invalid={hookFormHasError({
+                              errors,
+                              name: "recentJobTitle",
+                            })}
+                          />
+                        </ComboboxTrigger>
+                        <ScaleOutIn show={isJobTitleOpen}>
+                          <ComboboxOptions>
+                            <ScrollArea viewportClassName="max-h-[304px]">
+                              {filteredJobTitles.map((item) => (
+                                <ComboboxOption
+                                  key={item}
+                                  value={item}
+                                  onClick={() => {
+                                    onChange(item)
+                                    clearErrors("recentJobTitle")
+                                    setJobTitleQuery("")
+                                    setIsJobTitleOpen(false)
+                                  }}
+                                >
+                                  {item}
+                                </ComboboxOption>
+                              ))}
+                            </ScrollArea>
+                          </ComboboxOptions>
+                        </ScaleOutIn>
+                      </Combobox>
+
+                      {value && (
+                        <div className="flex flex-wrap gap-4">
+                          <Badge
+                            visual="primary"
+                            size="md"
+                            className="rounded-[16px] bg-primary-100 text-primary-500 px-2.5 pr-2 font-medium text-sm leading-5"
+                          >
+                            {value}
+                            <button
+                              className="inline-flex size-3 shrink-0 items-center justify-center text-primary-300 hover:text-primary-500 focus-visible:outline-none"
+                              onClick={() => {
+                                onChange(undefined)
+                                setJobTitleQuery("")
+                              }}
+                              type="button"
+                            >
+                              <X2 className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
                   )}
                 />
                 <HookFormErrorMessage
@@ -2359,12 +2411,17 @@ const ShowcaseYourTalent = ({
                   )}
                 />
                 {selectedIndustries.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-4">
                     {selectedIndustries.map((item) => (
-                      <Badge visual="primary" key={item}>
+                      <Badge
+                        visual="primary"
+                        size="md"
+                        className="rounded-[16px] bg-primary-100 text-primary-500 px-2.5 pr-2 font-medium text-sm leading-5"
+                        key={item}
+                      >
                         {item}
                         <button
-                          className="focus-visible:outline-none"
+                          className="inline-flex size-3 shrink-0 items-center justify-center text-primary-300 hover:text-primary-500 focus-visible:outline-none"
                           onClick={() => removeIndustryValue(item)}
                           type="button"
                         >
@@ -2424,6 +2481,10 @@ const ShowcaseYourTalent = ({
                   )}
                 />
               </div>
+
+              {formError && (
+                <ErrorMessage size="sm">{formError}</ErrorMessage>
+              )}
             </div>
           </div>
         </div>
@@ -3050,17 +3111,7 @@ const SetYourPreferences = ({
     hasInitializedCustomDefault.current = true
   }, [availability, customAvailability, setValue])
 
-  const onSubmit: SubmitHandler<SetYourPreferencesFormValues> = ({
-    projects,
-    yourAvailability,
-    customAvailability,
-  }) => {
-    setIsLoading(true)
-
-    const availability: AVAILABILITY = yourAvailability
-      ?.replaceAll("-", "_")
-      ?.toUpperCase() as AVAILABILITY
-
+  const buildStepDataFormData = (): FormData => {
     const formData = new FormData()
 
     if (stepData?.avatar instanceof File) {
@@ -3092,27 +3143,15 @@ const SetYourPreferences = ({
       formData.append("lookingToWorkWith", item)
     })
 
-    projects?.forEach((item) => {
-      formData.append("projectTypes", item)
-    })
-
     if (stepData?.isStudent != null) {
       formData.append("isStudent", stepData.isStudent.toString())
     }
 
-    if (availability) {
-      formData.append("availability", availability)
-    }
+    return formData
+  }
 
-    if (
-      availability === AVAILABILITY.CUSTOM &&
-      (customAvailability?.length || 0) > 0
-    ) {
-      formData.append(
-        "customAvailability",
-        JSON.stringify(customAvailability) || ""
-      )
-    }
+  const submitTalent = (formData: FormData) => {
+    setIsLoading(true)
 
     TalentAPI.CreateTalent(formData)
       .then((response) => {
@@ -3152,15 +3191,47 @@ const SetYourPreferences = ({
       })
   }
 
+  const onSubmit: SubmitHandler<SetYourPreferencesFormValues> = ({
+    projects,
+    yourAvailability,
+    customAvailability,
+  }) => {
+    const availability: AVAILABILITY = yourAvailability
+      ?.replaceAll("-", "_")
+      ?.toUpperCase() as AVAILABILITY
+
+    const formData = buildStepDataFormData()
+
+    projects?.forEach((item) => {
+      formData.append("projectTypes", item)
+    })
+
+    if (availability) {
+      formData.append("availability", availability)
+    }
+
+    if (
+      availability === AVAILABILITY.CUSTOM &&
+      (customAvailability?.length || 0) > 0
+    ) {
+      formData.append(
+        "customAvailability",
+        JSON.stringify(customAvailability) || ""
+      )
+    }
+
+    submitTalent(formData)
+  }
+
   const { totalSteps, currentStep } = useStepRootContext()
 
   const progress = ((currentStep + 1) / totalSteps) * 100
 
   const skip = async () => {
     try {
-      toggleValidation(true)
-      const nextStepIndex = currentStep + 1
-      setStep(nextStepIndex)
+      if (isLoading) return
+      const formData = buildStepDataFormData()
+      submitTalent(formData)
     } catch (error) {
       toast({
         title: "Failed to skip onboarding. Please try again.",
@@ -3349,6 +3420,7 @@ const SetYourPreferences = ({
                 type="button"
                 size="md"
                 onClick={skip}
+                disabled={isLoading}
               >
                 Skip
               </Button>
@@ -3382,6 +3454,17 @@ const DoNext = ({
   const router = useRouter()
   const { setUser, user } = useAuth()
   const [isLoading, setIsLoading] = React.useState(false)
+
+  const requiresPasswordSetup = (candidate?: User | null) => {
+    const safeUser = candidate as { provider?: string; hasPassword?: boolean } | null | undefined
+    return safeUser?.provider === "EMAIL" && !safeUser?.hasPassword
+  }
+
+  const getPostOnboardingRoute = (targetRoute: string, candidate?: User | null) => {
+    // Enforce password setup before allowing post-onboarding route jumps.
+    return requiresPasswordSetup(candidate) ? "/talent-dashboard" : targetRoute
+  }
+
   const handleFinish = async () => {
     try {
       setIsLoading(true)
@@ -3403,16 +3486,18 @@ const DoNext = ({
         setUser(nextUser)
       }
 
+      let refreshedUser = nextUser
       try {
         const userResponse = await UserAPI.me()
         if (userResponse?.data?.user) {
+          refreshedUser = userResponse.data.user
           setUser(userResponse.data.user)
         }
       } catch (error) {
         console.error("Failed to refresh user after onboarding", error)
       }
 
-      router.push("/talent-dashboard")
+      router.push(getPostOnboardingRoute("/talent-dashboard", refreshedUser ?? talentUser ?? user))
     } catch (error) {
       console.error("Failed to complete onboarding", error)
       // Show error toast if needed
@@ -3441,7 +3526,7 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push("/talent-dashboard")
+                router.push(getPostOnboardingRoute("/talent-dashboard", talentUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -3462,7 +3547,7 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push("/publish-project")
+                router.push(getPostOnboardingRoute("/publish-project", talentUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -3483,7 +3568,7 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push("/publish-project")
+                router.push(getPostOnboardingRoute("/publish-project", talentUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -3504,7 +3589,7 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push("/publish-project")
+                router.push(getPostOnboardingRoute("/publish-project", talentUser ?? user))
               }}
             >
               <div className="flex items-center gap-x-3">

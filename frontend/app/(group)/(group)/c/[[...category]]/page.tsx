@@ -16,6 +16,8 @@ import {
 } from "@/src/lib/api/favorites"
 import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import { buildProjectUrl, buildServiceUrl } from "@/src/lib/urlHelpers"
+import { ListingCard } from "@/components/listing-card"
+import { type TalentUser, talentToCardProps } from "@/src/lib/api/talent-users"
 import { parseCategoryParams } from "@/src/lib/urlHelpers"
 import { fromLength } from "@/utils/functions"
 import {
@@ -31,6 +33,8 @@ import {
   Star01,
   Stars02,
 } from "@blend-metrics/icons"
+import { SubcategoryIconTile, resolveUniqueSubcategoryIcons } from "@/lib/subcategory-icon"
+import { CategoryBanner } from "@/components/category-banner"
 import { TabsList, TabsTrigger } from "@radix-ui/react-tabs"
 import { Tabs, TabsContent } from "@/components/ui"
 import { SwiperSlide } from "swiper/react"
@@ -93,6 +97,8 @@ const c = (...names: string[]): SubcategoryData[] =>
       .replace(/^-|-$/g, ""),
     description: `${name} projects, specialists, and services.`,
   }))
+
+// (subcategory icon resolver moved to @/lib/subcategory-icon)
 
 /** Back-compat shim for entries that still pass an explicit Unsplash id. */
 const unsplash = (id: string) =>
@@ -855,12 +861,15 @@ export default function Projects() {
             : services
           setListingsServices(filtered.length > 0 ? filtered : services)
         }
-        // Fetch talent users for avatar display
-        const usersRes = await fetch(`${apiBase}/v1/users`).catch(() => null)
+        // Fetch real talent users from the public talent listing endpoint.
+        // We prefer talents with both an avatar AND a username so the card
+        // hover-state and "View profile" link both work.
+        const usersRes = await fetch(`${apiBase}/talent/users`).catch(() => null)
         if (usersRes?.ok) {
           const users = await usersRes.json()
-          const talent = users.filter((u: any) => u.userType === "talent" && u.avatarUrl)
-          setTalentUsers(talent.length > 0 ? talent : users.slice(0, 10))
+          const rich = users.filter((u: any) => u.username && u.avatarUrl)
+          const fallback = users.filter((u: any) => u.username)
+          setTalentUsers(rich.length > 0 ? rich : fallback)
         }
       } catch {
         // Services unavailable — cards will use placeholder data
@@ -874,24 +883,22 @@ export default function Projects() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <div className="py-[50px]">
         <div className="max-w-[1440px] mx-auto px-[50px]">
-          <div className="relative rounded-lg overflow-hidden h-[227px]">
-            <NextImage
-              // Deterministic banner per deepest selected slug — every
-              // category and subcategory gets a unique, visually distinct image.
-              src={heroBannerFor(l1Meta.slug, l2Meta?.slug ?? "", l3Meta?.slug ?? "")}
-              alt={`${currentName} banner`}
-              fill
-              className="object-cover"
-              sizes="100vw"
-              priority
-              unoptimized
-            />
-            <div className="absolute inset-0 bg-black/60" />
-            <div className="absolute inset-0 p-6">
-              {/* Dynamic breadcrumbs.
-                  On kind-filtered browse pages (/projects, /services, /teams,
-                  /talent) the breadcrumb reflects the entity only. On true
-                  category pages it shows the L1/L2/L3 chain. */}
+          <CategoryBanner
+            image={heroBannerFor(l1Meta.slug, l2Meta?.slug ?? "", l3Meta?.slug ?? "")}
+            alt={`${currentName} banner`}
+            title={pageKind === "show-all" ? currentName : sectionLabel}
+            description={
+              pageKind === "show-all"
+                ? currentDescription
+                : pageKind === "projects"
+                ? `Browse ${currentName.toLowerCase()} projects posted by clients worldwide.`
+                : pageKind === "services"
+                ? `Discover ${currentName.toLowerCase()} services from top-rated freelancers.`
+                : pageKind === "teams"
+                ? `Hire vetted ${currentName.toLowerCase()} teams ready to deliver.`
+                : `Find expert ${currentName.toLowerCase()} talent for your next project.`
+            }
+            breadcrumbs={
               <div className="flex items-center gap-x-2">
                 <NextLink href="/">
                   <Home03 className="size-[18px] text-white opacity-60" />
@@ -965,25 +972,8 @@ export default function Projects() {
                   </>
                 )}
               </div>
-
-              <div className="mt-[50px] px-[50px]">
-                <h1 className="text-[36px] font-bold leading-none text-white">
-                  {pageKind === "show-all" ? currentName : sectionLabel}
-                </h1>
-                <p className="text-xl mt-3 leading-none text-white">
-                  {pageKind === "show-all"
-                    ? currentDescription
-                    : pageKind === "projects"
-                    ? `Browse ${currentName.toLowerCase()} projects posted by clients worldwide.`
-                    : pageKind === "services"
-                    ? `Discover ${currentName.toLowerCase()} services from top-rated freelancers.`
-                    : pageKind === "teams"
-                    ? `Hire vetted ${currentName.toLowerCase()} teams ready to deliver.`
-                    : `Find expert ${currentName.toLowerCase()} talent for your next project.`}
-                </p>
-              </div>
-            </div>
-          </div>
+            }
+          />
 
           {/* Dynamic subcategories section.
               Per Doc 1 (L1/L2/L3 Category Pages), L3 is the leaf — it has no
@@ -1016,10 +1006,12 @@ export default function Projects() {
               </div>
             </div>
 
-            <div className="mt-6 overflow-x-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
+            <div className="mt-6 overflow-x-auto overflow-y-visible py-1 -my-1 px-1 -mx-1" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
               <div className={`grid gap-[15px] ${l2 ? "grid-rows-1" : "grid-rows-2"} grid-flow-col`} style={{ gridAutoColumns: "calc((100% - 60px) / 5)" }}>
                 {subcategories.length > 0 ? (
-                  subcategories.map((subcat: any) => (
+                  (() => {
+                    const iconMap = resolveUniqueSubcategoryIcons(subcategories)
+                    return subcategories.map((subcat: any) => (
                     <NextLink
                       key={subcat.uuid ?? subcat.slug}
                       href={
@@ -1029,10 +1021,10 @@ export default function Projects() {
                           ? `/c/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`
                           : `/${pageKind}/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`
                       }
-                      className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300"
+                      className="group border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
                     >
                       <article>
-                        <div className="size-[35px] rounded-lg bg-gray-200" />
+                        <SubcategoryIconTile slug={subcat.slug} name={subcat.name} icon={iconMap.get(subcat.slug || subcat.name || "")} />
 
                         <div className="mt-5">
                           <h1 className="text-base leading-none font-semibold text-dark-blue-400 transition duration-300">
@@ -1044,7 +1036,8 @@ export default function Projects() {
                         </div>
                       </article>
                     </NextLink>
-                  ))
+                    ))
+                  })()
                 ) : (
                   <div className="text-center py-8 text-gray-500 w-full">
                     No subcategories available
@@ -1116,51 +1109,18 @@ export default function Projects() {
                         const key = project?.id ?? idx
                         return (
                           <SwiperSlide className="w-[355px]" key={key}>
-                            <NextLink href={project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")} className="block focus-visible:outline-none">
-                            <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                              <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border cursor-pointer border-black/15">
-                                <NextImage
-                                  className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                  src={project?.mediaUrls?.[0] || project?.coverImage || project?.thumbnail || "/dashboard.png"}
-                                  alt={project?.title || "Project"}
-                                  fill
-                                  sizes="33vw"
-                                />
-                              </div>
-
-                              <div className="mt-3 flex items-start gap-x-3">
-                                <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
-                                  {project?.title || "The Ultimate Mobile App Experience"}
-                                </span>
-                                <div className="inline-flex items-center gap-x-1">
-                                  <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                  <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                    {project?.rating || "4.9"}{" "}
-                                    <span className="font-extralight">({project?.reviewCount || 5})</span>
-                                  </span>
-                                </div>
-                              </div>
-
-                              <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">
-                                {project?.summary || project?.description?.slice(0, 120) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}
-                              </p>
-
-                              <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                <div className="flex items-center gap-x-[6.4px]">
-                                  <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                  <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                    Starting from {project?.duration || "12 weeks"}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-x-[6.4px]">
-                                  <Money className="size-[18px] shrink-0 text-primary-500" />
-                                  <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                    ${project?.budget ? Number(project.budget).toLocaleString() : project?.scopeTotal?.budget || "50,000"} budget
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="mt-5 flex items-end justify-between">
+                            <ListingCard
+                              kind="project"
+                              id={project?.id ?? `mock-${idx}`}
+                              title={project?.title || "The Ultimate Mobile App Experience"}
+                              description={project?.summary || project?.description?.slice(0, 120) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}
+                              mediaUrl={project?.mediaUrls?.[0] || project?.coverImage || project?.thumbnail || "/dashboard.png"}
+                              budget={`$${project?.budget ? Number(project.budget).toLocaleString() : project?.scopeTotal?.budget || "50,000"} budget`}
+                              duration={`Starting from ${project?.duration || "12 weeks"}`}
+                              rating={Number(project?.rating) || 4.9}
+                              reviewCount={project?.reviewCount || 5}
+                              href={project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")}
+                              avatarsSlot={
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
@@ -1199,7 +1159,8 @@ export default function Projects() {
                                     </TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
-
+                              }
+                              favoriteSlot={
                                 <FavoriteRoot
                                   value={project ? favoritedItems.has(String(project.id)) : false}
                                   onValueChange={project ? async (pressed) => {
@@ -1227,9 +1188,8 @@ export default function Projects() {
                                     </TooltipProvider>
                                   )}
                                 </FavoriteRoot>
-                              </div>
-                            </article>
-                            </NextLink>
+                              }
+                            />
                           </SwiperSlide>
                         )
                       })}
@@ -1246,31 +1206,24 @@ export default function Projects() {
                         const key = service?.id ?? idx
                         return (
                         <SwiperSlide className="w-[355px]" key={key}>
-                          <NextLink href={service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")} className="block focus-visible:outline-none">
-                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                            <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={service?.mediaUrls?.[0] || "/dashboard.png"} alt={service?.title || "Service"} fill sizes="33vw" />
-                            </div>
-                            <div className="mt-3 flex items-start gap-x-3">
-                              <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{service?.title || `Professional ${currentName} Service`}</span>
-                              <div className="inline-flex items-center gap-x-1">
-                                <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span>
-                              </div>
-                            </div>
-                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">{service?.description?.slice(0, 120) || `Professional service offering for ${currentName}. Expert team ready to deliver results.`}</p>
-                            <div className="mt-[14.5px] flex flex-col gap-y-3">
-                              <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">{service?.deliveryTime || "Monthly"}</span></div>
-                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${service?.priceMin ? `${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month</span></div>
-                            </div>
-                            <div className="mt-5 flex items-end justify-between">
-                              <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
-                                {(talentUsers.length > 0 ? talentUsers.slice(0, 4) : fromLength(4)).map((u: any, k: number) => (<Avatar key={u?.id ?? k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src={u?.avatarUrl || "/woman.jpg"} alt={u?.firstName || "Team"} /><AvatarFallback>{u?.firstName?.[0] || "T"}</AvatarFallback></Avatar>))}
-                              </AvatarGroup>
-                              {service && <FavoriteRoot value={favoritedItems.has(String(service.id))} onValueChange={(pressed) => handleFavoriteToggle(String(service.id), "service", pressed)}>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>}
-                            </div>
-                          </article>
-                          </NextLink>
+                          <ListingCard
+                            kind="service"
+                            id={service?.id ?? `mock-${idx}`}
+                            title={service?.title || `Professional ${currentName} Service`}
+                            description={service?.description?.slice(0, 120) || `Professional service offering for ${currentName}. Expert team ready to deliver results.`}
+                            mediaUrl={service?.mediaUrls?.[0] || "/dashboard.png"}
+                            budget={`$${service?.priceMin ? `${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month`}
+                            duration={service?.deliveryTime || "Monthly"}
+                            rating={4.9}
+                            reviewCount={5}
+                            href={service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")}
+                            collaborators={(talentUsers.length > 0 ? talentUsers.slice(0, 4) : []).map((u: any) => u?.avatarUrl || "/woman.jpg")}
+                            favoriteSlot={service ? (
+                              <FavoriteRoot value={favoritedItems.has(String(service.id))} onValueChange={(pressed) => handleFavoriteToggle(String(service.id), "service", pressed)}>
+                                {({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}
+                              </FavoriteRoot>
+                            ) : null}
+                          />
                         </SwiperSlide>
                         )
                       })}
@@ -1281,43 +1234,23 @@ export default function Projects() {
                     <SwiperContent slidesPerView="auto" spaceBetween={20}>
                       {fromLength(8).map((key) => (
                         <SwiperSlide className="w-[355px]" key={key}>
-                          <article className="p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white">
-                            <div className="flex items-start justify-between">
-                              <AvatarGroup max={3} size="md" excess excessClassName="border-gray-300 text-gray-500">
-                                {fromLength(6).map((k) => (<Avatar key={k} size="md" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src="/woman.jpg" alt="Team member" /><AvatarFallback>T</AvatarFallback></Avatar>))}
-                              </AvatarGroup>
+                          <ListingCard
+                            kind="team"
+                            id={`mock-${key}`}
+                            name="Team Name"
+                            handle="@Tech Sentinel"
+                            tagline={`${currentName} team`}
+                            experience="Average 10 years of experience"
+                            rate="$85 - $120/hr"
+                            locations="UK, USA, Brazil, Philippines, more..."
+                            rating={4.7}
+                            projectCount={2}
+                            skills={["React", "Node.js", "AWS"]}
+                            memberAvatars={Array.from({ length: 6 }, () => "/woman.jpg")}
+                            favoriteSlot={
                               <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
-                            </div>
-                            <div className="mt-5 flex items-center">
-                              <span className="text-sm font-bold text-dark-blue-400 leading-none">$85 - $120</span>
-                              <span className="text-[10px] text-dark-blue-400 leading-none font-light">/hr</span>
-                            </div>
-                            <div className="mt-5">
-                              <h1 className="text-base leading-none text-dark-blue-400 font-bold">Team Name <span className="font-light text-gray-500">@Tech Sentinel</span></h1>
-                              <h3 className="mt-0.5 text-xs font-medium text-dark-blue-400 leading-none">{currentName} team</h3>
-                              <p className="mt-2 text-[11px] font-light leading-none text-dark-blue-400">Average 10 years of experience</p>
-                              <div className="mt-3.5 flex items-center gap-x-1">
-                                <MarkerPin02 className="size-3 text-gray-500" />
-                                <span className="leading-4 text-[10px] font-medium text-gray-500">UK, USA, Brazil, Philippines, more...</span>
-                              </div>
-                              <div className="mt-3.5 flex items-center gap-x-2">
-                                <div className="flex items-center gap-x-2">
-                                  <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
-                                    <div className="flex items-center gap-x-[3px]">
-                                      {fromLength(5).map((k) => (<Star key={k} className="size-3 text-primary-500 fill-primary-500 shrink-0" />))}
-                                    </div>
-                                  </div>
-                                  <span className="text-xs font-semibold leading-none text-dark-blue-400">4.7</span>
-                                </div>
-                                <span className="text-xs font-semibold leading-none text-dark-blue-400">2 Projects</span>
-                              </div>
-                              <div className="mt-5 flex gap-2 flex-wrap">
-                                <Badge className="bg-transparent" visual="gray">React</Badge>
-                                <Badge className="bg-transparent" visual="gray">Node.js</Badge>
-                                <Badge className="bg-transparent" visual="gray">AWS</Badge>
-                              </div>
-                            </div>
-                          </article>
+                            }
+                          />
                         </SwiperSlide>
                       ))}
                     </SwiperContent>
@@ -1325,76 +1258,11 @@ export default function Projects() {
 
                   <TabsContent className="gap-5 flex items-center" value="Talent">
                     <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {(talentUsers.length > 0 ? talentUsers.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
-                        const u = talentUsers.length > 0 ? item : null
-                        return (
-                        <SwiperSlide className="w-[355px]" key={u?.id ?? idx}>
-                          <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-                            <div className="p-5">
-                              <div className="relative">
-                                <NextLink href={u?.username ? `/talent-profile?username=${u.username}` : "#"}>
-                                  <div className="relative h-[140px] overflow-hidden rounded-[6px] group cursor-pointer">
-                                    <NextImage src={u?.avatarUrl || "/man.jpg"} sizes="25vw" fill className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" />
-                                  </div>
-                                </NextLink>
-                                <div className="flex items-center absolute px-2.5 pt-2.5 justify-between top-0 inset-x-0">
-                                  {idx % 5 === 0 && (
-                                  <div className="font-bold rounded-[5px] py-0.5 px-1.5 bg-black/[.57] inline-flex items-center gap-x-1 text-white text-[10px]">
-                                    <Stars02 /> All Stars
-                                  </div>
-                                  )}
-                                  {idx % 5 !== 0 && <div />}
-                                  <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
-                                </div>
-                                <div className="absolute grid rounded-full shrink-0 border-[2.53px] bg-white size-[29.53px] -left-[7px] -bottom-1 border-white">
-                                  <div className="bg-success-500 flex items-center justify-center rounded-full text-white">
-                                    <Check className="size-[13.97px]" />
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="mt-3">
-                                <h1 className="text-sm font-bold leading-none text-dark-blue-400">
-                                  {u?.rateMin ? `$${u.rateMin}` : "$85"} - {u?.rateMax ? `$${u.rateMax}` : "$120"}
-                                  <span className="text-[10px] leading-none font-light">/hr</span>
-                                </h1>
-                                <NextLink href={u?.username ? `/talent-profile?username=${u.username}` : "#"} className="text-sm mt-3 font-bold leading-none text-dark-blue-400 hover:underline block transition-colors duration-300">
-                                  {u?.firstName || "Ngozi"}{" "}
-                                  <span className="text-[12px] text-gray-500 leading-none font-light">@{u?.username || "BlueberryBelle"}</span>
-                                </NextLink>
-                                <h2 className="text-[12px] text-dark-blue-400 leading-none font-medium mt-0.5">{u?.jobTitles?.[0]?.jobTitle || u?.role || "Marketing Technologist"}</h2>
-                                <p className="text-[11px] text-dark-blue-400 leading-none font-light mt-2">5 years of experience</p>
-                                <div className="flex items-center text-gray-500 gap-x-1 mt-3.5">
-                                  <MarkerPin02 className="size-3" />
-                                  <p className="text-[10px] leading-5 font-semibold">
-                                    {u?.location || "Australia"}{" "}
-                                    <span className="font-light">(7:30pm local time)</span>
-                                  </p>
-                                </div>
-                                <div className="mt-3.5 flex items-center gap-x-2">
-                                  <div className="flex items-center gap-x-2">
-                                    <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
-                                      <div className="flex items-center gap-x-[3px]">
-                                        {fromLength(5).map((k) => (<Star key={k} className="size-3 text-primary-500 fill-primary-500 shrink-0" />))}
-                                      </div>
-                                      <span className="text-xs font-semibold leading-none text-dark-blue-400">4.7</span>
-                                    </div>
-                                  </div>
-                                  <span className="text-xs font-semibold leading-none text-dark-blue-400">2 Projects</span>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="relative p-3 border-t border-gray-200 bg-[#122A4B]/[.02] h-[92px] overflow-hidden">
-                              <div className="flex flex-wrap gap-2 content-start h-full">
-                                {(() => { const defaults = [{name:"AR/VR Design"},{name:"UX Research"},{name:"Prototyping"},{name:"Figma"},{name:"User Testing"},{name:"Wireframing"},{name:"Adobe XD"},{name:"Sketch"},{name:"InVision"},{name:"Miro"},{name:"Design Systems"},{name:"Interaction Design"}]; const real = u?.skills && u.skills.length > 0 ? u.skills : []; const padded = real.length >= 12 ? real.slice(0, 12) : [...real, ...defaults.filter(d => !real.some((r: any) => r.name === d.name)).slice(0, 12 - real.length)]; return padded; })().map((s: any, si: number) => (
-                                  <NextLink key={si} href={`/search?skill=${encodeURIComponent(s.name)}`} className="text-gray-500/60 hover:text-gray-500 text-[12px] font-semibold hover:underline transition-colors duration-300">{s.name}</NextLink>
-                                ))}
-                              </div>
-                              <NextLink href={u?.username ? `/talent-profile?username=${u.username}#skills` : "#"} className="absolute right-3 bottom-3 text-[12px] font-bold text-gray-500 hover:underline transition-colors duration-300 bg-[#122A4B]/[.02]">More...</NextLink>
-                            </div>
-                          </article>
+                      {talentUsers.slice(0, 8).map((u: TalentUser, idx: number) => (
+                        <SwiperSlide className="w-[355px]" key={u.id}>
+                          <ListingCard kind="talent" {...talentToCardProps(u, idx)} />
                         </SwiperSlide>
-                        )
-                      })}
+                      ))}
                     </SwiperContent>
                   </TabsContent>
                 </div>
@@ -1536,51 +1404,33 @@ export default function Projects() {
                   </div>
                 </div>
                 <div className="mt-6">
-                  <TabsContent value="Featured">
+                  {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tabValue) => (
+                  <TabsContent key={tabValue} value={tabValue}>
                     <SwiperContent slidesPerView="auto" spaceBetween={20}>
                       {fromLength(8).map((key) => (
                         <SwiperSlide className="w-[355px]" key={key}>
-                          <article className="p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white">
-                            <div className="flex items-start justify-between">
-                              <AvatarGroup max={3} size="md" excess excessClassName="border-gray-300 text-gray-500">
-                                {fromLength(6).map((k) => (<Avatar key={k} size="md" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src="/woman.jpg" alt="Woman" /><AvatarFallback>W</AvatarFallback></Avatar>))}
-                              </AvatarGroup>
+                          <ListingCard
+                            kind="team"
+                            id={`mock-${key}`}
+                            name="Team Name"
+                            handle="@Tech Sentinel"
+                            tagline={`${currentName} team`}
+                            experience="Average 10 years of experience"
+                            rate="$85 - $120/hr"
+                            locations="UK, USA, Brazil, Philippines, more..."
+                            rating={4.7}
+                            projectCount={2}
+                            skills={["React", "Node.js", "AWS"]}
+                            memberAvatars={Array.from({ length: 6 }, () => "/woman.jpg")}
+                            favoriteSlot={
                               <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
-                            </div>
-                            <div className="mt-5 flex items-center">
-                              <span className="text-sm font-bold text-dark-blue-400 leading-none">$85 - $120</span>
-                              <span className="text-[10px] text-dark-blue-400 leading-none font-light">/hr</span>
-                            </div>
-                            <div className="mt-5">
-                              <h1 className="text-base leading-none text-dark-blue-400 font-bold">Team Name <span className="font-light text-gray-500">@Tech Sentinel</span></h1>
-                              <h3 className="mt-0.5 text-xs font-medium text-dark-blue-400 leading-none">{currentName} team</h3>
-                              <p className="mt-2 text-[11px] font-light leading-none text-dark-blue-400">Average 10 years of experience</p>
-                              <div className="mt-3.5 flex items-center gap-x-1">
-                                <MarkerPin02 className="size-3 text-gray-500" />
-                                <span className="leading-4 text-[10px] font-medium text-gray-500">UK, USA, Brazil, Philippines, more...</span>
-                              </div>
-                              <div className="mt-3.5 flex items-center gap-x-2">
-                                <div className="flex items-center gap-x-2">
-                                  <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
-                                    <div className="flex items-center gap-x-[3px]">
-                                      {fromLength(5).map((k) => (<Star key={k} className="size-3 text-primary-500 fill-primary-500 shrink-0" />))}
-                                    </div>
-                                  </div>
-                                  <span className="text-xs font-semibold leading-none text-dark-blue-400">4.7</span>
-                                </div>
-                                <span className="text-xs font-semibold leading-none text-dark-blue-400">2 Projects</span>
-                              </div>
-                              <div className="mt-5 flex gap-2 flex-wrap">
-                                <Badge className="bg-transparent" visual="gray">React</Badge>
-                                <Badge className="bg-transparent" visual="gray">Node.js</Badge>
-                                <Badge className="bg-transparent" visual="gray">AWS</Badge>
-                              </div>
-                            </div>
-                          </article>
+                            }
+                          />
                         </SwiperSlide>
                       ))}
                     </SwiperContent>
                   </TabsContent>
+                  ))}
                 </div>
               </SwiperRoot>
             </Tabs>
@@ -1867,12 +1717,13 @@ export default function Projects() {
                 </div>
               </div>
               <div className="mt-6">
-                <TabsContent className="grid grid-cols-5 gap-[15px]" value="Projects">
+                {["Projects", "Services"].map((tabValue) => (
+                <TabsContent key={tabValue} className="grid grid-cols-5 gap-[15px]" value={tabValue}>
                   {["Infrastructure as Code", "API Development", "Cloud Migration", "CI/CD Pipeline", "Database Design", "Microservices", "Containerization", "Serverless", "Monitoring", "Security Audit"].map((name) => (
                     <article key={name} className="p-5 rounded-lg bg-white border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
                       <div className="size-[35px] bg-gray-200 rounded-lg" />
                       <div className="mt-5">
-                        <span className="text-[10px] leading-none font-medium text-dark-blue-400">DevOps</span>
+                        <span className="text-[10px] leading-none font-medium text-dark-blue-400">{tabValue === "Services" ? "Service" : "DevOps"}</span>
                         <h1 className="mt-1 text-base leading-none font-semibold text-dark-blue-400">{name}</h1>
                       </div>
                       <div className="mt-3 flex flex-col gap-y-2">
@@ -1882,6 +1733,7 @@ export default function Projects() {
                     </article>
                   ))}
                 </TabsContent>
+                ))}
               </div>
             </Tabs>
           </div>
@@ -2302,39 +2154,37 @@ export default function Projects() {
                   </div>
                 </div>
                 <div className="mt-6">
-                  <TabsContent value="Featured">
+                  {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tabValue) => (
+                  <TabsContent key={tabValue} value={tabValue}>
                     <SwiperContent slidesPerView="auto" spaceBetween={20}>
                       {(listingsProjects.length > 0 ? listingsProjects.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
                         const project = listingsProjects.length > 0 ? item : null
                         return (
                         <SwiperSlide className="w-[355px]" key={project?.id ?? idx}>
-                          <NextLink href={project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")} className="block focus-visible:outline-none">
-                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                            <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={project?.mediaUrls?.[0] || "/dashboard.png"} alt={project?.title || "Dashboard"} fill sizes="33vw" />
-                            </div>
-                            <div className="mt-3 flex items-start gap-x-3">
-                              <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{project?.title || "The Ultimate Mobile App Experience"}</span>
-                              <div className="inline-flex items-center gap-x-1"><Star className="size-[15px] text-primary-500 fill-primary-500" /><span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span></div>
-                            </div>
-                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">{project?.description?.slice(0, 120) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}</p>
-                            <div className="mt-[14.5px] flex flex-col gap-y-3">
-                              <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from {project?.duration || "12 weeks"}</span></div>
-                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${project?.budget ? Number(project.budget).toLocaleString() : "50,000"} budget</span></div>
-                            </div>
-                            <div className="mt-5 flex items-end justify-between">
-                              <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
-                                {(talentUsers.length > 0 ? talentUsers.slice(0, 6) : fromLength(6)).map((u: any, k: number) => (<Avatar key={u?.id ?? k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src={u?.avatarUrl || "/woman.jpg"} alt={u?.firstName || "Team"} /><AvatarFallback>{u?.firstName?.[0] || "T"}</AvatarFallback></Avatar>))}
-                              </AvatarGroup>
-                              {project && <FavoriteRoot value={favoritedItems.has(String(project.id))} onValueChange={(pressed) => handleFavoriteToggle(String(project.id), "project", pressed)}>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>}
-                            </div>
-                          </article>
-                          </NextLink>
+                          <ListingCard
+                            kind="project"
+                            id={project?.id ?? `mock-${idx}`}
+                            title={project?.title || "The Ultimate Mobile App Experience"}
+                            description={project?.description?.slice(0, 120) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}
+                            mediaUrl={project?.mediaUrls?.[0] || "/dashboard.png"}
+                            budget={`$${project?.budget ? Number(project.budget).toLocaleString() : "50,000"} budget`}
+                            duration={`Starting from ${project?.duration || "12 weeks"}`}
+                            rating={4.9}
+                            reviewCount={5}
+                            href={project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")}
+                            collaborators={(talentUsers.length > 0 ? talentUsers.slice(0, 6) : []).map((u: any) => u?.avatarUrl || "/woman.jpg")}
+                            favoriteSlot={project ? (
+                              <FavoriteRoot value={favoritedItems.has(String(project.id))} onValueChange={(pressed) => handleFavoriteToggle(String(project.id), "project", pressed)}>
+                                {({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}
+                              </FavoriteRoot>
+                            ) : null}
+                          />
                         </SwiperSlide>
                         )
                       })}
                     </SwiperContent>
                   </TabsContent>
+                  ))}
                 </div>
               </SwiperRoot>
             </Tabs>
@@ -2364,39 +2214,37 @@ export default function Projects() {
                   </div>
                 </div>
                 <div className="mt-6">
-                  <TabsContent value="Featured">
+                  {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tabValue) => (
+                  <TabsContent key={tabValue} value={tabValue}>
                     <SwiperContent slidesPerView="auto" spaceBetween={20}>
                       {(listingsServices.length > 0 ? listingsServices.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
                         const service = listingsServices.length > 0 ? item : null
                         return (
                         <SwiperSlide className="w-[355px]" key={service?.id ?? idx}>
-                          <NextLink href={service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")} className="block focus-visible:outline-none">
-                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                            <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={service?.mediaUrls?.[0] || "/dashboard.png"} alt={service?.title || "Service"} fill sizes="33vw" />
-                            </div>
-                            <div className="mt-3 flex items-start gap-x-3">
-                              <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{service?.title || `Professional ${currentName} Service`}</span>
-                              <div className="inline-flex items-center gap-x-1"><Star className="size-[15px] text-primary-500 fill-primary-500" /><span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span></div>
-                            </div>
-                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">{service?.description?.slice(0, 120) || `Professional service offering for ${currentName}. Expert team ready to deliver results.`}</p>
-                            <div className="mt-[14.5px] flex flex-col gap-y-3">
-                              <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">{service?.deliveryTime || "Monthly"}</span></div>
-                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${service?.priceMin ? `${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month</span></div>
-                            </div>
-                            <div className="mt-5 flex items-end justify-between">
-                              <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
-                                {(talentUsers.length > 0 ? talentUsers.slice(0, 6) : fromLength(6)).map((u: any, k: number) => (<Avatar key={u?.id ?? k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src={u?.avatarUrl || "/woman.jpg"} alt={u?.firstName || "Team"} /><AvatarFallback>{u?.firstName?.[0] || "T"}</AvatarFallback></Avatar>))}
-                              </AvatarGroup>
-                              {service && <FavoriteRoot value={favoritedItems.has(String(service.id))} onValueChange={(pressed) => handleFavoriteToggle(String(service.id), "service", pressed)}>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>}
-                            </div>
-                          </article>
-                          </NextLink>
+                          <ListingCard
+                            kind="service"
+                            id={service?.id ?? `mock-${idx}`}
+                            title={service?.title || `Professional ${currentName} Service`}
+                            description={service?.description?.slice(0, 120) || `Professional service offering for ${currentName}. Expert team ready to deliver results.`}
+                            mediaUrl={service?.mediaUrls?.[0] || "/dashboard.png"}
+                            budget={`$${service?.priceMin ? `${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month`}
+                            duration={service?.deliveryTime || "Monthly"}
+                            rating={4.9}
+                            reviewCount={5}
+                            href={service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")}
+                            collaborators={(talentUsers.length > 0 ? talentUsers.slice(0, 6) : []).map((u: any) => u?.avatarUrl || "/woman.jpg")}
+                            favoriteSlot={service ? (
+                              <FavoriteRoot value={favoritedItems.has(String(service.id))} onValueChange={(pressed) => handleFavoriteToggle(String(service.id), "service", pressed)}>
+                                {({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}
+                              </FavoriteRoot>
+                            ) : null}
+                          />
                         </SwiperSlide>
                         )
                       })}
                     </SwiperContent>
                   </TabsContent>
+                  ))}
                 </div>
               </SwiperRoot>
             </Tabs>
@@ -2426,42 +2274,32 @@ export default function Projects() {
                   </div>
                 </div>
                 <div className="mt-6">
-                  <TabsContent value="Featured">
+                  {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tabValue) => (
+                  <TabsContent key={tabValue} value={tabValue}>
                     <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {fromLength(8).map((key) => (
-                        <SwiperSlide className="w-[355px]" key={key}>
-                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                            <div className="flex items-center gap-x-3">
-                              <Avatar size="lg"><AvatarImage src="/woman.jpg" alt="Talent" /><AvatarFallback>T</AvatarFallback></Avatar>
-                              <div>
-                                <h3 className="text-base font-bold text-dark-blue-400">Expert Freelancer</h3>
-                                <p className="text-xs font-light text-dark-blue-400">{currentName} Specialist</p>
-                              </div>
-                            </div>
-                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">Experienced {currentName} professional with 8+ years of hands-on experience.</p>
-                            <div className="mt-3 flex items-center gap-x-2">
-                              <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
-                                <div className="flex items-center gap-x-[3px]">
-                                  {fromLength(5).map((k) => (<Star key={k} className="size-3 text-primary-500 fill-primary-500 shrink-0" />))}
-                                </div>
-                              </div>
-                              <span className="text-xs font-semibold text-dark-blue-400">4.9</span>
-                              <span className="text-xs font-semibold text-dark-blue-400">12 Projects</span>
-                            </div>
-                            <div className="mt-3 flex gap-2 flex-wrap">
-                              <Badge className="bg-transparent" visual="gray">React</Badge>
-                              <Badge className="bg-transparent" visual="gray">TypeScript</Badge>
-                              <Badge className="bg-transparent" visual="gray">Node.js</Badge>
-                            </div>
-                            <div className="mt-5 flex items-end justify-between">
-                              <span className="text-sm font-bold text-dark-blue-400">$75 <span className="text-[10px] font-light">/hr</span></span>
-                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
-                            </div>
-                          </article>
+                      {(talentUsers.length > 0 ? talentUsers.slice(0, 8) : fromLength(8)).map((u: any, idx: number) => (
+                        <SwiperSlide className="w-[355px]" key={u?.id ?? idx}>
+                          {talentUsers.length > 0 ? (
+                            <ListingCard kind="talent" {...talentToCardProps(u, idx)} />
+                          ) : (
+                            <ListingCard
+                              kind="talent"
+                              id={`mock-${idx}`}
+                              username={`expert-${idx}`}
+                              name="Expert Freelancer"
+                              role={`${currentName} Specialist`}
+                              photo="/woman.jpg"
+                              rate="$75/hr"
+                              rating={4.9}
+                              projects={12}
+                              skills={["React", "TypeScript", "Node.js"]}
+                            />
+                          )}
                         </SwiperSlide>
                       ))}
                     </SwiperContent>
                   </TabsContent>
+                  ))}
                 </div>
               </SwiperRoot>
             </Tabs>

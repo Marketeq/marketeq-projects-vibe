@@ -1,0 +1,35 @@
+title = "Marketeq gitleaks config"
+
+# Extend the default gitleaks ruleset (covers AWS keys, GitHub tokens,
+# Stripe keys, generic API keys, private keys, etc.)
+[extend]
+useDefault = true
+
+# Additional repo-specific rules
+[[rules]]
+id = "pem-private-key-file"
+description = "PEM-encoded private key committed to repo"
+regex = '''-----BEGIN (RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----'''
+tags = ["key", "private"]
+
+[[rules]]
+id = "dotenv-file"
+description = "Committed .env file"
+path = '''(^|/)\.env(\..+)?$'''
+tags = ["secret", "env"]
+
+# Paths to ignore (generated files, fixtures, lockfiles, etc.)
+[allowlist]
+description = "Global allowlist"
+paths = [
+  '''(^|/)\.env(\..+)?\.example$''',
+  '''(.*?)package-lock\.json$''',
+  '''(.*?)yarn\.lock$''',
+  '''(.*?)pnpm-lock\.yaml$''',
+  '''(.*?)\.min\.(js|css)$''',
+  '''(.*?)dist/''',
+  '''(.*?)build/''',
+  '''(.*?)node_modules/''',
+  '''(.*?)\.next/''',
+  '''docs/''',
+]

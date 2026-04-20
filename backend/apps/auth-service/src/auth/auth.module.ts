@@ -8,6 +8,7 @@ import type { StringValue } from 'ms';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { BrevoService } from '../brevo/brevo.service';
 import { User } from '../user/entities/user.entity';
 
 const normalizeKey = (value?: string) =>
@@ -54,7 +55,7 @@ const parseExpiresIn = (value: string): number | StringValue =>
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, BrevoService],
   exports: [PassportModule, JwtModule],
 })
 export class AuthModule {}

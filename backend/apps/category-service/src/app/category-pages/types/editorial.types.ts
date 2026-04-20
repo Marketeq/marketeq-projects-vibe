@@ -1,12 +1,12 @@
 /**
  * Editorial content for category pages
- * Populated from Strapi CMS (currently mocked)
- * @see StrapiAdapter.getEditorial()
+ * Populated from CMS service (currently mocked)
+ * @see CmsAdapter.getEditorial()
  */
 
 export interface EditorialContent {
     /**
-     * SEO overrides from Strapi (optional)
+     * SEO overrides from CMS (optional)
      * Takes precedence over category's default SEO
      */
     seoOverride?: {

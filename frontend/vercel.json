@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "git": {
+    "deploymentEnabled": {
+      "feat/*": false,
+      "fix/*": false,
+      "chore/*": false,
+      "refactor/*": false,
+      "agent/*": false,
+      "dev-main": true,
+      "staging": true,
+      "live-mvp": true
+    }
+  }
+}

@@ -10,14 +10,20 @@ Vibe Coding Marketeq Projects talent network platform.
 
 ### Backend:
 ### Ports:
-- Auth: 3001
+- Frontend: 3000
 - Gateway: 4000
+- Auth: 3001
 - User: 3002
-- Listings: 3004
-- Autocomplete: 3019
-- Content moderation: 3014
+- Listings: 3003
+- Messaging: 3005
 - Notification: 3006
+- Checkout: 3009
+- Contracts: 3010
+- Favorites: 3012
 - Invitations: 3013
+- Content moderation: 3014
+- Transaction: 3018
+- Autocomplete: 3019
 - Python moderation API: 8000
 
 ### Dependencies:
@@ -28,18 +34,24 @@ Vibe Coding Marketeq Projects talent network platform.
 - npm install -D @types/superagent @types/multer @types/express --legacy-peer-deps
 - npm install @nestjs/platform-express multer --legacy-peer-deps
 - npm install sharp --legacy-peer-deps
+- npm install @nestjs/event-emitter --legacy-peer-deps
+- npm install @golevelup/nestjs-rabbitmq --legacy-peer-deps
+- npm install prom-client --legacy-peer-deps
 - py -m pip install fastapi uvicorn transformers torch pillow
 - py -m pip install python-multipart
 - py --version
+- npm install nodemailer @types/nodemailer --legacy-peer-deps
 
-### Fast API:
-```py -m uvicorn clip_moderation_api:app --host 0.0.0.0 --port 8000 --app-dir apps/content-moderation-service/src/filters/python```
+### Install the Brevo (Sendinblue) Node.js SDK in your
+- npm install sib-api-v3-sdk  
 
 ### Build:
 - npx nest build api-gateway
 - npx nest build autocomplete-service
 - npx nest build listings-service / npm run build -w apps/listings-service
 - npx nest build content-moderation-service
+- npx nest build invitations-service
+- npx nest build notification-service
 
 ### Start Serices:
 - npx nest start auth-service --watch
@@ -50,15 +62,66 @@ Vibe Coding Marketeq Projects talent network platform.
 - npx nest start content-moderation-service
 - npx nest start notification-service
 - npx nest start invitations-service
+- npx nest start favorites-service
+- npx nest start category-service
+- npx nest start transaction-service
+
+### Start CMS service
+cd backend/apps/cms-service  
+npm run start:dev
+or
+npx ts-node src/server.ts
+
+###  boot CMS
+cd backend/apps/cms-service  
+node -r ts-node/register/transpile-only src/server.ts
+
+#### Log in to Payload CMS admin at
+http://localhost:3020/admin
+
+Open DevTools → Application → Cookies → payload-token
+Copy the value of the payload-token cookie.
+This is your JWT.
+Set this value as CMS_API_KEY in your .env for category-service
+OR 
+http://localhost:3020/api/users/login
+{
+  "email": "*****@gmail.com",
+  "password": "********"
+}
 
 ### Using npm:
 ```npm exec nest -- start listings-service --watch```
 
+### Create Schema:
+psql -U postgres -d transaction_db -c "CREATE SCHEMA transaction_service;"
+
+### Database creation:
+psql -U postgres -c "CREATE DATABASE transaction_db;"
+
 ### Run Migration:
 ```npx typeorm-ts-node-commonjs -d apps/user-service/src/data-source.ts migration:run```
+```npx typeorm-ts-node-commonjs -d apps/invitations-service/src/data-source.ts migration:run```
+```npx typeorm-ts-node-commonjs -d apps/transaction-service/src/data-source.ts migration:run ```
 
 ### Rabbitmq:
 ```docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management```
+``` docker start rabbitmq ```
+
+### Redis:
+docker run -d --name redis -p 6379:6379 redis:7
+
+### PAYLOAD_SECRET
+```node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" ```
+
+### Internal service token
+```node -e "console.log(require('crypto').randomUUID())"```
+
+### Fast API:
+```py -m uvicorn clip_moderation_api:app --host 0.0.0.0 --port 8000 --app-dir apps/content-moderation-service/src/filters/python```
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+- Moderate endpoint: `POST http://localhost:8000/moderate` (multipart file upload)
 
 ## Claude CLI Setup (API Key)
 
@@ -116,6 +179,52 @@ unset ANTHROPIC_API_KEY
 claude
 ```
 
+## E2E Encryption Setup (Messaging)
+
+The messaging service uses end-to-end encryption. Additional setup required:
+
+### 1) Add `E2EE_SERVER_SECRET` to `backend/.env`
+```bash
+# Generate a random secret
+openssl rand -hex 32
+# Add to .env
+E2EE_SERVER_SECRET=<paste_generated_value>
+```
+The messaging-service **will not start** without this variable.
+
+### 2) Create user-keys tables
+The user-service has `synchronize: false`, so encryption tables must be created manually:
+```bash
+cd backend
+node -e "
+const { DataSource } = require('typeorm');
+require('dotenv').config();
+const ds = new DataSource({ type: 'postgres', url: process.env.DATABASE_URL, schema: 'user_service' });
+ds.initialize().then(async () => {
+  await ds.query('CREATE TABLE IF NOT EXISTS user_service.user_keys (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), \"userId\" UUID NOT NULL, \"publicKey\" TEXT NOT NULL, \"encryptedPrivateKey\" TEXT, \"createdAt\" TIMESTAMP NOT NULL DEFAULT now(), \"updatedAt\" TIMESTAMP NOT NULL DEFAULT now())');
+  await ds.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_user_keys_userId ON user_service.user_keys (\"userId\")');
+  await ds.query('CREATE TABLE IF NOT EXISTS user_service.user_devices (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), \"userId\" UUID NOT NULL, \"publicKey\" TEXT NOT NULL, \"deviceName\" VARCHAR, \"createdAt\" TIMESTAMP NOT NULL DEFAULT now(), \"updatedAt\" TIMESTAMP NOT NULL DEFAULT now())');
+  await ds.query('CREATE INDEX IF NOT EXISTS idx_user_devices_userId ON user_service.user_devices (\"userId\")');
+  console.log('Tables created');
+  await ds.destroy();
+}).catch(e => { console.error(e.message); process.exit(1); });
+"
+```
+
+### 3) Gateway route mappings
+Ensure `backend/apps/api-gateway/src/proxy/proxy.controller.ts` has these in `SERVICE_PREFIX_MAP`:
+```ts
+messaging: 'messages',
+'user-keys': 'users',
+devices: 'users',
+```
+And the v1 routing block includes:
+```ts
+} else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {
+  prefix = 'messages'
+}
+```
+
 ## Project Notes
 
 - Repo guidance for agents and workflows: `CLAUDE.md`
@@ -136,4 +245,73 @@ Script path:
 
 Run command:
 - powershell -ExecutionPolicy Bypass -File "./scripts/run-publish-moderation-matrix.ps1"
+- With explicit token: `powershell -ExecutionPolicy Bypass -File "./scripts/run-publish-moderation-matrix.ps1" -Token "<jwt>"`
 
+Fixtures:
+- `backend/scripts/fixtures/bad-image-emoji.png` — deterministic bad image
+- `backend/scripts/fixtures/good_test_image.jpg` — safe test image
+
+### Python Moderation Scripts
+
+Located at `backend/apps/content-moderation-service/src/filters/python/`:
+
+| Script | Purpose |
+|--------|---------|
+| `clip_moderation_api.py` | FastAPI server — CLIP-based image moderation with 16 label categories |
+| `clip_moderation.py` | CLI — binary safe/unsafe image classification |
+| `blur_check.py` | CLI — Laplacian variance blur detection (requires opencv) |
+| `detect_animation.py` | CLI — checks if an image is animated (GIF) |
+| `video_moderation.py` | CLI — frame-by-frame CLIP moderation for videos (requires opencv) |
+
+### Test Matrix Results
+
+| Scenario | Project | Media | Result |
+|----------|---------|-------|--------|
+| Bad title + good image | ok | ok | Text flagged |
+| Bad description + good image | ok | ok | Text flagged |
+| Bad image + good content | ok | ok | Image rejected |
+| Good content + good image | ok | ok | Clean pass |
+
+
+- good video - samplelib.com/lib/preview/mp4/sample-5s.mp4   
+- bad video - pub-4789db6a57d64de3ad7b5e8c316d125b.r2.dev/projects/318fd0e8-0d86-455d-bebb-656bd0530c70/media/angry_face-58e0a31f-c8d7-447a-b1d7-06cfda191980.mp4
+
+### Invitation Email Delivery (notification-service)
+- Invitation accept URL (UI): `http://localhost:3000/invite/accept?token=YOUR_TOKEN`
+- `POST http://localhost:4000/invitations/accept {"token":""}`
+- Open this URL in browser while signed in with the invited email account.
+- If you are signed in with a different account, click Sign In With Invited Email on the accept page.
+- Primary transport: SendGrid (`SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`) — currently commented out
+- Fallback transport: SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`)
+- If SendGrid key is missing/invalid, service automatically attempts SMTP.
+- Restart notification-service after changing env values.
+
+### Email Provider: Brevo (Active for Testing)
+
+The notification-service and invitations-service now use **Brevo** for transactional emails.
+SendGrid code is commented out but preserved for future use.
+
+#### Required env vars (per service `.env`):
+```
+BREVO_API_KEY=xkeysib-...
+BREVO_FROM_EMAIL=your-verified-sender@example.com
+BREVO_FROM_NAME=YourName
+```
+
+#### Services that need Brevo config:
+- `backend/apps/notification-service/.env` — handles RabbitMQ-routed emails (team invitations, notifications)
+- `backend/apps/invitations-service/.env` — direct Brevo send for testing invitations
+
+#### How invitation emails flow:
+1. **invitations-service** creates the invite in DB
+2. **invitations-service** emits `notification.email.team_invitation` via RabbitMQ → **notification-service** picks it up and sends via Brevo
+3. **invitations-service** also sends a direct Brevo email (for testing, can be commented out)
+
+#### Brevo sender setup:
+- The `BREVO_FROM_EMAIL` must be a **verified sender** in Brevo dashboard → Settings → Senders, domains, IPs
+- The from email must be a verified sender in your Brevo account
+
+#### Switching back to SendGrid:
+- Uncomment SendGrid imports and calls in `notification.service.ts`
+- Comment out the Brevo calls
+- Set `SENDGRID_API_KEY` and `SENDGRID_FROM_EMAIL` in the notification-service `.env`

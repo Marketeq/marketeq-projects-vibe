@@ -2,7 +2,7 @@ import { Exclude } from 'class-transformer';
 
 export class Project {
   id?: string;
-  strapiId?: string | null;
+  cmsId?: string | null;
 
   @Exclude({ toPlainOnly: true })
   title: string;
@@ -17,6 +17,12 @@ export class Project {
 
   categories?: string[] | null;
   subCategories?: string[] | null;
+  categorySelections?:
+    | {
+        category: string;
+        subCategories: string[];
+      }[]
+    | null;
   industries?: string[] | null;
   tags?: string[] | null;
   skills?: string[] | null;

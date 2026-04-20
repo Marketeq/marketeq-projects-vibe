@@ -79,9 +79,10 @@ export const UserAPI = {
       headers: authHeaders(),
     }),
   getByUsername: (username: string) =>
-    AxiosRequest.get(`${USER_BASE}/v1/users/username/${username}`, {
-      headers: authHeaders(),
-    }),
+    // Public endpoint served by TalentController (no auth required).
+    // Returns the user plus loaded skills/experiences for the talent
+    // profile card view.
+    AxiosRequest.get(`${USER_BASE}/talent/users/${username}`),
   updateProfile: (userId: string, data: UserProfilePayload) =>
     AxiosRequest.put(`${USER_BASE}/v1/users/${userId}`, data, {
       headers: authHeaders(),

@@ -3,15 +3,7 @@
 import React, { useCallback, useMemo, useRef, useState } from "react"
 import { useEffect } from "react"
 import { decryptAES, decryptWithPrivateKey } from "@/src/crypto/e2ee"
-import {
-  ensureEncryptionKeysExist,
-  exportPrivateKey,
-  exportPublicKey,
-  generateKeyPair,
-  importPrivateKey,
-  savePrivateKey,
-  savePublicKey,
-} from "@/src/crypto/keys"
+import { exportPrivateKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
 import { Bubble, YourBubble } from "@/stories/inbox.stories"
@@ -34,7 +26,6 @@ import {
   File,
   Image03,
   Info,
-  Loader,
   Mail05,
   MoreHorizontal,
   Pin02,
@@ -71,6 +62,8 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
+  DialogDescription,
+  DialogTitle,
   DialogTrigger,
   DropdownMenu,
   DropdownMenuContent,
@@ -80,6 +73,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   Favorite,
+  FavoriteRoot,
   IconButton,
   Input,
   InputGroup,
@@ -93,23 +87,30 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import { useFileUpload } from "../hooks/use-file-upload"
 import { addParticipantToGroup } from "../hooks/use-group-encryption"
+import { useEditMessage } from "../hooks/use-edit-message"
 import { useMessages } from "../hooks/use-messages"
 import { useSendMessage } from "../hooks/use-send-message"
+import { useThreadActions } from "../hooks/use-thread-actions"
+import { ForwardMessageDialog } from "./forward-message-dialog"
 
 interface ChatsProps {
   selectedConversation: Conversation | null
   jwtToken: string
   privateKey: CryptoKey | null
+  currentUserProfile?: any
 }
 
 export function Chats({
   selectedConversation,
   jwtToken,
   privateKey,
+  currentUserProfile,
 }: ChatsProps) {
   const [textareaValue, setTextareaValue] = useState("")
+  const composerRef = useRef<HTMLTextAreaElement>(null)
   const [uploadState, setUploadState] =
     useState<CircularProgressDropzoneState>()
   const [open, setOpen] = useState(false)
@@ -119,10 +120,41 @@ export function Chats({
     "Messages"
   )
   const [pinnedMsgs, setPinnedMsgs] = useState<Message[]>([])
+  const pinnedFetchRef = useRef<AbortController | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [isSending, setIsSending] = useState(false)
+  const [forwardOpen, setForwardOpen] = useState(false)
+  const [forwardTarget, setForwardTarget] = useState<Message | null>(null)
+  const [keyReady, setKeyReady] = useState(false)
+  const [keyError, setKeyError] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null)
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null)
+  // Thread-level state is source-of-truth from the server (selectedConversation)
+  // which is kept up-to-date by the user:{userId} Ably subscription in left-sidebar.
+  const threadPinned = !!(selectedConversation as any)?.isPinned
+  const threadArchived = !!(selectedConversation as any)?.isArchived
+  const threadSpam = !!(selectedConversation as any)?.isSpam
+  const threadUnread = !!(selectedConversation as any)?.markedUnread
+  const [starredOverride, setStarredOverride] = useState<boolean | null>(null)
+  const threadStarred = starredOverride ?? !!(selectedConversation as any)?.isStarred
+  const threadActions = useThreadActions(jwtToken)
 
-  const currentUser = getCurrentUser()
+  const handleOpenForward = useCallback((msg: Message) => {
+    setForwardTarget(msg)
+    setForwardOpen(true)
+  }, [])
+
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getCurrentUser>>(null)
+  useEffect(() => {
+    const base = getCurrentUser()
+    if (base && currentUserProfile?.username) {
+      setCurrentUser({ ...base, username: currentUserProfile.username })
+    } else {
+      setCurrentUser(base)
+    }
+  }, [currentUserProfile])
 
   const handleEmojiSelect = (emoji: DataEmoji) => {
     const emojiChar = String.fromCodePoint(
@@ -133,29 +165,59 @@ export function Chats({
     setTextareaValue((prev) => (prev || "") + emojiChar)
   }
 
+  // Reset per-conversation state when switching conversations
+  useEffect(() => {
+    setStarredOverride(null)
+    setReplyingTo(null)
+    setEditingMessage(null)
+    setTextareaValue("")
+  }, [selectedConversation?.id])
+
+  // Auto mark-read when opening a conversation
+  useEffect(() => {
+    if (!selectedConversation) return
+    threadActions.markRead(selectedConversation.id).catch(() => {})
+  }, [selectedConversation?.id])
+
   // 1) unwrap the AES key once per conversation
   useEffect(() => {
+    setKeyReady(false)
+    setKeyError(null)
     if (!selectedConversation || !privateKey) return
+    const ac = new AbortController()
+    const convId = selectedConversation.id
     ;(async () => {
       try {
         const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-          `/api/messaging/conversations/${selectedConversation.id}/key?isGroup=${selectedConversation.isGroup}`,
-          { headers: { Authorization: `Bearer ${jwtToken}` } }
+          `/api/messaging/conversations/${convId}/key?isGroup=${selectedConversation.isGroup}`,
+          {
+            headers: { Authorization: `Bearer ${jwtToken}` },
+            signal: ac.signal,
+          }
         )
+        if (ac.signal.aborted) return
 
-        // decrypt with your RSA privateKey → ArrayBuffer
         const privatePem = await exportPrivateKey(privateKey)
         const rawBuf = await decryptWithPrivateKey(encryptedKey, privatePem)
+        if (ac.signal.aborted) return
 
-        // store base64 so loadKey() can find it
         const arr = new Uint8Array(rawBuf)
         const b64 = btoa(String.fromCharCode(...arr))
-        saveKey(selectedConversation.id, b64)
-      } catch (err) {
+        saveKey(convId, b64)
+        setKeyReady(true)
+      } catch (err: any) {
+        if (err?.name === "AbortError") return
         console.error("Failed to unwrap conversation key", err)
+        if (!ac.signal.aborted) {
+          setKeyReady(false)
+          setKeyError(
+            "Could not decrypt this conversation key. Refresh and try again."
+          )
+        }
       }
     })()
-  }, [selectedConversation, privateKey, jwtToken])
+    return () => ac.abort()
+  }, [selectedConversation?.id, selectedConversation?.isGroup, privateKey, jwtToken])
 
   //below logic to add new user to a group chat //need to add button for it once user-service can be called to add users
   const handleAddUser = async (userId: string) => {
@@ -198,10 +260,12 @@ export function Chats({
   const [bottomRef, { height }] = useMeasure<HTMLDivElement>()
 
   // 2) fetch & decrypt messages
-  const fetchedMsgs = useMessages(
+  const { messages: fetchedMsgs, loading: messagesLoading } = useMessages(
     selectedConversation ? selectedConversation.id : "",
-    jwtToken
+    jwtToken,
+    keyReady
   )
+  const isSwitching = !keyError && (messagesLoading || !keyReady)
 
   // 2.1) local messages state for optimistic updates
   const [localMsgs, setLocalMsgs] = useState<Message[]>([])
@@ -211,8 +275,20 @@ export function Chats({
     }
   }, [fetchedMsgs])
 
-  const displayedMessages =
-    selectedTab === "Messages" ? localMsgs : localMsgs.filter((m) => m.isPinned)
+  const displayedMessages = (
+    selectedTab === "Messages" ? localMsgs : pinnedMsgs
+  ).filter((m) => {
+    if (!m.isDeleted && !(m as any).deleted) return true
+    const deletedAt = (m as any).deletedAt as number | undefined
+    if (
+      m.senderId === currentUser?.id &&
+      deletedAt &&
+      Date.now() - deletedAt < 30000
+    ) {
+      return true
+    }
+    return false
+  })
 
   // 3) subscribe to Ably for real-time incoming
   // subscribe to Ably for real-time updates
@@ -225,18 +301,21 @@ export function Chats({
       id: string
       ciphertext: string
       senderId: string
-      conversationId: string
+      threadId: string
       createdAt: string
       updatedAt: string
-      isPinned?: boolean
-      isDeleted?: boolean
+      pinned?: boolean
+      deleted?: boolean
     }) => {
-      // Skip if the message is from current user
-      if (incoming.senderId === currentUser?.id) return
-
-      const key = loadKey(incoming.conversationId)
+      const convId = incoming.threadId
+      let key: Uint8Array | null = null
+      try {
+        key = loadKey(convId)
+      } catch {
+        // no cached key
+      }
       if (!key) {
-        console.error("No AES key for", incoming.conversationId)
+        console.error("No AES key for", convId)
         return
       }
       let plain: string
@@ -246,18 +325,21 @@ export function Chats({
         console.error("Failed to decrypt incoming:", err)
         return
       }
-      setLocalMsgs((prev) => [
-        ...prev,
-        {
-          ...incoming,
-          content: plain,
-          isRead: false,
-          isPinned: incoming.isPinned ?? false,
-          isDeleted: incoming.isDeleted ?? false,
-        },
-      ])
+      setLocalMsgs((prev) => {
+        if (prev.some((m) => m.id === incoming.id)) return prev
+        return [
+          ...prev,
+          {
+            ...incoming,
+            content: plain,
+            isRead: false,
+            isPinned: incoming.pinned ?? false,
+            isDeleted: incoming.deleted ?? false,
+          },
+        ]
+      })
     },
-    [setLocalMsgs, currentUser?.id] // only changes if setLocalMsgs ever changes (it won’t)
+    [setLocalMsgs]
   )
 
   //pin/unpin,  delete, undo delete
@@ -270,12 +352,52 @@ export function Chats({
     []
   )
 
+  const handleLocalDelete = useCallback(
+    (messageId: string) => {
+      updateMessage(messageId, { isDeleted: true, deletedAt: Date.now() } as any)
+      setTimeout(() => {
+        setLocalMsgs((prev) => prev.map((m) => m))
+      }, 30000)
+    },
+    [updateMessage]
+  )
+
+  const handleLocalRestore = useCallback(
+    (messageId: string) => {
+      updateMessage(messageId, { isDeleted: false, deletedAt: undefined } as any)
+    },
+    [updateMessage]
+  )
+
+  // Ably incoming edit: decrypt + patch local state
+  const handleIncomingEdit = useCallback(
+    async (incoming: { id: string; ciphertext?: string; senderId: string; threadId: string; edited?: boolean }) => {
+      let plain = ""
+      try {
+        const key = loadKey(incoming.threadId)
+        if (key && incoming.ciphertext) {
+          plain = await decryptAES(incoming.ciphertext, key)
+        }
+      } catch (err) {
+        console.error("Failed to decrypt edited message:", err)
+        plain = "🔒 Encrypted message"
+      }
+      updateMessage(incoming.id, {
+        content: plain,
+        ciphertext: incoming.ciphertext,
+        edited: true,
+      })
+    },
+    [updateMessage]
+  )
+
   useAblyChannel(
     channelName,
     handleIncoming,
     ({ messageId, isPinned }) => updateMessage(messageId, { isPinned }),
     (messageId) => updateMessage(messageId, { isDeleted: true }),
-    (messageId) => updateMessage(messageId, { isDeleted: false })
+    (messageId) => updateMessage(messageId, { isDeleted: false }),
+    handleIncomingEdit
   )
 
   // 3) send message hook
@@ -285,6 +407,7 @@ export function Chats({
     privateKey,
     selectedConversation?.isGroup
   )
+  const editMsg = useEditMessage(jwtToken)
   //  useFileUpload call
   //const uploadFile = useFileUpload(jwtToken, privateKey, selectedConversation?.isGroup)
 
@@ -302,42 +425,109 @@ export function Chats({
       console.error("No logged-in user found")
       return
     }
-    const otherId = selectedConversation.participants.find(
-      (p) => p.userId !== currentUser.id
-    )?.userId
+    const otherId = selectedConversation.participantIds?.find(
+      (id) => id !== currentUser.id
+    )
     if (!otherId) return
 
-    apiFetch<User>(`/api/messaging/users/${otherId}`, {
+    apiFetch<User>(`/users/${otherId}`, {
       method: "GET",
+      headers: { Authorization: `Bearer ${jwtToken}` },
     })
       .then(setReceiverUser)
       .catch(console.error)
-  }, [selectedConversation])
+  }, [selectedConversation?.id])
 
   // 6) send handler
   const handleSendMessage = async () => {
     if (!selectedConversation || !textareaValue.trim()) return
+    if (isSending) return
 
+    setIsSending(true)
     try {
-      const saved = await send(selectedConversation.id, textareaValue.trim())
+      const saved = await send(selectedConversation.id, textareaValue.trim(), replyingTo?.id)
 
-      // Optimistically append to local state
-      // 2)decrypt the returned ciphertext so you display plaintext
-      const key = loadKey(selectedConversation.id)
-      const plain = await decryptAES(saved.data.ciphertext, key)
+      // Backend returns message directly or wrapped in { data }
+      const msg = (saved as any).data ?? saved
 
-      // 3) append to local state
-      setLocalMsgs((prev) => [
-        ...prev,
-        {
-          ...saved.data,
-          content: plain,
-        },
-      ])
+      let displayContent = msg.content
+      try {
+        const key = loadKey(selectedConversation.id)
+        if (key && msg.ciphertext) {
+          displayContent = await decryptAES(msg.ciphertext, key)
+        }
+      } catch {
+        // no key cached, content is already plaintext
+      }
+
+      setLocalMsgs((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev
+        return [
+          ...prev,
+          {
+            ...msg,
+            content: displayContent,
+          },
+        ]
+      })
 
       setTextareaValue("")
+      setReplyingTo(null)
     } catch (err) {
       console.error("Send failed", err)
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  // Edit flow: enter edit mode, pre-fill composer
+  const handleStartEdit = useCallback((msg: Message) => {
+    setEditingMessage(msg)
+    setTextareaValue(msg.content || "")
+    setReplyingTo(null)
+    // focus + move caret to end on next tick (after textarea gets the new value)
+    requestAnimationFrame(() => {
+      const el = composerRef.current
+      if (el) {
+        el.focus()
+        const len = el.value.length
+        el.setSelectionRange(len, len)
+      }
+    })
+  }, [])
+
+  const handleCancelEdit = () => {
+    setEditingMessage(null)
+    setTextareaValue("")
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingMessage || !selectedConversation) return
+    const newContent = textareaValue.trim()
+    if (!newContent) return
+    if (newContent === (editingMessage.content || "").trim()) {
+      // no change — just exit edit mode
+      handleCancelEdit()
+      return
+    }
+
+    const messageId = editingMessage.id
+    const prevContent = editingMessage.content
+    // Optimistic update
+    updateMessage(messageId, { content: newContent, edited: true })
+    const editingSnapshot = editingMessage
+    setEditingMessage(null)
+    setTextareaValue("")
+
+    try {
+      await editMsg(messageId, selectedConversation.id, newContent)
+    } catch (err) {
+      console.error("Edit failed", err)
+      // Rollback
+      updateMessage(messageId, {
+        content: prevContent,
+        edited: !!editingSnapshot.edited,
+      })
     }
   }
 
@@ -427,16 +617,40 @@ export function Chats({
     setSelectedTab(tab)
 
     if (tab === "Pinned") {
+      if (!selectedConversation) return
+      pinnedFetchRef.current?.abort()
+      const ac = new AbortController()
+      pinnedFetchRef.current = ac
+      const convId = selectedConversation.id
+      setPinnedMsgs([])
       try {
-        if (!selectedConversation) return
-        const pinned = await apiFetch<Message[]>(
-          `/api/messaging/conversations/${selectedConversation.id}/pinned`,
+        const allMsgs = await apiFetch<Message[]>(
+          `/v1/messages/thread/${convId}`,
           {
             headers: { Authorization: `Bearer ${jwtToken}` },
+            signal: ac.signal,
           }
         )
-        setPinnedMsgs(pinned)
-      } catch (err) {
+        if (ac.signal.aborted) return
+        const pinned = allMsgs.filter((m) => m.pinned || m.isPinned)
+
+        let key: Uint8Array | null = null
+        try { key = loadKey(convId) } catch { /* no key */ }
+        const decrypted = await Promise.all(
+          pinned.map(async (m) => {
+            if (!m.ciphertext) return m
+            if (!key) return { ...m, content: "🔒 Encrypted message" }
+            try {
+              return { ...m, content: await decryptAES(m.ciphertext, key) }
+            } catch {
+              return { ...m, content: "🔒 Encrypted message" }
+            }
+          })
+        )
+        if (ac.signal.aborted) return
+        setPinnedMsgs(decrypted)
+      } catch (err: any) {
+        if (err?.name === "AbortError") return
         console.error("Failed to fetch pinned messages", err)
       }
     }
@@ -498,24 +712,26 @@ export function Chats({
 
   if (!currentUser) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        Not logged in
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-400">
+        <Spinner size={28} strokeWidth={3} />
       </div>
     )
   }
 
   if (!selectedConversation) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        Select a conversation
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
+        <Mail05 className="size-10 stroke-[1.5]" />
+        <p className="text-sm font-medium">Select a conversation to start messaging</p>
       </div>
     )
   }
 
   if (!receiverUser) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        Loading user…
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-400">
+        <Spinner size={28} strokeWidth={3} />
+        <p className="text-sm">Loading conversation...</p>
       </div>
     )
   }
@@ -561,16 +777,22 @@ export function Chats({
           <div className="flex flex-col gap-y-1">
             <div className="inline-flex items-center gap-x-1">
               <span className="text-lg font-semibold text-dark-blue-400">
-                {receiverUser.firstName}
+                {fullName}
               </span>
-              <span className="text-base text-dark-blue-400">{fullName}</span>
             </div>
             <div className="inline-flex items-center gap-x-2">
               <span className="text-sm text-dark-blue-400">Active now</span>
-              <span className="inline-block h-4 w-px bg-gray-300" />
-              <span className="text-sm text-dark-blue-400">
-                {receiverUser.role}
-              </span>
+              {(receiverUser as any).recentJobTitle ||
+              ((receiverUser as any).jobTitles &&
+                (receiverUser as any).jobTitles[0]) ? (
+                <>
+                  <span className="inline-block h-4 w-px bg-gray-300" />
+                  <span className="text-sm text-dark-blue-400">
+                    {(receiverUser as any).recentJobTitle ||
+                      (receiverUser as any).jobTitles[0]}
+                  </span>
+                </>
+              ) : null}
             </div>
           </div>
         </div>
@@ -581,21 +803,48 @@ export function Chats({
             onValueChange={(details: { value: string[] }) => {
               const val = details.value?.[0]
               if (val === "Messages" || val === "Pinned") {
-                setSelectedTab(val)
+                handleToggleChange(val)
               }
             }}
           >
             <ToggleGroupItem value="Messages">Messages</ToggleGroupItem>
-            <ToggleGroupItem value="Pinned">Pinned</ToggleGroupItem>
+            <ToggleGroupItem value="Pinned">
+              Pinned
+              {(() => {
+                const count = localMsgs.filter((m) => m.pinned || m.isPinned).length
+                return count > 0 ? (
+                  <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] font-semibold bg-gray-300 text-gray-800 rounded-full">
+                    {count}
+                  </span>
+                ) : null
+              })()}
+            </ToggleGroupItem>
           </ToggleGroupRoot>
 
           <div className="flex items-center gap-x-1">
             <IconButton visual="gray" variant="ghost" size="lg">
               <Info className="size-[22px]" />
             </IconButton>
-            <div className="size-11 flex items-center justify-center">
-              <Favorite className="text-gray-500" />
-            </div>
+            <FavoriteRoot
+              value={threadStarred}
+              onValueChange={(next) => {
+                if (!selectedConversation) return
+                setStarredOverride(next)
+                ;(next
+                  ? threadActions.star(selectedConversation.id)
+                  : threadActions.unstar(selectedConversation.id)
+                ).catch((err) => {
+                  console.error("star toggle failed", err)
+                  setStarredOverride(!next)
+                })
+              }}
+            >
+              {() => (
+                <div className="size-11 flex items-center justify-center">
+                  <Favorite className="text-gray-500" />
+                </div>
+              )}
+            </FavoriteRoot>
 
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
@@ -612,30 +861,114 @@ export function Chats({
                 <DropdownMenuItem>
                   <Info className="size-4" /> Profile Info
                 </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Star className="size-4" /> Mark Favorite
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    if (!selectedConversation) return
+                    const next = !threadStarred
+                    setStarredOverride(next)
+                    ;(next
+                      ? threadActions.star(selectedConversation.id)
+                      : threadActions.unstar(selectedConversation.id)
+                    ).catch((err) => {
+                      console.error("star toggle failed", err)
+                      setStarredOverride(!next)
+                    })
+                  }}
+                >
+                  <Star className="size-4" />
+                  {threadStarred ? "Unmark Favorite" : "Mark Favorite"}
                 </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Mail05 className="size-4" /> Mark Unread
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    if (!selectedConversation) return
+                    ;(threadUnread
+                      ? threadActions.markRead(selectedConversation.id)
+                      : threadActions.markUnread(selectedConversation.id)
+                    ).catch((err) => console.error("mark unread/read failed", err))
+                  }}
+                >
+                  <Mail05 className="size-4" /> {threadUnread ? "Mark as Read" : "Mark Unread"}
                 </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Pin02 className="size-4" /> Pin Chat
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    if (!selectedConversation) return
+                    const next = !threadPinned
+                    ;(next
+                      ? threadActions.pin(selectedConversation.id)
+                      : threadActions.unpin(selectedConversation.id)
+                    ).catch((err) => console.error("pin toggle failed", err))
+                  }}
+                >
+                  <Pin02 className="size-4" />
+                  {threadPinned ? "Unpin Chat" : "Pin Chat"}
                 </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Archive className="size-4" /> Archive
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    if (!selectedConversation) return
+                    ;(threadArchived
+                      ? threadActions.unarchive(selectedConversation.id)
+                      : threadActions.archive(selectedConversation.id)
+                    ).catch((err) => console.error("archive toggle failed", err))
+                  }}
+                >
+                  <Archive className="size-4" /> {threadArchived ? "Unarchive" : "Archive"}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <AlertTriangle className="size-4" /> Move to Spam
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    if (!selectedConversation) return
+                    ;(threadSpam
+                      ? threadActions.unspam(selectedConversation.id)
+                      : threadActions.spam(selectedConversation.id)
+                    ).catch((err) => console.error("spam toggle failed", err))
+                  }}
+                >
+                  <AlertTriangle className="size-4" /> {threadSpam ? "Move to Inbox" : "Move to Spam"}
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-error-500">
                   <AlertTriangle className="size-4" /> Block / Report
                 </DropdownMenuItem>
-                <DropdownMenuItem className="text-error-500">
+                <DropdownMenuItem
+                  className="text-error-500"
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    setShowDeleteConfirm(true)
+                  }}
+                >
                   <Trash2 className="size-4" /> Delete Chat
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+              <DialogContent className="max-w-[348px] p-7 rounded-xl">
+                <DialogTitle>Delete this chat?</DialogTitle>
+                <DialogDescription className="mt-2">
+                  This chat will be moved to Trash. You can restore it later from the Trash filter.
+                </DialogDescription>
+                <div className="mt-8 grid grid-cols-2 gap-x-3">
+                  <DialogClose asChild>
+                    <Button visual="gray" variant="outlined">
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                  <Button onClick={() => {
+                    if (!selectedConversation) return
+                    threadActions
+                      .trash(selectedConversation.id)
+                      .catch((err) => console.error("trash failed", err))
+                    setShowDeleteConfirm(false)
+                  }}>
+                    Yes, Delete
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </div>
@@ -647,7 +980,24 @@ export function Chats({
           scrollBar={<ScrollBar className="w-4 p-1" />}
         >
           <div className="p-8 pb-[100px] grid gap-y-6">
-            {displayedMessages.map((m, i) => (
+            {isSwitching && (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
+                <Spinner size={24} strokeWidth={3} />
+                <p className="text-sm">Loading messages...</p>
+              </div>
+            )}
+            {!isSwitching && keyError && (
+              <div className="flex flex-col items-center justify-center py-20 text-error-500 gap-2">
+                <p className="text-sm font-medium">{keyError}</p>
+              </div>
+            )}
+            {!isSwitching && displayedMessages.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
+                <Send className="size-8 stroke-[1.5]" />
+                <p className="text-sm">No messages yet. Say hello!</p>
+              </div>
+            )}
+            {!isSwitching && displayedMessages.map((m, i) => (
               <div
                 key={i}
                 className={`flex ${
@@ -660,17 +1010,25 @@ export function Chats({
                   <Bubble
                     message={m}
                     currentUser={currentUser}
-                    participantUsername={
-                      receiverUser.username ?? "Unknown User"
-                    }
+                    participantUsername={receiverUser.username ?? ""}
+                    participantName={fullName}
+                    onForward={handleOpenForward}
+                    onReply={setReplyingTo}
+                    onEdit={handleStartEdit}
+                    onLocalDelete={handleLocalDelete}
+                    onLocalRestore={handleLocalRestore}
+                    replyToMessage={m.replyToMessageId ? localMsgs.find((r) => r.id === m.replyToMessageId) ?? null : null}
                   />
                 ) : (
                   <YourBubble
                     message={m}
                     currentUser={currentUser}
-                    participantUsername={
-                      receiverUser.username ?? "Unknown User"
-                    }
+                    onForward={handleOpenForward}
+                    onReply={setReplyingTo}
+                    replyToMessage={m.replyToMessageId ? localMsgs.find((r) => r.id === m.replyToMessageId) ?? null : null}
+                    participantName={fullName}
+                    participantUsername={receiverUser.username ?? ""}
+                    participantAvatarUrl={receiverUser.avatarUrl ?? undefined}
                   />
                 )}
               </div>
@@ -682,9 +1040,47 @@ export function Chats({
 
       {/* Composer */}
       <div
-        className="p-3 flex min-h-[68px] bg-white items-end gap-x-3 absolute bottom-0 inset-x-0"
+        className="bg-white absolute bottom-0 inset-x-0"
         ref={bottomRef}
       >
+        {replyingTo && !editingMessage && (
+          <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-primary-600">
+                Replying to {replyingTo.senderId === currentUser?.id ? "yourself" : (receiverUser?.firstName || receiverUser?.username || "Unknown")}
+              </p>
+              <p className="text-xs text-gray-500 truncate">
+                {replyingTo.content || "Encrypted message"}
+              </p>
+            </div>
+            <IconButton
+              visual="gray"
+              variant="ghost"
+              size="sm"
+              onClick={() => setReplyingTo(null)}
+            >
+              <X className="size-4" />
+            </IconButton>
+          </div>
+        )}
+
+        {editingMessage && (
+          <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+            <p className="text-xs font-semibold text-primary-600">
+              Editing Message...
+            </p>
+            <IconButton
+              visual="gray"
+              variant="ghost"
+              size="sm"
+              onClick={handleCancelEdit}
+            >
+              <X className="size-4" />
+            </IconButton>
+          </div>
+        )}
+
+        <div className="p-3 flex min-h-[68px] items-end gap-x-3">
         {/* Emoji + File + Upload */}
         <div className="flex items-center gap-x-1">
           <EmojiPicker onEmojiSelect={handleEmojiSelect}>
@@ -834,48 +1230,109 @@ export function Chats({
         {/* Text area + send - Updated */}
         <InputGroup className="flex-auto w-[calc(100%-164px)]">
           <Textarea
+            ref={composerRef}
             placeholder={
-              selectedFiles.length > 0
-                ? "Add a message (optional)..."
-                : "Send message..."
+              editingMessage
+                ? "Edit message..."
+                : selectedFiles.length > 0
+                  ? "Add a message (optional)..."
+                  : "Send message..."
             }
-            className="[field-sizing:content] h-auto pr-11 w-full"
+            className={`w-full resize-none py-1.5 leading-5 min-h-0 h-9 overflow-hidden ${
+              editingMessage
+                ? "pr-[120px] ring-1 ring-primary-500 border-primary-500 focus:ring-primary-500 focus:border-primary-500"
+                : "pr-11"
+            }`}
+            rows={1}
             value={textareaValue}
             onChange={(e) => setTextareaValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (editingMessage) {
+                if (e.key === "Escape") {
+                  e.preventDefault()
+                  handleCancelEdit()
+                } else if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSaveEdit()
+                }
+              }
+            }}
           />
-          <InputRightElement className="items-end pb-[13px]">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger
-                  className={`text-gray-500 hover:text-primary-500 disabled:text-gray-400 ${
-                    isUploading ? "animate-pulse" : ""
-                  }`}
-                  onClick={handleSendMessage}
-                  disabled={
-                    (!textareaValue.trim() && selectedFiles.length === 0) ||
-                    isUploading
-                  }
+          <InputRightElement
+            className={editingMessage ? "!w-[120px] justify-end" : "items-center"}
+          >
+            {editingMessage ? (
+              <div className="flex items-center gap-x-3 pr-3">
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="text-xs font-medium text-gray-500 hover:text-gray-700"
                 >
-                  {isUploading ? (
-                    <Loader className="size-[18px] animate-spin" />
-                  ) : (
-                    <Send className="size-[18px]" />
-                  )}
-                </TooltipTrigger>
-                <TooltipContent>
-                  {isUploading
-                    ? "Uploading..."
-                    : selectedFiles.length > 0
-                      ? "Send files"
-                      : textareaValue
-                        ? "Send message"
-                        : "Type a message or select files"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+                  Cancel
+                </button>
+                <span className="h-3 w-px bg-gray-300" aria-hidden />
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  disabled={
+                    !textareaValue.trim() ||
+                    !keyReady ||
+                    !!keyError ||
+                    textareaValue.trim() === (editingMessage.content || "").trim()
+                  }
+                  className="text-xs font-semibold text-primary-500 hover:text-primary-600 disabled:text-gray-400 disabled:cursor-not-allowed"
+                >
+                  Save
+                </button>
+              </div>
+            ) : (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger
+                    className={`text-gray-500 hover:text-primary-500 disabled:text-gray-400 ${
+                      isUploading || isSending ? "animate-pulse" : ""
+                    }`}
+                    onClick={handleSendMessage}
+                    disabled={
+                      (!textareaValue.trim() && selectedFiles.length === 0) ||
+                      isUploading ||
+                      isSending ||
+                      !keyReady ||
+                      !!keyError
+                    }
+                  >
+                    {isUploading || isSending ? (
+                      <Spinner size={18} strokeWidth={3} />
+                    ) : (
+                      <Send className="size-[18px]" />
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {isUploading
+                      ? "Uploading..."
+                      : selectedFiles.length > 0
+                        ? "Send files"
+                        : textareaValue
+                          ? "Send message"
+                          : "Type a message or select files"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </InputRightElement>
         </InputGroup>
+        </div>
       </div>
+
+      <ForwardMessageDialog
+        open={forwardOpen}
+        onOpenChange={setForwardOpen}
+        message={forwardTarget}
+        currentUserId={currentUser.id}
+        currentUserProfile={currentUserProfile}
+        receiverUser={receiverUser}
+        privateKey={privateKey}
+      />
     </div>
   )
 }
