@@ -7,8 +7,8 @@ import {
   IsIn,
   IsDefined,
   ValidateNested,
-} from 'class-validator';
-import { Type } from 'class-transformer';
+} from "class-validator";
+import { Type } from "class-transformer";
 
 class CmsValueItem {
   @IsString()
@@ -41,7 +41,7 @@ class CmsScopeTask {
   @IsString()
   location?: string;
 
-  @IsIn(['Student', 'Junior', 'Medior', 'Senior', 'Guru'])
+  @IsIn(["Student", "Junior", "Medior", "Senior", "Guru"])
   experienceLevel: string;
 
   @IsNumber()
@@ -76,24 +76,6 @@ class CmsMediaRef {
   @IsOptional()
   @IsString()
   filename?: string;
-}
-
-class CmsGalleryItem {
-  @IsOptional()
-  image?: CmsMediaRef | string | number | null;
-
-  @IsOptional()
-  @IsString()
-  caption?: string;
-}
-
-class CmsVideoWalkthrough {
-  @IsOptional()
-  upload?: CmsMediaRef | string | number | null;
-
-  @IsOptional()
-  @IsString()
-  externalUrl?: string;
 }
 
 class CmsRecentQuestion {
@@ -157,10 +139,6 @@ export class ProjectSyncDto {
   @IsOptional()
   @IsString()
   datePublished?: string;
-
-  @IsOptional()
-  @IsNumber()
-  projectDurationTotal?: number;
 
   @IsOptional()
   @IsString()
@@ -301,12 +279,12 @@ export class ProjectSyncDto {
   // Payload draft state. We map both _status and status so the hook can
   // forward whichever shape is convenient.
   @IsOptional()
-  @IsIn(['draft', 'published', 'flagged', 'archived'])
-  _status?: 'draft' | 'published' | 'flagged' | 'archived';
+  @IsIn(["draft", "published", "flagged", "archived"])
+  _status?: "draft" | "published" | "flagged" | "archived";
 
   @IsOptional()
-  @IsIn(['draft', 'published', 'flagged', 'archived'])
-  status?: 'draft' | 'published' | 'flagged' | 'archived';
+  @IsIn(["draft", "published", "flagged", "archived"])
+  status?: "draft" | "published" | "flagged" | "archived";
 
   // Resolved media URLs — the cms-service hook resolves Payload media
   // refs into absolute URLs before forwarding so the listings-service
@@ -323,28 +301,4 @@ export class ProjectSyncDto {
   @IsOptional()
   @IsString()
   videoUrl?: string;
-
-  // Raw Payload media refs (kept so the service can fall back if
-  // thumbnailUrl/galleryUrls are absent).
-  @IsOptional()
-  thumbnail?: CmsMediaRef | string | number | null;
-
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CmsGalleryItem)
-  gallery?: CmsGalleryItem[];
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => CmsVideoWalkthrough)
-  videoWalkthrough?: CmsVideoWalkthrough;
-
-  @IsOptional()
-  @IsString()
-  createdAt?: string;
-
-  @IsOptional()
-  @IsString()
-  updatedAt?: string;
 }

@@ -1,12 +1,12 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
-import { ProjectSyncDto } from './dto/project-sync.dto';
+import { Inject, Injectable, Logger } from "@nestjs/common";
+import { InjectDataSource } from "@nestjs/typeorm";
+import { DataSource } from "typeorm";
+import { ProjectSyncDto } from "./dto/project-sync.dto";
 import {
   DELIVERABLES_ADAPTER,
   DeliverablesAdapter,
-} from './deliverables/deliverables.adapter';
-import { SKILLS_ADAPTER, SkillsAdapter } from './skills/skills.adapter';
+} from "./deliverables/deliverables.adapter";
+import { SKILLS_ADAPTER, SkillsAdapter } from "./skills/skills.adapter";
 
 /**
  * ProjectSyncService — receives Payload CMS project documents and
@@ -33,7 +33,9 @@ export class ProjectSyncService {
     private readonly skillsAdapter: SkillsAdapter,
   ) {}
 
-  async syncFromCms(dto: ProjectSyncDto): Promise<{ id: string; payloadId: string; action: 'created' | 'updated' }> {
+  async syncFromCms(
+    dto: ProjectSyncDto,
+  ): Promise<{ id: string; payloadId: string; action: "created" | "updated" }> {
     const payloadId = String(dto.id);
     const row = await this.toRow(dto);
 
@@ -109,13 +111,15 @@ export class ProjectSyncService {
           // `projectHistoryRatings` (§14.14) can group by the same
           // owner across projects. Fall back to `cms-sync` for legacy
           // documents that were synced before the field existed.
-          dto.ownerId?.trim() || 'cms-sync',
+          dto.ownerId?.trim() || "cms-sync",
           dto.datePublished ?? null,
         ],
       );
       const id = result[0]?.id as string;
-      this.logger.log(`Project created from CMS: id=${id} payloadId=${payloadId} slug=${row.slug}`);
-      return { id, payloadId, action: 'created' };
+      this.logger.log(
+        `Project created from CMS: id=${id} payloadId=${payloadId} slug=${row.slug}`,
+      );
+      return { id, payloadId, action: "created" };
     }
 
     const id = existing[0].id as string;
@@ -205,8 +209,10 @@ export class ProjectSyncService {
         dto.ownerId?.trim() || null,
       ],
     );
-    this.logger.log(`Project updated from CMS: id=${id} payloadId=${payloadId} slug=${row.slug}`);
-    return { id, payloadId, action: 'updated' };
+    this.logger.log(
+      `Project updated from CMS: id=${id} payloadId=${payloadId} slug=${row.slug}`,
+    );
+    return { id, payloadId, action: "updated" };
   }
 
   async deleteByPayloadId(payloadId: string): Promise<{ deleted: boolean }> {
@@ -216,36 +222,43 @@ export class ProjectSyncService {
         WHERE "payloadId" = $1`,
       [payloadId],
     );
-    const affected = Array.isArray(result) ? (result[1] ?? 0) : 0;
-    this.logger.log(`Project soft-deleted from CMS: payloadId=${payloadId} affected=${affected}`);
+    const affected = Array.isArray(result) ? result[1] ?? 0 : 0;
+    this.logger.log(
+      `Project soft-deleted from CMS: payloadId=${payloadId} affected=${affected}`,
+    );
     return { deleted: affected > 0 };
   }
 
   // ── Internal mapping ─────────────────────────────────────────────────
 
   private async toRow(dto: ProjectSyncDto) {
-    const categories = (dto.categories ?? []).map((c) => c.value).filter(Boolean);
-    const subcategories = (dto.subcategories ?? []).map((c) => c.value).filter(Boolean);
+    const categories = (dto.categories ?? [])
+      .map((c) => c.value)
+      .filter(Boolean);
+    const subcategories = (dto.subcategories ?? [])
+      .map((c) => c.value)
+      .filter(Boolean);
     const tags = (dto.tags ?? []).map((t) => t.value).filter(Boolean);
-    const authoredSkills = (dto.projectSkills ?? []).map((s) => s.value).filter(Boolean);
-    const programmingLanguages = (dto.programmingLanguages ?? []).map((p) => p.value).filter(Boolean);
-    const developmentTech = (dto.developmentTechnologies ?? []).map((d) => d.value).filter(Boolean);
+    const authoredSkills = (dto.projectSkills ?? [])
+      .map((s) => s.value)
+      .filter(Boolean);
+    const programmingLanguages = (dto.programmingLanguages ?? [])
+      .map((p) => p.value)
+      .filter(Boolean);
+    const developmentTech = (dto.developmentTechnologies ?? [])
+      .map((d) => d.value)
+      .filter(Boolean);
 
-    const thumbnail = dto.thumbnailUrl ?? this.resolveMediaUrl(dto.thumbnail);
-    const galleryUrls = dto.galleryUrls && dto.galleryUrls.length
-      ? dto.galleryUrls
-      : (dto.gallery ?? [])
-          .map((g) => this.resolveMediaUrl(g.image))
-          .filter((u): u is string => !!u);
-    const mediaUrls = [thumbnail, ...galleryUrls].filter((u): u is string => !!u);
+    const thumbnail = dto.thumbnailUrl ?? null;
+    const galleryUrls = dto.galleryUrls ?? [];
+    const mediaUrls = [thumbnail, ...galleryUrls].filter(
+      (u): u is string => !!u,
+    );
 
-    const videoUrl =
-      dto.videoUrl ??
-      dto.videoWalkthrough?.externalUrl ??
-      this.resolveMediaUrl(dto.videoWalkthrough?.upload) ??
-      null;
+    const videoUrl = dto.videoUrl ?? null;
 
-    const description = this.lexicalToHtml(dto.fullDescription) || dto.shortDescription || '';
+    const description =
+      this.lexicalToHtml(dto.fullDescription) || dto.shortDescription || "";
     const authoredDeliverables = this.deliverablePhases(dto.deliverables);
     const scope = this.scopePhases(dto.scope);
     // §01 Deliverables — spec says deliverables are "derived from an
@@ -290,7 +303,7 @@ export class ProjectSyncService {
     const faqs = (dto.faqQuestions ?? []).map((f) => ({
       question: f.question,
       answer:
-        typeof f.answer === 'string' ? f.answer : this.lexicalToHtml(f.answer),
+        typeof f.answer === "string" ? f.answer : this.lexicalToHtml(f.answer),
     }));
 
     // Per docs §13 L62 the UI "Project Duration" label maps to the
@@ -316,14 +329,19 @@ export class ProjectSyncService {
     }));
 
     const status = this.resolveStatus(dto);
-    const industries = (dto.industries ?? []).map((i) => i.value).filter(Boolean);
+    const industries = (dto.industries ?? [])
+      .map((i) => i.value)
+      .filter(Boolean);
     // relatedProjects arrives as array of IDs (numbers) or populated
     // docs. Normalize to string IDs for storage.
-    const relatedProjectIds = (Array.isArray(dto.relatedProjects) ? dto.relatedProjects : [])
+    const relatedProjectIds = (
+      Array.isArray(dto.relatedProjects) ? dto.relatedProjects : []
+    )
       .map((r) => {
-        if (typeof r === 'number' || typeof r === 'string') return String(r);
-        if (r && typeof r === 'object' && (r as any).id) return String((r as any).id);
-        return '';
+        if (typeof r === "number" || typeof r === "string") return String(r);
+        if (r && typeof r === "object" && (r as any).id)
+          return String((r as any).id);
+        return "";
       })
       .filter(Boolean);
 
@@ -331,7 +349,7 @@ export class ProjectSyncService {
       title: dto.title,
       slug: dto.slug,
       description,
-      shortDescription: dto.shortDescription ?? '',
+      shortDescription: dto.shortDescription ?? "",
       category: categories[0] ?? null,
       categories,
       subcategories,
@@ -365,23 +383,31 @@ export class ProjectSyncService {
     };
   }
 
-  private resolveStatus(dto: ProjectSyncDto): 'draft' | 'published' | 'flagged' | 'archived' {
+  private resolveStatus(
+    dto: ProjectSyncDto,
+  ): "draft" | "published" | "flagged" | "archived" {
     const raw = dto.status ?? dto._status;
-    if (raw === 'published' || raw === 'draft' || raw === 'flagged' || raw === 'archived') {
+    if (
+      raw === "published" ||
+      raw === "draft" ||
+      raw === "flagged" ||
+      raw === "archived"
+    ) {
       return raw;
     }
-    return 'published';
+    return "published";
   }
 
   private resolveMediaUrl(ref: unknown): string | null {
     if (!ref) return null;
-    if (typeof ref === 'string') return ref;
-    if (typeof ref === 'object') {
+    if (typeof ref === "string") return ref;
+    if (typeof ref === "object") {
       const obj = ref as Record<string, unknown>;
-      if (typeof obj.url === 'string') return obj.url;
-      if (typeof obj.filename === 'string') {
-        const base = process.env.CMS_PUBLIC_URL || process.env.CMS_SERVICE_URL || '';
-        return `${base.replace(/\/$/, '')}/media/${obj.filename}`;
+      if (typeof obj.url === "string") return obj.url;
+      if (typeof obj.filename === "string") {
+        const base =
+          process.env.CMS_PUBLIC_URL || process.env.CMS_SERVICE_URL || "";
+        return `${base.replace(/\/$/, "")}/media/${obj.filename}`;
       }
     }
     return null;
@@ -395,9 +421,7 @@ export class ProjectSyncService {
    * mostly a pass-through with defensive normalization for stray inputs
    * (e.g. legacy snake_case from Strapi migrations).
    */
-  private scopePhases(
-    value: unknown,
-  ): Array<{
+  private scopePhases(value: unknown): Array<{
     phaseName: string;
     order: number;
     tasks: Array<{
@@ -411,32 +435,32 @@ export class ProjectSyncService {
   }> {
     if (!Array.isArray(value)) return [];
     const normalizeTask = (raw: unknown) => {
-      if (!raw || typeof raw !== 'object') return null;
+      if (!raw || typeof raw !== "object") return null;
       const t = raw as Record<string, unknown>;
-      const title = typeof t.title === 'string' ? t.title : '';
+      const title = typeof t.title === "string" ? t.title : "";
       const roleName =
-        typeof t.roleName === 'string'
+        typeof t.roleName === "string"
           ? t.roleName
-          : typeof (t as any).role_name === 'string'
-            ? ((t as any).role_name as string)
-            : '';
+          : typeof (t as any).role_name === "string"
+          ? ((t as any).role_name as string)
+          : "";
       const location =
-        typeof t.location === 'string' ? (t.location as string) : undefined;
+        typeof t.location === "string" ? (t.location as string) : undefined;
       const experienceLevel =
-        typeof t.experienceLevel === 'string'
+        typeof t.experienceLevel === "string"
           ? t.experienceLevel
-          : typeof (t as any).experience_level === 'string'
-            ? ((t as any).experience_level as string)
-            : 'Medior';
+          : typeof (t as any).experience_level === "string"
+          ? ((t as any).experience_level as string)
+          : "Medior";
       const estimatedHours =
-        typeof t.estimatedHours === 'number'
+        typeof t.estimatedHours === "number"
           ? t.estimatedHours
-          : typeof (t as any).estimated_hours === 'number'
-            ? ((t as any).estimated_hours as number)
-            : 0;
+          : typeof (t as any).estimated_hours === "number"
+          ? ((t as any).estimated_hours as number)
+          : 0;
       if (!title || !roleName) return null;
       const assigneeEmail =
-        typeof t.assigneeEmail === 'string' && t.assigneeEmail.trim()
+        typeof t.assigneeEmail === "string" && t.assigneeEmail.trim()
           ? t.assigneeEmail.trim().toLowerCase()
           : undefined;
       return {
@@ -450,15 +474,15 @@ export class ProjectSyncService {
     };
     return value
       .map((phase) => {
-        if (!phase || typeof phase !== 'object') return null;
+        if (!phase || typeof phase !== "object") return null;
         const p = phase as Record<string, unknown>;
         const phaseName =
-          typeof p.phaseName === 'string'
+          typeof p.phaseName === "string"
             ? p.phaseName
-            : typeof (p as any).phase_name === 'string'
-              ? ((p as any).phase_name as string)
-              : '';
-        const order = typeof p.order === 'number' ? p.order : 0;
+            : typeof (p as any).phase_name === "string"
+            ? ((p as any).phase_name as string)
+            : "";
+        const order = typeof p.order === "number" ? p.order : 0;
         const rawTasks = Array.isArray(p.tasks) ? p.tasks : [];
         const tasks = rawTasks
           .map(normalizeTask)
@@ -482,24 +506,31 @@ export class ProjectSyncService {
     if (!Array.isArray(value)) return [];
     return value
       .map((phase) => {
-        if (!phase || typeof phase !== 'object') return null;
+        if (!phase || typeof phase !== "object") return null;
         const p = phase as Record<string, unknown>;
-        const phaseLabel = typeof p.phaseLabel === 'string' ? p.phaseLabel : '';
-        const phaseName = typeof p.phaseName === 'string' ? p.phaseName : '';
+        const phaseLabel = typeof p.phaseLabel === "string" ? p.phaseLabel : "";
+        const phaseName = typeof p.phaseName === "string" ? p.phaseName : "";
         const rawItems = Array.isArray(p.items) ? p.items : [];
         const items = rawItems
           .map((it) => {
-            if (typeof it === 'string') return it;
-            if (it && typeof it === 'object' && typeof (it as { text?: unknown }).text === 'string') {
+            if (typeof it === "string") return it;
+            if (
+              it &&
+              typeof it === "object" &&
+              typeof (it as { text?: unknown }).text === "string"
+            ) {
               return (it as { text: string }).text;
             }
-            return '';
+            return "";
           })
           .filter(Boolean);
         if (!phaseLabel && !phaseName && items.length === 0) return null;
         return { phaseLabel, phaseName, items };
       })
-      .filter((p): p is { phaseLabel: string; phaseName: string; items: string[] } => !!p);
+      .filter(
+        (p): p is { phaseLabel: string; phaseName: string; items: string[] } =>
+          !!p,
+      );
   }
 
   /**
@@ -548,10 +579,11 @@ export class ProjectSyncService {
    *   defense-in-depth.
    */
   private lexicalToHtml(node: unknown): string {
-    if (node == null) return '';
-    if (typeof node === 'string') return this.escapeHtml(node);
-    if (Array.isArray(node)) return node.map((n) => this.lexicalToHtml(n)).join('');
-    if (typeof node !== 'object') return '';
+    if (node == null) return "";
+    if (typeof node === "string") return this.escapeHtml(node);
+    if (Array.isArray(node))
+      return node.map((n) => this.lexicalToHtml(n)).join("");
+    if (typeof node !== "object") return "";
 
     const n = node as Record<string, unknown>;
 
@@ -560,106 +592,107 @@ export class ProjectSyncService {
 
     const children = Array.isArray(n.children)
       ? this.lexicalToHtml(n.children)
-      : '';
+      : "";
 
-    const type = typeof n.type === 'string' ? n.type : '';
+    const type = typeof n.type === "string" ? n.type : "";
 
     // Block-level text alignment — Lexical stores this in the `format`
     // string field of block nodes. Convert to a style attribute.
     const alignStyle = this.blockAlignStyle(n.format);
 
     switch (type) {
-      case 'root':
+      case "root":
         return children;
 
-      case 'paragraph':
-        if (!children) return '';
+      case "paragraph":
+        if (!children) return "";
         return alignStyle
           ? `<p style="${alignStyle}">${children}</p>`
           : `<p>${children}</p>`;
 
-      case 'heading': {
+      case "heading": {
         const tag =
-          typeof n.tag === 'string' && /^h[1-6]$/.test(n.tag) ? n.tag : 'h2';
+          typeof n.tag === "string" && /^h[1-6]$/.test(n.tag) ? n.tag : "h2";
         return alignStyle
           ? `<${tag} style="${alignStyle}">${children}</${tag}>`
           : `<${tag}>${children}</${tag}>`;
       }
 
-      case 'list': {
+      case "list": {
         const listType = n.listType;
-        if (listType === 'check') {
+        if (listType === "check") {
           return `<ul class="task-list">${children}</ul>`;
         }
-        const listTag = listType === 'number' ? 'ol' : 'ul';
+        const listTag = listType === "number" ? "ol" : "ul";
         return `<${listTag}>${children}</${listTag}>`;
       }
 
-      case 'listitem': {
+      case "listitem": {
         // Check-list items carry a `checked: boolean` flag
-        if (typeof n.checked === 'boolean') {
+        if (typeof n.checked === "boolean") {
           return `<li data-checked="${n.checked}">${children}</li>`;
         }
         return `<li>${children}</li>`;
       }
 
-      case 'quote':
+      case "quote":
         return `<blockquote>${children}</blockquote>`;
 
-      case 'code': {
+      case "code": {
         const language =
-          typeof n.language === 'string' && n.language
+          typeof n.language === "string" && n.language
             ? ` class="language-${this.escapeHtml(n.language)}"`
-            : '';
+            : "";
         return `<pre><code${language}>${children}</code></pre>`;
       }
 
-      case 'horizontalrule':
-        return '<hr/>';
+      case "horizontalrule":
+        return "<hr/>";
 
-      case 'linebreak':
-        return '<br/>';
+      case "linebreak":
+        return "<br/>";
 
-      case 'link':
-      case 'autolink': {
+      case "link":
+      case "autolink": {
         const fields = (n.fields ?? {}) as Record<string, unknown>;
         const url =
-          typeof n.url === 'string'
+          typeof n.url === "string"
             ? n.url
-            : typeof fields.url === 'string'
-              ? (fields.url as string)
-              : typeof fields.doc === 'string'
-                ? `/${fields.doc}`
-                : '#';
+            : typeof fields.url === "string"
+            ? (fields.url as string)
+            : typeof fields.doc === "string"
+            ? `/${fields.doc}`
+            : "#";
         const newTab =
-          typeof fields.newTab === 'boolean' ? fields.newTab : true;
+          typeof fields.newTab === "boolean" ? fields.newTab : true;
         const escapedUrl = this.escapeHtml(url);
-        const target = newTab ? ' target="_blank"' : '';
-        const rel = newTab ? ' rel="noopener noreferrer"' : '';
+        const target = newTab ? ' target="_blank"' : "";
+        const rel = newTab ? ' rel="noopener noreferrer"' : "";
         return `<a href="${escapedUrl}"${target}${rel}>${children}</a>`;
       }
 
-      case 'upload': {
+      case "upload": {
         // Expect `value` to be a populated media doc (cms hook populates
         // upload IDs before posting). If it arrives as a raw id we skip
         // gracefully rather than breaking the HTML.
         const value = n.value;
-        if (!value || typeof value !== 'object') return '';
+        if (!value || typeof value !== "object") return "";
         const v = value as Record<string, unknown>;
         const url = this.resolveMediaUrl(v);
-        if (!url) return '';
-        const alt = typeof v.alt === 'string' ? v.alt : '';
-        const width = typeof v.width === 'number' ? ` width="${v.width}"` : '';
+        if (!url) return "";
+        const alt = typeof v.alt === "string" ? v.alt : "";
+        const width = typeof v.width === "number" ? ` width="${v.width}"` : "";
         const height =
-          typeof v.height === 'number' ? ` height="${v.height}"` : '';
-        return `<img src="${this.escapeHtml(url)}" alt="${this.escapeHtml(alt)}"${width}${height} loading="lazy" />`;
+          typeof v.height === "number" ? ` height="${v.height}"` : "";
+        return `<img src="${this.escapeHtml(url)}" alt="${this.escapeHtml(
+          alt,
+        )}"${width}${height} loading="lazy" />`;
       }
 
-      case 'text': {
-        const text =
-          typeof n.text === 'string' ? this.escapeHtml(n.text) : '';
-        if (!text) return '';
-        const fmt = typeof n.format === 'number' ? n.format : 0;
+      case "text": {
+        const text = typeof n.text === "string" ? this.escapeHtml(n.text) : "";
+        if (!text) return "";
+        const fmt = typeof n.format === "number" ? n.format : 0;
         let wrapped = text;
         // Apply inline formats inside-out so the innermost tag hugs the text.
         if (fmt & 64) wrapped = `<sup>${wrapped}</sup>`;
@@ -679,29 +712,29 @@ export class ProjectSyncService {
   }
 
   private blockAlignStyle(format: unknown): string {
-    if (typeof format !== 'string' || !format) return '';
+    if (typeof format !== "string" || !format) return "";
     switch (format) {
-      case 'center':
-        return 'text-align:center';
-      case 'right':
-      case 'end':
-        return 'text-align:right';
-      case 'justify':
-        return 'text-align:justify';
-      case 'left':
-      case 'start':
-        return 'text-align:left';
+      case "center":
+        return "text-align:center";
+      case "right":
+      case "end":
+        return "text-align:right";
+      case "justify":
+        return "text-align:justify";
+      case "left":
+      case "start":
+        return "text-align:left";
       default:
-        return '';
+        return "";
     }
   }
 
   private escapeHtml(s: string): string {
     return s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 }
