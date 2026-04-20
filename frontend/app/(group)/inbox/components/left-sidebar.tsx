@@ -97,6 +97,7 @@ interface LeftSidebarProps {
   setSelectedConversation: (conv: Conversation) => void
   messagesByConversation: Record<string, Message[]>
   initialThreadId?: string | null
+  initialParticipantId?: string | null
 }
 
 const LeftSidebar = ({
@@ -104,6 +105,7 @@ const LeftSidebar = ({
   setSelectedConversation,
   messagesByConversation,
   initialThreadId,
+  initialParticipantId,
 }: LeftSidebarProps) => {
   const { pinnedChats, setPinnedChats, toggleShowPinnedIcon, showPinnedIcon, checkedChats, resetCheckedChats } =
     useChatsContext()
@@ -307,6 +309,50 @@ const LeftSidebar = ({
           }
         }
 
+        // Handle ?participantId=: find existing 1:1 thread or create a new one.
+        if (initialParticipantId && currentUserId && !cancelled) {
+          const match = placeholders.find(
+            (c) => !c.isGroup && c.participantIds?.includes(initialParticipantId)
+          )
+          if (match) {
+            if (match.isTrashed) {
+              threadActions.untrash(match.id).catch(() => {})
+              const restored = { ...match, isTrashed: false }
+              setConversations((prev) =>
+                prev.map((c) => (c.id === match.id ? restored : c))
+              )
+              setSelectedConversation(restored)
+            } else {
+              setSelectedConversation(match)
+            }
+            router.replace("/inbox", { scroll: false })
+          } else {
+            // No existing thread — create one then select it.
+            try {
+              const newThread = await apiFetch<Conversation>("/v1/threads", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
+                body: {
+                  participantIds: [currentUserId, initialParticipantId],
+                  isGroup: false,
+                },
+              })
+              if (!cancelled) {
+                const placeholder = {
+                  ...newThread,
+                  participantUsername: "…",
+                  lastMessagePreview: "",
+                } as Conversation
+                setConversations((prev) => [placeholder, ...prev])
+                setSelectedConversation(placeholder)
+                router.replace("/inbox", { scroll: false })
+              }
+            } catch (err) {
+              console.error("[LeftSidebar] failed to create thread:", err)
+            }
+          }
+        }
+
         // Load the private key once per pass; share across all unwraps.
         const privKeyRef: { current: CryptoKey | null } = { current: null }
         if (currentUserId) {
@@ -336,7 +382,7 @@ const LeftSidebar = ({
     return () => {
       cancelled = true
     }
-  }, [currentUserId, token, initialThreadId])
+  }, [currentUserId, token, initialThreadId, initialParticipantId])
 
   // Live-sync: apply server state-change broadcasts (pin/star/archive/...)
   useUserChannel({

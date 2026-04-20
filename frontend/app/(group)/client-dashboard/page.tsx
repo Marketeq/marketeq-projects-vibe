@@ -174,16 +174,16 @@ const Table = () => {
           <thead>
             <tr>
               <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-                Project Name
+                Contract Name
               </th>
               <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-                Team
+                Talent
               </th>
               <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
                 Status
               </th>
               <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-                Next Milestone
+                Value
               </th>
             </tr>
           </thead>
@@ -191,16 +191,16 @@ const Table = () => {
           <tbody>
             <tr>
               <td colSpan={4} className="px-6 py-10 text-center text-sm text-gray-400">
-                No projects yet. Create your first project to get started.
+                No contracts yet.
               </td>
             </tr>
           </tbody>
         </table>
       </div>
       <div className="h-[49px] flex items-center md:hidden justify-center border-t border-gray-200">
-        <NextLink href="/projects">
+        <NextLink href="/my-contracts">
           <Button className="text-dark-blue-400" variant="link">
-            View All Projects <ArrowRight className="size-3.5" />
+            View All Contracts <ArrowRight className="size-3.5" />
           </Button>
         </NextLink>
       </div>
@@ -306,30 +306,30 @@ const RecentProjects = () => {
     <div className="border bg-white border-gray-200 rounded-lg shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
       <div className="flex justify-between items-start pt-5 px-6">
         <h1 className="text-lg leading-[21.78px] font-bold text-dark-blue-400">
-          Recent Projects
+          Recent Contracts
         </h1>
 
-        <NextLink href="/projects" className="xs:max-md:hidden">
+        <NextLink href="/my-contracts" className="xs:max-md:hidden">
           <Button
             className="text-dark-blue-400"
             variant="link"
             visual="gray"
           >
-            View All Projects <ArrowRight className="size-3.5" />
+            View All Contracts <ArrowRight className="size-3.5" />
           </Button>
         </NextLink>
       </div>
 
-      <Tabs className="mt-1" defaultValue="All Projects">
+      <Tabs className="mt-1" defaultValue="All Contracts">
         <TabsList className="px-6 w-full justify-start">
-          <TabsTrigger className="pb-[11px]" value="All Projects">
-            All Projects
+          <TabsTrigger className="pb-[11px]" value="All Contracts">
+            All Contracts
           </TabsTrigger>
           <TabsTrigger className="pb-[11px]" value="Created by Me">
             Created by Me
           </TabsTrigger>
         </TabsList>
-        <TabsContent className="overflow-x-hidden" value="All Projects">
+        <TabsContent className="overflow-x-hidden" value="All Contracts">
           <Table />
         </TabsContent>
         <TabsContent className="overflow-x-hidden" value="Created by Me">
