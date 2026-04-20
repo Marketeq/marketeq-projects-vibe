@@ -20,6 +20,7 @@ export class ProjectMapper {
     project.skills = raw.skills;
     project.categories = raw.categories;
     project.subCategories = raw.subCategories;
+    project.categorySelections = raw.categorySelections;
     project.status = raw.status;
     project.projectDatePublished = raw.projectDatePublished;
     project.userId = raw.userId;
@@ -52,6 +53,7 @@ export class ProjectMapper {
     projectEntity.skills = project.skills!;
     projectEntity.categories = project.categories!;
     projectEntity.subCategories = project.subCategories!;
+    projectEntity.categorySelections = project.categorySelections ?? [];
     projectEntity.status = project.status ?? undefined;
     projectEntity.projectDatePublished = project.projectDatePublished ?? undefined;
     projectEntity.userId = project.userId;

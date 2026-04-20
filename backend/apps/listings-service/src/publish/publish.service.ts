@@ -36,6 +36,8 @@ import {
   ProjectModerationService,
 } from './project-moderation.service';
 import { CloudflareStorageService } from './cloudflare-storage.service';
+import { HttpService } from '@nestjs/axios';
+import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategory.dto';
 
 @Injectable()
 export class PublishService {
@@ -48,6 +50,7 @@ export class PublishService {
     private readonly taskRepository: TaskRepository,
     private readonly projectModerationService: ProjectModerationService,
     private readonly cloudflareStorageService: CloudflareStorageService,
+    private readonly httpService: HttpService,
   ) {}
 
   private throwIfHttpException(error: unknown): void {
@@ -107,6 +110,7 @@ export class PublishService {
     fullDescription?: string | null;
     categories?: string[] | null;
     subCategories?: string[] | null;
+    categorySelections?: { category: string; subCategories: string[] }[] | null;
     tags?: string[] | null;
     imageUrl?: string | null;
   }): ProjectModerationInput {
@@ -116,6 +120,7 @@ export class PublishService {
       fullDescription: input.fullDescription,
       categories: input.categories ?? [],
       subCategories: input.subCategories ?? [],
+      categorySelections: input.categorySelections ?? [],
       tags: input.tags ?? [],
       imageUrl: input.imageUrl ?? undefined,
     };
@@ -235,6 +240,31 @@ export class PublishService {
     return normalized;
   }
 
+  async createModeratedSubcategory(dto: CreateModeratedSubcategoryDto) {
+    const categoryServiceUrl =
+      (process.env.CATEGORY_SERVICE_URL || 'http://localhost:3023').replace(/\/$/, '');
+    const serviceToken = process.env.INTERNAL_SERVICE_TOKEN;
+
+    if (!serviceToken) {
+      throw new InternalServerErrorException(
+        'INTERNAL_SERVICE_TOKEN is not configured for listings-service.',
+      );
+    }
+
+    const response = await this.httpService.axiosRef.post(
+      `${categoryServiceUrl}/api/categories/user-subcategory/moderated`,
+      dto,
+      {
+        headers: {
+          'x-service-token': serviceToken,
+        },
+        timeout: 5000,
+      },
+    );
+
+    return response.data;
+  }
+
   async createNewProject(
     userId: string,
     dto: CreateProjectDto,
@@ -246,6 +276,7 @@ export class PublishService {
         industries: dto.industries ?? dto.industry ?? [],
         tags: dto.tags ?? [],
         skills: dto.skills ?? [],
+        categorySelections: dto.categorySelections ?? [],
         status: 'draft',
         projectDatePublished: null,
       };
@@ -310,6 +341,7 @@ export class PublishService {
         fullDescription: project.fullDescription,
         categories: project.categories,
         subCategories: project.subCategories,
+        categorySelections: project.categorySelections,
         tags: project.tags,
       });
 
@@ -719,4 +751,3 @@ export class PublishService {
     return { user };
   }
 }
-

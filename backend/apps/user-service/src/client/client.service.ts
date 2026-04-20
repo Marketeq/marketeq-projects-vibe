@@ -51,22 +51,29 @@ export class ClientService {
         throw new UnprocessableEntityException('Client already exists');
       }
 
-      const existingUsername = await userRepository.findOne({
-        where: { username: dto.username },
-      });
+      // Only enforce uniqueness when a username was actually supplied.
+      // `dto.username` is optional; passing `undefined` into the where clause
+      // matches rows with NULL usernames and would produce a spurious
+      // "Username already exists" error for any other user without a
+      // username set.
+      if (dto.username) {
+        const existingUsername = await userRepository.findOne({
+          where: { username: dto.username },
+        });
 
-      if (existingUsername && existingUsername.id !== user.id) {
-        throw new BadRequestException('Username already exists');
+        if (existingUsername && existingUsername.id !== user.id) {
+          throw new BadRequestException('Username already exists');
+        }
       }
 
       Object.assign(user, {
         userType: 'client',
-        username: dto.username,
         firstName: dto.firstName,
         lastName: dto.lastName,
         avatarUrl: dto.avatarUrl ?? user.avatarUrl,
         lookingToWorkWith: dto.lookingToWorkWith,
         projectTypes: dto.projectTypes,
+        ...(dto.username ? { username: dto.username } : {}),
       });
 
       await userRepository.save(user);

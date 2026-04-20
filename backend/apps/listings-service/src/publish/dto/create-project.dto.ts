@@ -10,6 +10,7 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { CreateProjectPhaseDto } from './create-phase.dto';
+import { ProjectCategorySelectionDto } from './project-category-selection.dto';
 
 export class CreateProjectDto {
   @ApiProperty({ description: 'Project title', maxLength: 120 })
@@ -96,6 +97,17 @@ export class CreateProjectDto {
   @IsString({ each: true })
   @IsOptional()
   subCategories?: string[];
+
+  @ApiProperty({
+    description: 'Parent-child category selections selected for the project',
+    type: [ProjectCategorySelectionDto],
+    required: false,
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProjectCategorySelectionDto)
+  @IsOptional()
+  categorySelections?: ProjectCategorySelectionDto[];
 
   @ApiProperty({
     description: 'Industries associated with the project',

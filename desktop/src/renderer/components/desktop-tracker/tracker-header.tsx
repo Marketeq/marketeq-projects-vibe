@@ -23,7 +23,7 @@ function MenuIcon({ open }: { open: boolean }) {
 }
 
 export function TrackerHeader({
-  title = "Marketeq Time Tracker",
+  title: _title,
   isMenuOpen = false,
   onMenuClick,
   className,
@@ -31,12 +31,10 @@ export function TrackerHeader({
   return (
     <div
       className={cn(
-        "drag-region flex items-center justify-between pl-[78px] pr-4 pt-3 pb-2 shrink-0",
+        "drag-region flex items-center justify-end pr-4 pt-2 pb-1 shrink-0",
         className
       )}
     >
-      <span className="text-sm font-semibold text-dark-blue-400">{title}</span>
-
       <button
         onClick={onMenuClick}
         className="text-gray-500 hover:text-gray-700 transition"
