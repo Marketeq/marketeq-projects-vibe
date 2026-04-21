@@ -1230,8 +1230,7 @@ const ShareYourLocation = ({
       if (!accepted) {
         setError("languages", {
           type: "manual",
-          message:
-            "This value is not a valid language suggestion for this field.",
+          message: "We couldn’t match that language. Try a suggested option.",
         })
         setLanguagesQuery("")
         setIsLanguagesOpen(false)
@@ -1850,7 +1849,7 @@ const TopSkills = ({
       const accepted = await submitAutocompleteValue("skills", trimmedValue)
       if (!accepted) {
         onInvalidCustomValue?.(
-          "This value is not a valid skill suggestion for this field."
+          "We couldn’t match that skill. Try a suggested option."
         )
         setOpen(false)
         return
@@ -2102,8 +2101,7 @@ const ShowcaseYourTalent = ({
       if (!accepted) {
         setError("industriesWorkedWith", {
           type: "manual",
-          message:
-            "This value is not a valid industry suggestion for this field.",
+          message: "We couldn’t match that industry. Try a suggested option.",
         })
         setIndustriesQuery("")
         setIsIndustriesOpen(false)
@@ -2372,7 +2370,7 @@ const ShowcaseYourTalent = ({
                                   setError("recentJobTitle", {
                                     type: "manual",
                                     message:
-                                      "This value is not a valid job title suggestion for this field.",
+                                      "We couldn’t match that job title. Try a suggested option.",
                                   })
                                   setJobTitleQuery("")
                                   setIsJobTitleOpen(false)
@@ -2736,7 +2734,9 @@ const ProjectPreferences = ({
     if (!isKnownSuggestion) {
       const accepted = await submitAutocompleteValue("project_types", value)
       if (!accepted) {
-        onInvalidCustomValue?.("Please enter a valid project type.")
+        onInvalidCustomValue?.(
+          "We couldn’t match that project type. Try a suggested option."
+        )
         setIsProjectPreferencesOpen(false)
         return
       }
