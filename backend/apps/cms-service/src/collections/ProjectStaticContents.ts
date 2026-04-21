@@ -9,10 +9,11 @@ const guaranteeIconOptions = [
 ];
 
 /**
- * Project static sidebar content shown on project details pages.
+ * Project static content shown on project details pages:
+ * right-rail guarantee block and main-column "How It Works" card.
  *
- * Mirrors the right-rail "Peace of Mind Guarantee" section used by
- * frontend/app/(group)/(group)/project-details/[slug]/page.tsx.
+ * Consumed via listings-service → `projectStaticContent` on
+ * GET /v1/projects/slug/:slug (see frontend project-details page).
  */
 export const ProjectStaticContents: CollectionConfig = {
   slug: "project-static-contents",
@@ -24,7 +25,7 @@ export const ProjectStaticContents: CollectionConfig = {
     useAsTitle: "title",
     defaultColumns: ["title", "slug", "updatedAt"],
     description:
-      "Editable static copy for the Project Details sidebar guarantee and policy block.",
+      "Editable static copy for the Project Details page: sidebar guarantee, policy link, and How It Works section.",
   },
   versions: {
     drafts: {
@@ -163,6 +164,83 @@ export const ProjectStaticContents: CollectionConfig = {
               required: true,
               defaultValue: "/policy",
               admin: { width: "50%" },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      name: "howItWorks",
+      type: "group",
+      admin: {
+        description:
+          "Center-column “How It Works” card — step columns only. Section title, subtitle, and “Learn More” are fixed in the app, not editable here.",
+      },
+      fields: [
+        {
+          name: "steps",
+          type: "array",
+          required: true,
+          minRows: 1,
+          maxRows: 6,
+          defaultValue: [
+            {
+              stepNumber: "1",
+              title: "Customize Your Scope",
+              description:
+                "Lorem ipsum odor amet, consectetuer adipiscing elit.",
+            },
+            {
+              stepNumber: "1",
+              title: "Customize Your Scope",
+              description:
+                "Lorem ipsum odor amet, consectetuer adipiscing elit.",
+            },
+            {
+              stepNumber: "1",
+              title: "Customize Your Scope",
+              description:
+                "Lorem ipsum odor amet, consectetuer adipiscing elit.",
+            },
+          ],
+          labels: {
+            singular: "Step",
+            plural: "Steps",
+          },
+          admin: {
+            description: "Columns shown in the three-up grid (typically three steps).",
+          },
+          fields: [
+            {
+              name: "stepNumber",
+              type: "text",
+              required: true,
+              defaultValue: "1",
+              admin: {
+                description: "Large step numeral shown beside the title (e.g. 1, 2, 3).",
+              },
+            },
+            {
+              name: "title",
+              type: "text",
+              required: true,
+              defaultValue: "Customize Your Scope",
+            },
+            {
+              name: "description",
+              type: "textarea",
+              required: true,
+              defaultValue:
+                "Lorem ipsum odor amet, consectetuer adipiscing elit.",
+            },
+            {
+              name: "icon",
+              type: "upload",
+              relationTo: "media",
+              admin: {
+                description:
+                  "Optional square image upload (uses CMS Media). Leave empty for the default gray placeholder.",
+              },
             },
           ],
         },

@@ -8,27 +8,8 @@ import {
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 
-type ProjectStaticIcon = "rocket" | "shield-zap" | "shield-dollar";
-
-interface ProjectStaticItem {
-  icon: ProjectStaticIcon;
-  title: string;
-  description: string;
-}
-
-interface ProjectStaticContent {
-  heading: string;
-  guaranteeItems: ProjectStaticItem[];
-  highlightedNotice: {
-    icon: ProjectStaticIcon;
-    description: string;
-  };
-  policy: {
-    prefixText: string;
-    linkLabel: string;
-    linkHref: string;
-  };
-}
+import { mapCmsProjectStaticDocToDto } from "./map-cms-project-static-doc";
+import type { ProjectStaticContent } from "./project-static-content.dto";
 
 /**
  * Read-only adapter over the `public.projects` table.
@@ -448,11 +429,12 @@ export class CmsProjectsController {
   }
 
   /**
-   * Sidebar content for the project-details "Peace of Mind Guarantee" block.
+   * Static copy for project details (sidebar guarantee + steps block DTO).
    *
-   * Source of truth is Payload CMS collection `project-static-contents`.
-   * We read the published document with slug `default`; if missing, we
-   * gracefully return null so the frontend can apply local fallbacks.
+   * Reads Payload `project-static-contents` (slug `default`) server-side and
+   * maps with {@link mapCmsProjectStaticDocToDto}. The UI never talks to CMS;
+   * it only sees `projectStaticContent` on this API. Returns null if missing
+   * or invalid so the client can fall back to built-in defaults.
    */
   private async getProjectStaticContent(): Promise<ProjectStaticContent | null> {
     const baseUrl = (
@@ -463,93 +445,44 @@ export class CmsProjectsController {
 
     const query = new URLSearchParams({
       limit: "1",
-      depth: "0",
+      depth: "1",
+      draft: "false",
       "where[slug][equals]": "default",
     });
 
-    const res = await fetch(
-      `${baseUrl}/api/project-static-contents?${query.toString()}`,
-    );
-    if (!res.ok) return null;
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const cmsApiKey = process.env.CMS_API_KEY;
+    if (cmsApiKey) {
+      headers.Authorization = `API-Key ${cmsApiKey}`;
+    }
 
-    const body = await res.json();
-    const doc = body?.docs?.[0];
-    if (!doc) return null;
-
-    return this.mapProjectStaticContent(doc);
-  }
-
-  private mapProjectStaticContent(doc: any): ProjectStaticContent | null {
-    if (!doc || typeof doc !== "object") return null;
-
-    const isValidIcon = (value: unknown): value is ProjectStaticIcon =>
-      value === "rocket" || value === "shield-zap" || value === "shield-dollar";
-
-    const guaranteeItems = Array.isArray(doc.guaranteeItems)
-      ? doc.guaranteeItems
-          .map((item: any) => {
-            const icon = isValidIcon(item?.icon) ? item.icon : null;
-            const title =
-              typeof item?.title === "string" ? item.title.trim() : "";
-            const description =
-              typeof item?.description === "string"
-                ? item.description.trim()
-                : "";
-            if (!icon || !title || !description) return null;
-            return { icon, title, description };
-          })
-          .filter(
-            (item: ProjectStaticItem | null): item is ProjectStaticItem =>
-              item !== null,
-          )
-      : [];
-
-    const highlightedIcon = isValidIcon(doc?.highlightedNotice?.icon)
-      ? doc.highlightedNotice.icon
-      : null;
-    const highlightedDescription =
-      typeof doc?.highlightedNotice?.description === "string"
-        ? doc.highlightedNotice.description.trim()
-        : "";
-
-    const heading = typeof doc.heading === "string" ? doc.heading.trim() : "";
-    const policyPrefixText =
-      typeof doc?.policy?.prefixText === "string"
-        ? doc.policy.prefixText.trim()
-        : "";
-    const policyLinkLabel =
-      typeof doc?.policy?.linkLabel === "string"
-        ? doc.policy.linkLabel.trim()
-        : "";
-    const policyLinkHref =
-      typeof doc?.policy?.linkHref === "string"
-        ? doc.policy.linkHref.trim()
-        : "";
-
-    if (
-      !heading ||
-      guaranteeItems.length === 0 ||
-      !highlightedIcon ||
-      !highlightedDescription ||
-      !policyPrefixText ||
-      !policyLinkLabel
-    ) {
+    const url = `${baseUrl}/api/project-static-contents?${query.toString()}`;
+    let res: Response;
+    try {
+      res = await fetch(url, { headers });
+    } catch (err) {
+      this.logger.warn(
+        `project-static-contents fetch error (${baseUrl}): ${err}`,
+      );
+      return null;
+    }
+    if (!res.ok) {
+      this.logger.warn(
+        `project-static-contents HTTP ${res.status} from ${baseUrl}`,
+      );
       return null;
     }
 
-    return {
-      heading,
-      guaranteeItems,
-      highlightedNotice: {
-        icon: highlightedIcon,
-        description: highlightedDescription,
-      },
-      policy: {
-        prefixText: policyPrefixText,
-        linkLabel: policyLinkLabel,
-        linkHref: policyLinkHref || "/policy",
-      },
-    };
+    const body = await res.json();
+    const doc = body?.docs?.[0];
+    if (!doc) {
+      this.logger.warn(
+        `project-static-contents: no published doc with slug "default" at ${baseUrl}`,
+      );
+      return null;
+    }
+
+    return mapCmsProjectStaticDocToDto(doc);
   }
 }
 

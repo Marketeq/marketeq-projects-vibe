@@ -10,6 +10,12 @@ import {
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
+import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
+import {
+  buildProjectStaticContentFromGateway,
+  type ProjectStaticContent,
+  type ProjectStaticIcon,
+} from "@/lib/project-details/project-static-content-from-api"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -455,55 +461,6 @@ const CarouselNextTrigger = () => {
   ) : null
 }
 
-type ProjectStaticIcon = "rocket" | "shield-zap" | "shield-dollar"
-
-type ProjectStaticContent = {
-  heading: string
-  guaranteeItems: Array<{
-    icon: ProjectStaticIcon
-    title: string
-    description: string
-  }>
-  highlightedNotice: {
-    icon: ProjectStaticIcon
-    description: string
-  }
-  policy: {
-    prefixText: string
-    linkLabel: string
-    linkHref: string
-  }
-}
-
-const DEFAULT_PROJECT_STATIC_CONTENT: ProjectStaticContent = {
-  heading: "Peace of Mind Guarantee",
-  guaranteeItems: [
-    {
-      icon: "rocket",
-      title: "Peace of Mind Guarantee",
-      description:
-        "If the project falls short, you can initiate a dispute for a full refund.",
-    },
-    {
-      icon: "shield-zap",
-      title: "Peace of Mind Guarantee",
-      description:
-        "If the project falls short, you can initiate a dispute for a full refund.",
-    },
-  ],
-  highlightedNotice: {
-    icon: "shield-dollar",
-    description:
-      "If the project falls short, you can initiate a dispute for a full refund.",
-  },
-  policy: {
-    prefixText:
-      "We securely process payments and release upon rating. We securely process payments",
-    linkLabel: "See Policy Details.",
-    linkHref: "/policy",
-  },
-}
-
 const renderProjectStaticIcon = (
   icon: ProjectStaticIcon,
   className: string
@@ -625,91 +582,7 @@ export default function ProjectDetails() {
   }, [])
 
   const projectStaticContent = React.useMemo<ProjectStaticContent>(() => {
-    const payload = project?.projectStaticContent
-    if (!payload || typeof payload !== "object") {
-      return DEFAULT_PROJECT_STATIC_CONTENT
-    }
-
-    const guaranteeItems = Array.isArray(payload.guaranteeItems)
-      ? payload.guaranteeItems
-          .map((item: any) => {
-            const icon = item?.icon
-            const title =
-              typeof item?.title === "string" ? item.title.trim() : ""
-            const description =
-              typeof item?.description === "string"
-                ? item.description.trim()
-                : ""
-            if (
-              (icon !== "rocket" &&
-                icon !== "shield-zap" &&
-                icon !== "shield-dollar") ||
-              !title ||
-              !description
-            ) {
-              return null
-            }
-            return {
-              icon,
-              title,
-              description,
-            }
-          })
-          .filter(Boolean)
-      : []
-
-    if (guaranteeItems.length === 0) {
-      return DEFAULT_PROJECT_STATIC_CONTENT
-    }
-
-    const heading =
-      typeof payload.heading === "string" && payload.heading.trim()
-        ? payload.heading.trim()
-        : DEFAULT_PROJECT_STATIC_CONTENT.heading
-
-    const highlightedIcon = payload?.highlightedNotice?.icon
-    const highlightedDescription =
-      typeof payload?.highlightedNotice?.description === "string" &&
-      payload.highlightedNotice.description.trim()
-        ? payload.highlightedNotice.description.trim()
-        : DEFAULT_PROJECT_STATIC_CONTENT.highlightedNotice.description
-
-    const highlightedNotice = {
-      icon:
-        highlightedIcon === "rocket" ||
-        highlightedIcon === "shield-zap" ||
-        highlightedIcon === "shield-dollar"
-          ? highlightedIcon
-          : DEFAULT_PROJECT_STATIC_CONTENT.highlightedNotice.icon,
-      description: highlightedDescription,
-    }
-
-    const policyPrefixText =
-      typeof payload?.policy?.prefixText === "string" &&
-      payload.policy.prefixText.trim()
-        ? payload.policy.prefixText.trim()
-        : DEFAULT_PROJECT_STATIC_CONTENT.policy.prefixText
-    const policyLinkLabel =
-      typeof payload?.policy?.linkLabel === "string" &&
-      payload.policy.linkLabel.trim()
-        ? payload.policy.linkLabel.trim()
-        : DEFAULT_PROJECT_STATIC_CONTENT.policy.linkLabel
-    const policyLinkHref =
-      typeof payload?.policy?.linkHref === "string" &&
-      payload.policy.linkHref.trim()
-        ? payload.policy.linkHref.trim()
-        : DEFAULT_PROJECT_STATIC_CONTENT.policy.linkHref
-
-    return {
-      heading,
-      guaranteeItems,
-      highlightedNotice,
-      policy: {
-        prefixText: policyPrefixText,
-        linkLabel: policyLinkLabel,
-        linkHref: policyLinkHref,
-      },
-    }
+    return buildProjectStaticContentFromGateway(project?.projectStaticContent)
   }, [project?.projectStaticContent])
 
   if (loading) {
@@ -1766,84 +1639,9 @@ export default function ProjectDetails() {
                         )}
                       </div>
 
-                      <div className="relative border mt-6 border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                        <h3 className="text-center text-xs leading-none text-dark-blue-400 font-semibold">
-                          How It Works
-                        </h3>
-
-                        <h1 className="mt-3 text-center text-2xl leading-none text-dark-blue-400 font-semibold">
-                          Unlock your project vision, your way
-                        </h1>
-
-                        <div className="mt-8 grid grid-cols-3 gap-x-[47px] px-6">
-                          <article>
-                            <div className="size-[77px] bg-gray-100 rounded-lg" />
-
-                            <div className="flex items-center gap-x-3 mt-3">
-                              <h1 className="text-[32px] font-bold leading-none text-dark-blue-400">
-                                1
-                              </h1>
-
-                              <h3 className="text-base leading-none font-semibold text-dark-blue-400">
-                                Customize Your Scope
-                              </h3>
-                            </div>
-
-                            <div className="pl-[28px]">
-                              <p className="text-xs text-dark-blue-400 leading-none">
-                                Lorem ipsum odor amet, consectetuer adipiscing
-                                elit.
-                              </p>
-                            </div>
-                          </article>
-                          <article>
-                            <div className="size-[77px] bg-gray-100 rounded-lg" />
-
-                            <div className="flex items-center gap-x-3 mt-3">
-                              <h1 className="text-[32px] font-bold leading-none text-dark-blue-400">
-                                1
-                              </h1>
-
-                              <h3 className="text-base leading-none font-semibold text-dark-blue-400">
-                                Customize Your Scope
-                              </h3>
-                            </div>
-
-                            <div className="pl-[28px]">
-                              <p className="text-xs text-dark-blue-400 leading-none">
-                                Lorem ipsum odor amet, consectetuer adipiscing
-                                elit.
-                              </p>
-                            </div>
-                          </article>
-                          <article>
-                            <div className="size-[77px] bg-gray-100 rounded-lg" />
-
-                            <div className="flex items-center gap-x-3 mt-3">
-                              <h1 className="text-[32px] font-bold leading-none text-dark-blue-400">
-                                1
-                              </h1>
-
-                              <h3 className="text-base leading-none font-semibold text-dark-blue-400">
-                                Customize Your Scope
-                              </h3>
-                            </div>
-
-                            <div className="pl-[28px]">
-                              <p className="text-xs text-dark-blue-400 leading-none">
-                                Lorem ipsum odor amet, consectetuer adipiscing
-                                elit.
-                              </p>
-                            </div>
-                          </article>
-                        </div>
-
-                        <div className="mt-8  flex items-center justify-center">
-                          <Button visual="gray" variant="outlined">
-                            Learn More
-                          </Button>
-                        </div>
-                      </div>
+                      <ProjectDetailsStepsSection
+                        steps={projectStaticContent.howItWorks.steps}
+                      />
 
                       <div className="relative p-6 mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                         <h1 className="text-xl font-bold leading-none text-dark-blue-400">
