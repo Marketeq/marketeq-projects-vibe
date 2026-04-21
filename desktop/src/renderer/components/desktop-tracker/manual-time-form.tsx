@@ -7,7 +7,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui"
 interface ContractOption {
   id: string
   name: string
-  clientHandle: string
+  clientHandle?: string
   avatarSrc?: string
 }
 

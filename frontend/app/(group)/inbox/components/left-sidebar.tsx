@@ -345,6 +345,10 @@ const LeftSidebar = ({
   // it returns the existing 1:1 thread if one already exists.
   useEffect(() => {
     if (!initialParticipantId || !currentUserId || !token) return
+    if (initialParticipantId === currentUserId) {
+      router.replace("/inbox", { scroll: false })
+      return
+    }
     let cancelled = false
     ;(async () => {
       try {
@@ -605,7 +609,7 @@ const LeftSidebar = ({
               </InputLeftElement>
             </InputGroup>
 
-            <IconButton className="size-8" visual="gray" variant="ghost">
+            <IconButton className="size-8 rounded-full" visual="gray" variant="ghost">
               <Edit05 className="size-4" />
             </IconButton>
           </div>

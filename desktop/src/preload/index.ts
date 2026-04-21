@@ -19,6 +19,7 @@ import type {
   CaptureHealth,
   IdleResolutionNeededPayload,
   IdleResolveArgs,
+  IpcErrorResult,
   NotificationPrefs,
   OnboardingMarkStepArgs,
   OnboardingState,
@@ -38,8 +39,23 @@ import type {
   TimerStartArgs,
   TimerStopArgs,
   TimerTickPayload,
+  UpdaterProgressInfo,
+  UpdaterStatusDTO,
 } from '../shared/ipc-contracts';
 import type { AppInfo, PingResult } from '../shared/types';
+
+function unwrapIpcResult<T>(result: T | IpcErrorResult): T {
+  if (
+    result &&
+    typeof result === 'object' &&
+    'ok' in result &&
+    (result as IpcErrorResult).ok === false
+  ) {
+    const err = result as IpcErrorResult;
+    throw new Error(`${err.code}: ${err.message}`);
+  }
+  return result as T;
+}
 
 const dtt = {
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(IPC.appInfo),
@@ -53,10 +69,14 @@ const dtt = {
   },
 
   permissions: {
-    check: (kind: PermissionKindShort): Promise<PermissionStatusShort> =>
-      ipcRenderer.invoke(IPC.permissionsCheck, kind),
-    request: (kind: PermissionKindShort): Promise<PermissionStatusShort> =>
-      ipcRenderer.invoke(IPC.permissionsRequest, kind),
+    check: async (kind: PermissionKindShort): Promise<PermissionStatusShort> =>
+      unwrapIpcResult<PermissionStatusShort>(
+        await ipcRenderer.invoke(IPC.permissionsCheck, kind),
+      ),
+    request: async (kind: PermissionKindShort): Promise<PermissionStatusShort> =>
+      unwrapIpcResult<PermissionStatusShort>(
+        await ipcRenderer.invoke(IPC.permissionsRequest, kind),
+      ),
     getAll: (): Promise<PermissionStatuses> =>
       ipcRenderer.invoke(IPC.permissionsGetAll),
     openSettings: (key: OsPermissionKey): Promise<void> =>
@@ -64,20 +84,38 @@ const dtt = {
   },
 
   timer: {
-    start: (args: TimerStartArgs): Promise<TimerSnapshotDTO> =>
-      ipcRenderer.invoke(IPC.timerStart, args),
-    pause: (): Promise<TimerSnapshotDTO> => ipcRenderer.invoke(IPC.timerPause),
-    resume: (): Promise<TimerSnapshotDTO> => ipcRenderer.invoke(IPC.timerResume),
-    stop: (args?: TimerStopArgs): Promise<TimerSnapshotDTO> =>
-      ipcRenderer.invoke(IPC.timerStop, args ?? {}),
-    breakStart: (args: TimerBreakStartArgs): Promise<TimerSnapshotDTO> =>
-      ipcRenderer.invoke(IPC.timerBreakStart, args),
-    breakEnd: (): Promise<TimerSnapshotDTO> =>
-      ipcRenderer.invoke(IPC.timerBreakEnd),
-    getState: (): Promise<TimerSnapshotDTO> =>
-      ipcRenderer.invoke(IPC.timerGetState),
-    resolveIdle: (args: IdleResolveArgs): Promise<TimerSnapshotDTO> =>
-      ipcRenderer.invoke(IPC.idleResolve, args),
+    start: async (args: TimerStartArgs): Promise<TimerSnapshotDTO> =>
+      unwrapIpcResult<TimerSnapshotDTO>(
+        await ipcRenderer.invoke(IPC.timerStart, args),
+      ),
+    pause: async (): Promise<TimerSnapshotDTO> =>
+      unwrapIpcResult<TimerSnapshotDTO>(
+        await ipcRenderer.invoke(IPC.timerPause),
+      ),
+    resume: async (): Promise<TimerSnapshotDTO> =>
+      unwrapIpcResult<TimerSnapshotDTO>(
+        await ipcRenderer.invoke(IPC.timerResume),
+      ),
+    stop: async (args?: TimerStopArgs): Promise<TimerSnapshotDTO> =>
+      unwrapIpcResult<TimerSnapshotDTO>(
+        await ipcRenderer.invoke(IPC.timerStop, args ?? {}),
+      ),
+    breakStart: async (args: TimerBreakStartArgs): Promise<TimerSnapshotDTO> =>
+      unwrapIpcResult<TimerSnapshotDTO>(
+        await ipcRenderer.invoke(IPC.timerBreakStart, args),
+      ),
+    breakEnd: async (): Promise<TimerSnapshotDTO> =>
+      unwrapIpcResult<TimerSnapshotDTO>(
+        await ipcRenderer.invoke(IPC.timerBreakEnd),
+      ),
+    getState: async (): Promise<TimerSnapshotDTO> =>
+      unwrapIpcResult<TimerSnapshotDTO>(
+        await ipcRenderer.invoke(IPC.timerGetState),
+      ),
+    resolveIdle: async (args: IdleResolveArgs): Promise<TimerSnapshotDTO> =>
+      unwrapIpcResult<TimerSnapshotDTO>(
+        await ipcRenderer.invoke(IPC.idleResolve, args),
+      ),
 
     onStateChanged: (cb: (snap: TimerSnapshotDTO) => void) => {
       const handler = (_evt: IpcRendererEvent, payload: TimerSnapshotDTO) =>
@@ -174,18 +212,29 @@ const dtt = {
   },
 
   capture: {
-    captureNow: (): Promise<ScreenshotTakenEvent[]> =>
-      ipcRenderer.invoke(IPC.screenshotCaptureNow),
-    getScreenshotStats: (): Promise<ScreenshotStats> =>
-      ipcRenderer.invoke(IPC.screenshotGetStats),
-    deleteScreenshot: (id: string): Promise<void> =>
-      ipcRenderer.invoke(IPC.screenshotDelete, id),
-    getActivityStats: (): Promise<ActivityStats> =>
-      ipcRenderer.invoke(IPC.activityGetStats),
-    getRecentActivity: (limit?: number): Promise<ActivitySample[]> =>
-      ipcRenderer.invoke(IPC.activityGetRecent, limit),
-    getHealth: (): Promise<CaptureHealth> =>
-      ipcRenderer.invoke(IPC.captureHealth),
+    captureNow: async (): Promise<ScreenshotTakenEvent[]> =>
+      unwrapIpcResult<ScreenshotTakenEvent[]>(
+        await ipcRenderer.invoke(IPC.screenshotCaptureNow),
+      ),
+    getScreenshotStats: async (): Promise<ScreenshotStats> =>
+      unwrapIpcResult<ScreenshotStats>(
+        await ipcRenderer.invoke(IPC.screenshotGetStats),
+      ),
+    deleteScreenshot: async (id: string): Promise<void> => {
+      unwrapIpcResult<void>(await ipcRenderer.invoke(IPC.screenshotDelete, id));
+    },
+    getActivityStats: async (): Promise<ActivityStats> =>
+      unwrapIpcResult<ActivityStats>(
+        await ipcRenderer.invoke(IPC.activityGetStats),
+      ),
+    getRecentActivity: async (limit?: number): Promise<ActivitySample[]> =>
+      unwrapIpcResult<ActivitySample[]>(
+        await ipcRenderer.invoke(IPC.activityGetRecent, limit),
+      ),
+    getHealth: async (): Promise<CaptureHealth> =>
+      unwrapIpcResult<CaptureHealth>(
+        await ipcRenderer.invoke(IPC.captureHealth),
+      ),
     onScreenshotTaken: (cb: (e: ScreenshotTakenEvent) => void) => {
       const handler = (_evt: IpcRendererEvent, payload: ScreenshotTakenEvent) =>
         cb(payload);
@@ -265,14 +314,22 @@ const dtt = {
     },
   },
   updater: {
-    getStatus: (): Promise<UpdaterStatusDTO> =>
-      ipcRenderer.invoke(IPC.updaterGetStatus),
-    checkNow: (): Promise<UpdaterStatusDTO> =>
-      ipcRenderer.invoke(IPC.updaterCheckNow),
-    setChannel: (channel: string): Promise<UpdaterStatusDTO> =>
-      ipcRenderer.invoke(IPC.updaterSetChannel, channel),
-    download: (): Promise<UpdaterStatusDTO> =>
-      ipcRenderer.invoke(IPC.updaterDownload),
+    getStatus: async (): Promise<UpdaterStatusDTO> =>
+      unwrapIpcResult<UpdaterStatusDTO>(
+        await ipcRenderer.invoke(IPC.updaterGetStatus),
+      ),
+    checkNow: async (): Promise<UpdaterStatusDTO> =>
+      unwrapIpcResult<UpdaterStatusDTO>(
+        await ipcRenderer.invoke(IPC.updaterCheckNow),
+      ),
+    setChannel: async (channel: string): Promise<UpdaterStatusDTO> =>
+      unwrapIpcResult<UpdaterStatusDTO>(
+        await ipcRenderer.invoke(IPC.updaterSetChannel, channel),
+      ),
+    download: async (): Promise<UpdaterStatusDTO> =>
+      unwrapIpcResult<UpdaterStatusDTO>(
+        await ipcRenderer.invoke(IPC.updaterDownload),
+      ),
     quitAndInstall: (): Promise<void> =>
       ipcRenderer.invoke(IPC.updaterQuitAndInstall),
     onStatusChanged: (cb: (s: UpdaterStatusDTO) => void) => {

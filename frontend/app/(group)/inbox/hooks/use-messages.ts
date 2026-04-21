@@ -51,12 +51,23 @@ export function useMessages(convId: string, token: string, keyReady?: boolean) {
 
         const decrypted = await Promise.all(
           data.map(async (m) => {
-            if (!m.ciphertext) return m
-            if (!key) return { ...m, content: "🔒 Encrypted message" }
-            try {
-              return { ...m, content: await decryptAES(m.ciphertext, key) }
-            } catch {
-              return { ...m, content: "🔒 Encrypted message" }
+            const decryptIfNeeded = async (cipher?: string | null) => {
+              if (!cipher) return null
+              if (!key) return "🔒 Encrypted message"
+              try {
+                return await decryptAES(cipher, key)
+              } catch {
+                return "🔒 Encrypted message"
+              }
+            }
+            const [content, quotedContent] = await Promise.all([
+              decryptIfNeeded(m.ciphertext),
+              decryptIfNeeded(m.quotedCiphertext),
+            ])
+            return {
+              ...m,
+              content: content ?? m.content ?? "",
+              quotedContent,
             }
           })
         )

@@ -33,6 +33,10 @@ export function useUserChannel(handlers: UserChannelHandlers) {
             `/v1/threads/ably-token`,
             { method: "GET", headers: { Authorization: `Bearer ${token}` } }
           )
+          if (!details) {
+            cb("Realtime token unavailable", null)
+            return
+          }
           cb(null, details)
         } catch (err) {
           cb(err instanceof Error ? err.message : String(err), null)
