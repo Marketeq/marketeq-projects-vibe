@@ -6,6 +6,7 @@ import { OnboardingDismissedDto } from './dtos/onboarding-dismissed.dto';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { RefreshTimezoneDto } from './dtos/refresh-timezone.dto';
+import { UpdatePhoneDto } from './dtos/update-phone.dto';
 
 @ApiTags('User')
 @Controller('user')
@@ -37,5 +38,15 @@ export class UserSelfController {
     @Body() dto: RefreshTimezoneDto,
   ) {
     return this.userService.refreshTimezone(user, req, dto.clientTimeZone);
+  }
+
+  @ApiOperation({ summary: 'Update the current user phone number' })
+  @Patch('phone')
+  async updatePhone(
+    @CurrentUser() user: JwtUser,
+    @Body() dto: UpdatePhoneDto,
+  ) {
+    const resolved = await this.userService.getUserByClaims(user);
+    return this.userService.updatePhone(resolved.id, dto.phone ?? null);
   }
 }

@@ -160,6 +160,12 @@ export class UserService {
     return this.updateUser(id, { bio });
   }
 
+  async updatePhone(id: string, phone: string | null): Promise<User> {
+    const user = await this.getUserById(id);
+    user.phone = phone ?? undefined;
+    return this.userRepository.save(user);
+  }
+
   async updateRate(id: string, dto: { rateMin?: number; rateMax?: number }) {
     return this.updateUser(id, {
       rateMin: dto.rateMin,
