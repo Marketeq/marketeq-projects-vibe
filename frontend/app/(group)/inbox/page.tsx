@@ -108,6 +108,7 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
 export default function InboxRoot() {
   const searchParams = useSearchParams()
   const initialThreadId = searchParams?.get("threadId") ?? null
+  const initialParticipantId = searchParams?.get("participantId") ?? null
 
   const [selectedConversation, setSelectedConversation] =
     useState<Conversation | null>(null)
@@ -171,6 +172,7 @@ export default function InboxRoot() {
           // We pass the whole map so Sidebar can show previews:
           messagesByConversation={messagesByConversation}
           initialThreadId={initialThreadId}
+          initialParticipantId={initialParticipantId}
         />
 
         {/* pass only the conversation and token into Chats */}

@@ -32,6 +32,8 @@ export interface EventBridgeDeps {
   activityMonitor?: ActivityMonitor;
   /** Returns the current device id (from device_self). */
   getDeviceId: () => string | null;
+  /** Returns the current authenticated user's id, or null. */
+  getUserId?: () => string | null;
   logger?: Logger;
 }
 
@@ -92,20 +94,29 @@ export function createEventBridge(deps: EventBridgeDeps) {
   if (deps.screenshotService) {
     const offShot = deps.screenshotService.subscribe((e: ScreenshotTakenEvent) => {
       try {
+        const userId = deps.getUserId?.() ?? null;
+        if (!userId) {
+          log?.warn('event-bridge: screenshot skipped — no authenticated user');
+          return;
+        }
+        // Get active contract from timer so screenshots are linked to the
+        // correct project/service/team contract
+        const snap = deps.timer.getSnapshot();
+        const contract = snap.pickedContract;
         deps.outbox.enqueue({
           kind: 'screenshot.confirm',
           method: 'POST',
           path: '/screenshots/confirm',
           id: `req_shot-${e.id}`,
           payload: {
-            id: e.id,
-            sessionId: e.sessionId,
+            userId,
             key: `screenshots/${e.id}.jpg`,
-            takenAt: e.takenAt,
-            width: e.width,
-            height: e.height,
+            mimeType: 'image/jpeg',
             bytes: e.bytes,
-            sensitive: e.sensitive,
+            timestamp: new Date(e.takenAt).toISOString(),
+            monitorId: e.displayId,
+            contractId: contract?.contractId ?? undefined,
+            taskId: contract?.taskId ?? undefined,
           },
         });
       } catch (err) {

@@ -12,6 +12,9 @@ import { DaySummary } from "./day-summary"
 import { ContractEntry, TaskEntry } from "./contract-entry"
 import { AccountMenu } from "./account-menu"
 import { NewTaskForm } from "./new-task-form"
+import { useAuth } from "@/contexts/auth"
+import { getContractsForTalent, getContractsForClient, type ContractDTO } from "@/service/http/contracts"
+import { getTasksForContract, createContractTask } from "@/service/http/tasks"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -246,6 +249,54 @@ export function TimeTrackerApp({
   const [view, setView] = React.useState<View>("main")
   const [days, setDays] = React.useState<DayGroup[]>(initialDays || SEED_DAYS)
   const [expandedContracts, setExpandedContracts] = React.useState<Set<string>>(new Set())
+  const { user } = useAuth()
+
+  // Fetch real contracts + their tasks from backend
+  React.useEffect(() => {
+    if (!user?.id) return
+    const role = (user as any).role?.toUpperCase?.() || (user as any).accountType?.toUpperCase?.() || ""
+    const fetcher = role === "CLIENT" ? getContractsForClient : getContractsForTalent
+    fetcher(user.id)
+      .then(async (contracts: ContractDTO[]) => {
+        if (!contracts.length) return
+        const active = contracts.filter(
+          (c) => c.status === "active" || c.status === "ACTIVE"
+        )
+        // Fetch tasks for each contract in parallel
+        const mapped: Contract[] = await Promise.all(
+          active.map(async (c) => {
+            let tasks: TaskEntry[] = []
+            try {
+              const apiTasks = await getTasksForContract(c.id)
+              tasks = apiTasks.map((t) => ({
+                id: t.id,
+                name: t.name,
+                timeRange: "Not started",
+                duration: "00:00:00",
+              }))
+            } catch {
+              // tasks API unavailable — leave empty
+            }
+            return {
+              id: c.id,
+              name: c.title || "Untitled Contract",
+              clientHandle: c.clientId || "client",
+              tasks,
+            }
+          })
+        )
+        if (mapped.length > 0) {
+          setDays((prev) => {
+            const next = [...prev]
+            next[0] = { ...next[0], contracts: mapped }
+            return next
+          })
+        }
+      })
+      .catch(() => {
+        // API unavailable — keep seed data
+      })
+  }, [user?.id])
 
   // Search
   const [searchValue, setSearchValue] = React.useState("")
@@ -445,12 +496,26 @@ export function TimeTrackerApp({
     setView("new-task")
   }
 
-  const handleCreateTask = (data: { contractId: string; taskName: string; notes: string }) => {
-    const newTask: TaskEntry = {
+  const handleCreateTask = async (data: { contractId: string; taskName: string; notes: string }) => {
+    let newTask: TaskEntry = {
       id: `t-${Date.now()}`,
       name: data.taskName,
       timeRange: "Not started",
       duration: "00:00:00",
+    }
+
+    // Persist to backend if user is authenticated
+    if (user?.id) {
+      try {
+        const created = await createContractTask({
+          contractId: data.contractId,
+          name: data.taskName,
+          createdBy: user.id,
+        })
+        newTask = { ...newTask, id: created.id }
+      } catch {
+        // API unavailable — use local temp ID, task won't be synced
+      }
     }
 
     setDays((prev) => {

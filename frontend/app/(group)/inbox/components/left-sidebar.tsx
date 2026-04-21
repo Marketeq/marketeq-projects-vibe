@@ -97,6 +97,7 @@ interface LeftSidebarProps {
   setSelectedConversation: (conv: Conversation) => void
   messagesByConversation: Record<string, Message[]>
   initialThreadId?: string | null
+  initialParticipantId?: string | null
 }
 
 const LeftSidebar = ({
@@ -104,6 +105,7 @@ const LeftSidebar = ({
   setSelectedConversation,
   messagesByConversation,
   initialThreadId,
+  initialParticipantId,
 }: LeftSidebarProps) => {
   const { pinnedChats, setPinnedChats, toggleShowPinnedIcon, showPinnedIcon, checkedChats, resetCheckedChats } =
     useChatsContext()
@@ -337,6 +339,49 @@ const LeftSidebar = ({
       cancelled = true
     }
   }, [currentUserId, token, initialThreadId])
+
+  // Handle ?participantId= independently of the thread-list fetch so it works
+  // even when GET /v1/threads is unavailable. POST /v1/threads is idempotent —
+  // it returns the existing 1:1 thread if one already exists.
+  useEffect(() => {
+    if (!initialParticipantId || !currentUserId || !token) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const thread = await apiFetch<Conversation>("/v1/threads", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: { participantIds: [currentUserId, initialParticipantId], isGroup: false },
+        })
+        if (cancelled) return
+        setConversations((prev) => {
+          const existing = prev.find((c) => c.id === thread.id)
+          if (existing) {
+            if (!existing.isTrashed) {
+              setSelectedConversation(existing)
+            } else {
+              threadActions.untrash(existing.id).catch(() => {})
+              const restored = { ...existing, isTrashed: false }
+              setSelectedConversation(restored)
+              return prev.map((c) => (c.id === restored.id ? restored : c))
+            }
+            return prev
+          }
+          const placeholder = {
+            ...thread,
+            participantUsername: "…",
+            lastMessagePreview: "",
+          } as Conversation
+          setSelectedConversation(placeholder)
+          return [placeholder, ...prev]
+        })
+        router.replace("/inbox", { scroll: false })
+      } catch (err) {
+        console.error("[LeftSidebar] participantId thread create failed:", err)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [currentUserId, token, initialParticipantId])
 
   // Live-sync: apply server state-change broadcasts (pin/star/archive/...)
   useUserChannel({

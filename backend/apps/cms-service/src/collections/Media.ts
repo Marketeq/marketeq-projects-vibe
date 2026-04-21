@@ -4,8 +4,9 @@ import { isContentEditorOrAbove } from '../access/roles';
 export const Media: CollectionConfig = {
   slug: 'media',
   upload: {
-    staticURL: '/media',
-    staticDir: 'media',
+    // Local disk fields are intentionally omitted — the cloudStoragePlugin
+    // (configured in payload.config.ts) ships uploads directly to Cloudflare
+    // R2 (or MinIO in local dev) and disables local storage.
     mimeTypes: ['image/*', 'application/pdf'],
   },
   admin: {

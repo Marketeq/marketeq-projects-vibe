@@ -34,25 +34,33 @@ export class TalentService {
     dto: CreateTalentDto,
     avatar?: Express.Multer.File,
   ) {
-    const userId = userClaims.id;
-
-    let user = await this.userRepository.findOne({ where: { id: userId } });
+    // Resolve the user row using the same fallback strategy as ClientService:
+    // first by id, then by email (handles legacy rows where the auth-service
+    // user id was regenerated), and finally by syncing from auth-service for
+    // brand-new users who have authenticated but never hit a user-service
+    // endpoint yet. This prevents a spurious NotFoundException for users who
+    // exist in auth-service but not here.
+    let user = await this.userRepository.findOne({
+      where: { id: userClaims.id },
+    });
     if (!user && userClaims.email) {
-      user = await this.userRepository.findOne({ where: { email: userClaims.email } });
+      user = await this.userRepository.findOne({
+        where: { email: userClaims.email },
+      });
     }
-
-    // Keep onboarding resilient when auth-service has a user but user-service is missing it.
     if (!user && userClaims.id && userClaims.email) {
       await this.userService.syncFromAuth({
         id: userClaims.id,
         email: userClaims.email,
       });
-      user = await this.userRepository.findOne({ where: { id: userClaims.id } });
+      user = await this.userRepository.findOne({
+        where: { id: userClaims.id },
+      });
     }
-
     if (!user) {
       throw new NotFoundException('User not found');
     }
+    const userId = user.id;
 
     const existingUsername = dto.username
       ? await this.userRepository.findOne({

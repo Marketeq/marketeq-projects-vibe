@@ -111,12 +111,17 @@ export function createCaptureSupervisor(deps: Deps): CaptureSupervisor {
 
   function startCapture(sessionId: string): void {
     persistActiveSessionId(sessionId);
+    // Always attempt to start the screenshot loop. On macOS 15 (Sequoia),
+    // getMediaAccessStatus('screen') may return 'denied' even when the app
+    // has been granted permission (Apple's new one-time approval model).
+    // The screenshot service itself handles empty sources gracefully.
     if (deps.permissions.isScreenRecordingAllowed()) {
       deps.screenshotService.start();
     } else {
       log.warn(
-        'startCapture: screen recording permission missing, screenshot loop paused',
+        'startCapture: screen recording permission reported as missing, attempting capture anyway (macOS 15 workaround)',
       );
+      deps.screenshotService.start();
     }
     deps.activityMonitor.start();
     refreshHealth();

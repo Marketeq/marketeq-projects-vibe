@@ -603,8 +603,8 @@ function ProjectListingCard({
               <Briefcase className="size-10 text-gray-300" />
             </div>
           )}
-          {badge && (
-            <span className="absolute top-2 right-2 inline-flex items-center rounded-md bg-dark-blue-400/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
+          {badge?.trim() && (
+            <span className="absolute top-2 right-2 inline-flex max-w-[60%] items-center truncate rounded-md bg-dark-blue-400/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
               {badge}
             </span>
           )}
@@ -841,13 +841,20 @@ function TeamListingCard({
             <div className="mt-2 flex items-center flex-wrap gap-3">
               {previousClientLogos.map((logo, i) => (
                 <div
-                  key={i}
+                  key={`${logo}-${i}`}
                   className="size-[25px] rounded-full shrink-0 relative bg-gray-50 overflow-hidden flex items-center justify-center"
                 >
                   <img
                     src={logo}
                     alt="Previous client"
+                    width={25}
+                    height={25}
+                    loading="lazy"
+                    decoding="async"
                     className="size-full object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none"
+                    }}
                   />
                 </div>
               ))}

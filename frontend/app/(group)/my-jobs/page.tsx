@@ -247,7 +247,7 @@ export default function MyJobsPage() {
                   {jobTabs.map((tab) => (
                     <TabsContent key={tab.value} value={tab.value}>
                       <div className="space-y-3">
-                        {jobProgressByTab[tab.value].map((job) => (
+                        {jobProgressByTab[tab.value as keyof typeof jobProgressByTab].map((job) => (
                           <Card key={job.id} className="overflow-hidden hover:border-gray-200 hover:ring-0">
                             <div className="w-full p-5">
                               <div className="flex items-start justify-between gap-3">

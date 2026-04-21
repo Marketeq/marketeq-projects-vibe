@@ -13,7 +13,7 @@ export interface ScreenshotCardDTO {
   mimeType: string
   bytes: number
   capturedAt: string | null
-  projectId: string | null
+  contractId: string | null
   taskId: string | null
   url: string | null
   keyboard: number
@@ -38,7 +38,7 @@ export interface ScreenshotCardsResponse {
 }
 
 export interface ScreenshotCardsParams {
-  projectId?: string
+  contractId?: string
   taskId?: string
   from?: string
   to?: string
@@ -74,7 +74,7 @@ export const blurScreenshot = async (id: string) => {
 
 export const updateScreenshotMeta = async (
   id: string,
-  data: { projectId?: string; taskId?: string }
+  data: { contractId?: string; taskId?: string }
 ) => {
   const res = await AxiosRequest.patch(`/screenshots/${id}/meta`, data)
   return res.data

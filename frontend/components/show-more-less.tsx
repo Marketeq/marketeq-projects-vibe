@@ -36,10 +36,10 @@ export const ShowMoreLessRoot = ({
   })
   const scrollHeightRef = useRef(0)
   const isFirst = useFirstMountState({
-    shouldUpdate: () => state,
+    shouldUpdate: () => !state,
   })
 
-  if (isFirst) {
+  if (isFirst && height > 0) {
     scrollHeightRef.current = height
   }
 
@@ -51,7 +51,7 @@ export const ShowMoreLessRoot = ({
       ref,
       scrollHeight: scrollHeightRef.current,
     }),
-    [state, setState, height, ref, scrollHeightRef]
+    [state, setState, height, ref]
   )
 
   return (
