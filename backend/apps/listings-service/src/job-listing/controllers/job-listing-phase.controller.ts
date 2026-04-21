@@ -2,12 +2,12 @@ import {
   Body,
   Controller,
   Delete,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
   UseGuards,
-  HttpCode,
-  HttpStatus,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { JobListingOwnerGuard } from '../guards/job-listing-owner.guard';
@@ -30,6 +30,15 @@ export class JobListingPhaseController {
     return this.phaseService.addPhase(listingId, dto);
   }
 
+  // ── PATCH /v1/job-listings/:id/phases/reorder ────────────────
+  @Patch('reorder')
+  reorderPhases(
+    @Param('id') listingId: string,
+    @Body() dto: ReorderPhasesDto,
+  ) {
+    return this.phaseService.reorderPhases(listingId, dto);
+  }
+
   // ── PATCH /v1/job-listings/:id/phases/:phaseId ───────────────
   @Patch(':phaseId')
   updatePhase(
@@ -48,15 +57,6 @@ export class JobListingPhaseController {
     @Param('phaseId') phaseId: string,
   ) {
     return this.phaseService.removePhase(listingId, phaseId);
-  }
-
-  // ── PATCH /v1/job-listings/:id/phases/reorder ────────────────
-  @Patch('reorder')
-  reorderPhases(
-    @Param('id') listingId: string,
-    @Body() dto: ReorderPhasesDto,
-  ) {
-    return this.phaseService.reorderPhases(listingId, dto);
   }
 
   // ── POST /v1/job-listings/:id/phases/:phaseId/tasks ──────────
