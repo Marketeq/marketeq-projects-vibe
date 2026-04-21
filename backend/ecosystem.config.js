@@ -153,5 +153,16 @@ module.exports = {
       restart_delay: 2000,
       env: { PORT: 3016, NODE_ENV: 'development' },
     },
+    {
+      name: 'scheduling-service',
+      script: 'npm',
+      args: 'run start:dev',
+      cwd: `${__dirname}/apps/scheduling-service`,
+      autorestart: true,
+      watch: false,
+      max_restarts: 10,
+      restart_delay: 2000,
+      env: { PORT: 3024, NODE_ENV: 'development' },
+    },
   ],
 };
