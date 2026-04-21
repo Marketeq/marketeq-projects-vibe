@@ -159,9 +159,9 @@ export class BlogService {
           .filter(Boolean)
       : [];
 
-    const bodyHtml = typeof doc?.body === 'string' ? doc.body : '';
-    const excerpt = bodyHtml ? this.toExcerpt(bodyHtml) : null;
-    const readTimeMinutes = bodyHtml ? this.estimateReadTimeMinutes(bodyHtml) : null;
+    const bodyText = this.toBodyText(doc?.body);
+    const excerpt = bodyText ? this.toExcerptFromText(bodyText) : null;
+    const readTimeMinutes = bodyText ? this.estimateReadTimeMinutesFromText(bodyText) : null;
 
     return {
       id,
@@ -200,17 +200,46 @@ export class BlogService {
     return null;
   }
 
-  private toExcerpt(html: string, maxLen = 180): string {
-    const text = this.stripHtml(html).trim().replace(/\s+/g, ' ');
-    if (!text) return '';
-    if (text.length <= maxLen) return text;
-    return text.slice(0, Math.max(0, maxLen - 1)).trimEnd() + '…';
+  private toBodyText(value: any): string {
+    if (!value) return '';
+    if (typeof value === 'string') return this.stripHtml(value).trim();
+    if (typeof value !== 'object') return '';
+
+    const root = (value as any).root ?? value;
+    return this.collectLexicalText(root, 0).trim().replace(/\s+/g, ' ');
   }
 
-  private estimateReadTimeMinutes(html: string): number {
-    const text = this.stripHtml(html).trim();
-    if (!text) return 1;
-    const words = text.split(/\s+/).filter(Boolean).length;
+  private collectLexicalText(node: any, depth: number): string {
+    if (!node || depth > 50) return '';
+    if (typeof node === 'string') return node;
+    if (typeof node !== 'object') return '';
+
+    let out = '';
+
+    if (typeof node.text === 'string') out += node.text;
+
+    const children = Array.isArray(node.children) ? node.children : [];
+    for (const child of children) {
+      const childText = this.collectLexicalText(child, depth + 1);
+      if (!childText) continue;
+      if (out && !out.endsWith(' ') && !childText.startsWith(' ')) out += ' ';
+      out += childText;
+    }
+
+    return out;
+  }
+
+  private toExcerptFromText(text: string, maxLen = 180): string {
+    const normalized = String(text).trim().replace(/\s+/g, ' ');
+    if (!normalized) return '';
+    if (normalized.length <= maxLen) return normalized;
+    return normalized.slice(0, Math.max(0, maxLen - 1)).trimEnd() + '…';
+  }
+
+  private estimateReadTimeMinutesFromText(text: string): number {
+    const normalized = String(text).trim();
+    if (!normalized) return 1;
+    const words = normalized.split(/\s+/).filter(Boolean).length;
     const wpm = 200;
     return Math.max(1, Math.round(words / wpm));
   }
