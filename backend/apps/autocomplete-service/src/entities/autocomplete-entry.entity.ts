@@ -13,6 +13,7 @@ export enum EntryType {
   CERTIFICATION = 'certification',
   LANGUAGE = 'language',
   INDUSTRY = 'industry',
+  PROJECT_TYPE = 'project_type',
   TAG = 'tag',
   LOCATION = 'location',
 }

@@ -14,7 +14,14 @@ import { QueryAutocompleteDto } from './dto/query-autocomplete.dto';
 import { EntryFilter } from './filters/entry.filter';
 
 /** Set of types that have corresponding JSON data files */
-const JSON_DATA_TYPES = new Set(['skills', 'job_titles', 'certifications', 'industries', 'languages']);
+const JSON_DATA_TYPES = new Set([
+  'skills',
+  'job_titles',
+  'certifications',
+  'industries',
+  'languages',
+  'project_types',
+]);
 
 // Heuristic keyword-to-category mapping
 const CATEGORY_RULES: Record<string, string[]> = {

@@ -103,10 +103,10 @@ test("talent onboarding completes through step 5", async ({
   await page.fill("#recent-job-title", "QA Engineer")
   await page.fill("#industries", "Software")
   await page
-    .getByPlaceholder("Enter job titles related to your project")
+    .getByPlaceholder("e.g., react.js, css")
     .fill("React")
   await page
-    .getByPlaceholder("Enter job titles related to your project")
+    .getByPlaceholder("e.g., react.js, css")
     .press("Enter")
   await clickContinue()
 

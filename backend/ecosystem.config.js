@@ -131,5 +131,16 @@ module.exports = {
       restart_delay: 2000,
       env: { PORT: 3013, NODE_ENV: 'development' },
     },
+    {
+      name: 'autocomplete-service',
+      script: 'npx',
+      args: 'nest start autocomplete-service',
+      cwd: __dirname,
+      autorestart: true,
+      watch: false,
+      max_restarts: 10,
+      restart_delay: 2000,
+      env: { PORT: 3016, NODE_ENV: 'development' },
+    },
   ],
 };

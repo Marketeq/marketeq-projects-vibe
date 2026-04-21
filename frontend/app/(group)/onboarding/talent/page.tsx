@@ -859,16 +859,78 @@ const hasCaseInsensitiveExactMatch = (values: string[], candidate: string) => {
   return values.some((value) => value.trim().toLowerCase() === normalizedCandidate)
 }
 
+const AUTOCOMPLETE_SUBMIT_TYPE_MAP: Record<string, string> = {
+  skills: "skill",
+  job_titles: "title",
+  languages: "language",
+  industries: "industry",
+  project_types: "project_type",
+}
+
 const submitAutocompleteValue = async (type: string, label: string) => {
   const trimmedLabel = label.trim()
   if (!trimmedLabel) return false
 
   try {
-    await AutocompleteAPI.submit({ type, label: trimmedLabel })
+    await AutocompleteAPI.submit({
+      type: AUTOCOMPLETE_SUBMIT_TYPE_MAP[type] ?? type,
+      value: trimmedLabel,
+    })
     return true
   } catch {
     return false
   }
+}
+
+const SelectionBadge = ({
+  children,
+  onRemove,
+}: {
+  children: React.ReactNode
+  onRemove: () => void
+}) => (
+  <Badge visual="primary" size="sm" variant="rounded">
+    {children}
+    <button
+      className="focus-visible:outline-none"
+      onClick={onRemove}
+      type="button"
+    >
+      <X2 className="h-3 w-3" />
+    </button>
+  </Badge>
+)
+
+const HighlightedSuggestion = ({
+  label,
+  query,
+  active = false,
+}: {
+  label: string
+  query: string
+  active?: boolean
+}) => {
+  const trimmedQuery = query.trim()
+  if (!trimmedQuery) {
+    return <span className={active ? "font-semibold" : "font-normal"}>{label}</span>
+  }
+
+  const normalizedLabel = label.toLowerCase()
+  const normalizedQuery = trimmedQuery.toLowerCase()
+
+  if (!normalizedLabel.startsWith(normalizedQuery)) {
+    return <span className="font-normal">{label}</span>
+  }
+
+  const highlightedPart = label.slice(0, trimmedQuery.length)
+  const remainingPart = label.slice(trimmedQuery.length)
+
+  return (
+    <span className="font-normal">
+      <span className="font-semibold text-gray-900">{highlightedPart}</span>
+      {remainingPart}
+    </span>
+  )
 }
 
 const LOCATIONIQ_API_KEY =
@@ -1124,17 +1186,27 @@ const ShareYourLocation = ({
   const [languageOptions, setLanguageOptions] = useState<string[]>(
     getUniqueOptions(languagesMock.map((item) => item.label))
   )
+  const watchedLanguages = useWatch({
+    control,
+    name: "languages",
+  })
+  const selectedLanguageValues = Array.isArray(watchedLanguages)
+    ? watchedLanguages
+    : []
   const languagesRequestRef = useRef(0)
   const languagesDebounceTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null)
   const filteredLanguages = useMemo(() => {
     const query = languagesQuery.trim().toLowerCase()
-    if (!query) return languageOptions
-    return languageOptions.filter((item) =>
-      item.toLowerCase().includes(query)
+    const searchableLanguages = languageOptions.filter(
+      (item) => !selectedLanguageValues.includes(item)
     )
-  }, [languageOptions, languagesQuery])
+    if (!query) return searchableLanguages
+    return searchableLanguages.filter((item) =>
+      item.toLowerCase().startsWith(query)
+    )
+  }, [languageOptions, languagesQuery, selectedLanguageValues])
 
   const addLanguageValue = async (
     nextValue: string,
@@ -1208,11 +1280,14 @@ const ShareYourLocation = ({
   }, [detectedCoordinates, detectedLocation])
 
   useEffect(() => {
-    const trimmedQuery = languagesQuery.trim()
-    if (!trimmedQuery) return
-
     if (languagesDebounceTimerRef.current) {
       clearTimeout(languagesDebounceTimerRef.current)
+    }
+
+    const trimmedQuery = languagesQuery.trim()
+    if (!trimmedQuery) {
+      languagesRequestRef.current += 1
+      return
     }
 
     languagesDebounceTimerRef.current = setTimeout(async () => {
@@ -1451,7 +1526,9 @@ const ShareYourLocation = ({
                         className="w-full"
                         value={selectedLanguages}
                         onChange={(values) => {
-                          const next = values as string[]
+                          const next = getUniqueOptions(
+                            (values as string[]).filter(Boolean)
+                          )
                           onChange(next)
                           setLanguagesQuery("")
                           setIsLanguagesOpen(false)
@@ -1480,7 +1557,7 @@ const ShareYourLocation = ({
                               setLanguagesQuery(event.target.value)
                               setIsLanguagesOpen(true)
                             }}
-                            onKeyDown={(event) => {
+                            onKeyDown={async (event) => {
                               if (event.key === HOT_KEYS.ENTER) {
                                 const hasSuggestions =
                                   isLanguagesOpen &&
@@ -1526,6 +1603,7 @@ const ShareYourLocation = ({
                                 <ComboboxOption
                                   key={item}
                                   value={item}
+                                  className="font-normal ui-active:font-normal"
                                   onClick={() =>
                                     void addLanguageValue(
                                       item,
@@ -1534,7 +1612,13 @@ const ShareYourLocation = ({
                                     )
                                   }
                                 >
-                                  {item}
+                                  {({ active }) => (
+                                    <HighlightedSuggestion
+                                      label={item}
+                                      query={languagesQuery}
+                                      active={active}
+                                    />
+                                  )}
                                 </ComboboxOption>
                               ))}
                             </ScrollArea>
@@ -1545,22 +1629,18 @@ const ShareYourLocation = ({
                       {getIsNotEmpty(selectedLanguages) && (
                         <div className="flex flex-wrap gap-3">
                           {selectedLanguages.map((item) => (
-                            <Badge visual="primary" key={item}>
+                            <SelectionBadge
+                              key={item}
+                              onRemove={() =>
+                                removeLanguageValue(
+                                  item,
+                                  onChange,
+                                  selectedLanguages
+                                )
+                              }
+                            >
                               {item}
-                              <button
-                                className="focus-visible:outline-none"
-                                onClick={() =>
-                                  removeLanguageValue(
-                                    item,
-                                    onChange,
-                                    selectedLanguages
-                                  )
-                                }
-                                type="button"
-                              >
-                                <X2 className="h-3 w-3" />
-                              </button>
-                            </Badge>
+                            </SelectionBadge>
                           ))}
                         </div>
                       )}
@@ -1728,10 +1808,14 @@ const TopSkills = ({
   onValueChange,
   value: valueProp,
   invalid,
+  onInvalidCustomValue,
+  onAcceptedValue,
 }: {
   value?: string[]
   onValueChange?: (values: string[]) => void
   invalid?: boolean
+  onInvalidCustomValue?: (message: string) => void
+  onAcceptedValue?: () => void
 }) => {
   const [inputValue, setInputValue] = useState("")
   const [values, setValues] = useControllableState<string[]>({
@@ -1739,7 +1823,6 @@ const TopSkills = ({
     value: valueProp,
     onChange: onValueChange,
   })
-  const [selected, setSelected] = useState<string[]>([])
   const [open, setOpen] = useState(false)
   const [skillOptions, setSkillOptions] =
     useState<string[]>(FALLBACK_TOP_SKILLS)
@@ -1748,25 +1831,42 @@ const TopSkills = ({
 
   const resetInputValue = () => setInputValue("")
 
-  const addValue = () => {
-    if (!inputValue) return
+  const addValue = async (nextValue = inputValue) => {
+    const trimmedValue = nextValue.trim()
+    if (!trimmedValue) return
 
-    setValues((prev) => {
-      return prev.includes(inputValue) ? prev : [...prev, inputValue]
-    })
+    if (hasCaseInsensitiveExactMatch(values, trimmedValue)) {
+      onAcceptedValue?.()
+      resetInputValue()
+      setOpen(false)
+      return
+    }
+
+    const isKnownSuggestion = hasCaseInsensitiveExactMatch(
+      skillOptions,
+      trimmedValue
+    )
+    if (!isKnownSuggestion) {
+      const accepted = await submitAutocompleteValue("skills", trimmedValue)
+      if (!accepted) {
+        onInvalidCustomValue?.(
+          "This value is not a valid skill suggestion for this field."
+        )
+        setOpen(false)
+        return
+      }
+    }
+
+    onAcceptedValue?.()
+    setSkillOptions((prev) => getUniqueOptions([...prev, trimmedValue]))
+    setValues((prev) => getUniqueOptions([...prev, trimmedValue]))
     resetInputValue()
+    setOpen(false)
   }
 
   const removeValue = (index: number) => {
-    const tag = values[index]
-
     setValues((prev) => {
-      const nextState = prev.filter((_, i) => i !== index)
-      return nextState
-    })
-    setSelected((prev) => {
-      const nextState = prev.filter((value) => value !== tag)
-      return nextState
+      return prev.filter((_, i) => i !== index)
     })
   }
 
@@ -1775,25 +1875,31 @@ const TopSkills = ({
       target: { value },
     } = event
     setInputValue(value)
+    setOpen(true)
   }
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     const { key } = event
     if (key === HOT_KEYS.ENTER) {
-      addValue()
-      setOpen(false)
+      event.preventDefault()
+      const activeOption = document.querySelector(
+        '[role="option"][data-headlessui-state~="active"]'
+      ) as HTMLElement | null
+      const activeLabel = activeOption?.textContent?.trim() ?? ""
+      void addValue(activeLabel || inputValue)
     }
   }
 
   useEffect(() => {
-    const query = inputValue.trim()
-    if (!query) {
-      setSkillOptions(FALLBACK_TOP_SKILLS)
-      return
-    }
-
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current)
+    }
+
+    const query = inputValue.trim()
+    if (!query) {
+      requestIdRef.current += 1
+      setSkillOptions(FALLBACK_TOP_SKILLS)
+      return
     }
 
     debounceTimerRef.current = setTimeout(async () => {
@@ -1836,32 +1942,19 @@ const TopSkills = ({
   const filteredRoles = inputValue.trim()
     ? skillOptions
         .filter((skill) =>
-          skill.toLowerCase().includes(inputValue.trim().toLowerCase())
+          !hasCaseInsensitiveExactMatch(values, skill) &&
+          skill.toLowerCase().startsWith(inputValue.trim().toLowerCase())
         )
         .slice(0, 40)
     : []
-
-  useIsomorphicLayoutEffect(() => {
-    setValues((prevValues) => {
-      const filteredSelected = selected.filter(
-        (value) => !prevValues.includes(value)
-      )
-
-      if (filteredSelected.length > 0) {
-        return [...prevValues, ...filteredSelected]
-      }
-
-      return prevValues
-    })
-  }, [selected])
 
   return (
     <div className="space-y-3">
       <Combobox
         className="w-full"
-        value={selected}
+        value={values}
         onChange={(nextSelected) => {
-          setSelected(nextSelected)
+          setValues(getUniqueOptions((nextSelected as string[]).filter(Boolean)))
           setOpen(false)
           setInputValue("")
         }}
@@ -1878,6 +1971,7 @@ const TopSkills = ({
             onChange={onChange}
             onKeyDown={onKeyDown}
             onFocus={() => setOpen(true)}
+            onClick={() => setOpen(true)}
             onBlur={() => setTimeout(() => setOpen(false), 150)}
             value={inputValue}
             invalid={invalid}
@@ -1888,8 +1982,18 @@ const TopSkills = ({
           <ComboboxOptions>
             <ScrollArea viewportClassName="max-h-[304px]">
               {filteredRoles.map((role, index) => (
-                <ComboboxOption key={index} value={role}>
-                  {role}
+                <ComboboxOption
+                  key={index}
+                  value={role}
+                  className="font-normal ui-active:font-normal"
+                >
+                  {({ active }) => (
+                    <HighlightedSuggestion
+                      label={role}
+                      query={inputValue}
+                      active={active}
+                    />
+                  )}
                 </ComboboxOption>
               ))}
             </ScrollArea>
@@ -1898,23 +2002,11 @@ const TopSkills = ({
       </Combobox>
 
       {getIsNotEmpty(values) && (
-        <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap gap-3">
           {values.map((item, index) => (
-            <Badge
-              visual="primary"
-              size="md"
-              className="rounded-[16px] bg-primary-100 text-primary-500 px-2.5 pr-2 font-medium text-sm leading-5"
-              key={index}
-            >
+            <SelectionBadge key={index} onRemove={() => removeValue(index)}>
               {item}
-              <button
-                className="inline-flex size-3 shrink-0 items-center justify-center text-primary-300 hover:text-primary-500 focus-visible:outline-none"
-                onClick={() => removeValue(index)}
-                type="button"
-              >
-                <X2 className="h-3 w-3" />
-              </button>
-            </Badge>
+            </SelectionBadge>
           ))}
         </div>
       )}
@@ -1964,6 +2056,8 @@ const ShowcaseYourTalent = ({
   const [industriesQuery, setIndustriesQuery] = useState("")
   const [isJobTitleOpen, setIsJobTitleOpen] = useState(false)
   const [isIndustriesOpen, setIsIndustriesOpen] = useState(false)
+  const [suppressIndustryFocusOpen, setSuppressIndustryFocusOpen] =
+    useState(false)
   const [selectedIndustries, setSelectedIndustries] = useState<string[]>(
     parseMultiSelectString(stepData?.industriesWorkedIn)
   )
@@ -1985,7 +2079,7 @@ const ShowcaseYourTalent = ({
   const filteredJobTitles = useMemo(() => {
     const query = jobTitleQuery.trim().toLowerCase()
     if (!query) return jobTitleOptions
-    return jobTitleOptions.filter((item) => item.toLowerCase().includes(query))
+    return jobTitleOptions.filter((item) => item.toLowerCase().startsWith(query))
   }, [jobTitleOptions, jobTitleQuery])
   const filteredIndustries = useMemo(() => {
     const query = industriesQuery.trim().toLowerCase()
@@ -1994,17 +2088,28 @@ const ShowcaseYourTalent = ({
     )
     if (!query) return searchableIndustries
     return searchableIndustries.filter((item) =>
-      item.toLowerCase().includes(query)
+      item.toLowerCase().startsWith(query)
     )
   }, [industriesOptions, industriesQuery, selectedIndustries])
 
-  const addIndustryValue = (nextValue: string) => {
+  const addIndustryValue = async (nextValue: string) => {
     const value = nextValue.trim()
     if (!value) return
 
     const isKnownSuggestion = hasCaseInsensitiveExactMatch(industriesOptions, value)
     if (!isKnownSuggestion) {
-      void submitAutocompleteValue("industries", value)
+      const accepted = await submitAutocompleteValue("industries", value)
+      if (!accepted) {
+        setError("industriesWorkedWith", {
+          type: "manual",
+          message:
+            "This value is not a valid industry suggestion for this field.",
+        })
+        setIndustriesQuery("")
+        setIsIndustriesOpen(false)
+        setSuppressIndustryFocusOpen(true)
+        return
+      }
     }
 
     clearErrors("industriesWorkedWith")
@@ -2016,6 +2121,7 @@ const ShowcaseYourTalent = ({
     }
     setIndustriesQuery("")
     setIsIndustriesOpen(false)
+    setSuppressIndustryFocusOpen(true)
   }
 
   const removeIndustryValue = (target: string) => {
@@ -2025,11 +2131,14 @@ const ShowcaseYourTalent = ({
   }
 
   useEffect(() => {
-    const trimmedQuery = jobTitleQuery.trim()
-    if (!trimmedQuery) return
-
     if (jobTitleDebounceTimerRef.current) {
       clearTimeout(jobTitleDebounceTimerRef.current)
+    }
+
+    const trimmedQuery = jobTitleQuery.trim()
+    if (!trimmedQuery) {
+      jobTitleRequestRef.current += 1
+      return
     }
 
     jobTitleDebounceTimerRef.current = setTimeout(async () => {
@@ -2060,11 +2169,14 @@ const ShowcaseYourTalent = ({
   }, [jobTitleQuery])
 
   useEffect(() => {
-    const trimmedQuery = industriesQuery.trim()
-    if (!trimmedQuery) return
-
     if (industriesDebounceTimerRef.current) {
       clearTimeout(industriesDebounceTimerRef.current)
+    }
+
+    const trimmedQuery = industriesQuery.trim()
+    if (!trimmedQuery) {
+      industriesRequestRef.current += 1
+      return
     }
 
     industriesDebounceTimerRef.current = setTimeout(async () => {
@@ -2222,10 +2334,10 @@ const ShowcaseYourTalent = ({
                             }
                             onChange={(event) => {
                               setJobTitleQuery(event.target.value)
-                              if (value) onChange(undefined)
+                              if (value) onChange("")
                               setIsJobTitleOpen(true)
                             }}
-                            onKeyDown={(event) => {
+                            onKeyDown={async (event) => {
                               if (event.key !== HOT_KEYS.ENTER) return
                               event.preventDefault()
                               const activeOption = document.querySelector(
@@ -2251,14 +2363,24 @@ const ShowcaseYourTalent = ({
                                 setIsJobTitleOpen(false)
                               }
 
-                              applyValue()
-
                               if (!isKnownSuggestion) {
-                                void submitAutocompleteValue(
+                                const accepted = await submitAutocompleteValue(
                                   "job_titles",
                                   finalValue
                                 )
+                                if (!accepted) {
+                                  setError("recentJobTitle", {
+                                    type: "manual",
+                                    message:
+                                      "This value is not a valid job title suggestion for this field.",
+                                  })
+                                  setJobTitleQuery("")
+                                  setIsJobTitleOpen(false)
+                                  return
+                                }
                               }
+
+                              applyValue()
                             }}
                             invalid={hookFormHasError({
                               errors,
@@ -2273,6 +2395,7 @@ const ShowcaseYourTalent = ({
                                 <ComboboxOption
                                   key={item}
                                   value={item}
+                                  className="font-normal ui-active:font-normal"
                                   onClick={() => {
                                     onChange(item)
                                     clearErrors("recentJobTitle")
@@ -2280,7 +2403,13 @@ const ShowcaseYourTalent = ({
                                     setIsJobTitleOpen(false)
                                   }}
                                 >
-                                  {item}
+                                  {({ active }) => (
+                                    <HighlightedSuggestion
+                                      label={item}
+                                      query={jobTitleQuery}
+                                      active={active}
+                                    />
+                                  )}
                                 </ComboboxOption>
                               ))}
                             </ScrollArea>
@@ -2289,24 +2418,16 @@ const ShowcaseYourTalent = ({
                       </Combobox>
 
                       {value && (
-                        <div className="flex flex-wrap gap-4">
-                          <Badge
-                            visual="primary"
-                            size="md"
-                            className="rounded-[16px] bg-primary-100 text-primary-500 px-2.5 pr-2 font-medium text-sm leading-5"
+                        <div className="flex flex-wrap gap-3">
+                          <SelectionBadge
+                            onRemove={() => {
+                              onChange("")
+                              clearErrors("recentJobTitle")
+                              setJobTitleQuery("")
+                            }}
                           >
                             {value}
-                            <button
-                              className="inline-flex size-3 shrink-0 items-center justify-center text-primary-300 hover:text-primary-500 focus-visible:outline-none"
-                              onClick={() => {
-                                onChange(undefined)
-                                setJobTitleQuery("")
-                              }}
-                              type="button"
-                            >
-                              <X2 className="h-3 w-3" />
-                            </button>
-                          </Badge>
+                          </SelectionBadge>
                         </div>
                       )}
                     </div>
@@ -2337,13 +2458,14 @@ const ShowcaseYourTalent = ({
                       value={selectedIndustries}
                       multiple
                       onChange={(nextValues) => {
-                        const normalizedValues = (
-                          nextValues as string[]
-                        ).filter(Boolean)
+                        const normalizedValues = getUniqueOptions(
+                          (nextValues as string[]).filter(Boolean)
+                        )
                         setSelectedIndustries(normalizedValues)
                         onChange(normalizedValues)
                         setIndustriesQuery("")
                         setIsIndustriesOpen(false)
+                        setSuppressIndustryFocusOpen(true)
                       }}
                     >
                       <ComboboxTrigger>
@@ -2353,8 +2475,20 @@ const ShowcaseYourTalent = ({
                           className="pl-3.5"
                           placeholder="e.g., Banking"
                           value={industriesQuery}
-                          onFocus={() => setIsIndustriesOpen(true)}
-                          onClick={() => setIsIndustriesOpen(true)}
+                          onFocus={() => {
+                            if (suppressIndustryFocusOpen) {
+                              setSuppressIndustryFocusOpen(false)
+                              return
+                            }
+                            setIsIndustriesOpen(true)
+                          }}
+                          onClick={() => {
+                            if (suppressIndustryFocusOpen) {
+                              setSuppressIndustryFocusOpen(false)
+                              return
+                            }
+                            setIsIndustriesOpen(true)
+                          }}
                           onBlur={() =>
                             setTimeout(() => setIsIndustriesOpen(false), 150)
                           }
@@ -2399,9 +2533,16 @@ const ShowcaseYourTalent = ({
                               <ComboboxOption
                                 key={item}
                                 value={item}
+                                className="font-normal ui-active:font-normal"
                                 onClick={() => void addIndustryValue(item)}
                               >
-                                {item}
+                                {({ active }) => (
+                                  <HighlightedSuggestion
+                                    label={item}
+                                    query={industriesQuery}
+                                    active={active}
+                                  />
+                                )}
                               </ComboboxOption>
                             ))}
                           </ScrollArea>
@@ -2411,23 +2552,14 @@ const ShowcaseYourTalent = ({
                   )}
                 />
                 {selectedIndustries.length > 0 && (
-                  <div className="flex flex-wrap gap-4">
+                  <div className="flex flex-wrap gap-3">
                     {selectedIndustries.map((item) => (
-                      <Badge
-                        visual="primary"
-                        size="md"
-                        className="rounded-[16px] bg-primary-100 text-primary-500 px-2.5 pr-2 font-medium text-sm leading-5"
+                      <SelectionBadge
                         key={item}
+                        onRemove={() => removeIndustryValue(item)}
                       >
                         {item}
-                        <button
-                          className="inline-flex size-3 shrink-0 items-center justify-center text-primary-300 hover:text-primary-500 focus-visible:outline-none"
-                          onClick={() => removeIndustryValue(item)}
-                          type="button"
-                        >
-                          <X2 className="h-3 w-3" />
-                        </button>
-                      </Badge>
+                      </SelectionBadge>
                     ))}
                   </div>
                 )}
@@ -2448,6 +2580,13 @@ const ShowcaseYourTalent = ({
                     <TopSkills
                       value={value}
                       onValueChange={onChange}
+                      onInvalidCustomValue={(message) =>
+                        setError("yourTopSkills", {
+                          type: "manual",
+                          message,
+                        })
+                      }
+                      onAcceptedValue={() => clearErrors("yourTopSkills")}
                       invalid={hookFormHasError({
                         errors,
                         name: "yourTopSkills",
@@ -2526,15 +2665,27 @@ const ShowcaseYourTalent = ({
 const ProjectPreferences = ({
   invalid,
   onValueChange,
+  onInvalidCustomValue,
+  onAcceptedValue,
   value: valueProp,
 }: {
   invalid?: boolean
   onValueChange?: (values: string[]) => void
+  onInvalidCustomValue?: (message: string) => void
+  onAcceptedValue?: () => void
   value?: string[]
 }) => {
   const [inputValue, setInputValue] = useState("")
   const [isProjectPreferencesOpen, setIsProjectPreferencesOpen] =
     useState(false)
+  const [suppressProjectPreferencesFocusOpen, setSuppressProjectPreferencesFocusOpen] =
+    useState(false)
+  const [projectPreferenceOptionsState, setProjectPreferenceOptionsState] =
+    useState<string[]>(getUniqueOptions(projectPreferenceOptions))
+  const projectPreferencesRequestRef = useRef(0)
+  const projectPreferencesDebounceTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null)
   const [values, setValues] = useControllableState<string[]>({
     defaultValue: [],
     onChange: onValueChange,
@@ -2543,15 +2694,60 @@ const ProjectPreferences = ({
 
   const resetInputValue = () => setInputValue("")
 
-  const addValue = (nextValue: string) => {
+  const selectSuggestedValue = (nextValue: string) => {
     const value = nextValue.trim()
     if (!value) return
 
-    setValues((prev) => {
-      return prev.includes(value) ? prev : [...prev, value]
-    })
+    const alreadySelected = values.some(
+      (item) => item.trim().toLowerCase() === value.toLowerCase()
+    )
+    if (alreadySelected) {
+      resetInputValue()
+      setIsProjectPreferencesOpen(false)
+      setSuppressProjectPreferencesFocusOpen(true)
+      return
+    }
+
+    onAcceptedValue?.()
+    setValues((prev) => [...prev, value])
     resetInputValue()
     setIsProjectPreferencesOpen(false)
+    setSuppressProjectPreferencesFocusOpen(true)
+  }
+
+  const addValue = async (nextValue: string) => {
+    const value = nextValue.trim()
+    if (!value) return
+
+    const alreadySelected = values.some(
+      (item) => item.trim().toLowerCase() === value.toLowerCase()
+    )
+    if (alreadySelected) {
+      resetInputValue()
+      setIsProjectPreferencesOpen(false)
+      return
+    }
+
+    const isKnownSuggestion = hasCaseInsensitiveExactMatch(
+      projectPreferenceOptionsState,
+      value
+    )
+
+    if (!isKnownSuggestion) {
+      const accepted = await submitAutocompleteValue("project_types", value)
+      if (!accepted) {
+        onInvalidCustomValue?.("Please enter a valid project type.")
+        setIsProjectPreferencesOpen(false)
+        return
+      }
+      setProjectPreferenceOptionsState((prev) => getUniqueOptions([...prev, value]))
+    }
+
+    onAcceptedValue?.()
+    setValues((prev) => [...prev, value])
+    resetInputValue()
+    setIsProjectPreferencesOpen(false)
+    setSuppressProjectPreferencesFocusOpen(true)
   }
 
   const removeValue = (index: number) => {
@@ -2566,6 +2762,7 @@ const ProjectPreferences = ({
       target: { value },
     } = event
     setInputValue(value)
+    onAcceptedValue?.()
     setIsProjectPreferencesOpen(true)
   }
 
@@ -2580,21 +2777,80 @@ const ProjectPreferences = ({
         '[role="option"][data-headlessui-state~="active"]'
       ) as HTMLElement | null
       const activeLabel = activeOption?.textContent?.trim() ?? ""
+      const fallbackSuggestion = filteredRoles[0]?.trim() ?? ""
+      const selectedSuggestion = activeLabel || fallbackSuggestion
 
-      if (activeLabel) {
-        addValue(activeLabel)
+      if (selectedSuggestion) {
+        selectSuggestedValue(selectedSuggestion)
         return
       }
     }
 
     event.preventDefault()
-    addValue(inputValue)
+    void addValue(inputValue)
   }
 
-  const filteredRoles = projectPreferenceOptions.filter((skill) => {
-    if (values.includes(skill)) return false
-    return skill.toLowerCase().includes(inputValue.toLowerCase())
-  })
+  const filteredRoles = useMemo(() => {
+    const query = inputValue.trim().toLowerCase()
+    return projectPreferenceOptionsState.filter((projectType) => {
+      if (
+        values.some(
+          (value) =>
+            value.trim().toLowerCase() === projectType.trim().toLowerCase()
+        )
+      ) {
+        return false
+      }
+
+      if (!query) return true
+      return projectType.toLowerCase().startsWith(query)
+    })
+  }, [inputValue, projectPreferenceOptionsState, values])
+
+  useEffect(() => {
+    if (projectPreferencesDebounceTimerRef.current) {
+      clearTimeout(projectPreferencesDebounceTimerRef.current)
+    }
+
+    const trimmedQuery = inputValue.trim()
+    if (!trimmedQuery) {
+      projectPreferencesRequestRef.current += 1
+      return
+    }
+
+    projectPreferencesDebounceTimerRef.current = setTimeout(async () => {
+      const currentRequestId = ++projectPreferencesRequestRef.current
+
+      try {
+        const response = await AutocompleteAPI.getByType(
+          "project_types",
+          trimmedQuery
+        )
+        if (currentRequestId !== projectPreferencesRequestRef.current) return
+
+        const nextOptions = getUniqueOptions(
+          (response?.data as AutocompleteTypeSuggestion[] | undefined)?.map(
+            normalizeAutocompleteLabel
+          ) ?? []
+        )
+
+        if (nextOptions.length > 0) {
+          setProjectPreferenceOptionsState(nextOptions)
+          return
+        }
+      } catch {
+        // keep fallback options when autocomplete API is unavailable
+      }
+
+      setProjectPreferenceOptionsState(getUniqueOptions(projectPreferenceOptions))
+    }, 250)
+
+    return () => {
+      if (projectPreferencesDebounceTimerRef.current) {
+        clearTimeout(projectPreferencesDebounceTimerRef.current)
+      }
+    }
+  }, [inputValue])
 
   return (
     <div className="space-y-3">
@@ -2606,6 +2862,7 @@ const ProjectPreferences = ({
           setValues(normalizedValues)
           resetInputValue()
           setIsProjectPreferencesOpen(false)
+          setSuppressProjectPreferencesFocusOpen(true)
         }}
         multiple
       >
@@ -2620,8 +2877,20 @@ const ProjectPreferences = ({
             onChange={onChange}
             onKeyDown={onKeyDown}
             value={inputValue}
-            onFocus={() => setIsProjectPreferencesOpen(true)}
-            onClick={() => setIsProjectPreferencesOpen(true)}
+            onFocus={() => {
+              if (suppressProjectPreferencesFocusOpen) {
+                setSuppressProjectPreferencesFocusOpen(false)
+                return
+              }
+              setIsProjectPreferencesOpen(true)
+            }}
+            onClick={() => {
+              if (suppressProjectPreferencesFocusOpen) {
+                setSuppressProjectPreferencesFocusOpen(false)
+                return
+              }
+              setIsProjectPreferencesOpen(true)
+            }}
             onBlur={() =>
               setTimeout(() => setIsProjectPreferencesOpen(false), 150)
             }
@@ -2633,8 +2902,19 @@ const ProjectPreferences = ({
           <ComboboxOptions>
             <ScrollArea viewportClassName="max-h-[304px]">
               {filteredRoles.map((role, index) => (
-                <ComboboxOption key={index} value={role}>
-                  {role}
+                <ComboboxOption
+                  key={index}
+                  value={role}
+                  className="font-normal ui-active:font-normal"
+                  onClick={() => selectSuggestedValue(role)}
+                >
+                  {({ active }) => (
+                    <HighlightedSuggestion
+                      label={role}
+                      query={inputValue}
+                      active={active}
+                    />
+                  )}
                 </ComboboxOption>
               ))}
             </ScrollArea>
@@ -2645,16 +2925,9 @@ const ProjectPreferences = ({
       {getIsNotEmpty(values) && (
         <div className="flex flex-wrap gap-3">
           {values.map((item, index) => (
-            <Badge visual="primary" key={index}>
+            <SelectionBadge key={index} onRemove={() => removeValue(index)}>
               {item}
-              <button
-                className="focus-visible:outline-none"
-                onClick={() => removeValue(index)}
-                type="button"
-              >
-                <X2 className="h-3 w-3" />
-              </button>
-            </Badge>
+            </SelectionBadge>
           ))}
         </div>
       )}
@@ -3066,6 +3339,8 @@ const SetYourPreferences = ({
   const {
     getValues,
     setValue,
+    setError,
+    clearErrors,
     formState: { errors, isValid },
     control,
     handleSubmit,
@@ -3317,6 +3592,13 @@ const SetYourPreferences = ({
                       value={value}
                       onValueChange={onChange}
                       invalid={hookFormHasError({ errors, name: "projects" })}
+                      onInvalidCustomValue={(message) =>
+                        setError("projects", {
+                          type: "manual",
+                          message,
+                        })
+                      }
+                      onAcceptedValue={() => clearErrors("projects")}
                     />
                   )}
                 />
