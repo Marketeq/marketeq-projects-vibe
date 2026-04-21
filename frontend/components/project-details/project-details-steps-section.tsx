@@ -47,7 +47,8 @@ export function ProjectDetailsStepsSection({
               <div className="size-[77px] relative overflow-hidden rounded-lg">
                 <NextImage
                   className="object-cover"
-                  src={step.iconUrl}
+                  // Payload media filenames may contain spaces; encode for safe requests.
+                  src={encodeURI(step.iconUrl)}
                   alt=""
                   sizes="77px"
                   fill
