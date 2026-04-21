@@ -177,13 +177,22 @@ export class NotificationService {
   async getOrCreatePreferences(userId: string): Promise<UserPreference> {
     let prefs = await this.prefRepo.findOne({ where: { userId } });
     if (!prefs) {
-      prefs = this.prefRepo.create({
+      const fresh = this.prefRepo.create({
         userId,
         channels: this.cloneDefaultChannels(),
         categories: buildDefaultCategoryMap(),
         notifications: buildDefaultNotificationMap(),
       });
-      await this.prefRepo.save(prefs);
+      try {
+        prefs = await this.prefRepo.save(fresh);
+      } catch (err: any) {
+        if (err?.code === '23505') {
+          prefs = await this.prefRepo.findOne({ where: { userId } });
+          if (!prefs) throw err;
+        } else {
+          throw err;
+        }
+      }
       return prefs;
     }
 
@@ -283,7 +292,6 @@ export class NotificationService {
     prefs.channels = this.cloneDefaultChannels();
     prefs.categories = buildDefaultCategoryMap();
     prefs.notifications = buildDefaultNotificationMap();
-    prefs.disabledCategories = [];
     prefs.inAppEnabled = prefs.channels.inApp.enabled;
     prefs.emailEnabled = prefs.channels.email.enabled;
     prefs.smsEnabled = prefs.channels.sms.enabled;

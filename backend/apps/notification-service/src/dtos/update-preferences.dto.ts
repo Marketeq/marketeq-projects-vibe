@@ -6,8 +6,11 @@ import {
   IsString,
   ValidateNested,
   Matches,
+  registerDecorator,
+  ValidationOptions,
+  validateSync,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, plainToInstance } from 'class-transformer';
 
 export class InAppChannelDto {
   @IsOptional()
@@ -102,6 +105,36 @@ export class NotificationPrefDto {
   channels?: ScopedChannelDto;
 }
 
+function IsRecordOf<T>(cls: new () => T, validationOptions?: ValidationOptions) {
+  return function (object: object, propertyName: string) {
+    registerDecorator({
+      name: 'isRecordOf',
+      target: object.constructor,
+      propertyName,
+      options: validationOptions,
+      validator: {
+        validate(value: unknown) {
+          if (value === undefined || value === null) return true;
+          if (typeof value !== 'object' || Array.isArray(value)) return false;
+          for (const [, v] of Object.entries(value)) {
+            if (v === null || typeof v !== 'object' || Array.isArray(v)) return false;
+            const instance = plainToInstance(cls, v);
+            const errors = validateSync(instance as object, {
+              whitelist: true,
+              forbidNonWhitelisted: true,
+            });
+            if (errors.length > 0) return false;
+          }
+          return true;
+        },
+        defaultMessage() {
+          return `${propertyName} must be a record of valid ${cls.name} objects`;
+        },
+      },
+    });
+  };
+}
+
 export class UpdatePreferencesDto {
   @IsOptional()
   @ValidateNested()
@@ -110,9 +143,11 @@ export class UpdatePreferencesDto {
 
   @IsOptional()
   @IsObject()
+  @IsRecordOf(CategoryPrefDto)
   categories?: Record<string, CategoryPrefDto>;
 
   @IsOptional()
   @IsObject()
+  @IsRecordOf(NotificationPrefDto)
   notifications?: Record<string, NotificationPrefDto>;
 }

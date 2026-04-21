@@ -15,6 +15,7 @@ import { MessagePattern, Payload } from '@nestjs/microservices';
 import { NotificationService, NotificationPayload } from '../services/notification.service';
 import { BrevoService } from '../brevo/brevo.service';
 import { UpdatePreferencesDto } from '../dtos/update-preferences.dto';
+import { Public } from '../guards/jwt-auth.guard';
 
 @Controller('v1/notifications')
 export class NotificationController {
@@ -84,6 +85,7 @@ export class NotificationController {
     return this.service.getCatalog();
   }
 
+  @Public()
   @Get('health')
   health() {
     return { status: 'ok', service: 'notification-service' };
