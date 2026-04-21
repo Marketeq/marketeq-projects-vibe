@@ -406,6 +406,28 @@ const meta = {
 } as const
 
 const DURATION_TYPE = ["days", "weeks", "hours"] as const
+
+const formatDurationUnit = (
+  value: number,
+  type: (typeof DURATION_TYPE)[number]
+) => {
+  if (value === 1) {
+    if (type === "days") return "day"
+    if (type === "weeks") return "week"
+    return "hour"
+  }
+
+  return type
+}
+
+const durationToDays = (
+  value: number,
+  type: (typeof DURATION_TYPE)[number]
+) => {
+  if (type === "weeks") return value * 7
+  if (type === "hours") return Math.max(1, Math.ceil(value / 24))
+  return value
+}
 const EXPERIENCE_LEVELS = [
   "Student",
   "Junior",
@@ -929,7 +951,10 @@ const BottomBar = ({
                   location: [locationValue],
                   experience: [experienceLevel],
                   experienceLevel,
-                  duration: `${durationValue} ${durationType}`,
+                  duration: `${durationValue} ${formatDurationUnit(
+                    durationValue,
+                    durationType
+                  )}`,
                   phaseId: "temporary-required-string",
                 }
               })
@@ -939,11 +964,13 @@ const BottomBar = ({
               return null
             }
 
+            const { startDay, endDay } = getPhaseDayRange(phases ?? [], phaseIndex)
+
             return {
               name: phaseName,
               stageName: `Stage ${phaseIndex + 1}`,
-              startDay: 1,
-              endDay: 8,
+              startDay,
+              endDay,
               order: phaseIndex + 1,
               projectId: String(projectId),
               tasks: rows,
@@ -1154,25 +1181,44 @@ const ProjectInfoTip = ({
 const projectInfoSchema = z.object({
   title: z
     .string()
+    .trim()
+    .min(1, "Please enter a project title")
     .min(10, "Please enter at least 10 character(s)")
     .max(120, "Please do not enter more than 120 character(s)"),
   category: z
     .array(
-      z.object({
-        category: z
-          .string({
-            required_error: "Please enter/select a category",
-          })
-          .min(1, "Please select at least 1 character(s)"),
-        subCategories: z
-          .array(z.string(), {
-            required_error: "Please enter/select at least 1 sub-category(s)",
-          })
-          .min(1, "Please enter/select at least 1 category(s)")
-          .max(5, "You can add a maximum of five (5) sub categories"),
-      })
+      z
+        .object({
+          category: z.string().default(""),
+          subCategories: z
+            .array(z.string())
+            .max(5, "You can add a maximum of five (5) sub categories"),
+        })
+        .superRefine((value, ctx) => {
+          const selectedCategory = value.category.trim()
+          const selectedSubCategories = value.subCategories.filter((subCategory) =>
+            subCategory.trim()
+          )
+
+          if (!selectedCategory) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["category"],
+              message: "Please select a category",
+            })
+            return
+          }
+
+          if (!selectedSubCategories.length) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["subCategories"],
+              message: "Please select at least 1 sub-category for this category",
+            })
+          }
+        })
     )
-    .length(3, "Please enter/select all the categories and sub-categories"),
+    .length(3, "Please select all required categories"),
   industry: z
     .array(z.string(), {
       required_error: "Please enter/select at least 1 industry(s)",
@@ -1371,16 +1417,13 @@ const ProjectInfo = ({
   const [categoryOptions, setCategoryOptions] = useState<string[]>(
     FALLBACK_CATEGORY_OPTIONS
   )
-  const [subCategoryOptions, setSubCategoryOptions] = useState<string[]>(
-    (FALLBACK_SUBCATEGORY_OPTIONS as string[]) ?? []
-  )
+  const [subCategoryOptions, setSubCategoryOptions] = useState<string[]>([])
   const [industryOptions, setIndustryOptions] = useState<string[]>(
     FALLBACK_INDUSTRY_OPTIONS
   )
   const [tagOptions, setTagOptions] = useState<string[]>(FALLBACK_TAG_OPTIONS)
   const [skills, setSkills] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
   const [suggestedSkillOptions] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
-  const [titleInputValue, setTitleInputValue] = useState("")
   const categoryRequestRef = useRef(0)
   const categoryDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -1405,13 +1448,11 @@ const ProjectInfo = ({
   }, [categoryTree])
   const getSubCategoryOptionsForCategory = useCallback(
     (categoryName?: string, query = "") => {
+      if (!categoryName) return []
+
       const normalizedQuery = query.trim().toLowerCase()
-      const activeNode = categoryName
-        ? categoryNodesByName.get(categoryName)
-        : undefined
-      const sourceNodes = activeNode
-        ? collectCategoryDescendants(activeNode)
-        : categoryTree.flatMap((node) => collectCategoryDescendants(node))
+      const activeNode = categoryNodesByName.get(categoryName)
+      const sourceNodes = activeNode ? collectCategoryDescendants(activeNode) : []
 
       return getUniqueOptions(
         sourceNodes
@@ -1462,11 +1503,12 @@ const ProjectInfo = ({
         methods.setValue(fieldName, nextSubCategories, {
           shouldDirty: true,
           shouldTouch: true,
-          shouldValidate: true,
+          shouldValidate: false,
         })
       }
 
-      void methods.trigger(`category.${index}`)
+      methods.clearErrors(`category.${index}.category`)
+      methods.clearErrors(`category.${index}.subCategories`)
     },
     [getSubCategoryOptionsForCategory, methods]
   )
@@ -1485,8 +1527,7 @@ const ProjectInfo = ({
       )
     )
   )
-  const titleCharacterCount =
-    titleInputValue.length || projectInfoValues.title?.length || 0
+  const titleCharacterCount = projectInfoValues.title?.length || 0
   const titleHasError = hookFormHasError({
     errors,
     name: "title",
@@ -1499,46 +1540,12 @@ const ProjectInfo = ({
     errors,
     name: "fullDescription",
   })
-  const hasCommittedTitle =
-    typeof projectInfoValues.title === "string" &&
-    projectInfoValues.title.trim().length > 0
   const shortDescriptionField = methods.register("shortDescription", {
     onBlur: () => trigger("shortDescription"),
   })
   const fullDescriptionField = methods.register("fullDescription", {
     onBlur: () => trigger("fullDescription"),
   })
-
-  const commitTitleValue = useCallback(() => {
-    const nextValue = titleInputValue.trim()
-
-    if (!nextValue) {
-      void methods.trigger("title")
-      return
-    }
-
-    methods.setValue("title", nextValue, {
-      shouldDirty: true,
-      shouldTouch: true,
-      shouldValidate: true,
-    })
-    void methods.trigger("title").then((isValid) => {
-      if (isValid) {
-        methods.clearErrors("title")
-        setTitleInputValue("")
-      }
-    })
-  }, [methods, titleInputValue])
-
-  const clearCommittedTitle = useCallback(() => {
-    methods.setValue("title", "", {
-      shouldDirty: true,
-      shouldTouch: true,
-      shouldValidate: true,
-    })
-    methods.clearErrors("title")
-    setTitleInputValue("")
-  }, [methods])
 
   const triggerMaxLengthError = useCallback(
     (
@@ -1594,6 +1601,11 @@ const ProjectInfo = ({
         ? categoryValues[index]?.category
         : undefined
       const fallbackOptions = getSubCategoryOptionsForCategory(activeCategoryName)
+
+      if (!activeCategoryName) {
+        setSubCategoryOptions([])
+        return
+      }
 
       if (!trimmedQuery) {
         setSubCategoryOptions(fallbackOptions)
@@ -1774,15 +1786,28 @@ const ProjectInfo = ({
       ),
     [categoryValues]
   )
+  const selectedCategoryNames = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(categoryValues) ? categoryValues : [])
+          .map((item) => item?.category?.trim())
+          .filter(
+            (category): category is string =>
+              typeof category === "string" && category.length > 0
+          )
+      ),
+    [categoryValues]
+  )
   const suggestedForDisplay = useMemo(
     () =>
       suggested
         .filter(
           ({ category, subCategory }) =>
+            !selectedCategoryNames.has(category) &&
             !selectedSuggestedPairs.has(`${category}::${subCategory}`)
         )
         .slice(0, 3),
-    [selectedSuggestedPairs, suggested]
+    [selectedCategoryNames, selectedSuggestedPairs, suggested]
   )
 
   return (
@@ -1861,81 +1886,56 @@ const ProjectInfo = ({
                 </div>
               </div>
 
-              <div className="relative">
-                <Input
-                  id="title"
-                  type="text"
-                  placeholder={hasCommittedTitle && !titleInputValue ? "" : "Enter Title"}
-                  value={titleInputValue}
-                  maxLength={TITLE_MAX_LENGTH}
-                  onChange={(event) => {
-                    setTitleInputValue(
-                      event.target.value.slice(0, TITLE_MAX_LENGTH)
+              <Input
+                id="title"
+                type="text"
+                placeholder="Enter Title"
+                value={projectInfoValues.title ?? ""}
+                maxLength={TITLE_MAX_LENGTH}
+                onChange={(event) => {
+                  methods.setValue(
+                    "title",
+                    event.target.value.slice(0, TITLE_MAX_LENGTH),
+                    {
+                      shouldDirty: true,
+                      shouldTouch: true,
+                      shouldValidate: false,
+                    }
+                  )
+                  if (
+                    titleHasError &&
+                    get(errors, "title.type") === "manual"
+                  ) {
+                    methods.clearErrors("title")
+                  }
+                }}
+                onBlur={() => void methods.trigger("title")}
+                onKeyDown={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      projectInfoValues.title?.length || 0,
+                      TITLE_MAX_LENGTH
                     )
-                    if (
-                      titleHasError &&
-                      get(errors, "title.type") === "manual"
-                    ) {
-                      methods.clearErrors("title")
-                    }
-                  }}
-                  onBlur={commitTitleValue}
-                  onKeyDown={(event) => {
-                    if (
-                      shouldBlockMaxLengthInput(
-                        event,
-                        titleInputValue.length,
-                        TITLE_MAX_LENGTH
-                      )
-                    ) {
-                      event.preventDefault()
-                      triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
-                      return
-                    }
-                    if (event.key !== "Enter") return
+                  ) {
                     event.preventDefault()
-                    commitTitleValue()
-                  }}
-                  onPaste={(event) => {
-                    if (
-                      shouldBlockMaxLengthInput(
-                        event,
-                        titleInputValue.length,
-                        TITLE_MAX_LENGTH
-                      )
-                    ) {
-                      event.preventDefault()
-                      triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
-                    }
-                  }}
-                  className={cn(
-                    hasCommittedTitle &&
-                      !titleInputValue &&
-                      !titleHasError &&
-                      "text-transparent"
-                  )}
-                  isInvalid={titleHasError}
-                />
-
-                {hasCommittedTitle && !titleInputValue && !titleHasError ? (
-                  <div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center px-[14px]">
-                    <div className="pointer-events-auto inline-flex max-w-full items-center gap-1 rounded-md bg-primary-50 px-2 py-1 text-sm leading-none text-primary-500">
-                      <span className="truncate">
-                        {projectInfoValues.title}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="Remove selected title"
-                        className="inline-flex size-4 items-center justify-center rounded-sm opacity-60 transition hover:bg-primary-100 hover:opacity-100"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={clearCommittedTitle}
-                      >
-                        <X2 className="size-3" />
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                  }
+                }}
+                onPaste={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      projectInfoValues.title?.length || 0,
+                      TITLE_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                  }
+                }}
+                isInvalid={titleHasError}
+              />
 
               <HookFormErrorMessage
                 errors={errors}
@@ -3675,6 +3675,11 @@ const TaskDialog = ({
       },
     },
   })
+  const taskDurationValue = useWatch({
+    control,
+    name: "duration.value",
+    defaultValue: 1,
+  })
   const onSubmit: SubmitHandler<TaskFormValues> = (values) => {
     onAddTask(values)
     toggleIsOpen(false)
@@ -3779,7 +3784,6 @@ const TaskDialog = ({
               <Input
                 id="duration"
                 className="text-gray-900"
-                defaultValue="1"
                 {...register("duration.value")}
                 isInvalid={hookFormHasError({ errors, name: "duration.value" })}
               />
@@ -3788,11 +3792,21 @@ const TaskDialog = ({
                 name="duration.type"
                 render={({ field: { value, onChange } }) => (
                   <Listbox value={value} onChange={onChange} id="duration">
-                    <ListboxButton placeholder="Select" />
+                    <ListboxButton placeholder="Select">
+                      {({ value: selectedValue }) =>
+                        formatDurationUnit(
+                          Number(taskDurationValue) || 0,
+                          selectedValue as (typeof DURATION_TYPE)[number]
+                        ).replace(/^./, (character) => character.toUpperCase())
+                      }
+                    </ListboxButton>
                     <ListboxOptions>
                       {DURATION_TYPE.map((format) => (
                         <ListboxOption key={format} value={format}>
-                          {format.charAt(0).toUpperCase() + format.slice(1)}
+                          {formatDurationUnit(
+                            Number(taskDurationValue) || 0,
+                            format
+                          ).replace(/^./, (character) => character.toUpperCase())}
                         </ListboxOption>
                       ))}
                     </ListboxOptions>
@@ -4197,6 +4211,31 @@ interface Phase {
   rows?: PhaseRow[]
 }
 
+const getPhaseDurationInDays = (phase?: Phase) => {
+  const rows = phase?.rows ?? []
+  const durations = rows
+    .map((row) => {
+      const value = Number(row?.duration?.value)
+      const type = row?.duration?.type
+
+      if (!Number.isFinite(value) || value <= 0 || !type) return null
+      return durationToDays(value, type)
+    })
+    .filter((value): value is number => typeof value === "number")
+
+  return durations.length ? Math.max(...durations) : 1
+}
+
+const getPhaseDayRange = (phases: Phase[], phaseIndex: number) => {
+  const priorDays = phases
+    .slice(0, phaseIndex)
+    .reduce((sum, phase) => sum + getPhaseDurationInDays(phase), 0)
+  const startDay = priorDays + 1
+  const endDay = startDay + getPhaseDurationInDays(phases[phaseIndex]) - 1
+
+  return { startDay, endDay }
+}
+
 interface PhaseTableRowProps {
   row: Row<PhaseRow>
 }
@@ -4338,7 +4377,8 @@ const columns = [
           type="button"
           onClick={() => table.options.meta?.openDurationDialog(index)}
         >
-          {getValue().value} {getValue().type}
+          {getValue().value}{" "}
+          {formatDurationUnit(getValue().value, getValue().type)}
         </button>
       </TableCell>
     ),
@@ -5049,6 +5089,11 @@ const ProjectScope = ({
       },
       values: durationFormValues,
     })
+    const selectedDurationValue = useWatch({
+      control,
+      name: "duration.value",
+      defaultValue: 1,
+    })
 
     React.useEffect(() => {
       if (open && durationFormValues) {
@@ -5090,9 +5135,24 @@ const ProjectScope = ({
                 control={control}
                 render={({ field }) => (
                   <select {...field} className="border rounded px-2 py-1">
-                    <option value="days">Days</option>
-                    <option value="weeks">Weeks</option>
-                    <option value="hours">Hours</option>
+                    <option value="days">
+                      {formatDurationUnit(
+                        Number(selectedDurationValue) || 0,
+                        "days"
+                      ).replace(/^./, (character) => character.toUpperCase())}
+                    </option>
+                    <option value="weeks">
+                      {formatDurationUnit(
+                        Number(selectedDurationValue) || 0,
+                        "weeks"
+                      ).replace(/^./, (character) => character.toUpperCase())}
+                    </option>
+                    <option value="hours">
+                      {formatDurationUnit(
+                        Number(selectedDurationValue) || 0,
+                        "hours"
+                      ).replace(/^./, (character) => character.toUpperCase())}
+                    </option>
                   </select>
                 )}
               />
@@ -5246,13 +5306,13 @@ const ProjectScope = ({
 
                             <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 1
+                                Day {getPhaseDayRange(phases, index).startDay}
                               </span>
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
                                 -
                               </span>
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 8
+                                Day {getPhaseDayRange(phases, index).endDay}
                               </span>
                             </div>
                           </div>
@@ -5348,7 +5408,8 @@ const ProjectScope = ({
                                 )}
                                 <div className="inline-block md:hidden">
                                   <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    Day 1 - Day 8
+                                    Day {getPhaseDayRange(phases, index).startDay} - Day{" "}
+                                    {getPhaseDayRange(phases, index).endDay}
                                   </span>
                                 </div>
                               </div>
@@ -5356,13 +5417,13 @@ const ProjectScope = ({
 
                             <div className="hidden md:inline-flex items-center gap-x-2 md:pl-0 pl-10">
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 1
+                                Day {getPhaseDayRange(phases, index).startDay}
                               </span>
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
                                 -
                               </span>
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 8
+                                Day {getPhaseDayRange(phases, index).endDay}
                               </span>
                             </div>
                           </div>
@@ -5575,6 +5636,19 @@ function PublishProject({
   const router = useRouter()
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
     resolver: zodResolver(projectInfoSchema),
+    defaultValues: {
+      title: "",
+      category: [
+        { category: "", subCategories: [] },
+        { category: "", subCategories: [] },
+        { category: "", subCategories: [] },
+      ],
+      industry: [],
+      shortDescription: "",
+      fullDescription: "",
+      tags: [],
+      skills: [],
+    },
   })
   const mediaMethods = useForm<MediaFormValues>({
     resolver: zodResolver(mediaFormSchema),
