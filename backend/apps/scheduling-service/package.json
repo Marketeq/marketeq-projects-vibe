@@ -1,0 +1,13 @@
+{
+  "name": "@marketeq/scheduling-service",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install:app": "corepack yarn --cwd app install",
+    "build": "corepack yarn --cwd app build",
+    "start": "sh -c 'PORT=${PORT:-3024} corepack yarn --cwd app start'",
+    "start:dev": "sh -c 'PORT=${PORT:-3024} corepack yarn --cwd app dev'",
+    "lint": "corepack yarn --cwd app lint",
+    "type-check": "corepack yarn --cwd app type-check"
+  }
+}
