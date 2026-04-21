@@ -15,6 +15,7 @@ import { apiFetch } from "@/src/lib/api"
 import { decryptAES, encryptAES } from "@/src/crypto/e2ee"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { getAccessToken } from "@/utils/auth"
+import { useToast } from "@/components/ui/toast/use-toast"
 import type { Conversation } from "@/types/conversation"
 import type { Message } from "@/types/message"
 
@@ -96,6 +97,7 @@ export function ForwardMessageDialog({
   receiverUser,
   privateKey,
 }: ForwardMessageDialogProps) {
+  const { toast } = useToast()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState("")
@@ -330,32 +332,29 @@ export function ForwardMessageDialog({
           )
         }
 
-        // Send added message first (if any), then the forwarded original
-        if (addedMessage.trim()) {
-          const addedCiphertext = await encryptAES(addedMessage.trim(), key)
-          await apiFetch(`/v1/messages`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: {
-              threadId: contact.threadId,
-              ciphertext: addedCiphertext,
-            },
-          })
-        }
+        // Slack/Telegram-style: one message carries both the wrapper and the quoted original.
+        const quotedCiphertext = await encryptAES(originalText, key)
+        const wrapperCiphertext = addedMessage.trim()
+          ? await encryptAES(addedMessage.trim(), key)
+          : null
 
-        const ciphertext = await encryptAES(originalText, key)
         await apiFetch(`/v1/messages`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           body: {
             threadId: contact.threadId,
-            ciphertext,
+            ciphertext: wrapperCiphertext,
             forwardedFromId: message.id,
+            quotedCiphertext,
           },
         })
       }
 
       onOpenChange(false)
+      toast({
+        title: "Message Forwarded",
+        variant: "success",
+      })
     } catch (err) {
       console.error("[ForwardDialog] Send failed", err)
       setError("Failed to forward message. Try again.")
@@ -467,11 +466,34 @@ export function ForwardMessageDialog({
               </div>
             </div>
 
-            {showLimitWarning && (
-              <div className="mt-2 text-xs text-error-500">
-                You can forward to max {MAX_RECIPIENTS} people at a time
-              </div>
-            )}
+            <Dialog open={showLimitWarning} onOpenChange={setShowLimitWarning}>
+              <DialogContent className="max-w-[348px] shadow-xl p-6">
+                <div className="rounded-xl bg-white">
+                  <h1 className="text-lg leading-7 font-semibold text-gray-900">
+                    Message Forwarding Limit
+                  </h1>
+                  <div className="mt-2 text-gray-500">
+                    You can forward messages to{" "}
+                    <span className="font-semibold text-gray-900">
+                      max {MAX_RECIPIENTS} people
+                    </span>{" "}
+                    at a time
+                  </div>
+                  <div className="mt-9">
+                    <Button
+                      className="w-full"
+                      variant="outlined"
+                      visual="gray"
+                      onClick={() => setShowLimitWarning(false)}
+                    >
+                      Ok
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+
 
             {/* Floating contacts dropdown */}
             {isDropdownOpen && (

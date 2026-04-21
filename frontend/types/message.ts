@@ -18,6 +18,8 @@ export interface Message {
   starred?: boolean
   replyToMessageId?: string
   forwardedFromId?: string
+  quotedCiphertext?: string | null
+  quotedContent?: string | null
 }
 
 // Extended Message type to include file attachments

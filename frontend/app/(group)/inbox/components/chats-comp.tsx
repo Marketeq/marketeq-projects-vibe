@@ -299,13 +299,15 @@ export function Chats({
   const handleIncoming = useCallback(
     async (incoming: {
       id: string
-      ciphertext: string
+      ciphertext: string | null
       senderId: string
       threadId: string
       createdAt: string
       updatedAt: string
       pinned?: boolean
       deleted?: boolean
+      forwardedFromId?: string
+      quotedCiphertext?: string | null
     }) => {
       const convId = incoming.threadId
       let key: Uint8Array | null = null
@@ -318,12 +320,23 @@ export function Chats({
         console.error("No AES key for", convId)
         return
       }
-      let plain: string
-      try {
-        plain = await decryptAES(incoming.ciphertext, key)
-      } catch (err) {
-        console.error("Failed to decrypt incoming:", err)
-        return
+      let plain = ""
+      if (incoming.ciphertext) {
+        try {
+          plain = await decryptAES(incoming.ciphertext, key)
+        } catch (err) {
+          console.error("Failed to decrypt incoming:", err)
+          return
+        }
+      }
+      let quotedPlain: string | null = null
+      if (incoming.quotedCiphertext) {
+        try {
+          quotedPlain = await decryptAES(incoming.quotedCiphertext, key)
+        } catch (err) {
+          console.error("Failed to decrypt quoted content:", err)
+          quotedPlain = "🔒 Encrypted message"
+        }
       }
       setLocalMsgs((prev) => {
         if (prev.some((m) => m.id === incoming.id)) return prev
@@ -332,6 +345,7 @@ export function Chats({
           {
             ...incoming,
             content: plain,
+            quotedContent: quotedPlain,
             isRead: false,
             isPinned: incoming.pinned ?? false,
             isDeleted: incoming.deleted ?? false,
