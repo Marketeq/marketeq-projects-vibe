@@ -25,6 +25,9 @@ cp app/.env.example app/.env
 
 Then fill in the environment variables required by Cal.diy.
 
+The wrapper also applies a small compatibility patch for the vendored `zod-prisma-types`
+generator so installs work on newer local Node versions.
+
 ## Local development
 
 ```bash
