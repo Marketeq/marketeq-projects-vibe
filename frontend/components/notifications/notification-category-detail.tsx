@@ -16,6 +16,7 @@ import {
   channelLabels,
   channelOrder,
   resolveIcon,
+  SMS_ENABLED,
 } from "./shared"
 import NotificationItemRow from "./notification-item-row"
 
@@ -141,7 +142,7 @@ export default function NotificationCategoryDetail({
 
           {byTypeOpen && (
             <div className="mt-4 space-y-2">
-              {channelOrder.map((key) => {
+              {channelOrder.filter((k) => SMS_ENABLED || k !== "sms").map((key) => {
                 const ChannelIcon = channelIcons[key]
                 const globalOff = !globalChannels[key].enabled
                 return (

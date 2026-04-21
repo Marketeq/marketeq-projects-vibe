@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { Edit01, Plus } from "@blend-metrics/icons"
-import { Switch, useToast } from "@/components/ui"
+import { Button, Switch, useToast } from "@/components/ui"
 import { cn } from "@/utils/functions"
 import type {
   ChannelKey,
@@ -12,6 +12,7 @@ import {
   channelIcons,
   channelLabels,
   requestBrowserNotificationPermission,
+  SMS_ENABLED,
 } from "./shared"
 import BrowserAlertsModal from "./modals/browser-alerts-modal"
 import EditEmailModal from "./modals/edit-email-modal"
@@ -70,10 +71,10 @@ export default function NotificationGlobalChannels({
           return
         }
         onSetBrowserAlerts(true)
-        toast({ title: "Browser alerts are now enabled" })
+        toast({ title: "Browser alerts are now enabled", variant: "success" })
       } else {
         onSetBrowserAlerts(false)
-        toast({ title: "Browser alerts are now disabled" })
+        toast({ title: "Browser alerts are now disabled", variant: "success" })
       }
       setBrowserMode(null)
     } finally {
@@ -85,7 +86,7 @@ export default function NotificationGlobalChannels({
     setEmailLoading(true)
     try {
       await onSetEmailAddress(address)
-      toast({ title: "Your email has been updated" })
+      toast({ title: "Your email has been updated", variant: "success" })
     } catch (err: any) {
       toast({
         title:
@@ -101,7 +102,10 @@ export default function NotificationGlobalChannels({
     setPhoneLoading(true)
     try {
       await onSetAccountPhone(phone)
-      toast({ title: phone ? "Your phone number has been updated" : "Phone number removed" })
+      toast({
+        title: phone ? "Your phone number has been updated" : "Phone number removed",
+        variant: "success",
+      })
     } catch (err: any) {
       toast({
         title:
@@ -114,21 +118,27 @@ export default function NotificationGlobalChannels({
   }
 
   const inAppBrowserBtn = channels.inApp.browser ? (
-    <button
+    <Button
       type="button"
+      visual="gray"
+      variant="outlined"
+      size="sm"
       onClick={() => setBrowserMode("disable")}
-      className="hidden group-hover:inline-flex items-center gap-1 text-xs font-semibold text-primary-500 hover:text-primary-600"
+      className="hidden group-hover:inline-flex"
     >
       Disable Browser Alerts
-    </button>
+    </Button>
   ) : (
-    <button
+    <Button
       type="button"
+      visual="gray"
+      variant="outlined"
+      size="sm"
       onClick={() => setBrowserMode("enable")}
-      className="hidden group-hover:inline-flex items-center gap-1 text-xs font-semibold text-primary-500 hover:text-primary-600"
+      className="hidden group-hover:inline-flex"
     >
       Enable Browser Alerts
-    </button>
+    </Button>
   )
 
   return (
@@ -191,14 +201,17 @@ export default function NotificationGlobalChannels({
               {channels.email.address ?? accountEmail}
             </span>
             {channels.email.enabled && (
-              <button
+              <Button
                 type="button"
+                visual="gray"
+                variant="outlined"
+                size="sm"
+                leftIcon={<Edit01 className="size-3.5" />}
                 onClick={() => setEditEmailOpen(true)}
-                className="hidden group-hover:inline-flex items-center gap-1 text-xs font-semibold text-primary-500 hover:text-primary-600"
+                className="hidden group-hover:inline-flex"
               >
-                <Edit01 className="size-3.5" />
                 Edit Email
-              </button>
+              </Button>
             )}
             <Switch
               checked={channels.email.enabled}
@@ -208,54 +221,16 @@ export default function NotificationGlobalChannels({
           </div>
 
           {/* SMS / Text */}
-          <div className="group flex items-center gap-3 bg-gray-50 rounded-lg px-4 h-[52px]">
+          <div className="group flex items-center gap-3 bg-gray-50 rounded-lg px-4 h-[52px] opacity-60">
             <SmsIcon />
             <span className="text-sm font-semibold text-dark-blue-400">
               {channelLabels.sms}
             </span>
-            <span className="flex-1" />
-            <span
-              className={cn(
-                "text-xs group-hover:hidden",
-                accountPhone
-                  ? "text-gray-400"
-                  : "text-red-500",
-                !channels.sms.enabled && "opacity-50",
-              )}
-            >
-              {accountPhone ?? "Missing Phone Number"}
+            <span className="ml-2 inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+              Coming soon
             </span>
-            {accountPhone ? (
-              <button
-                type="button"
-                onClick={() => setEditPhoneOpen(true)}
-                className="hidden group-hover:inline-flex items-center gap-1 text-xs font-semibold text-primary-500 hover:text-primary-600"
-              >
-                <Edit01 className="size-3.5" />
-                Edit Phone Number
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setEditPhoneOpen(true)}
-                className="hidden group-hover:inline-flex items-center gap-1 text-xs font-semibold text-primary-500 hover:text-primary-600"
-              >
-                <Plus className="size-3.5" />
-                Add Phone Number
-              </button>
-            )}
-            <Switch
-              checked={channels.sms.enabled && !!accountPhone}
-              disabled={!accountPhone}
-              onCheckedChange={(v) => {
-                if (!accountPhone) {
-                  setEditPhoneOpen(true)
-                  return
-                }
-                onToggleChannel("sms", v)
-              }}
-              size="sm"
-            />
+            <span className="flex-1" />
+            <Switch checked={false} disabled size="sm" />
           </div>
         </div>
       </div>

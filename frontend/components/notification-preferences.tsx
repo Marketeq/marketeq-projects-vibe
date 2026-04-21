@@ -180,7 +180,7 @@ export default function NotificationPreferences() {
     setResetLoading(true)
     try {
       await reset()
-      toast({ title: "Your notifications have been reset to default" })
+      toast({ title: "Your notifications have been reset to default", variant: "success" })
     } catch (err: any) {
       toast({
         title:

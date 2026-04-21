@@ -14,6 +14,8 @@ import type {
 
 export const channelOrder: ChannelKey[] = ["inApp", "email", "sms"]
 
+export const SMS_ENABLED = false
+
 export const channelLabels: Record<ChannelKey, string> = {
   inApp: "In App",
   email: "Email",
@@ -48,7 +50,7 @@ export const EMPTY_CHANNELS: ScopedChannelState = {
 
 export function summarizeChannels(channels: ScopedChannelState): string {
   const active = channelOrder
-    .filter((k) => channels[k])
+    .filter((k) => (SMS_ENABLED || k !== "sms") && channels[k])
     .map((k) => channelLabels[k])
   if (active.length === 0) return "Off"
   if (active.length === 1) return `${active[0]} only`

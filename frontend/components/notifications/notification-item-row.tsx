@@ -9,7 +9,13 @@ import type {
   GlobalChannelPrefs,
   NotificationItemPref,
 } from "@/service/http/notifications"
-import { channelIcons, channelLabels, channelOrder, summarizeChannels } from "./shared"
+import {
+  channelIcons,
+  channelLabels,
+  channelOrder,
+  SMS_ENABLED,
+  summarizeChannels,
+} from "./shared"
 
 interface Props {
   notification: CatalogItem
@@ -79,7 +85,7 @@ export default function NotificationItemRow({
               <p className="text-xs font-semibold text-dark-blue-400">
                 Where do you get these notifications
               </p>
-              {channelOrder.map((key) => {
+              {channelOrder.filter((k) => SMS_ENABLED || k !== "sms").map((key) => {
                 const ChannelIcon = channelIcons[key]
                 const globalOff = !globalChannels[key].enabled
                 return (

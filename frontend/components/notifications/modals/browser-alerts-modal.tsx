@@ -35,8 +35,8 @@ export default function BrowserAlertsModal({
           </DialogTitle>
           <DialogDescription>
             {isEnable
-              ? "All notifications will be reverted to default"
-              : "All notifications will be disabled"}
+              ? "You'll receive push notifications from this browser when new alerts come in."
+              : "You'll stop receiving browser push notifications. You can re-enable them anytime."}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="mt-4 flex gap-2 sm:gap-2">

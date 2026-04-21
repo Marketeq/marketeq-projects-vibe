@@ -31,7 +31,7 @@ const toastVariants = cva(
         default: "text-white",
         destructive: "destructive text-error-500",
         success:
-          "bg-black text-white rounded-[5px] border-0 p-4 w-[244px] h-[52px] [&_svg]:text-emerald-500",
+          "bg-emerald-500 text-white rounded-[5px] border-0 p-4 min-h-[52px] [&_svg]:text-white",
       },
     },
     defaultVariants: {
