@@ -16,6 +16,7 @@ import type {
   AuthNeedsLoginPayload,
   AuthStatus,
   AuthStatusChangedPayload,
+  BackendContract,
   BreakExpiredPayload,
   BreakExpiringPayload,
   CaptureHealth,
@@ -114,6 +115,10 @@ export interface DttOnboardingBridge {
   onStateChanged: (cb: (s: OnboardingState) => void) => () => void;
 }
 
+export interface DttContractsBridge {
+  getMine: () => Promise<BackendContract[]>;
+}
+
 export interface DttBridgeGlobal {
   getAppInfo: () => Promise<AppInfo>;
   ping: (echo: string) => Promise<PingResult>;
@@ -125,6 +130,7 @@ export interface DttBridgeGlobal {
   capture: DttCaptureBridge;
   permissions: DttPermissionsBridge;
   auth: DttAuthBridge;
+  contracts: DttContractsBridge;
   sync: DttSyncBridge;
   onboarding: DttOnboardingBridge;
 }

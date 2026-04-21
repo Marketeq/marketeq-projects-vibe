@@ -132,6 +132,17 @@ module.exports = {
       env: { PORT: 3013, NODE_ENV: 'development' },
     },
     {
+      name: 'category-service',
+      script: 'npx',
+      args: 'nest start category-service',
+      cwd: __dirname,
+      autorestart: true,
+      watch: false,
+      max_restarts: 10,
+      restart_delay: 2000,
+      env: { PORT: 3023, NODE_ENV: 'development' },
+    },
+    {
       name: 'autocomplete-service',
       script: 'npx',
       args: 'nest start autocomplete-service',

@@ -781,7 +781,13 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
   const router = useRouter()
   const { logoutHandler, user, setUser } = useAuth()
 
-  const hasSecondaryNav = HAS_SECONDARY_NAV.includes(pathname) || pathname.startsWith("/c/") || pathname.startsWith("/project-details/")
+  // Job details pages use the same marketplace secondary nav shell as the
+  // homepage/category surfaces, so the primary header must coordinate with it.
+  const hasSecondaryNav =
+    HAS_SECONDARY_NAV.includes(pathname) ||
+    pathname.startsWith("/c/") ||
+    pathname.startsWith("/project-details/") ||
+    pathname.startsWith("/job-details/")
 
   // Listen for secondary nav visibility changes
   React.useEffect(() => {

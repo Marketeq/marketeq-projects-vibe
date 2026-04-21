@@ -1,5 +1,6 @@
 import { CollectionConfig } from 'payload/types';
 import { isAdmin, isAdminOrDeveloper } from '../access/roles';
+import { crossServiceSourceIdField } from '../fields/crossServiceSourceIdField';
 
 export const Orders: CollectionConfig = {
   slug: 'orders',
@@ -21,12 +22,11 @@ export const Orders: CollectionConfig = {
       unique: true,
       index: true,
     },
-    {
-      name: 'sourceId',
-      type: 'text',
-      index: true,
-      admin: { description: 'Contract/transaction ID from contracts-service' },
-    },
+    crossServiceSourceIdField({
+      required: false,
+      unique: false,
+      description: 'Contract / transaction ID from contracts-service.',
+    }),
     {
       name: 'client',
       type: 'relationship',
