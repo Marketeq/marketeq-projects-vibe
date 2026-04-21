@@ -2,12 +2,12 @@ import {
   Body,
   Controller,
   Delete,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
   UseGuards,
-  HttpCode,
-  HttpStatus,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { JobListingOwnerGuard } from '../guards/job-listing-owner.guard';
@@ -23,14 +23,20 @@ import { ReorderPhasesDto } from '../dto/reorder-phases.dto';
 export class JobListingPhaseController {
   constructor(private readonly phaseService: JobListingPhaseService) {}
 
-  // ── POST /v1/job-listings/:id/phases ─────────────────────────
   @Post()
   @HttpCode(HttpStatus.CREATED)
   addPhase(@Param('id') listingId: string, @Body() dto: CreatePhaseDto) {
     return this.phaseService.addPhase(listingId, dto);
   }
 
-  // ── PATCH /v1/job-listings/:id/phases/:phaseId ───────────────
+  @Patch('reorder')
+  reorderPhases(
+    @Param('id') listingId: string,
+    @Body() dto: ReorderPhasesDto,
+  ) {
+    return this.phaseService.reorderPhases(listingId, dto);
+  }
+
   @Patch(':phaseId')
   updatePhase(
     @Param('id') listingId: string,
@@ -40,7 +46,6 @@ export class JobListingPhaseController {
     return this.phaseService.updatePhase(listingId, phaseId, dto);
   }
 
-  // ── DELETE /v1/job-listings/:id/phases/:phaseId ──────────────
   @Delete(':phaseId')
   @HttpCode(HttpStatus.NO_CONTENT)
   removePhase(
@@ -50,16 +55,6 @@ export class JobListingPhaseController {
     return this.phaseService.removePhase(listingId, phaseId);
   }
 
-  // ── PATCH /v1/job-listings/:id/phases/reorder ────────────────
-  @Patch('reorder')
-  reorderPhases(
-    @Param('id') listingId: string,
-    @Body() dto: ReorderPhasesDto,
-  ) {
-    return this.phaseService.reorderPhases(listingId, dto);
-  }
-
-  // ── POST /v1/job-listings/:id/phases/:phaseId/tasks ──────────
   @Post(':phaseId/tasks')
   @HttpCode(HttpStatus.CREATED)
   addTask(
@@ -70,7 +65,6 @@ export class JobListingPhaseController {
     return this.phaseService.addTask(listingId, phaseId, dto);
   }
 
-  // ── PATCH /v1/job-listings/:id/phases/:phaseId/tasks/:taskId ─
   @Patch(':phaseId/tasks/:taskId')
   updateTask(
     @Param('id') listingId: string,
@@ -81,7 +75,6 @@ export class JobListingPhaseController {
     return this.phaseService.updateTask(listingId, phaseId, taskId, dto);
   }
 
-  // ── DELETE /v1/job-listings/:id/phases/:phaseId/tasks/:taskId ─
   @Delete(':phaseId/tasks/:taskId')
   @HttpCode(HttpStatus.NO_CONTENT)
   removeTask(

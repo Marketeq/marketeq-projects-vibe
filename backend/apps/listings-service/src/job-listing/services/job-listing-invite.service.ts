@@ -23,7 +23,10 @@ export class JobListingInviteService {
       throw new NotFoundException({ code: 'JL_NOT_FOUND', message: 'Job listing not found.' });
     }
 
-    const count = dto.talentUserIds.length;
+    // Deduplicate talent IDs so repeated entries do not consume balance twice
+    // or emit duplicate invite events.
+    const uniqueTalentUserIds = [...new Set(dto.talentUserIds)];
+    const count = uniqueTalentUserIds.length;
 
     if (listing.inviteBalance < count) {
       throw new HttpException(
@@ -37,7 +40,7 @@ export class JobListingInviteService {
       invitesSent:   listing.invitesSent + count,
     });
 
-    for (const talentUserId of dto.talentUserIds) {
+    for (const talentUserId of uniqueTalentUserIds) {
       this.publisher.emit('job_listing.invite_sent', {
         listingId,
         talentUserId,
