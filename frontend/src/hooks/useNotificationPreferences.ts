@@ -76,6 +76,29 @@ function mergePayload(
   }
 }
 
+function mergeRecordPatches<T extends { enabled?: boolean; channels?: Record<string, boolean> }>(
+  a?: Record<string, T>,
+  b?: Record<string, T>,
+): Record<string, T> | undefined {
+  if (!a && !b) return undefined
+  const out: Record<string, T> = { ...(a ?? {}) }
+  if (b) {
+    for (const [id, next] of Object.entries(b)) {
+      const prev = out[id]
+      if (!prev) {
+        out[id] = next
+        continue
+      }
+      out[id] = {
+        ...prev,
+        ...next,
+        channels: { ...(prev.channels ?? {}), ...(next.channels ?? {}) },
+      } as T
+    }
+  }
+  return out
+}
+
 function mergeUpdatePayloads(
   a: UpdatePreferencesPayload,
   b: UpdatePreferencesPayload,
@@ -88,12 +111,8 @@ function mergeUpdatePayloads(
           sms: { ...(a.channels?.sms ?? {}), ...(b.channels?.sms ?? {}) },
         }
       : undefined,
-    categories: a.categories || b.categories
-      ? { ...(a.categories ?? {}), ...(b.categories ?? {}) }
-      : undefined,
-    notifications: a.notifications || b.notifications
-      ? { ...(a.notifications ?? {}), ...(b.notifications ?? {}) }
-      : undefined,
+    categories: mergeRecordPatches(a.categories as any, b.categories as any) as any,
+    notifications: mergeRecordPatches(a.notifications as any, b.notifications as any) as any,
   }
 }
 
@@ -125,6 +144,11 @@ export function useNotificationPreferences() {
     mutationFn: async (payload: UpdatePreferencesPayload) => {
       const res = await NotificationsAPI.updatePreferences(payload)
       return res.data as PreferencesResponse
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: KEYS.preferences })
+      const snapshot = queryClient.getQueryData<PreferencesResponse>(KEYS.preferences)
+      return { snapshot }
     },
     onSuccess: (data) => {
       queryClient.setQueryData(KEYS.preferences, data)
@@ -194,7 +218,15 @@ export function useNotificationPreferences() {
 
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
+      if (Object.keys(pendingRef.current).length > 0) {
+        const payload = pendingRef.current
+        pendingRef.current = {}
+        NotificationsAPI.updatePreferences(payload).catch(() => {})
+      }
     }
   }, [])
 
