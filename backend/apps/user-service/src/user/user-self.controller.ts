@@ -1,4 +1,11 @@
-import { Body, Controller, Get, Patch, Req } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Req,
+} from '@nestjs/common';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { UserService } from './user.service';
 import { JwtUser } from '../auth/types/jwt-user.type';
@@ -46,7 +53,11 @@ export class UserSelfController {
     @CurrentUser() user: JwtUser,
     @Body() dto: UpdatePhoneDto,
   ) {
+    if (!('phone' in dto)) {
+      throw new BadRequestException('phone field is required (string or null)');
+    }
     const resolved = await this.userService.getUserByClaims(user);
-    return this.userService.updatePhone(resolved.id, dto.phone ?? null);
+    const updated = await this.userService.updatePhone(resolved.id, dto.phone ?? null);
+    return { id: updated.id, phone: updated.phone ?? null };
   }
 }
