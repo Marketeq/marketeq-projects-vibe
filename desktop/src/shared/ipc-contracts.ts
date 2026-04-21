@@ -299,6 +299,29 @@ export interface SyncErrorPayload {
   message: string;
 }
 
+// ---------- Phase 7 Updater contracts ----------
+
+export type UpdaterReleaseChannel = 'stable' | 'beta' | 'alpha';
+export type UpdaterState = 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
+
+export interface UpdaterProgressInfo {
+  total: number;
+  delta: number;
+  transferred: number;
+  percent: number;
+  bytesPerSecond: number;
+}
+
+export interface UpdaterStatusDTO {
+  currentVersion: string;
+  channel: UpdaterReleaseChannel;
+  state: UpdaterState;
+  availableVersion: string | null;
+  progress: UpdaterProgressInfo | null;
+  lastError: string | null;
+  lastCheckAt: number | null;
+}
+
 // ---------- Phase 5 Auth contracts ----------
 
 import { z } from 'zod';

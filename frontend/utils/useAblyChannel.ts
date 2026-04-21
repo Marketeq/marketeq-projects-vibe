@@ -41,6 +41,10 @@ export function useAblyChannel(
             `/v1/threads/ably-token?threadId=${threadId}`,
             { method: "GET", headers: { Authorization: `Bearer ${token}` } }
           )
+          if (!tokenDetails) {
+            callback("Realtime token unavailable", null)
+            return
+          }
           callback(null, tokenDetails)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)

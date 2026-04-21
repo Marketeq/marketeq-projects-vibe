@@ -345,6 +345,10 @@ const LeftSidebar = ({
   // it returns the existing 1:1 thread if one already exists.
   useEffect(() => {
     if (!initialParticipantId || !currentUserId || !token) return
+    if (initialParticipantId === currentUserId) {
+      router.replace("/inbox", { scroll: false })
+      return
+    }
     let cancelled = false
     ;(async () => {
       try {
