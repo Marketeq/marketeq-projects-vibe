@@ -911,7 +911,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                     </span>
                   </div>
 
-                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>My Account</Button>
+                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push("/settings") }}>My Account</Button>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />

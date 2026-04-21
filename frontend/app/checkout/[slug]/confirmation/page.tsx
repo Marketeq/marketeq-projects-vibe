@@ -1,37 +1,35 @@
 "use client"
 
 import * as React from "react"
-import { useParams, useRouter } from "next/navigation"
-import { cn } from "@/utils/functions"
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation"
+import { UserAPI } from "@/service/http/user"
+import type { UserProfile } from "@/types/user"
 import {
-  ArrowRight,
   Bank,
-  Check,
-  CheckCircle,
   Edit03,
-  Lock,
-  PhoneCall,
-  Printer,
   Users03,
 } from "@blend-metrics/icons"
-import { Logo3 } from "@/components/icons"
+import { CheckoutNavigation } from "@/components/checkout-navigation"
+import { getDefaultJobTitle, getExperienceLabel, offerRates } from "@/components/hire-me-button"
 import NextImage from "@/components/next-image"
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
+  Badge,
   Button,
+  Checkbox,
 } from "@/components/ui"
 
+const formatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+})
+
 const Visa = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    width={34}
-    height={24}
-    viewBox="0 0 34 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    {...props}
-  >
+  <svg width={34} height={24} viewBox="0 0 34 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
     <rect x={0.5} y={0.5} width={33} height={23} rx={3.5} fill="#fff" />
     <rect x={0.5} y={0.5} width={33} height={23} rx={3.5} stroke="#D0D5DD" />
     <path
@@ -44,14 +42,7 @@ const Visa = (props: React.SVGProps<SVGSVGElement>) => (
 )
 
 const Amex = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    width={34}
-    height={24}
-    viewBox="0 0 34 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    {...props}
-  >
+  <svg width={34} height={24} viewBox="0 0 34 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
     <rect width={34} height={24} rx={4} fill="#1F72CD" />
     <path
       fillRule="evenodd"
@@ -62,348 +53,393 @@ const Amex = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
-const StepIndicator = ({
-  step,
-  completed,
-  active,
-}: {
-  step: number
-  completed?: boolean
-  active?: boolean
-}) => (
-  <button
-    data-state={completed || active ? "active" : undefined}
-    className="peer focus-visible:outline-none size-[25px] rounded-full border-2 inline-flex justify-center items-center shrink-0 text-primary-500 border-primary-500 data-[state=active]:bg-primary-500 data-[state=active]:text-white data-[state=active]:border-primary-500"
-  >
-    {completed ? <Check className="size-3" /> : step}
-  </button>
-)
-
-const Step = ({
-  label,
-  step,
-  completed,
-  active,
-}: {
-  label: string
-  step: number
-  completed?: boolean
-  active?: boolean
-}) => (
-  <div className="flex gap-x-3 items-center">
-    <StepIndicator step={step} completed={completed} active={active} />
-    <span className="text-sm shrink-0 whitespace-nowrap leading-none font-semibold text-dark-blue-400">
-      {label}
-    </span>
-  </div>
-)
-
 export default function ConfirmationPage() {
   const params = useParams()
+  const pathname = usePathname()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const slug = params.slug as string
+  const isTalentCheckout = pathname.startsWith("/talent-checkout/")
+  const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
+  const decodedSlug = decodeURIComponent(slug)
+  const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(null)
+
+  React.useEffect(() => {
+    if (!isTalentCheckout) return
+
+    let isActive = true
+
+    const loadTalentProfile = async () => {
+      try {
+        const response = await UserAPI.getByUsername(decodedSlug)
+        if (isActive && response?.data) {
+          setTalentProfile(response.data)
+        }
+      } catch {
+        if (isActive) {
+          setTalentProfile(null)
+        }
+      }
+    }
+
+    loadTalentProfile()
+
+    return () => {
+      isActive = false
+    }
+  }, [decodedSlug, isTalentCheckout])
+
+  const selectedRateValue = searchParams.get("rate") || "web-development"
+  const selectedSchedule = searchParams.get("schedule") || "full-time"
+  const selectedDuration = searchParams.get("duration") || "Ongoing"
+  const selectedRate =
+    offerRates.find((rate) => rate.value === selectedRateValue) ||
+    offerRates.find((rate) => rate.value === "web-development") ||
+    offerRates[0]
+  const hourlyRate = Number(selectedRate?.price.replace(/[^0-9.]/g, "") || 0)
+  const estimatedTaxHourly = hourlyRate * 0.07
+  const totalHourlyRate = hourlyRate + estimatedTaxHourly
+  const monthlyHours = 160
+  const estimatedMonthlyCost = totalHourlyRate * monthlyHours
+  const addOnMonthlyTotal = 340 * 4
+  const dueTodayTotal = estimatedMonthlyCost + addOnMonthlyTotal
+  const formattedHourlyRate = `$${hourlyRate.toFixed(0)}/hr`
+  const formattedEstimatedTaxHourly = `$${estimatedTaxHourly.toFixed(2)}/hr`
+  const formattedTotalHourlyRate = `$${totalHourlyRate.toFixed(2)}/hr`
+  const formattedMonthlyCost = `${formatter.format(Math.round(estimatedMonthlyCost))}/mo`
+  const formattedAddOnMonthlyTotal = `${formatter.format(Math.round(addOnMonthlyTotal))}/mo`
+  const formattedDueToday = formatter.format(Math.round(dueTodayTotal))
+  const talentName =
+    talentProfile?.firstName ||
+    decodedSlug.split("-")[0]?.replace(/^./, (char) => char.toUpperCase()) ||
+    "Alex"
+  const talentUsername = talentProfile?.username || decodedSlug
+  const talentAvatarUrl = talentProfile?.avatarUrl || ""
+  const talentJobTitle = getDefaultJobTitle(talentProfile)
+  const talentExperienceLabel = getExperienceLabel(talentProfile)
+  const scheduleTitle = selectedSchedule === "part-time" ? "Part time" : "Full time"
+  const scheduleDetail = selectedSchedule === "part-time" ? "Up to 30 hrs/week" : "Over 30 hrs/week"
+  const durationBadgeLabel = selectedDuration === "Ongoing" ? "On-Going" : selectedDuration
+  const recurringAmountLabel = selectedDuration === "Ongoing"
+    ? `Monthly Payment Amount: ${formattedDueToday}`
+    : `Payment Amount: ${formattedDueToday}`
+
+  const handleSubmitPayment = () => {
+    router.push(`${basePath}/${slug}/thank-you`)
+  }
 
   return (
-    <div className="bg-gray-50">
-      {/* Navigation */}
-      <div className="bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]">
-        <div className="max-w-[1140px] h-[64px] mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-x-6">
-            <Logo3 className="w-[128px] h-[18.81px] shrink-0" />
+    <div className="bg-gray-50 pt-[64px]">
+      <CheckoutNavigation
+        currentStep={3}
+        firstStepLabel={isTalentCheckout ? "Contract Details" : "Project Details"}
+      />
 
-            <span className="inline-block h-[18px] w-px shrink-0 bg-gray-200" />
-
-            <div className="inline-flex items-center gap-x-2">
-              <Lock className="size-[18px] text-gray-500" />
-              <span className="text-base font-semibold leading-none text-gray-500">
-                Secure Checkout
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-x-3">
-            <Step label="Project Details" step={1} completed />
-            <span className="border-2 border-gray-300 border-dashed w-[35px] shrink-0" />
-            <Step label="Payment" step={2} completed />
-            <span className="border-2 border-gray-300 border-dashed w-[35px] shrink-0" />
-            <Step label="Confirmation" step={3} active />
-          </div>
-        </div>
-      </div>
-
-      {/* ThankYou Section */}
       <div className="px-[150px] py-[50px]">
-        <div className="p-8 pr-[60px] rounded-lg flex items-start gap-x-5 border bg-white border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-          <div className="size-12 border-[8px] text-success-500 border-success-50 bg-success-100 rounded-full shrink-0 inline-flex items-center justify-center">
-            <CheckCircle className="size-6" />
-          </div>
+        <h1 className="text-2xl font-bold text-dark-blue-400">
+          Review your order details
+        </h1>
+        <p className="mt-3 text-base font-light text-dark-blue-400">
+          Then click <span className="font-normal">&quot;Submit payment&quot;</span> below to
+          confirm your {isTalentCheckout ? "team" : "project"}
+        </p>
 
+        <div className="mt-6 flex gap-x-8">
           <div className="flex-auto">
-            <h1 className="text-[28px] font-bold text-success-600 leading-none">
-              Thank you for launching your project with Marketeq!
-            </h1>
+            {isTalentCheckout ? (
+              <>
+                <div className="rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                  <div className="py-5 px-6 border-b flex items-center justify-between border-gray-200">
+                    <h1 className="text-lg font-semibold text-dark-blue-400">
+                      Contract Details
+                    </h1>
 
-            <div className="mt-5 flex items-center gap-x-2">
-              <p className="text-base text-dark-blue-400">
-                A copy of your invoice and order details has been sent to{" "}
-                <span className="font-semibold">jack2024@gmail.com</span>
-              </p>
-
-              <Button className="underline" variant="link" visual="gray">
-                Change Email
-              </Button>
-            </div>
-
-            <div className="mt-3 flex items-center gap-x-3">
-              <span className="text-base text-gray-500">
-                Your Order ID: C01-12345-6789
-              </span>
-              <span className="inline-block h-[17px] w-0.5 bg-gray-200 shrink-0" />
-              <span className="text-base text-gray-500">
-                Order Date: November 5th, 2025 at 11:11 PM EST
-              </span>
-            </div>
-
-            <div className="mt-5">
-              <h3 className="Need to make changes to your order? View Order Details or Contact Us">
-                Need to make changes to your order? View{" "}
-                <Button
-                  className="underline"
-                  variant="link"
-                  onClick={() => router.push(`/checkout/${slug}`)}
-                >
-                  Order Details
-                </Button>{" "}
-                or{" "}
-                <Button className="underline" variant="link">
-                  Contact Us
-                </Button>
-              </h3>
-            </div>
-          </div>
-        </div>
-        <div className="flex gap-x-8 mt-6">
-          <div className="flex-auto">
-            <div className="rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <div className="py-5 px-6 border-b flex items-center justify-between border-gray-200">
-                <h1 className="text-lg font-semibold text-dark-blue-400">
-                  Project Details
-                </h1>
-
-                <Button variant="link" visual="primary">
-                  <Edit03 className="size-[15px]" />
-                  Edit
-                </Button>
-              </div>
-              <div className="p-5 flex gap-x-5">
-                <div className="relative flex-none w-[181px] bg-white border border-[#DFDFDF] rounded-md overflow-hidden">
-                  <NextImage
-                    className="object-cover"
-                    src="/dashboard.png"
-                    alt="Dashboard"
-                    sizes="50vw"
-                    fill
-                  />
-                </div>
-                <div className="flex-auto">
-                  <h1 className="text-sm font-medium text-dark-blue-400">
-                    Marketeq Client Portal - Redesigning and Optimizing Website
-                    for Enhanced User Experience.
-                  </h1>
-
-                  <div className="mt-1.5 inline-flex gap-x-2">
-                    <Users03 className="size-[15px] shrink-0" />
-                    <span className="text-xs leading-5 font-semibold text-dark-blue-400">
-                      8 team members
-                    </span>
+                    <Button variant="link" visual="primary">
+                      <Edit03 className="size-[15px]" />
+                      Edit Offer
+                    </Button>
                   </div>
 
-                  <div className="mt-1.5 leading-5 text-[13px] text-dark-blue-400">
-                    January 2024 - August 2024
-                  </div>
-                </div>
-              </div>
-              <div className="p-6">
-                <h1 className="text-base font-semibold text-dark-blue-400">
-                  Set up your introductory call
-                </h1>
-                <p className="mt-1 text-sm font-light text-dark-blue-400">
-                  Set up your introductory call
-                </p>
-
-                <article className="py-6 flex items-center justify-between">
-                  <div className="flex gap-x-3 items-center">
-                    <Avatar size="md" className="shrink-0">
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
+                  <div className="p-5 flex items-center gap-x-5">
+                    <Avatar className="size-[76px] shrink-0">
+                      <AvatarImage src={talentAvatarUrl} alt={talentName} />
+                      <AvatarFallback>{talentName.charAt(0)}</AvatarFallback>
                     </Avatar>
 
-                    <div>
-                      <h1 className="text-sm font-semibold text-dark-blue-400">
-                        Jack Smith
-                      </h1>
-                      <p className="text-xs font-light text-dark-blue-400">
-                        Project Manager
+                    <div className="flex-auto">
+                      <div className="inline-flex items-center gap-x-1.5">
+                        <h1 className="text-[14px] font-bold leading-[16.26px] text-dark-blue-400">
+                          {talentName}
+                        </h1>
+                        <span className="text-[12px] leading-[16.26px] font-light text-dark-blue-400">
+                          @{talentUsername}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[12px] font-medium text-dark-blue-400">
+                        {talentJobTitle}
                       </p>
-                    </div>
-                  </div>
-
-                  <Button
-                    className="text-primary-500 bg-primary-50 hover:bg-primary-500 hover:text-white"
-                    visual="primary"
-                  >
-                    <PhoneCall className="size-[15px]" />
-                    Schedule Call
-                  </Button>
-                </article>
-                <article className="border-t border-gray-200 py-6 flex items-center justify-between">
-                  <div className="flex gap-x-3 items-center">
-                    <Avatar size="md" className="shrink-0">
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
-                    </Avatar>
-
-                    <div>
-                      <h1 className="text-sm font-semibold text-dark-blue-400">
-                        Jack Smith
-                      </h1>
-                      <p className="text-xs font-light text-dark-blue-400">
-                        Project Manager
+                      <p className="mt-0.5 text-[12px] font-normal leading-normal text-gray-500">
+                        {talentExperienceLabel}
                       </p>
+                      <div className="mt-3">
+                        <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                          Start Date: Feb 5th, 2025
+                        </span>
+                      </div>
                     </div>
-                  </div>
 
-                  <Button
-                    className="text-primary-500 bg-primary-50 hover:bg-primary-500 hover:text-white"
-                    visual="primary"
-                  >
-                    <PhoneCall className="size-[15px]" />
-                    Schedule Call
-                  </Button>
-                </article>
-              </div>
-            </div>
-
-            <div className="rounded-lg mt-8 border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <div className="py-5 px-6 border-b  border-gray-200">
-                <h1 className="text-lg font-semibold text-dark-blue-400">
-                  Payment Methods
-                </h1>
-                <p className="mt-1.5 text-sm font-light text-dark-blue-400">
-                  The following payment methods will be billed for the total
-                  amount of <span className="font-bold">$90,000</span>
-                </p>
-                <p className="mt-1.5 text-sm font-light text-dark-blue-400">
-                  You will see a charge on your bank statement from{" "}
-                  <span className="font-bold">Marketeq</span>
-                </p>
-              </div>
-              <div className="p-6">
-                <div className="grid grid-cols-2">
-                  <div className="border-b flex col-span-2 items-start gap-x-3 border-gray-200 py-4">
-                    <div className="inline-flex items-center rounded-[4px] shrink-0 bg-white border border-gray-[#DADADA] text-gray-500 justify-center w-[46.5px] h-[31px]">
-                      <Bank className="size-4" />
-                    </div>
-                    <div className="flex-auto space-y-1">
-                      <h2 className="text-sm font-semibold text-dark-blue-400">
-                        AMEX credit card ending in *1234
-                      </h2>
-
-                      <p className="text-xs font-light text-dark-blue-400">
-                        Payment Amount:{" "}
-                        <span className="font-semibold">$4,000</span>
-                      </p>
+                    <div className="inline-flex flex-col items-end justify-between self-stretch">
+                      <Badge size="sm" visual="primary">{durationBadgeLabel}</Badge>
+                      <div className="inline-flex flex-col items-end gap-y-0.5">
+                        <span className="inline-block text-dark-blue-400 text-[20px] leading-none font-semibold">
+                          {formattedHourlyRate}
+                        </span>
+                        <span className="mt-[2px] inline-flex items-center gap-x-1.5 text-xs leading-none text-dark-blue-400">
+                          <span className="font-medium">{scheduleTitle}</span>
+                          <span className="font-normal">{scheduleDetail}</span>
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-6">
-                  <h1 className="text-lg font-semibold text-dark-blue-400">
-                    Recurring Payments
-                  </h1>
-                  <p className="mt-1.5 text-sm font-light text-dark-blue-400">
-                    Your following payment methods will be debited on{" "}
-                    <span className="font-bold">1st of every</span> month for
-                    the amount referenced below until the{" "}
-                    <span className="font-bold">
-                      completion of your project.
-                    </span>
-                  </p>
+                <div className="rounded-lg mt-6 border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                  <div className="py-5 px-6 border-b flex items-center justify-between border-gray-200">
+                    <h1 className="text-lg font-semibold text-dark-blue-400">
+                      Payment Methods
+                    </h1>
 
-                  <div className="grid grid-cols-2">
-                    <div className="border-b flex items-start gap-x-3 border-gray-200 py-4">
-                      <Amex className="h-[30px] w-[45px] shrink-0" />
-                      <div className="flex-auto space-y-1">
-                        <h2 className="text-sm font-semibold text-dark-blue-400">
-                          AMEX credit card ending in *1234
-                        </h2>
-                        <p className="text-xs font-light text-dark-blue-400">
-                          Expires: 09/2027
-                        </p>
-                        <p className="text-xs font-light text-dark-blue-400">
-                          Payment Amount:{" "}
-                          <span className="font-semibold">$4,000</span>
-                        </p>
+                    <Button variant="link" visual="primary">
+                      <Edit03 className="size-[15px]" />
+                      Edit
+                    </Button>
+                  </div>
+
+                  <div className="p-6">
+                    <h1 className="text-base font-semibold text-dark-blue-400">
+                      Initial One-Time Payment
+                    </h1>
+
+                    <div className="grid grid-cols-2">
+                      <div className="border-b flex col-span-2 items-start gap-x-3 border-gray-200 py-4">
+                        <div className="inline-flex items-center rounded-[4px] shrink-0 bg-white border border-gray-200 text-gray-500 justify-center w-[46.5px] h-[31px]">
+                          <Bank className="size-4" />
+                        </div>
+                        <div className="flex-auto space-y-1">
+                          <h2 className="text-sm font-semibold text-dark-blue-400">
+                            Bank of America checking ending in *1234
+                          </h2>
+                          <p className="text-xs font-light text-dark-blue-400">
+                            Payment Amount: <span className="font-semibold">{formattedDueToday}</span>
+                          </p>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="border-b border-gray-200 py-4 px-3">
-                      <div className="space-y-1">
-                        <h2 className="text-sm font-semibold text-dark-blue-400">
-                          Billing Address
-                        </h2>
-                        <p className="text-xs font-light text-dark-blue-400">
-                          2125 Chestnut Street, San Francisco, CA 94123
-                        </p>
+                    <div className="mt-6">
+                      <h1 className="text-lg font-semibold text-dark-blue-400">
+                        Recurring Payments
+                      </h1>
+
+                      <div className="grid grid-cols-2">
+                        <div className="border-b flex items-start gap-x-3 border-gray-200 py-4">
+                          <Amex className="h-[30px] w-[45px] shrink-0" />
+                          <div className="flex-auto space-y-1">
+                            <h2 className="text-sm font-semibold text-dark-blue-400">
+                              AMEX credit card ending in *1234
+                            </h2>
+                            <p className="text-xs font-light text-dark-blue-400">
+                              Expires: 09/2027
+                            </p>
+                            <p className="text-xs font-light text-dark-blue-400">
+                              {recurringAmountLabel}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="border-b border-gray-200 py-4 px-3">
+                          <div className="space-y-1">
+                            <h2 className="text-sm font-semibold text-dark-blue-400">
+                              Billing Address
+                            </h2>
+                            <p className="text-xs font-light text-dark-blue-400">
+                              2125 Chestnut Street, San Francisco, CA 94123
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-x-3 py-4">
+                          <Visa className="h-[30px] w-[45px] shrink-0" />
+                          <div className="flex-auto space-y-1">
+                            <h2 className="text-sm font-semibold text-dark-blue-400">
+                              Visa debit card ending in *1234
+                            </h2>
+                            <p className="text-xs font-light text-dark-blue-400">
+                              Expires: 09/2027
+                            </p>
+                            <p className="text-xs font-light text-dark-blue-400">
+                              {recurringAmountLabel}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="py-4 px-3">
+                          <div className="space-y-1">
+                            <h2 className="text-sm font-semibold text-dark-blue-400">
+                              Billing Address
+                            </h2>
+                            <p className="text-xs font-light text-dark-blue-400">
+                              2125 Chestnut Street, San Francisco, CA 94123
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-start gap-x-3 py-4">
-                      <Visa className="h-[30px] w-[45px] shrink-0" />
-                      <div className="flex-auto space-y-1">
-                        <h2 className="text-sm font-semibold text-dark-blue-400">
-                          AMEX credit card ending in *1234
-                        </h2>
-                        <p className="text-xs font-light text-dark-blue-400">
-                          Expires: 09/2027
-                        </p>
-                        <p className="text-xs font-light text-dark-blue-400">
-                          Payment Amount:{" "}
-                          <span className="font-semibold">$4,000</span>
-                        </p>
-                      </div>
+                    <div className="mt-6 py-2 px-5 flex items-start gap-x-5">
+                      <Checkbox size="lg" defaultChecked />
+                      <span className="text-sm font-light text-dark-blue-400">
+                        I hereby authorize <span className="font-semibold">Marketeq</span> to charge my
+                        above payment methods for the total initial one-time payment of{" "}
+                        <span className="font-semibold">{formattedDueToday}</span> and total monthly
+                        recurring amount of <span className="font-semibold">{formattedDueToday}</span>{" "}
+                        starting on <span className="font-semibold">January 1st, 2025</span>
+                      </span>
                     </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                  <div className="py-5 px-6 border-b flex items-center justify-between border-gray-200">
+                    <h1 className="text-lg font-semibold text-dark-blue-400">
+                      Project Details
+                    </h1>
 
-                    <div className="py-4 px-3">
-                      <div className="space-y-1">
-                        <h2 className="text-sm font-semibold text-dark-blue-400">
-                          Billing Address
-                        </h2>
-                        <p className="text-xs font-light text-dark-blue-400">
-                          2125 Chestnut Street, San Francisco, CA 94123
-                        </p>
+                    <Button variant="link" visual="primary">
+                      <Edit03 className="size-[15px]" />
+                      Edit
+                    </Button>
+                  </div>
+                  <div className="p-5 flex gap-x-5">
+                    <div className="relative flex-none w-[181px] bg-white border border-gray-200 rounded-md overflow-hidden">
+                      <NextImage className="object-cover" src="/dashboard.png" alt="Dashboard" sizes="50vw" fill />
+                    </div>
+                    <div className="flex-auto">
+                      <h1 className="text-sm font-medium text-dark-blue-400">
+                        Marketeq Client Portal - Redesigning and Optimizing Website for Enhanced User Experience.
+                      </h1>
+
+                      <div className="mt-1.5 inline-flex gap-x-2">
+                        <Users03 className="size-[15px] shrink-0" />
+                        <span className="text-xs leading-5 font-semibold text-dark-blue-400">
+                          8 team members
+                        </span>
+                      </div>
+
+                      <div className="mt-1.5 leading-5 text-[13px] text-dark-blue-400">
+                        January 2024 - August 2024
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            <div className="rounded-lg p-6 pr-8 flex items-start gap-x-2 mt-8 border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <div className="flex-auto space-y-2">
-                <h1 className="text-2xl text-dark-blue-400 font-bold">
-                  Kickoff your project
-                </h1>
-                <p className="text-base font-light text-dark-blue-400">
-                  Here&apos;s some things you can do to get your project going
-                  in the right direction.{" "}
-                </p>
-              </div>
-              <Button onClick={() => router.push(`/checkout/${slug}/next-steps`)}>
-                Next Step <ArrowRight className="size-[15px]" />
-              </Button>
-            </div>
+                <div className="rounded-lg mt-8 border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                  <div className="py-5 px-6 border-b flex items-center justify-between border-gray-200">
+                    <h1 className="text-lg font-semibold text-dark-blue-400">
+                      Payment Methods
+                    </h1>
+
+                    <Button variant="link" visual="primary">
+                      <Edit03 className="size-[15px]" />
+                      Edit
+                    </Button>
+                  </div>
+                  <div className="p-6">
+                    <div className="grid grid-cols-2">
+                      <div className="border-b flex items-start gap-x-3 border-gray-200 py-4">
+                        <Amex className="h-[30px] w-[45px] shrink-0" />
+                        <div className="flex-auto space-y-1">
+                          <h2 className="text-sm font-semibold text-dark-blue-400">
+                            AMEX credit card ending in *1234
+                          </h2>
+                          <p className="text-xs font-light text-dark-blue-400">
+                            Expires: 09/2027
+                          </p>
+                          <p className="text-xs font-light text-dark-blue-400">
+                            Payment Amount: <span className="font-semibold">$4,000</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="border-b border-gray-200 py-4 px-3">
+                        <div className="space-y-1">
+                          <h2 className="text-sm font-semibold text-dark-blue-400">
+                            Billing Address
+                          </h2>
+                          <p className="text-xs font-light text-dark-blue-400">
+                            2125 Chestnut Street, San Francisco, CA 94123
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="border-b flex items-start gap-x-3 border-gray-200 py-4">
+                        <Visa className="h-[30px] w-[45px] shrink-0" />
+                        <div className="flex-auto space-y-1">
+                          <h2 className="text-sm font-semibold text-dark-blue-400">
+                            Visa debit card ending in *1234
+                          </h2>
+                          <p className="text-xs font-light text-dark-blue-400">
+                            Expires: 09/2027
+                          </p>
+                          <p className="text-xs font-light text-dark-blue-400">
+                            Payment Amount: <span className="font-semibold">$4,000</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="border-b border-gray-200 py-4 px-3">
+                        <div className="space-y-1">
+                          <h2 className="text-sm font-semibold text-dark-blue-400">
+                            Billing Address
+                          </h2>
+                          <p className="text-xs font-light text-dark-blue-400">
+                            2125 Chestnut Street, San Francisco, CA 94123
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="border-b flex col-span-2 items-start gap-x-3 border-gray-200 py-4">
+                        <div className="inline-flex items-center rounded-[4px] shrink-0 bg-white border border-gray-200 text-gray-500 justify-center w-[46.5px] h-[31px]">
+                          <Bank className="size-4" />
+                        </div>
+                        <div className="flex-auto space-y-1">
+                          <h2 className="text-sm font-semibold text-dark-blue-400">
+                            Bank of America checking ending in *1234
+                          </h2>
+
+                          <p className="text-xs font-light text-dark-blue-400">
+                            Payment Amount: <span className="font-semibold">$4,000</span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 py-2 px-5 flex items-start gap-x-5">
+                      <Checkbox size="lg" defaultChecked />
+                      <span className="text-sm font-light text-dark-blue-400">
+                        I hereby authorize <span className="font-semibold">Marketeq</span> to charge my
+                        above payment methods for the total one-time amount of{" "}
+                        <span className="font-semibold">$94,000</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
+
           <div className="w-[305px] shrink-0">
             <div className="w-[305px] shrink-0 p-5 rounded-lg bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
               <div className="border-b pb-4 border-gray-200">
@@ -412,66 +448,240 @@ export default function ConfirmationPage() {
                 </h1>
               </div>
 
-              <div className="mt-5">
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                      Project cost
-                    </span>
-                    <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                      $94,000
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                      Estimated tax *
-                    </span>
-                    <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                      $94,000
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                      Balance applied
-                    </span>
-                    <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                      - $4,000
-                    </span>
-                  </div>
-                </div>
+              {isTalentCheckout ? (
+                <>
+                  <div className="mt-5 border-b pb-4 border-gray-200">
+                    <div className="mt-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          Hourly Rate
+                        </span>
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          {formattedHourlyRate}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          Estimated tax *
+                        </span>
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          {formattedEstimatedTaxHourly}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          Total Hourly rate
+                        </span>
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          {formattedTotalHourlyRate}
+                        </span>
+                      </div>
+                    </div>
 
-                <div className="flex mt-4 items-center justify-between">
-                  <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
-                    Total
-                  </h1>
-                  <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
-                    $90,000
-                  </h1>
-                </div>
-              </div>
+                    <div className="flex mt-4 items-center justify-between">
+                      <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
+                        Estimated Monthly Cost
+                      </h1>
+                      <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
+                        {formattedMonthlyCost}
+                      </h1>
+                    </div>
+                  </div>
 
-              <div className="mt-2">
-                <div className="mt-5 rounded-[4px] p-2 bg-primary-25 flex items-center justify-between">
-                  <span className="text-[10px] text-dark-blue-400">
-                    Your monthly payments start from
-                  </span>
-                  <span className="text-[10px] font-medium text-dark-blue-400">
-                    Jan 1st, 2025
-                  </span>
-                </div>
+                  <div className="mt-5 border-b pb-4 border-gray-200">
+                    <h1 className="text-base leading-none font-semibold text-dark-blue-400">
+                      Add-ons
+                    </h1>
 
-                <div className="grid mt-2.5">
-                  <Button className="border-2 border-primary-500 bg-transparent text-primary-500 hover:bg-primary-500 hover:text-white">
-                    <Printer className="size-[15px]" />
-                    Print Invoice
-                  </Button>
-                </div>
-              </div>
+                    <div className="mt-4 flex items-start justify-between gap-x-3">
+                      <span className="inline-flex flex-col">
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          Project Manager
+                        </span>
+                        <Button className="mt-1 h-auto justify-start px-0 text-[10px] leading-[14px] underline" variant="link" visual="gray">
+                          Remove
+                        </Button>
+                      </span>
+                      <span className="inline-flex flex-col items-end">
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          Est. $85/hr
+                        </span>
+                        <span className="inline-block mt-1 text-[10px] leading-[14px] text-dark-blue-400 font-light">
+                          4hrs/week
+                        </span>
+                      </span>
+                    </div>
+
+                    <div className="mt-5 flex items-center justify-between">
+                      <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                        Estimated Monthly Total
+                      </span>
+                      <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
+                        {formattedAddOnMonthlyTotal}
+                      </h1>
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-block text-base font-bold leading-none text-dark-blue-400">
+                        Due today
+                      </span>
+                      <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
+                        {formattedDueToday}
+                      </h1>
+                    </div>
+
+                    <div className="grid mt-5">
+                      <Button onClick={handleSubmitPayment}>Submit Payment</Button>
+                    </div>
+
+                    <div className="mt-5">
+                      <span className="inline-block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
+                        Learn More about{" "}
+                        <Button className="text-[10px] leading-[14px] underline" variant="link">
+                          Estimated Taxes
+                        </Button>
+                      </span>
+                    </div>
+
+                    <div className="mt-5">
+                      <span className="inline-block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
+                        By clicking the above, you agree to Marketeq&apos;s{" "}
+                        <Button className="text-[10px] leading-[14px] underline" variant="link">
+                          Terms of Use
+                        </Button>{" "}
+                        and{" "}
+                        <Button className="text-[10px] leading-[14px] underline" variant="link">
+                          Privacy Policy
+                        </Button>
+                      </span>
+                    </div>
+
+                    <div className="mt-5 flex items-center justify-center">
+                      <Button variant="link" visual="gray">
+                        Add Gift Card / Promo Code
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mt-5 border-b pb-4 border-gray-200">
+                    <div className="mt-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          Project cost
+                        </span>
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          $94,000
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          Estimated tax *
+                        </span>
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          $4,000
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          Balance applied
+                        </span>
+                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          - $4,000
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex mt-4 items-center justify-between">
+                      <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
+                        Total
+                      </h1>
+                      <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
+                        $90,000
+                      </h1>
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="mt-5 space-y-3">
+                      <article className="flex items-start gap-x-3">
+                        <Amex className="w-[45px] h-[30px]" />
+                        <div className="space-y-1 flex-auto border-b border-gray-300 pb-3">
+                          <h1 className="text-sm font-medium text-dark-blue-400">
+                            $4,000
+                          </h1>
+                          <p className="text-xs font-light uppercase text-dark-blue-400">
+                            AMEX *1234
+                          </p>
+                        </div>
+                      </article>
+                      <article className="flex items-start gap-x-3">
+                        <Visa className="w-[45px] h-[30px]" />
+                        <div className="space-y-1 flex-auto border-b border-gray-300 pb-3">
+                          <h1 className="text-sm font-medium text-dark-blue-400">
+                            $4,000
+                          </h1>
+                          <p className="text-xs font-light uppercase text-dark-blue-400">
+                            VISA *1234
+                          </p>
+                        </div>
+                      </article>
+                      <article className="flex items-start gap-x-3">
+                        <div className="inline-flex items-center rounded-[4px] shrink-0 bg-white border border-gray-200 text-gray-500 justify-center w-[46.5px] h-[31px]">
+                          <Bank className="size-4" />
+                        </div>
+                        <div className="space-y-1 flex-auto">
+                          <h1 className="text-sm font-medium text-dark-blue-400">
+                            $45,000
+                          </h1>
+                          <p className="text-xs font-light uppercase text-dark-blue-400">
+                            Bank of America *1234
+                          </p>
+                        </div>
+                      </article>
+                    </div>
+
+                    <div className="mt-5 rounded-[4px] p-2 bg-primary-25 flex items-center justify-between">
+                      <span className="text-[10px] text-dark-blue-400">
+                        Your bi-weekly payments start from
+                      </span>
+                      <span className="text-[10px] font-medium text-primary-500">
+                        Jan 1st, 2025
+                      </span>
+                    </div>
+
+                    <div className="grid mt-2.5">
+                      <Button onClick={handleSubmitPayment}>Submit Payment</Button>
+                    </div>
+
+                    <div className="mt-5">
+                      <span className="inline-block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
+                        By clicking the above, you agree to Marketeq&apos;s{" "}
+                        <Button className="text-[10px] leading-[14px] underline" variant="link">
+                          Terms of Use
+                        </Button>{" "}
+                        and{" "}
+                        <Button className="text-[10px] leading-[14px] underline" variant="link">
+                          Privacy Policy
+                        </Button>
+                      </span>
+                    </div>
+
+                    <div className="mt-5 flex items-center justify-center">
+                      <Button variant="link" visual="gray">
+                        Add Gift Card / Promo Code
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
       </div>
-
     </div>
   )
 }

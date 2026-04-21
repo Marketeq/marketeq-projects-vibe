@@ -38,7 +38,7 @@ export default function RmDialog({
     <Dialog open={state} onOpenChange={setState}>
       {trigger?.({ isOpen: state, setIsOpen: setState })}
 
-      <DialogContent>
+      <DialogContent onInteractOutside={() => setState(false)}>
         <DialogHeader>
           <div className="flex flex-col gap-y-2">
             <DialogTitle>{title}</DialogTitle>
@@ -52,7 +52,13 @@ export default function RmDialog({
               Cancel
             </Button>
           </DialogClose>
-          <Button visual="error" onClick={onRemove}>
+          <Button
+            visual="error"
+            onClick={() => {
+              onRemove?.()
+              setState(false)
+            }}
+          >
             Yes, Remove
           </Button>
         </DialogFooter>

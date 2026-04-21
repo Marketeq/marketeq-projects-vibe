@@ -3,8 +3,7 @@
 import React, { Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { apiFetch } from "@/src/lib/api"
-import { getAccessToken, getCurrentUser } from "@/utils/auth"
+import { getCurrentUser } from "@/utils/auth"
 import { UserAPI } from "@/service/http/user"
 import type { UserProfile } from "@/types/user"
 import { getComputedStyle } from "@/utils/dom-utils"
@@ -755,7 +754,7 @@ function Default() {
               /* Skeleton loading state */
               <>
                 <div className="p-10 flex items-start gap-x-10">
-                  <Shimmer className="size-[318px] rounded-lg shrink-0" />
+                  <Shimmer className="size-[318px] rounded-full shrink-0" />
                   <div className="flex-auto space-y-4 pt-2">
                     <Shimmer className="h-8 w-64" />
                     <Shimmer className="h-6 w-48" />
@@ -796,7 +795,7 @@ function Default() {
                 <div className="flex items-start">
                   <div className="flex-auto">
                     <h1 className="text-[28px] leading-[34px] font-bold text-dark-blue-400">
-                      {profile?.firstName ?? "Talent"}{profile?.lastName ? ` ${profile.lastName}` : ""}
+                      {profile?.firstName ?? "Talent"}
                       {profile?.username && (
                         <span className="text-[26px] font-extralight">
                           {" "}@{profile.username}
@@ -8211,20 +8210,10 @@ function Default() {
 
                     <button
                       className="w-full mt-5 duration-300 transition focus-visible:outlin-none text-sm leading-5 font-semibold shrink-0 h-10 flex items-center justify-center gap-x-2 rounded-[5px] px-4 bg-white border-2 text-primary-500 hover:text-white hover:bg-primary-500 border-primary-500 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]"
-                      onClick={async () => {
+                      onClick={() => {
                         const currentUser = getCurrentUser()
-                        const token = getAccessToken()
                         if (!currentUser?.id || !profile?.id || currentUser.id === profile.id) return
-                        try {
-                          const thread = await apiFetch<{ id: string }>("/v1/threads", {
-                            method: "POST",
-                            headers: token ? { Authorization: `Bearer ${token}` } : {},
-                            body: { participantIds: [currentUser.id, profile.id], isGroup: false },
-                          })
-                          router.push("/inbox")
-                        } catch (err) {
-                          console.error("Failed to start conversation:", err)
-                        }
+                        router.push(`/inbox?participantId=${profile.id}`)
                       }}
                     >
                       <MessageSquare01 className="size-[15px]" /> Message Me
