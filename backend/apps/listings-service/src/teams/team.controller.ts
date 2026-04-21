@@ -1,8 +1,10 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Req, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Req, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { TeamsService } from './team.service';
 import { Team } from './entities/team.entity';
 
+@UseGuards(JwtAuthGuard)
 @Controller('v1/teams')
 export class TeamsController {
   constructor(private readonly service: TeamsService) {}
