@@ -605,7 +605,7 @@ const LeftSidebar = ({
               </InputLeftElement>
             </InputGroup>
 
-            <IconButton className="size-8" visual="gray" variant="ghost">
+            <IconButton className="size-8 rounded-full" visual="gray" variant="ghost">
               <Edit05 className="size-4" />
             </IconButton>
           </div>
