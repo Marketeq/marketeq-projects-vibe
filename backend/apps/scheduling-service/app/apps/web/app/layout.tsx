@@ -100,6 +100,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const country = h.get("cf-ipcountry") || h.get("x-vercel-ip-country") || "Unknown";
 
   const { locale, direction, isEmbed, embedColorScheme } = await getInitialProps();
+  const allowDirectIframeEmbed = process.env.ALLOW_EMBEDDING === "1";
 
   const ns = "common";
   const translations = await loadTranslations(locale, ns);
@@ -135,13 +136,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           isEmbed
             ? {
                 background: "transparent",
-                // Keep the embed hidden till parent initializes and
-                // - gives it the appropriate styles if UI instruction is there.
-                // - gives iframe the appropriate height(equal to document height) which can only be known after loading the page once in browser.
-                // - Tells iframe which mode it should be in (dark/light) - if there is a a UI instruction for that
-                visibility: "hidden",
-                // This in addition to visibility: hidden is to ensure that elements with specific opacity set are not visible
-                opacity: 0,
+                // In our local Marketeq iframe preview we embed the page directly
+                // without Cal's parent embed SDK, so the upstream hidden-by-default
+                // behavior leaves the frame blank forever.
+                visibility: allowDirectIframeEmbed ? "visible" : "hidden",
+                opacity: allowDirectIframeEmbed ? 1 : 0,
               }
             : {
                 visibility: "visible",

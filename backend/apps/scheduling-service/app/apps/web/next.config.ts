@@ -375,6 +375,11 @@ const nextConfig = (phase: string): NextConfig => {
     },
     async headers() {
       const { orgSlug } = nextJsOrgRewriteConfig;
+      const allowLocalEmbedding = process.env.ALLOW_EMBEDDING === "1";
+      const LOCAL_EMBED_CSP_HEADER = {
+        key: "Content-Security-Policy",
+        value: "frame-ancestors 'self' http://localhost:3000 http://127.0.0.1:3000;",
+      };
       const CORP_CROSS_ORIGIN_HEADER = {
         key: "Cross-Origin-Resource-Policy",
         value: "cross-origin",
@@ -388,21 +393,25 @@ const nextConfig = (phase: string): NextConfig => {
       return [
         {
           source: "/auth/:path*",
-          headers: [
-            {
-              key: "X-Frame-Options",
-              value: "DENY",
-            },
-          ],
+          headers: allowLocalEmbedding
+            ? [LOCAL_EMBED_CSP_HEADER]
+            : [
+                {
+                  key: "X-Frame-Options",
+                  value: "DENY",
+                },
+              ],
         },
         {
           source: "/signup",
-          headers: [
-            {
-              key: "X-Frame-Options",
-              value: "DENY",
-            },
-          ],
+          headers: allowLocalEmbedding
+            ? [LOCAL_EMBED_CSP_HEADER]
+            : [
+                {
+                  key: "X-Frame-Options",
+                  value: "DENY",
+                },
+              ],
         },
         {
           source: "/:path*",

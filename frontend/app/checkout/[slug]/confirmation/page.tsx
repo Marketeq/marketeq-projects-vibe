@@ -21,6 +21,7 @@ import {
   Checkbox,
   ErrorMessage,
 } from "@/components/ui"
+import { cn } from "@/utils/functions"
 
 const formatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -67,6 +68,9 @@ export default function ConfirmationPage() {
   const [isEditOfferOpen, setIsEditOfferOpen] = React.useState(false)
   const [hasAuthorizedPayment, setHasAuthorizedPayment] = React.useState(false)
   const [authorizationError, setAuthorizationError] = React.useState("")
+  const [isSubmittingPayment, setIsSubmittingPayment] = React.useState(false)
+  const hasAuthorizationError = authorizationError.length > 0
+  const authorizationSectionRef = React.useRef<HTMLDivElement | null>(null)
 
   React.useEffect(() => {
     if (!isTalentCheckout) return
@@ -149,10 +153,17 @@ export default function ConfirmationPage() {
 
   const handleSubmitPayment = () => {
     if (!hasAuthorizedPayment) {
-      setAuthorizationError("Please authorize the payment methods before proceeding.")
+      setAuthorizationError("Please authorize the payment methods at the bottom of the page before proceeding.")
+      requestAnimationFrame(() => {
+        authorizationSectionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        })
+      })
       return
     }
 
+    setIsSubmittingPayment(true)
     router.push(`${basePath}/${slug}/thank-you`)
   }
 
@@ -332,13 +343,23 @@ export default function ConfirmationPage() {
                       </div>
                     </div>
 
-                    <div className="mt-6 py-2 px-5">
+                    <div
+                      ref={authorizationSectionRef}
+                      className={cn(
+                        "mt-6 rounded-md py-2 px-5 transition-colors",
+                        hasAuthorizationError && "border border-error-300 bg-error-50"
+                      )}
+                    >
                       <label
                         className="flex cursor-pointer items-start gap-x-5"
                         htmlFor="talent-payment-authorization"
                       >
                         <Checkbox
                           checked={hasAuthorizedPayment}
+                          className={cn(
+                            hasAuthorizationError &&
+                              "border-error-500 hover:border-error-500 hover:ring-error-50 active:ring-error-50"
+                          )}
                           id="talent-payment-authorization"
                           onCheckedChange={(checked) => {
                             const nextChecked = checked === true
@@ -349,7 +370,12 @@ export default function ConfirmationPage() {
                           }}
                           size="lg"
                         />
-                        <span className="text-sm font-light text-dark-blue-400">
+                        <span
+                          className={cn(
+                            "text-sm font-light text-dark-blue-400",
+                            hasAuthorizationError && "text-error-500"
+                          )}
+                        >
                           I hereby authorize <span className="font-semibold">Marketeq</span> to charge my
                           above payment methods for the total initial one-time payment of{" "}
                           <span className="font-semibold">{formattedDueToday}</span> and total monthly
@@ -357,11 +383,6 @@ export default function ConfirmationPage() {
                           starting on <span className="font-semibold">January 1st, 2025</span>
                         </span>
                       </label>
-                      {authorizationError ? (
-                        <ErrorMessage className="mt-2" size="sm">
-                          {authorizationError}
-                        </ErrorMessage>
-                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -487,13 +508,23 @@ export default function ConfirmationPage() {
                       </div>
                     </div>
 
-                    <div className="mt-6 py-2 px-5">
+                    <div
+                      ref={authorizationSectionRef}
+                      className={cn(
+                        "mt-6 rounded-md py-2 px-5 transition-colors",
+                        hasAuthorizationError && "border border-error-300 bg-error-50"
+                      )}
+                    >
                       <label
                         className="flex cursor-pointer items-start gap-x-5"
                         htmlFor="project-payment-authorization"
                       >
                         <Checkbox
                           checked={hasAuthorizedPayment}
+                          className={cn(
+                            hasAuthorizationError &&
+                              "border-error-500 hover:border-error-500 hover:ring-error-50 active:ring-error-50"
+                          )}
                           id="project-payment-authorization"
                           onCheckedChange={(checked) => {
                             const nextChecked = checked === true
@@ -504,17 +535,17 @@ export default function ConfirmationPage() {
                           }}
                           size="lg"
                         />
-                        <span className="text-sm font-light text-dark-blue-400">
+                        <span
+                          className={cn(
+                            "text-sm font-light text-dark-blue-400",
+                            hasAuthorizationError && "text-error-500"
+                          )}
+                        >
                           I hereby authorize <span className="font-semibold">Marketeq</span> to charge my
                           above payment methods for the total one-time amount of{" "}
                           <span className="font-semibold">$94,000</span>
                         </span>
                       </label>
-                      {authorizationError ? (
-                        <ErrorMessage className="mt-2" size="sm">
-                          {authorizationError}
-                        </ErrorMessage>
-                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -615,8 +646,19 @@ export default function ConfirmationPage() {
                     </div>
 
                     <div className="grid mt-5">
-                      <Button onClick={handleSubmitPayment}>Submit Payment</Button>
+                      <Button
+                        disabled={isSubmittingPayment}
+                        onClick={handleSubmitPayment}
+                        visual={hasAuthorizationError ? "error" : "primary"}
+                      >
+                        {isSubmittingPayment ? "Submitting..." : "Submit Payment"}
+                      </Button>
                     </div>
+                    {hasAuthorizationError ? (
+                      <ErrorMessage className="mt-2 text-center" size="sm">
+                        {authorizationError}
+                      </ErrorMessage>
+                    ) : null}
 
                     <div className="mt-5">
                       <span className="inline-block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
@@ -736,8 +778,19 @@ export default function ConfirmationPage() {
                     </div>
 
                     <div className="grid mt-2.5">
-                      <Button onClick={handleSubmitPayment}>Submit Payment</Button>
+                      <Button
+                        disabled={isSubmittingPayment}
+                        onClick={handleSubmitPayment}
+                        visual={hasAuthorizationError ? "error" : "primary"}
+                      >
+                        {isSubmittingPayment ? "Submitting..." : "Submit Payment"}
+                      </Button>
                     </div>
+                    {hasAuthorizationError ? (
+                      <ErrorMessage className="mt-2 text-center" size="sm">
+                        {authorizationError}
+                      </ErrorMessage>
+                    ) : null}
 
                     <div className="mt-5">
                       <span className="inline-block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
