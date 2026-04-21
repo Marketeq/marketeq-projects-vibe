@@ -10,18 +10,18 @@ export const SAMPLE_PROJECT_DETAILS_STEPS_FROM_GATEWAY: ProjectStaticHowItWorksS
       stepNumber: "1",
       title: "First step from API fixture",
       description: "First step body from gateway-shaped data.",
-      iconUrl: "/cms-media/seed-1558655146-9f40138edfeb.jpg",
+      iconUrl: "/media/seed-1558655146-9f40138edfeb.jpg",
     },
     {
       stepNumber: "2",
       title: "Second step from API fixture",
       description: "Second step body from gateway-shaped data.",
-      iconUrl: "/cms-media/seed-1454165804606-c3d57bc86b40.jpg",
+      iconUrl: "/media/seed-1454165804606-c3d57bc86b40.jpg",
     },
     {
       stepNumber: "3",
       title: "Third step from API fixture",
       description: "Third step body from gateway-shaped data.",
-      iconUrl: "/cms-media/seed-1455390582262-044cdead277a.jpg",
+      iconUrl: "/media/seed-1455390582262-044cdead277a.jpg",
     },
   ]

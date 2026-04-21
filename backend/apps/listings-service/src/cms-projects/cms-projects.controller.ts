@@ -521,6 +521,17 @@ function deriveBadges(row: {
 }
 
 function shapeProject(row: any) {
+  const normalizeMediaUrl = (value: unknown): string | null => {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    // Hide the internal `/cms-media` prefix from the UI.
+    if (trimmed.startsWith("/cms-media/")) {
+      return "/media/" + trimmed.slice("/cms-media/".length);
+    }
+    return trimmed;
+  };
+
   return {
     id: String(row.id),
     title: row.title,
@@ -542,7 +553,11 @@ function shapeProject(row: any) {
     klarnaEnabled: row.klarnaEnabled ?? false,
     estimatedHours: row.estimatedHours ?? null,
     duration: row.duration,
-    mediaUrls: row.mediaUrls ?? [],
+    mediaUrls: Array.isArray(row.mediaUrls)
+      ? row.mediaUrls
+          .map(normalizeMediaUrl)
+          .filter((u: string | null): u is string => u !== null)
+      : [],
     videoUrl: row.videoUrl ?? null,
     skills: row.skills ?? [],
     tags: row.tags ?? [],

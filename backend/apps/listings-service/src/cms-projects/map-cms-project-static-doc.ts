@@ -147,10 +147,18 @@ function resolveStepIconUrl(value: unknown): string | undefined {
   const v = value as Record<string, unknown>;
 
   const url = typeof v.url === "string" ? v.url.trim() : "";
-  if (url) return url;
+  if (url) {
+    if (url.startsWith("/cms-media/")) {
+      return "/media/" + url.slice("/cms-media/".length);
+    }
+    if (url.startsWith("/media/")) {
+      return url;
+    }
+    return url;
+  }
 
   const filename = typeof v.filename === "string" ? v.filename.trim() : "";
-  if (filename) return `/cms-media/${filename}`;
+  if (filename) return `/media/${filename}`;
 
   return undefined;
 }
