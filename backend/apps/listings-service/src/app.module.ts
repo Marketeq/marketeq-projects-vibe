@@ -24,8 +24,7 @@ import { ServicesModule } from './services/service.module';
       url: process.env.DATABASE_URL,
       ssl: false,
       autoLoadEntities: true,
-      // TODO: set back to false before merging — local dev only.
-      synchronize: true,
+      synchronize: process.env.LISTINGS_DATABASE_SYNCHRONIZE === 'true',
     }),
     RelationalProjectPersistenceModule,
     PublishModule,

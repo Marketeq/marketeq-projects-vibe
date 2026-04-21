@@ -35,10 +35,23 @@ export class JobListingInviteService {
       );
     }
 
-    await this.repo.update(listingId, {
-      inviteBalance: listing.inviteBalance - count,
-      invitesSent:   listing.invitesSent + count,
-    });
+    const updateResult = await this.repo
+      .createQueryBuilder()
+      .update(JobListing)
+      .set({
+        inviteBalance: () => `"invite_balance" - ${count}`,
+        invitesSent: () => `"invites_sent" + ${count}`,
+      })
+      .where('id = :listingId', { listingId })
+      .andWhere('"invite_balance" >= :count', { count })
+      .execute();
+
+    if (!updateResult.affected) {
+      throw new HttpException(
+        { code: 'JL_INSUFFICIENT_INVITE_BALANCE', message: 'Insufficient invite balance.' },
+        422,
+      );
+    }
 
     for (const talentUserId of uniqueTalentUserIds) {
       this.publisher.emit('job_listing.invite_sent', {

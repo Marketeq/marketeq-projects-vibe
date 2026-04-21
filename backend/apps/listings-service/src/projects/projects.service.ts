@@ -1,6 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { Project } from './entities/project.entity';
 import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
@@ -26,8 +31,18 @@ export class ProjectsService {
     return this.shapeProject(item);
   }
 
+  async findOnePublished(id: string) {
+    const item = await this.repo.findOne({
+      where: { id, status: ListingStatus.Published },
+    });
+    if (!item) throw new NotFoundException('Project not found');
+    return this.shapeProject(item);
+  }
+
   async findBySlug(slug: string) {
-    const item = await this.repo.findOne({ where: { slug } });
+    const item = await this.repo.findOne({
+      where: { slug, status: ListingStatus.Published },
+    });
     if (!item) throw new NotFoundException('Project not found');
 
     const [similarProjects, projectHistoryRatings] = await Promise.all([
@@ -46,23 +61,129 @@ export class ProjectsService {
   }
 
   async create(dto: Partial<Project>, userId: string) {
-    const item = this.repo.create({ ...dto, createdBy: userId, slug: slugify(dto.title!) });
+    if (!userId) {
+      throw new ForbiddenException('You do not have permission to create a project');
+    }
+
+    const writable = this.filterWritableProjectFields(dto);
+    const title = this.normalizeRequiredText(writable.title, 'Project title is required');
+    const description = this.normalizeRequiredText(
+      writable.description,
+      'Project description is required',
+    );
+
+    const item = this.repo.create({
+      ...writable,
+      title,
+      description,
+      status: ListingStatus.Draft,
+      createdBy: userId,
+      slug: await this.resolveUniqueSlug(title),
+    });
+
     const saved = await this.repo.save(item);
     return this.shapeProject(saved);
   }
 
-  async update(id: string, dto: Partial<Project>) {
-    await this.repo.update(id, dto);
+  async update(id: string, dto: Partial<Project>, userId: string) {
+    const existing = await this.repo.findOne({ where: { id } });
+    if (!existing) throw new NotFoundException('Project not found');
+    this.assertOwnership(existing, userId);
+    const writable = this.filterWritableProjectFields(dto);
+
+    if (Object.prototype.hasOwnProperty.call(writable, 'title')) {
+      const title = this.normalizeRequiredText(writable.title, 'Project title cannot be empty');
+      writable.title = title;
+      writable.slug = await this.resolveUniqueSlug(title, id);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(writable, 'description')) {
+      writable.description = this.normalizeRequiredText(
+        writable.description,
+        'Project description cannot be empty',
+      );
+    }
+
+    if (Object.keys(writable).length === 0) {
+      return this.findOne(id);
+    }
+
+    await this.repo.update(id, writable);
     return this.findOne(id);
   }
 
-  async publish(id: string) {
+  async publish(id: string, userId: string) {
+    const existing = await this.repo.findOne({ where: { id } });
+    if (!existing) throw new NotFoundException('Project not found');
+    this.assertOwnership(existing, userId);
     await this.repo.update(id, { status: ListingStatus.Published });
     return this.findOne(id);
   }
 
-  async remove(id: string) {
+  async remove(id: string, userId: string) {
+    const existing = await this.repo.findOne({ where: { id } });
+    if (!existing) throw new NotFoundException('Project not found');
+    this.assertOwnership(existing, userId);
     await this.repo.delete(id);
+  }
+
+  private assertOwnership(project: Project, userId: string): void {
+    if (!userId || project.createdBy !== userId) {
+      throw new ForbiddenException('You do not have permission to modify this project');
+    }
+  }
+
+  private normalizeRequiredText(value: unknown, message: string): string {
+    if (typeof value !== 'string') {
+      throw new BadRequestException(message);
+    }
+
+    const normalized = value.trim();
+    if (!normalized) {
+      throw new BadRequestException(message);
+    }
+
+    return normalized;
+  }
+
+  private filterWritableProjectFields(dto: Partial<Project>): Partial<Project> {
+    const {
+      id: _id,
+      slug: _slug,
+      status: _status,
+      rating: _rating,
+      reviewCount: _reviewCount,
+      completionsCount: _completionsCount,
+      views90d: _views90d,
+      adminBoost: _adminBoost,
+      featured: _featured,
+      createdBy: _createdBy,
+      createdAt: _createdAt,
+      updatedAt: _updatedAt,
+      ...writable
+    } = dto as Project;
+
+    return writable;
+  }
+
+  private async resolveUniqueSlug(title: string, excludeId?: string): Promise<string> {
+    const baseSlug = slugify(title) || 'project';
+    let candidate = baseSlug;
+    let suffix = 2;
+
+    while (true) {
+      const existing = await this.repo.findOne({
+        where: excludeId ? { slug: candidate, id: Not(excludeId) } : { slug: candidate },
+        select: ['id'],
+      });
+
+      if (!existing) {
+        return candidate;
+      }
+
+      candidate = `${baseSlug}-${suffix}`;
+      suffix += 1;
+    }
   }
 
   private deriveBadges(project: Project): string[] {

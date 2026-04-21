@@ -1,4 +1,11 @@
-import { Injectable, Logger, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -243,6 +250,15 @@ export class JobListingService {
     listingId: string,
     dto: UpdateBasicInformationDto,
   ): Promise<BasicInformation> {
+    const normalizedTitle =
+      typeof dto.title === 'string' ? dto.title.trim() : undefined;
+    const normalizedJobType =
+      dto.jobType === null
+        ? null
+        : typeof dto.jobType === 'string'
+          ? dto.jobType.trim()
+          : undefined;
+
     const listing = await this.repo.findOne({
       where: { id: listingId },
       select: ['id'],
@@ -259,14 +275,14 @@ export class JobListingService {
     if (!basicInfo) {
       basicInfo = this.basicInfoRepo.create({
         jobListingId: listingId,
-        title: dto.title?.trim() ?? '',
-        jobType: dto.jobType?.trim() ?? null,
+        title: normalizedTitle ?? '',
+        jobType: normalizedJobType ?? null,
         industries: dto.industries ?? [],
         languages: dto.languages ?? [],
       });
     } else {
-      if (dto.title !== undefined) basicInfo.title = dto.title.trim();
-      if (dto.jobType !== undefined) basicInfo.jobType = dto.jobType.trim();
+      if (normalizedTitle !== undefined) basicInfo.title = normalizedTitle;
+      if (normalizedJobType !== undefined) basicInfo.jobType = normalizedJobType;
       if (dto.industries !== undefined) basicInfo.industries = dto.industries;
       if (dto.languages !== undefined) basicInfo.languages = dto.languages;
     }
@@ -307,10 +323,29 @@ export class JobListingService {
     listingId: string,
     dto: CreateRoleRowDto,
   ): Promise<TeamMemberRow> {
+    const roleTitle = dto.role?.trim();
+    if (!roleTitle) {
+      throw new BadRequestException({
+        code: 'JL_ROLE_TITLE_REQUIRED',
+        message: 'Role title is required.',
+      });
+    }
+
+    let positionOrder = dto.positionOrder;
+    if (positionOrder === undefined) {
+      const maxResult = await this.roleRowRepo
+        .createQueryBuilder('row')
+        .select('COALESCE(MAX(row.positionOrder), -1)', 'maxOrder')
+        .where('row.jobListingId = :listingId', { listingId })
+        .getRawOne<{ maxOrder: string | number }>();
+
+      positionOrder = Number(maxResult?.maxOrder ?? -1) + 1;
+    }
+
     const roleRow = this.roleRowRepo.create({
       jobListingId: listingId,
-      roleTitle: dto.role,
-      positionOrder: dto.positionOrder ?? 0,
+      roleTitle,
+      positionOrder,
       assignedUserId: dto.assignedUserId ?? null,
       assignedUsername: null,
       assignedUserDeactivated: false,
