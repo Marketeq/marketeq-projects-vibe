@@ -455,6 +455,70 @@ const CarouselNextTrigger = () => {
   ) : null
 }
 
+type ProjectStaticIcon = "rocket" | "shield-zap" | "shield-dollar"
+
+type ProjectStaticContent = {
+  heading: string
+  guaranteeItems: Array<{
+    icon: ProjectStaticIcon
+    title: string
+    description: string
+  }>
+  highlightedNotice: {
+    icon: ProjectStaticIcon
+    description: string
+  }
+  policy: {
+    prefixText: string
+    linkLabel: string
+    linkHref: string
+  }
+}
+
+const DEFAULT_PROJECT_STATIC_CONTENT: ProjectStaticContent = {
+  heading: "Peace of Mind Guarantee",
+  guaranteeItems: [
+    {
+      icon: "rocket",
+      title: "Peace of Mind Guarantee",
+      description:
+        "If the project falls short, you can initiate a dispute for a full refund.",
+    },
+    {
+      icon: "shield-zap",
+      title: "Peace of Mind Guarantee",
+      description:
+        "If the project falls short, you can initiate a dispute for a full refund.",
+    },
+  ],
+  highlightedNotice: {
+    icon: "shield-dollar",
+    description:
+      "If the project falls short, you can initiate a dispute for a full refund.",
+  },
+  policy: {
+    prefixText:
+      "We securely process payments and release upon rating. We securely process payments",
+    linkLabel: "See Policy Details.",
+    linkHref: "/policy",
+  },
+}
+
+const renderProjectStaticIcon = (
+  icon: ProjectStaticIcon,
+  className: string
+) => {
+  switch (icon) {
+    case "rocket":
+      return <Rocket02 className={className} />
+    case "shield-dollar":
+      return <ShieldDollar className={className} />
+    case "shield-zap":
+    default:
+      return <ShieldZap className={className} />
+  }
+}
+
 export default function ProjectDetails() {
   const params = useParams()
   const router = useRouter()
@@ -559,6 +623,94 @@ export default function ProjectDetails() {
   React.useEffect(() => {
     window.scrollTo(0, 0)
   }, [])
+
+  const projectStaticContent = React.useMemo<ProjectStaticContent>(() => {
+    const payload = project?.projectStaticContent
+    if (!payload || typeof payload !== "object") {
+      return DEFAULT_PROJECT_STATIC_CONTENT
+    }
+
+    const guaranteeItems = Array.isArray(payload.guaranteeItems)
+      ? payload.guaranteeItems
+          .map((item: any) => {
+            const icon = item?.icon
+            const title =
+              typeof item?.title === "string" ? item.title.trim() : ""
+            const description =
+              typeof item?.description === "string"
+                ? item.description.trim()
+                : ""
+            if (
+              (icon !== "rocket" &&
+                icon !== "shield-zap" &&
+                icon !== "shield-dollar") ||
+              !title ||
+              !description
+            ) {
+              return null
+            }
+            return {
+              icon,
+              title,
+              description,
+            }
+          })
+          .filter(Boolean)
+      : []
+
+    if (guaranteeItems.length === 0) {
+      return DEFAULT_PROJECT_STATIC_CONTENT
+    }
+
+    const heading =
+      typeof payload.heading === "string" && payload.heading.trim()
+        ? payload.heading.trim()
+        : DEFAULT_PROJECT_STATIC_CONTENT.heading
+
+    const highlightedIcon = payload?.highlightedNotice?.icon
+    const highlightedDescription =
+      typeof payload?.highlightedNotice?.description === "string" &&
+      payload.highlightedNotice.description.trim()
+        ? payload.highlightedNotice.description.trim()
+        : DEFAULT_PROJECT_STATIC_CONTENT.highlightedNotice.description
+
+    const highlightedNotice = {
+      icon:
+        highlightedIcon === "rocket" ||
+        highlightedIcon === "shield-zap" ||
+        highlightedIcon === "shield-dollar"
+          ? highlightedIcon
+          : DEFAULT_PROJECT_STATIC_CONTENT.highlightedNotice.icon,
+      description: highlightedDescription,
+    }
+
+    const policyPrefixText =
+      typeof payload?.policy?.prefixText === "string" &&
+      payload.policy.prefixText.trim()
+        ? payload.policy.prefixText.trim()
+        : DEFAULT_PROJECT_STATIC_CONTENT.policy.prefixText
+    const policyLinkLabel =
+      typeof payload?.policy?.linkLabel === "string" &&
+      payload.policy.linkLabel.trim()
+        ? payload.policy.linkLabel.trim()
+        : DEFAULT_PROJECT_STATIC_CONTENT.policy.linkLabel
+    const policyLinkHref =
+      typeof payload?.policy?.linkHref === "string" &&
+      payload.policy.linkHref.trim()
+        ? payload.policy.linkHref.trim()
+        : DEFAULT_PROJECT_STATIC_CONTENT.policy.linkHref
+
+    return {
+      heading,
+      guaranteeItems,
+      highlightedNotice,
+      policy: {
+        prefixText: policyPrefixText,
+        linkLabel: policyLinkLabel,
+        linkHref: policyLinkHref,
+      },
+    }
+  }, [project?.projectStaticContent])
 
   if (loading) {
     return (
@@ -727,6 +879,8 @@ export default function ProjectDetails() {
                     src={project.mediaUrls?.[0] || "/dashboard.png"}
                     alt={project.title}
                     sizes="25vw"
+                    loading="eager"
+                    priority
                     fill
                   />
                 </div>
@@ -4481,52 +4635,60 @@ export default function ProjectDetails() {
 
           <div className="mt-3 p-6">
             <h1 className="text-base leading-none font-semibold text-dark-blue-400">
-              Peace of Mind Guarantee
+              {projectStaticContent.heading}
             </h1>
 
             <div className="mt-5 space-y-5">
-              <article className="flex items-start gap-x-2">
-                <Rocket02 className="size-[18px] text-dark-blue-400" />
-                <div className="flex-auto space-y-1">
-                  <h1 className="text-xs leading-none font-semibold text-dark-blue-400">
-                    Peace of Mind Guarantee
-                  </h1>
-                  <p className="text-xs leading-none font-extralight text-dark-blue-400">
-                    If the project falls short, you can initiate a dispute for a
-                    full refund.
-                  </p>
-                </div>
-              </article>
-              <article className="flex items-start gap-x-2">
-                <ShieldZap className="size-[18px] text-dark-blue-400" />
-                <div className="flex-auto space-y-1">
-                  <h1 className="text-xs leading-none font-semibold text-dark-blue-400">
-                    Peace of Mind Guarantee
-                  </h1>
-                  <p className="text-xs leading-none font-extralight text-dark-blue-400">
-                    If the project falls short, you can initiate a dispute for a
-                    full refund.
-                  </p>
-                </div>
-              </article>
+              {projectStaticContent.guaranteeItems.map((item, idx) => (
+                <article
+                  key={`${item.title}-${idx}`}
+                  className="flex items-start gap-x-2"
+                >
+                  {renderProjectStaticIcon(
+                    item.icon,
+                    "size-[18px] text-dark-blue-400"
+                  )}
+                  <div className="flex-auto space-y-1">
+                    <h1 className="text-xs leading-none font-semibold text-dark-blue-400">
+                      {item.title}
+                    </h1>
+                    <p className="text-xs leading-none font-extralight text-dark-blue-400">
+                      {item.description}
+                    </p>
+                  </div>
+                </article>
+              ))}
             </div>
 
             <article className="flex items-start gap-x-2 p-3 mt-3 rounded-lg bg-primary-50">
-              <ShieldDollar className="size-[18px] text-primary-500" />
+              {renderProjectStaticIcon(
+                projectStaticContent.highlightedNotice.icon,
+                "size-[18px] text-primary-500"
+              )}
               <div className="flex-auto">
                 <p className="text-xs leading-none font-extralight text-dark-blue-400">
-                  If the project falls short, you can initiate a dispute for a
-                  full refund.
+                  {projectStaticContent.highlightedNotice.description}
                 </p>
               </div>
             </article>
 
             <div className="mt-3">
               <span className="text-xs text-dark-blue-400">
-                We securely process payments and release upon rating. We
-                securely process payments{" "}
-                <Button className="text-xs" variant="link">
-                  See Policy Details.
+                {projectStaticContent.policy.prefixText}{" "}
+                <Button
+                  className="text-xs p-0 h-auto"
+                  variant="link"
+                  onClick={() => {
+                    const href = projectStaticContent.policy.linkHref
+                    if (!href) return
+                    if (/^https?:\/\//i.test(href)) {
+                      window.open(href, "_self")
+                      return
+                    }
+                    router.push(href)
+                  }}
+                >
+                  {projectStaticContent.policy.linkLabel}
                 </Button>
               </span>
             </div>

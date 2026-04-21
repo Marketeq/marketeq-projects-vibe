@@ -1,6 +1,34 @@
-import { Controller, Get, Param, NotFoundException, Logger } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import {
+  Controller,
+  Get,
+  Param,
+  NotFoundException,
+  Logger,
+} from "@nestjs/common";
+import { InjectDataSource } from "@nestjs/typeorm";
+import { DataSource } from "typeorm";
+
+type ProjectStaticIcon = "rocket" | "shield-zap" | "shield-dollar";
+
+interface ProjectStaticItem {
+  icon: ProjectStaticIcon;
+  title: string;
+  description: string;
+}
+
+interface ProjectStaticContent {
+  heading: string;
+  guaranteeItems: ProjectStaticItem[];
+  highlightedNotice: {
+    icon: ProjectStaticIcon;
+    description: string;
+  };
+  policy: {
+    prefixText: string;
+    linkLabel: string;
+    linkHref: string;
+  };
+}
 
 /**
  * Read-only adapter over the `public.projects` table.
@@ -20,7 +48,7 @@ import { DataSource } from 'typeorm';
  *     Proxies to category-service for the project's primary category and
  *     returns relatedCategories + relatedSkills from the suggestions engine.
  */
-@Controller('v1/projects')
+@Controller("v1/projects")
 export class CmsProjectsController {
   private readonly logger = new Logger(CmsProjectsController.name);
 
@@ -46,8 +74,8 @@ export class CmsProjectsController {
     return rows.map(shapeProject);
   }
 
-  @Get('slug/:slug')
-  async findBySlug(@Param('slug') slug: string) {
+  @Get("slug/:slug")
+  async findBySlug(@Param("slug") slug: string) {
     const rows = await this.dataSource.query(
       `SELECT id, title, slug, "shortDescription", description, category,
               categories, subcategories, skills, tags, "programmingLanguages", "developmentTech",
@@ -73,7 +101,13 @@ export class CmsProjectsController {
     // ratings (§14.14). All best-effort: errors return sensible defaults
     // so the primary project response is never blocked by a secondary
     // query/service failure.
-    const [similarProjects, categorySuggestions, team, projectHistoryRatings] = await Promise.all([
+    const [
+      similarProjects,
+      categorySuggestions,
+      team,
+      projectHistoryRatings,
+      projectStaticContent,
+    ] = await Promise.all([
       this.getSimilarProjects(rows[0]).catch((err) => {
         this.logger.warn(`similarProjects failed for ${slug}: ${err}`);
         return [];
@@ -86,8 +120,16 @@ export class CmsProjectsController {
         this.logger.warn(`hydrateTeam failed for ${slug}: ${err}`);
         return [];
       }),
-      this.getProjectHistoryRatings(rows[0].createdBy, rows[0].id).catch((err) => {
-        this.logger.warn(`projectHistoryRatings failed for ${slug}: ${err}`);
+      this.getProjectHistoryRatings(rows[0].createdBy, rows[0].id).catch(
+        (err) => {
+          this.logger.warn(`projectHistoryRatings failed for ${slug}: ${err}`);
+          return null;
+        },
+      ),
+      this.getProjectStaticContent().catch((err) => {
+        this.logger.warn(
+          `projectStaticContent fetch failed for ${slug}: ${err}`,
+        );
         return null;
       }),
     ]);
@@ -99,6 +141,7 @@ export class CmsProjectsController {
       relatedSkills: categorySuggestions.relatedSkills,
       team,
       projectHistoryRatings,
+      projectStaticContent,
     };
   }
 
@@ -108,8 +151,8 @@ export class CmsProjectsController {
    * Standalone endpoint returning top-6 similar projects using spec §14.9
    * RelatedScore = 0.5 × skill_overlap + 0.3 × tag_overlap + 0.2 × subcategory_overlap
    */
-  @Get('slug/:slug/similar')
-  async findSimilar(@Param('slug') slug: string) {
+  @Get("slug/:slug/similar")
+  async findSimilar(@Param("slug") slug: string) {
     const rows = await this.dataSource.query(
       `SELECT skills, tags, subcategories, id
          FROM public.projects
@@ -128,8 +171,8 @@ export class CmsProjectsController {
    * Proxies to category-service for the project's primary category and
    * returns the suggestions engine output (relatedCategories + relatedSkills).
    */
-  @Get('slug/:slug/related-categories')
-  async findRelatedCategories(@Param('slug') slug: string) {
+  @Get("slug/:slug/related-categories")
+  async findRelatedCategories(@Param("slug") slug: string) {
     const rows = await this.dataSource.query(
       `SELECT category
          FROM public.projects
@@ -150,14 +193,29 @@ export class CmsProjectsController {
    * Uses Postgres array overlap operators for a single-query ranking.
    * Returns top 6 projects excluding the source project.
    */
-  private async getSimilarProjects(
-    source: { id: string; skills: string[]; tags: string[]; subcategories: string[] },
-  ): Promise<Array<{ id: string; slug: string; title: string; thumbnail: string | null; score: number }>> {
+  private async getSimilarProjects(source: {
+    id: string;
+    skills: string[];
+    tags: string[];
+    subcategories: string[];
+  }): Promise<
+    Array<{
+      id: string;
+      slug: string;
+      title: string;
+      thumbnail: string | null;
+      score: number;
+    }>
+  > {
     const skills = source.skills ?? [];
     const tags = source.tags ?? [];
     const subcategories = source.subcategories ?? [];
 
-    if (skills.length === 0 && tags.length === 0 && subcategories.length === 0) {
+    if (
+      skills.length === 0 &&
+      tags.length === 0 &&
+      subcategories.length === 0
+    ) {
       return [];
     }
 
@@ -216,8 +274,12 @@ export class CmsProjectsController {
   private async getProjectHistoryRatings(
     createdBy: string | null | undefined,
     currentId: string,
-  ): Promise<{ average: number; reviewCount: number; projectCount: number } | null> {
-    if (!createdBy || createdBy === 'cms-sync') return null;
+  ): Promise<{
+    average: number;
+    reviewCount: number;
+    projectCount: number;
+  } | null> {
+    if (!createdBy || createdBy === "cms-sync") return null;
 
     const rows = await this.dataSource.query(
       `SELECT
@@ -262,9 +324,7 @@ export class CmsProjectsController {
    * When one is added (e.g. GET /v1/presence/:userId on messaging-
    * service, or a Redis last-seen cache), overlay it here.
    */
-  private async hydrateTeam(
-    row: any,
-  ): Promise<
+  private async hydrateTeam(row: any): Promise<
     Array<{
       firstName: string;
       username: string;
@@ -285,16 +345,16 @@ export class CmsProjectsController {
       if (!Array.isArray(phase?.tasks)) continue;
       for (const task of phase.tasks) {
         const email =
-          typeof task?.assigneeEmail === 'string'
+          typeof task?.assigneeEmail === "string"
             ? task.assigneeEmail.trim().toLowerCase()
-            : '';
+            : "";
         if (email) emails.add(email);
       }
     }
     if (emails.size === 0) return [];
 
     const userServiceUrl =
-      process.env.USER_SERVICE_URL || 'http://localhost:3003';
+      process.env.USER_SERVICE_URL || "http://localhost:3003";
 
     // Hydrate each email in parallel. Graceful per-user: if one lookup
     // fails the rest still render. Timeout after 3s per user so a slow
@@ -305,7 +365,9 @@ export class CmsProjectsController {
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), 3000);
           const res = await fetch(
-            `${userServiceUrl}/internal/users/by-email/${encodeURIComponent(email)}`,
+            `${userServiceUrl}/internal/users/by-email/${encodeURIComponent(
+              email,
+            )}`,
             { signal: controller.signal },
           );
           clearTimeout(timeout);
@@ -317,14 +379,18 @@ export class CmsProjectsController {
             avatarUrl: user.avatarUrl ?? null,
             location: user.location ?? null,
             languages: Array.isArray(user.languages)
-              ? user.languages.map((l: any) =>
-                  typeof l === 'string' ? l : l?.name ?? l?.value ?? '',
-                ).filter(Boolean)
+              ? user.languages
+                  .map((l: any) =>
+                    typeof l === "string" ? l : l?.name ?? l?.value ?? "",
+                  )
+                  .filter(Boolean)
               : [],
             skills: Array.isArray(user.skills)
-              ? user.skills.map((s: any) =>
-                  typeof s === 'string' ? s : s?.name ?? s?.value ?? '',
-                ).filter(Boolean)
+              ? user.skills
+                  .map((s: any) =>
+                    typeof s === "string" ? s : s?.name ?? s?.value ?? "",
+                  )
+                  .filter(Boolean)
               : [],
             // First team member is marked as lead (the one assigned to
             // the earliest task in the scope tree). Real "isLead" should
@@ -341,9 +407,7 @@ export class CmsProjectsController {
       }),
     );
 
-    return profiles.filter(
-      (p): p is NonNullable<typeof p> => p !== null,
-    );
+    return profiles.filter((p): p is NonNullable<typeof p> => p !== null);
   }
 
   /**
@@ -362,14 +426,16 @@ export class CmsProjectsController {
     if (!primaryCategory) return empty;
 
     const categoryServiceUrl =
-      process.env.CATEGORY_SERVICE_URL || 'http://localhost:3023';
+      process.env.CATEGORY_SERVICE_URL || "http://localhost:3023";
     const slug = primaryCategory
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
 
     try {
-      const res = await fetch(`${categoryServiceUrl}/api/category-pages/${slug}`);
+      const res = await fetch(
+        `${categoryServiceUrl}/api/category-pages/${slug}`,
+      );
       if (!res.ok) return empty;
       const body = await res.json();
       return {
@@ -379,6 +445,111 @@ export class CmsProjectsController {
     } catch {
       return empty;
     }
+  }
+
+  /**
+   * Sidebar content for the project-details "Peace of Mind Guarantee" block.
+   *
+   * Source of truth is Payload CMS collection `project-static-contents`.
+   * We read the published document with slug `default`; if missing, we
+   * gracefully return null so the frontend can apply local fallbacks.
+   */
+  private async getProjectStaticContent(): Promise<ProjectStaticContent | null> {
+    const baseUrl = (
+      process.env.CMS_PUBLIC_URL ||
+      process.env.CMS_SERVICE_URL ||
+      "http://localhost:3020"
+    ).replace(/\/+$/, "");
+
+    const query = new URLSearchParams({
+      limit: "1",
+      depth: "0",
+      "where[slug][equals]": "default",
+    });
+
+    const res = await fetch(
+      `${baseUrl}/api/project-static-contents?${query.toString()}`,
+    );
+    if (!res.ok) return null;
+
+    const body = await res.json();
+    const doc = body?.docs?.[0];
+    if (!doc) return null;
+
+    return this.mapProjectStaticContent(doc);
+  }
+
+  private mapProjectStaticContent(doc: any): ProjectStaticContent | null {
+    if (!doc || typeof doc !== "object") return null;
+
+    const isValidIcon = (value: unknown): value is ProjectStaticIcon =>
+      value === "rocket" || value === "shield-zap" || value === "shield-dollar";
+
+    const guaranteeItems = Array.isArray(doc.guaranteeItems)
+      ? doc.guaranteeItems
+          .map((item: any) => {
+            const icon = isValidIcon(item?.icon) ? item.icon : null;
+            const title =
+              typeof item?.title === "string" ? item.title.trim() : "";
+            const description =
+              typeof item?.description === "string"
+                ? item.description.trim()
+                : "";
+            if (!icon || !title || !description) return null;
+            return { icon, title, description };
+          })
+          .filter(
+            (item: ProjectStaticItem | null): item is ProjectStaticItem =>
+              item !== null,
+          )
+      : [];
+
+    const highlightedIcon = isValidIcon(doc?.highlightedNotice?.icon)
+      ? doc.highlightedNotice.icon
+      : null;
+    const highlightedDescription =
+      typeof doc?.highlightedNotice?.description === "string"
+        ? doc.highlightedNotice.description.trim()
+        : "";
+
+    const heading = typeof doc.heading === "string" ? doc.heading.trim() : "";
+    const policyPrefixText =
+      typeof doc?.policy?.prefixText === "string"
+        ? doc.policy.prefixText.trim()
+        : "";
+    const policyLinkLabel =
+      typeof doc?.policy?.linkLabel === "string"
+        ? doc.policy.linkLabel.trim()
+        : "";
+    const policyLinkHref =
+      typeof doc?.policy?.linkHref === "string"
+        ? doc.policy.linkHref.trim()
+        : "";
+
+    if (
+      !heading ||
+      guaranteeItems.length === 0 ||
+      !highlightedIcon ||
+      !highlightedDescription ||
+      !policyPrefixText ||
+      !policyLinkLabel
+    ) {
+      return null;
+    }
+
+    return {
+      heading,
+      guaranteeItems,
+      highlightedNotice: {
+        icon: highlightedIcon,
+        description: highlightedDescription,
+      },
+      policy: {
+        prefixText: policyPrefixText,
+        linkLabel: policyLinkLabel,
+        linkHref: policyLinkHref || "/policy",
+      },
+    };
   }
 }
 
@@ -409,10 +580,10 @@ function deriveBadges(row: {
   const reviews = Number(row.reviewCount ?? 0);
   const completions = Number(row.completionsCount ?? 0);
   const badges: string[] = [];
-  if (rating >= 4.0 && reviews >= 20) badges.push('top-rated');
-  if (rating >= 4.8 && reviews >= 10) badges.push('highly-rated');
-  if (completions >= 10) badges.push('proven');
-  if (row.featured === true) badges.push('featured');
+  if (rating >= 4.0 && reviews >= 20) badges.push("top-rated");
+  if (rating >= 4.8 && reviews >= 10) badges.push("highly-rated");
+  if (completions >= 10) badges.push("proven");
+  if (row.featured === true) badges.push("featured");
   return badges;
 }
 
@@ -423,7 +594,7 @@ function shapeProject(row: any) {
     slug: row.slug,
     shortDescription: row.shortDescription,
     description: row.description,
-    category: row.category ?? 'Software Development',
+    category: row.category ?? "Software Development",
     categories: row.categories ?? [],
     subcategories: row.subcategories ?? [],
     status: row.status,
