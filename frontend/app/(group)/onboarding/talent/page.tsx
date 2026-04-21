@@ -115,18 +115,11 @@ const optionalTrimmedString = z.preprocess((value) => {
   return trimmedValue.length ? trimmedValue : undefined
 }, z.string().optional())
 
-const optionalUsernameString = z.preprocess(
-  (value) => {
-    if (typeof value !== "string") return value
-    const trimmedValue = value.trim()
-    return trimmedValue.length ? trimmedValue : undefined
-  },
-  z
-    .string()
-    .min(3, "Please enter at least 3 character(s)")
-    .regex(USERNAME_PATTERN, USERNAME_RULE_MESSAGE)
-    .optional()
-)
+const optionalUsernameString = z.preprocess((value) => {
+  if (typeof value !== "string") return value
+  const trimmedValue = value.trim()
+  return trimmedValue.length ? trimmedValue : undefined
+}, z.string().min(3, "Please enter at least 3 character(s)").regex(USERNAME_PATTERN, USERNAME_RULE_MESSAGE).optional())
 
 const optionalStringArray = z.preprocess((value) => {
   if (!Array.isArray(value)) return value
@@ -382,14 +375,12 @@ const IntroduceYourself = ({
                 </div>
               </div>
 
-              {formError && (
-                <ErrorMessage size="sm">{formError}</ErrorMessage>
-              )}
+              {formError && <ErrorMessage size="sm">{formError}</ErrorMessage>}
             </div>
           </div>
         </div>
 
-        <div className="mx-auto max-w-[488px] 2xl:max-w-[560px] self-end w-full mt-10 2xl:mt-[50px]">
+        <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
           <div className="flex items-center justify-between">
             <Button
               size="md"
@@ -713,7 +704,9 @@ const CreateYourUsername = ({
                       {username}
                     </Button>
 
-                    {index !== expandedSuggestions.length - 1 && <span>, </span>}
+                    {index !== expandedSuggestions.length - 1 && (
+                      <span>, </span>
+                    )}
                   </React.Fragment>
                 ))}
                 {availableSuggestions.length === 0 && (
@@ -790,7 +783,7 @@ const CreateYourUsername = ({
           </div>
         </div>
 
-        <div className="mx-auto max-w-[488px] 2xl:max-w-[560px] self-end w-full mt-10 2xl:mt-[50px]">
+        <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
           <div className="flex items-center justify-between">
             <Button
               size="md"
@@ -856,7 +849,9 @@ const getUniqueOptions = (values: string[]) =>
 const hasCaseInsensitiveExactMatch = (values: string[], candidate: string) => {
   const normalizedCandidate = candidate.trim().toLowerCase()
   if (!normalizedCandidate) return false
-  return values.some((value) => value.trim().toLowerCase() === normalizedCandidate)
+  return values.some(
+    (value) => value.trim().toLowerCase() === normalizedCandidate
+  )
 }
 
 const AUTOCOMPLETE_SUBMIT_TYPE_MAP: Record<string, string> = {
@@ -912,7 +907,9 @@ const HighlightedSuggestion = ({
 }) => {
   const trimmedQuery = query.trim()
   if (!trimmedQuery) {
-    return <span className={active ? "font-semibold" : "font-normal"}>{label}</span>
+    return (
+      <span className={active ? "font-semibold" : "font-normal"}>{label}</span>
+    )
   }
 
   const normalizedLabel = label.toLowerCase()
@@ -1224,16 +1221,16 @@ const ShareYourLocation = ({
       return
     }
 
-    const isKnownSuggestion = hasCaseInsensitiveExactMatch(languageOptions, value)
+    const isKnownSuggestion = hasCaseInsensitiveExactMatch(
+      languageOptions,
+      value
+    )
     if (!isKnownSuggestion) {
       const accepted = await submitAutocompleteValue("languages", value)
       if (!accepted) {
-        setError("languages", {
-          type: "manual",
-          message: "We couldn’t match that language. Try a suggested option.",
-        })
         setLanguagesQuery("")
         setIsLanguagesOpen(false)
+        setSuppressLanguageFocusOpen(true)
         return
       }
     }
@@ -1292,7 +1289,10 @@ const ShareYourLocation = ({
     languagesDebounceTimerRef.current = setTimeout(async () => {
       const currentRequestId = ++languagesRequestRef.current
       try {
-        const response = await AutocompleteAPI.getByType("languages", trimmedQuery)
+        const response = await AutocompleteAPI.getByType(
+          "languages",
+          trimmedQuery
+        )
         if (currentRequestId !== languagesRequestRef.current) return
 
         const values: AutocompleteTypeSuggestion[] = Array.isArray(
@@ -1381,7 +1381,8 @@ const ShareYourLocation = ({
     languages,
     location,
   }) => {
-    const hasLocation = location && location.length > 0 && location.some(l => l.trim())
+    const hasLocation =
+      location && location.length > 0 && location.some((l) => l.trim())
     const hasLanguages = languages && languages.length > 0
     if (!hasLocation && !hasLanguages) {
       setFormError("Please enter at least one field")
@@ -1520,149 +1521,142 @@ const ShareYourLocation = ({
                   render={({ field: { onChange, value } }) => {
                     const selectedLanguages = Array.isArray(value) ? value : []
 
-                    return <div className="space-y-3">
-                      <Combobox
-                        className="w-full"
-                        value={selectedLanguages}
-                        onChange={(values) => {
-                          const next = getUniqueOptions(
-                            (values as string[]).filter(Boolean)
-                          )
-                          onChange(next)
-                          setLanguagesQuery("")
-                          setIsLanguagesOpen(false)
-                          setSuppressLanguageFocusOpen(true)
-                        }}
-                        multiple
-                      >
-                        <ComboboxTrigger>
-                          <ComboboxInput
-                            id="speaking-language"
-                            size="lg"
-                            className="pl-3.5"
-                            placeholder="Enter your languages"
-                            value={languagesQuery}
-                            onFocus={() => {
-                              if (suppressLanguageFocusOpen) {
-                                setSuppressLanguageFocusOpen(false)
-                                return
-                              }
-                              setIsLanguagesOpen(true)
-                            }}
-                            onBlur={() =>
-                              setTimeout(() => setIsLanguagesOpen(false), 150)
-                            }
-                            onChange={(event) => {
-                              setLanguagesQuery(event.target.value)
-                              setIsLanguagesOpen(true)
-                            }}
-                            onKeyDown={async (event) => {
-                              if (event.key === HOT_KEYS.ENTER) {
-                                const hasSuggestions =
-                                  isLanguagesOpen &&
-                                  languagesQuery.trim().length > 0 &&
-                                  filteredLanguages.length > 0
-
-                                if (hasSuggestions) {
-                                  event.preventDefault()
-                                  const activeOption = document.querySelector(
-                                    '[role="option"][data-headlessui-state~="active"]'
-                                  ) as HTMLElement | null
-                                  const activeLabel =
-                                    activeOption?.textContent?.trim() ?? ""
-
-                                  if (activeLabel) {
-                                    void addLanguageValue(
-                                      activeLabel,
-                                      onChange,
-                                      selectedLanguages
-                                    )
-                                    return
-                                  }
+                    return (
+                      <div className="space-y-3">
+                        <Combobox
+                          className="w-full"
+                          value={selectedLanguages}
+                          onChange={(values) => {
+                            const next = getUniqueOptions(
+                              (values as string[]).filter(Boolean)
+                            )
+                            onChange(next)
+                            setLanguagesQuery("")
+                            setIsLanguagesOpen(false)
+                            setSuppressLanguageFocusOpen(true)
+                          }}
+                          multiple
+                        >
+                          <ComboboxTrigger>
+                            <ComboboxInput
+                              id="speaking-language"
+                              size="lg"
+                              className="pl-3.5"
+                              placeholder="Enter your languages"
+                              value={languagesQuery}
+                              onFocus={() => {
+                                if (suppressLanguageFocusOpen) {
+                                  setSuppressLanguageFocusOpen(false)
+                                  return
                                 }
-
-                                event.preventDefault()
-                                void addLanguageValue(
-                                  languagesQuery,
-                                  onChange,
-                                  selectedLanguages
-                                )
+                                setIsLanguagesOpen(true)
+                              }}
+                              onBlur={() =>
+                                setTimeout(() => setIsLanguagesOpen(false), 150)
                               }
-                            }}
-                            invalid={hookFormHasError({
-                              errors,
-                              name: "languages",
-                            })}
-                          />
-                        </ComboboxTrigger>
-                        <ScaleOutIn show={isLanguagesOpen}>
-                          <ComboboxOptions>
-                            <ScrollArea viewportClassName="max-h-[304px]">
-                              {filteredLanguages.map((item) => (
-                                <ComboboxOption
-                                  key={item}
-                                  value={item}
-                                  className="font-normal ui-active:font-normal"
-                                  onClick={() =>
-                                    void addLanguageValue(
-                                      item,
-                                      onChange,
-                                      selectedLanguages
-                                    )
+                              onChange={(event) => {
+                                setLanguagesQuery(event.target.value)
+                                setIsLanguagesOpen(true)
+                              }}
+                              onKeyDown={async (event) => {
+                                if (event.key === HOT_KEYS.ENTER) {
+                                  const hasSuggestions =
+                                    isLanguagesOpen &&
+                                    languagesQuery.trim().length > 0 &&
+                                    filteredLanguages.length > 0
+
+                                  if (hasSuggestions) {
+                                    event.preventDefault()
+                                    const activeOption = document.querySelector(
+                                      '[role="option"][data-headlessui-state~="active"]'
+                                    ) as HTMLElement | null
+                                    const activeLabel =
+                                      activeOption?.textContent?.trim() ?? ""
+
+                                    if (activeLabel) {
+                                      void addLanguageValue(
+                                        activeLabel,
+                                        onChange,
+                                        selectedLanguages
+                                      )
+                                      return
+                                    }
                                   }
-                                >
-                                  {({ active }) => (
-                                    <HighlightedSuggestion
-                                      label={item}
-                                      query={languagesQuery}
-                                      active={active}
-                                    />
-                                  )}
-                                </ComboboxOption>
-                              ))}
-                            </ScrollArea>
-                          </ComboboxOptions>
-                        </ScaleOutIn>
-                      </Combobox>
 
-                      {getIsNotEmpty(selectedLanguages) && (
-                        <div className="flex flex-wrap gap-3">
-                          {selectedLanguages.map((item) => (
-                            <SelectionBadge
-                              key={item}
-                              onRemove={() =>
-                                removeLanguageValue(
-                                  item,
-                                  onChange,
-                                  selectedLanguages
-                                )
-                              }
-                            >
-                              {item}
-                            </SelectionBadge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                                  event.preventDefault()
+                                  void addLanguageValue(
+                                    languagesQuery,
+                                    onChange,
+                                    selectedLanguages
+                                  )
+                                }
+                              }}
+                              invalid={hookFormHasError({
+                                errors,
+                                name: "languages",
+                              })}
+                            />
+                          </ComboboxTrigger>
+                          <ScaleOutIn show={isLanguagesOpen}>
+                            <ComboboxOptions>
+                              <ScrollArea viewportClassName="max-h-[304px]">
+                                {filteredLanguages.map((item) => (
+                                  <ComboboxOption
+                                    key={item}
+                                    value={item}
+                                    className="font-normal ui-active:font-normal"
+                                    onClick={() =>
+                                      void addLanguageValue(
+                                        item,
+                                        onChange,
+                                        selectedLanguages
+                                      )
+                                    }
+                                  >
+                                    {({ active }) => (
+                                      <HighlightedSuggestion
+                                        label={item}
+                                        query={languagesQuery}
+                                        active={active}
+                                      />
+                                    )}
+                                  </ComboboxOption>
+                                ))}
+                              </ScrollArea>
+                            </ComboboxOptions>
+                          </ScaleOutIn>
+                        </Combobox>
+
+                        {getIsNotEmpty(selectedLanguages) && (
+                          <div className="flex flex-wrap gap-3">
+                            {selectedLanguages.map((item) => (
+                              <SelectionBadge
+                                key={item}
+                                onRemove={() =>
+                                  removeLanguageValue(
+                                    item,
+                                    onChange,
+                                    selectedLanguages
+                                  )
+                                }
+                              >
+                                {item}
+                              </SelectionBadge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
                   }}
-                />
-                <HookFormErrorMessage
-                  errors={errors}
-                  name="languages"
-                  render={({ message }) => (
-                    <ErrorMessage size="sm">{message}</ErrorMessage>
-                  )}
                 />
               </div>
 
-              {formError && (
-                <ErrorMessage size="sm">{formError}</ErrorMessage>
-              )}
+              {formError && <ErrorMessage size="sm">{formError}</ErrorMessage>}
             </div>
           </div>
         </div>
 
-        <div className="mx-auto max-w-[488px] 2xl:max-w-[560px] self-end w-full mt-10 2xl:mt-[50px]">
+        <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
           <div className="flex items-center justify-between">
             <Button
               size="md"
@@ -1807,13 +1801,11 @@ const TopSkills = ({
   onValueChange,
   value: valueProp,
   invalid,
-  onInvalidCustomValue,
   onAcceptedValue,
 }: {
   value?: string[]
   onValueChange?: (values: string[]) => void
   invalid?: boolean
-  onInvalidCustomValue?: (message: string) => void
   onAcceptedValue?: () => void
 }) => {
   const [inputValue, setInputValue] = useState("")
@@ -1848,9 +1840,7 @@ const TopSkills = ({
     if (!isKnownSuggestion) {
       const accepted = await submitAutocompleteValue("skills", trimmedValue)
       if (!accepted) {
-        onInvalidCustomValue?.(
-          "We couldn’t match that skill. Try a suggested option."
-        )
+        resetInputValue()
         setOpen(false)
         return
       }
@@ -1940,11 +1930,12 @@ const TopSkills = ({
 
   const filteredRoles = inputValue.trim()
     ? skillOptions
-        .filter((skill) =>
-          !hasCaseInsensitiveExactMatch(values, skill) &&
-          skill.toLowerCase().startsWith(inputValue.trim().toLowerCase())
+        .filter(
+          (skill) =>
+            !hasCaseInsensitiveExactMatch(values, skill) &&
+            skill.toLowerCase().startsWith(inputValue.trim().toLowerCase())
         )
-        .slice(0, 40)
+        .slice(0, 5)
     : []
 
   return (
@@ -1953,7 +1944,9 @@ const TopSkills = ({
         className="w-full"
         value={values}
         onChange={(nextSelected) => {
-          setValues(getUniqueOptions((nextSelected as string[]).filter(Boolean)))
+          setValues(
+            getUniqueOptions((nextSelected as string[]).filter(Boolean))
+          )
           setOpen(false)
           setInputValue("")
         }}
@@ -2068,9 +2061,9 @@ const ShowcaseYourTalent = ({
   )
   const jobTitleRequestRef = useRef(0)
   const industriesRequestRef = useRef(0)
-  const jobTitleDebounceTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null)
+  const jobTitleDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
   const industriesDebounceTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null)
@@ -2078,7 +2071,9 @@ const ShowcaseYourTalent = ({
   const filteredJobTitles = useMemo(() => {
     const query = jobTitleQuery.trim().toLowerCase()
     if (!query) return jobTitleOptions
-    return jobTitleOptions.filter((item) => item.toLowerCase().startsWith(query))
+    return jobTitleOptions.filter((item) =>
+      item.toLowerCase().startsWith(query)
+    )
   }, [jobTitleOptions, jobTitleQuery])
   const filteredIndustries = useMemo(() => {
     const query = industriesQuery.trim().toLowerCase()
@@ -2095,14 +2090,13 @@ const ShowcaseYourTalent = ({
     const value = nextValue.trim()
     if (!value) return
 
-    const isKnownSuggestion = hasCaseInsensitiveExactMatch(industriesOptions, value)
+    const isKnownSuggestion = hasCaseInsensitiveExactMatch(
+      industriesOptions,
+      value
+    )
     if (!isKnownSuggestion) {
       const accepted = await submitAutocompleteValue("industries", value)
       if (!accepted) {
-        setError("industriesWorkedWith", {
-          type: "manual",
-          message: "We couldn’t match that industry. Try a suggested option.",
-        })
         setIndustriesQuery("")
         setIsIndustriesOpen(false)
         setSuppressIndustryFocusOpen(true)
@@ -2225,7 +2219,10 @@ const ShowcaseYourTalent = ({
     industriesWorkedWith,
     yourTopSkills,
   }) => {
-    const hasAnyField = recentJobTitle || (industriesWorkedWith && industriesWorkedWith.length > 0) || (yourTopSkills && yourTopSkills.length > 0)
+    const hasAnyField =
+      recentJobTitle ||
+      (industriesWorkedWith && industriesWorkedWith.length > 0) ||
+      (yourTopSkills && yourTopSkills.length > 0)
     if (!hasAnyField) {
       setFormError("Please enter at least one field")
       return
@@ -2325,7 +2322,9 @@ const ShowcaseYourTalent = ({
                             placeholder="e.g., Software Developer"
                             value={jobTitleQuery}
                             onFocus={() => {
-                              if (!value) setIsJobTitleOpen(true)
+                              if (!value && jobTitleQuery.trim()) {
+                                setIsJobTitleOpen(true)
+                              }
                             }}
                             onBlur={() =>
                               setTimeout(() => setIsJobTitleOpen(false), 150)
@@ -2367,11 +2366,6 @@ const ShowcaseYourTalent = ({
                                   finalValue
                                 )
                                 if (!accepted) {
-                                  setError("recentJobTitle", {
-                                    type: "manual",
-                                    message:
-                                      "We couldn’t match that job title. Try a suggested option.",
-                                  })
                                   setJobTitleQuery("")
                                   setIsJobTitleOpen(false)
                                   return
@@ -2386,7 +2380,13 @@ const ShowcaseYourTalent = ({
                             })}
                           />
                         </ComboboxTrigger>
-                        <ScaleOutIn show={isJobTitleOpen}>
+                        <ScaleOutIn
+                          show={
+                            isJobTitleOpen &&
+                            jobTitleQuery.trim().length > 0 &&
+                            getIsNotEmpty(filteredJobTitles)
+                          }
+                        >
                           <ComboboxOptions>
                             <ScrollArea viewportClassName="max-h-[304px]">
                               {filteredJobTitles.map((item) => (
@@ -2429,13 +2429,6 @@ const ShowcaseYourTalent = ({
                         </div>
                       )}
                     </div>
-                  )}
-                />
-                <HookFormErrorMessage
-                  errors={errors}
-                  name="recentJobTitle"
-                  render={({ message }) => (
-                    <ErrorMessage size="sm">{message}</ErrorMessage>
                   )}
                 />
               </div>
@@ -2561,13 +2554,6 @@ const ShowcaseYourTalent = ({
                     ))}
                   </div>
                 )}
-                <HookFormErrorMessage
-                  errors={errors}
-                  name="industriesWorkedWith"
-                  render={({ message }) => (
-                    <ErrorMessage size="sm">{message}</ErrorMessage>
-                  )}
-                />
               </div>
 
               <div className="flex flex-col gap-y-1.5">
@@ -2578,25 +2564,12 @@ const ShowcaseYourTalent = ({
                     <TopSkills
                       value={value}
                       onValueChange={onChange}
-                      onInvalidCustomValue={(message) =>
-                        setError("yourTopSkills", {
-                          type: "manual",
-                          message,
-                        })
-                      }
                       onAcceptedValue={() => clearErrors("yourTopSkills")}
                       invalid={hookFormHasError({
                         errors,
                         name: "yourTopSkills",
                       })}
                     />
-                  )}
-                />
-                <HookFormErrorMessage
-                  errors={errors}
-                  name="yourTopSkills"
-                  render={({ message }) => (
-                    <ErrorMessage size="sm">{message}</ErrorMessage>
                   )}
                 />
               </div>
@@ -2619,14 +2592,12 @@ const ShowcaseYourTalent = ({
                 />
               </div>
 
-              {formError && (
-                <ErrorMessage size="sm">{formError}</ErrorMessage>
-              )}
+              {formError && <ErrorMessage size="sm">{formError}</ErrorMessage>}
             </div>
           </div>
         </div>
 
-        <div className="mx-auto max-w-[488px] 2xl:max-w-[560px] self-end w-full mt-10 2xl:mt-[50px]">
+        <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
           <div className="flex items-center justify-between">
             <Button
               size="md"
@@ -2663,21 +2634,21 @@ const ShowcaseYourTalent = ({
 const ProjectPreferences = ({
   invalid,
   onValueChange,
-  onInvalidCustomValue,
   onAcceptedValue,
   value: valueProp,
 }: {
   invalid?: boolean
   onValueChange?: (values: string[]) => void
-  onInvalidCustomValue?: (message: string) => void
   onAcceptedValue?: () => void
   value?: string[]
 }) => {
   const [inputValue, setInputValue] = useState("")
   const [isProjectPreferencesOpen, setIsProjectPreferencesOpen] =
     useState(false)
-  const [suppressProjectPreferencesFocusOpen, setSuppressProjectPreferencesFocusOpen] =
-    useState(false)
+  const [
+    suppressProjectPreferencesFocusOpen,
+    setSuppressProjectPreferencesFocusOpen,
+  ] = useState(false)
   const [projectPreferenceOptionsState, setProjectPreferenceOptionsState] =
     useState<string[]>(getUniqueOptions(projectPreferenceOptions))
   const projectPreferencesRequestRef = useRef(0)
@@ -2734,13 +2705,14 @@ const ProjectPreferences = ({
     if (!isKnownSuggestion) {
       const accepted = await submitAutocompleteValue("project_types", value)
       if (!accepted) {
-        onInvalidCustomValue?.(
-          "We couldn’t match that project type. Try a suggested option."
-        )
+        resetInputValue()
         setIsProjectPreferencesOpen(false)
+        setSuppressProjectPreferencesFocusOpen(true)
         return
       }
-      setProjectPreferenceOptionsState((prev) => getUniqueOptions([...prev, value]))
+      setProjectPreferenceOptionsState((prev) =>
+        getUniqueOptions([...prev, value])
+      )
     }
 
     onAcceptedValue?.()
@@ -2842,7 +2814,9 @@ const ProjectPreferences = ({
         // keep fallback options when autocomplete API is unavailable
       }
 
-      setProjectPreferenceOptionsState(getUniqueOptions(projectPreferenceOptions))
+      setProjectPreferenceOptionsState(
+        getUniqueOptions(projectPreferenceOptions)
+      )
     }, 250)
 
     return () => {
@@ -3592,21 +3566,8 @@ const SetYourPreferences = ({
                       value={value}
                       onValueChange={onChange}
                       invalid={hookFormHasError({ errors, name: "projects" })}
-                      onInvalidCustomValue={(message) =>
-                        setError("projects", {
-                          type: "manual",
-                          message,
-                        })
-                      }
                       onAcceptedValue={() => clearErrors("projects")}
                     />
-                  )}
-                />
-                <HookFormErrorMessage
-                  name="projects"
-                  errors={errors}
-                  render={({ message }) => (
-                    <ErrorMessage size="sm">{message}</ErrorMessage>
                   )}
                 />
               </div>
@@ -3682,7 +3643,7 @@ const SetYourPreferences = ({
           </div>
         </div>
 
-        <div className="mx-auto max-w-[488px] 2xl:max-w-[560px] self-end w-full mt-10 2xl:mt-[50px]">
+        <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
           <div className="flex items-center justify-between">
             <Button
               size="md"
@@ -3738,11 +3699,17 @@ const DoNext = ({
   const [isLoading, setIsLoading] = React.useState(false)
 
   const requiresPasswordSetup = (candidate?: User | null) => {
-    const safeUser = candidate as { provider?: string; hasPassword?: boolean } | null | undefined
+    const safeUser = candidate as
+      | { provider?: string; hasPassword?: boolean }
+      | null
+      | undefined
     return safeUser?.provider === "EMAIL" && !safeUser?.hasPassword
   }
 
-  const getPostOnboardingRoute = (targetRoute: string, candidate?: User | null) => {
+  const getPostOnboardingRoute = (
+    targetRoute: string,
+    candidate?: User | null
+  ) => {
     // Enforce password setup before allowing post-onboarding route jumps.
     return requiresPasswordSetup(candidate) ? "/talent-dashboard" : targetRoute
   }
@@ -3779,7 +3746,12 @@ const DoNext = ({
         console.error("Failed to refresh user after onboarding", error)
       }
 
-      router.push(getPostOnboardingRoute("/talent-dashboard", refreshedUser ?? talentUser ?? user))
+      router.push(
+        getPostOnboardingRoute(
+          "/talent-dashboard",
+          refreshedUser ?? talentUser ?? user
+        )
+      )
     } catch (error) {
       console.error("Failed to complete onboarding", error)
       // Show error toast if needed
@@ -3808,7 +3780,12 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push(getPostOnboardingRoute("/talent-dashboard", talentUser ?? user))
+                router.push(
+                  getPostOnboardingRoute(
+                    "/talent-dashboard",
+                    talentUser ?? user
+                  )
+                )
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -3829,7 +3806,9 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push(getPostOnboardingRoute("/publish-project", talentUser ?? user))
+                router.push(
+                  getPostOnboardingRoute("/publish-project", talentUser ?? user)
+                )
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -3850,7 +3829,9 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push(getPostOnboardingRoute("/publish-project", talentUser ?? user))
+                router.push(
+                  getPostOnboardingRoute("/publish-project", talentUser ?? user)
+                )
               }}
             >
               <div className="flex items-center gap-x-3">
@@ -3871,7 +3852,9 @@ const DoNext = ({
                 if (talentUser) {
                   setUser(talentUser)
                 }
-                router.push(getPostOnboardingRoute("/publish-project", talentUser ?? user))
+                router.push(
+                  getPostOnboardingRoute("/publish-project", talentUser ?? user)
+                )
               }}
             >
               <div className="flex items-center gap-x-3">
