@@ -1,20 +1,14 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useAuth } from "@/contexts/auth"
+import { useEffect, useMemo, useState } from "react"
+import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
 import SecuritySettingsStepper from "@/components/security-settings"
 import ActiveSessionsModal from "@/components/active-sessions-modal"
 import { TwoFactorSetupModal, DisableTwoFactorModal } from "@/components/two-factor-setup"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
-import SettingsSidebar from "@/components/settings-sidebar"
+import SettingsSidebar, { settingsTabItems } from "@/components/settings-sidebar"
 import NotificationPreferences from "@/components/notification-preferences"
-import {
-  Bell,
-  Lock,
-  Settings,
-  UserCircle,
-} from "@blend-metrics/icons"
 import {
   Avatar,
   AvatarFallback,
@@ -26,13 +20,6 @@ import {
   useToast,
 } from "@/components/ui"
 import { cn } from "@/utils/functions"
-
-const mobileTabItems = [
-  { id: "profile", label: "Profile", icon: UserCircle },
-  { id: "account", label: "Account", icon: Settings },
-  { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "security", label: "Security", icon: Lock },
-]
 
 export default function SettingsPage() {
   const { user, setUser } = useAuth()
@@ -61,6 +48,17 @@ export default function SettingsPage() {
       })
     }
   }, [user])
+
+  const isProfileDirty = useMemo(() => {
+    if (!user) return false
+    return (
+      profileForm.firstName !== (user.firstName ?? "") ||
+      profileForm.lastName !== (user.lastName ?? "") ||
+      profileForm.username !== (user.username ?? "")
+    )
+  }, [profileForm, user])
+
+  const accountRole = useMemo(() => resolveDashboardRole(user), [user])
 
   const handleProfileChange = (field: string, value: string) => {
     setProfileForm((prev) => ({ ...prev, [field]: value }))
@@ -130,13 +128,13 @@ export default function SettingsPage() {
               <div className="min-[1024px]:hidden mb-6">
                 <h1 className="text-2xl font-semibold text-dark-blue-400">Settings</h1>
                 <p className="text-sm text-gray-500 mt-1">Manage your account settings and preferences</p>
-                <div className="flex gap-1 mt-4 border-b border-gray-200">
-                  {mobileTabItems.map((item) => (
+                <div className="flex gap-1 mt-4 border-b border-gray-200 overflow-x-auto">
+                  {settingsTabItems.map((item) => (
                     <button
                       key={item.id}
                       onClick={() => setActiveTab(item.id)}
                       className={cn(
-                        "flex items-center gap-1.5 px-3 pb-3 text-sm border-b-2 transition-colors",
+                        "flex items-center gap-1.5 px-3 pb-3 text-sm border-b-2 transition-colors whitespace-nowrap",
                         activeTab === item.id
                           ? "border-primary-500 text-primary-500"
                           : "border-transparent text-gray-500 hover:text-gray-700"
@@ -174,7 +172,7 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="space-y-1.5">
                       <Label size="sm">First Name</Label>
                       <Input
@@ -213,7 +211,7 @@ export default function SettingsPage() {
                       <Button variant="outlined" visual="gray" size="sm" onClick={handleProfileCancel}>
                         Cancel
                       </Button>
-                      <Button size="sm" onClick={handleProfileSave} disabled={isSaving}>
+                      <Button size="sm" onClick={handleProfileSave} disabled={isSaving || !isProfileDirty}>
                         {isSaving ? "Saving..." : "Save Changes"}
                       </Button>
                     </div>
@@ -246,7 +244,7 @@ export default function SettingsPage() {
                         <p className="text-sm font-medium text-dark-blue-400">Account Type</p>
                         <p className="text-xs text-gray-500">Your current account role</p>
                       </div>
-                      <span className="text-sm text-gray-500 capitalize">{user?.userType?.toLowerCase() ?? user?.accountType?.toLowerCase() ?? "—"}</span>
+                      <span className="text-sm text-gray-500 capitalize">{accountRole?.toLowerCase() ?? "—"}</span>
                     </div>
                   </div>
                 </div>

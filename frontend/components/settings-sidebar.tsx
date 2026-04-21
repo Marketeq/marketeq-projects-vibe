@@ -9,6 +9,15 @@ import {
   UserCircle,
 } from "@blend-metrics/icons"
 
+export const settingsTabItems = [
+  { id: "profile", label: "Profile", icon: UserCircle },
+  { id: "account", label: "Account", icon: Settings02 },
+  { id: "security", label: "Security", icon: Lock },
+  { id: "notifications", label: "Notifications", icon: Bell },
+] as const
+
+export type SettingsTabId = (typeof settingsTabItems)[number]["id"]
+
 interface SettingsSidebarProps {
   activeTab: string
   onTabChange: (tab: string) => void
@@ -73,10 +82,14 @@ export default function SettingsSidebar({
           </button>
           <button
             disabled
+            title="Coming soon"
             className={cn(itemClass(false), "opacity-40 cursor-not-allowed hover:bg-transparent")}
           >
             <CreditCard className={iconClass} />
             Billing
+            <span className="ml-auto text-[10px] font-medium text-gray-500 bg-gray-200 rounded px-1.5 py-0.5">
+              Soon
+            </span>
           </button>
         </div>
       </div>
