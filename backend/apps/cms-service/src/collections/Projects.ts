@@ -11,6 +11,17 @@ import {
 } from '../hooks/afterChange/syncProjects';
 import { computeProjectFields } from '../hooks/beforeChange/computeProjectFields';
 
+function validateNoSpecialCharsInTitle(value: unknown): true | string {
+  if (typeof value !== 'string') return 'Title must be a string.'
+  const trimmed = value.trim();
+  if (!trimmed) return 'Title is required.'
+  // Allow letters (Unicode), numbers, and spaces only.
+  if (!/^[\p{L}\p{N} ]+$/u.test(trimmed)) {
+    return 'Title can only contain letters, numbers, and spaces (no special characters).'
+  }
+  return true;
+}
+
 /**
  * Projects — dedicated CMS collection for the "Projects" listing type.
  *
@@ -87,6 +98,7 @@ export const Projects: CollectionConfig = {
       type: 'text',
       required: true,
       maxLength: 140,
+      validate: validateNoSpecialCharsInTitle,
       admin: { description: 'Used as the main heading on the project card and details page.' },
     },
     {

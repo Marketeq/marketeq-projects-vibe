@@ -10,13 +10,6 @@ import {
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
-import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
-import {
-  buildProjectStaticContentFromGateway,
-  type ProjectStaticContent,
-  type ProjectStaticIcon,
-} from "@/lib/project-details/project-static-content-from-api"
-import { ProjectDetailsPricingSidebar } from "@/components/project-details/project-details-pricing-sidebar"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -56,11 +49,18 @@ import * as RadixTabs from "@radix-ui/react-tabs"
 import { TbStar, TbStarHalfFilled } from "react-icons/tb"
 import { useToggle } from "react-use"
 import useMeasure from "react-use-measure"
+import {
+  type ProjectStaticContent,
+  type ProjectStaticIcon,
+  buildProjectStaticContentFromGateway,
+} from "@/lib/project-details/project-static-content-from-api"
 import { ChatsContextProvider } from "@/components/chat"
 import { EditContextProvider, useEditContext } from "@/components/inbox-comps"
 import { LikeDislike } from "@/components/like-dislike"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
+import { ProjectDetailsPricingSidebar } from "@/components/project-details/project-details-pricing-sidebar"
+import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
 import { ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
 import {
   ShowMoreLess,
@@ -620,8 +620,7 @@ export default function ProjectDetails() {
         if (!Array.isArray(tasks)) continue
         for (const t of tasks) {
           const raw = (t as { assigneeEmail?: string }).assigneeEmail
-          const e =
-            typeof raw === "string" ? raw.trim().toLowerCase() : ""
+          const e = typeof raw === "string" ? raw.trim().toLowerCase() : ""
           if (e) emails.add(e)
         }
       }
@@ -633,12 +632,9 @@ export default function ProjectDetails() {
     const teamMembers = Array.isArray(project.team)
       ? project.team.map((t: Record<string, unknown>) => ({
           firstName: String(t.firstName ?? "?"),
-          username:
-            typeof t.username === "string" ? t.username : undefined,
-          avatarUrl:
-            typeof t.avatarUrl === "string" ? t.avatarUrl : null,
-          location:
-            typeof t.location === "string" ? t.location : null,
+          username: typeof t.username === "string" ? t.username : undefined,
+          avatarUrl: typeof t.avatarUrl === "string" ? t.avatarUrl : null,
+          location: typeof t.location === "string" ? t.location : null,
           skills: Array.isArray(t.skills) ? (t.skills as string[]) : undefined,
         }))
       : []
