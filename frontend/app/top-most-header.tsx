@@ -463,13 +463,14 @@ const listingTypes = ["Projects", "Services", "Talent", "Teams", "Jobs"]
 const SearchBar = () => {
   const router = useRouter()
   const pathname = usePathname()
-  const [state, setState] = useState<string>()
-  const [selected, setSelected] = React.useState<{
+  type SearchSelection = {
     id: number
     value: string
     icon?: React.JSXElementConstructor<any>
     route?: string
-  }>()
+  }
+  const [state, setState] = useState<string>()
+  const [selected, setSelected] = React.useState<SearchSelection>()
   const [query, setQuery] = React.useState("")
   // Nonce used as `key` on the Combobox wrapper. Incrementing it forces
   // Headless UI to unmount/remount, which reliably resets its internal open
@@ -591,7 +592,7 @@ const SearchBar = () => {
       key={resetNonce}
       className="group/root w-auto flex-auto"
       value={selected}
-      onChange={(value: { id: number; value: string; icon?: React.JSXElementConstructor<any>; route?: string }) => {
+      onChange={(value: SearchSelection | null) => {
         if (!value) return
         // Fixed "Browse ..." items have a route — navigate instead of searching.
         if (value.route) {
@@ -632,11 +633,7 @@ const SearchBar = () => {
             placeholder={searchPlaceholder}
             className="p-0 border-0 text-xs leading-5 h-auto rounded-none hover:ring-0 hover:border-gray-300 focus:ring-0 focus:border-gray-300 ui-open:rounded-b-none"
             size="lg"
-            displayValue={(value: {
-              id: number
-              value: string
-              icon?: React.JSXElementConstructor<any>
-            }) => value?.value ?? ""}
+            displayValue={(value: SearchSelection) => value?.value ?? ""}
             onChange={(event) => setQuery(event.target.value)}
             onFocus={() => {
               // Open the dropdown the moment the user focuses the input

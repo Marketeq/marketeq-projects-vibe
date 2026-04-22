@@ -184,6 +184,14 @@ type PaymentPlanOption = {
   value: string
 }
 
+const safeDecodeSlug = (value: string): string => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
 export default function CheckoutPage() {
   const params = useParams()
   const pathname = usePathname()
@@ -192,7 +200,7 @@ export default function CheckoutPage() {
   const slug = params.slug as string
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
-  const decodedSlug = decodeURIComponent(slug)
+  const decodedSlug = safeDecodeSlug(slug)
   const addOnStateStorageKey = React.useMemo(
     () => `checkout-addons:${basePath}:${decodedSlug}`,
     [basePath, decodedSlug],
@@ -433,7 +441,7 @@ export default function CheckoutPage() {
           <button
             onClick={() => {
               if (isTalentCheckout) {
-                router.push(`/talent-profile?username=${encodeURIComponent(decodeURIComponent(slug))}`)
+                router.push(`/talent-profile?username=${encodeURIComponent(decodedSlug)}`)
                 return
               }
               router.back()
