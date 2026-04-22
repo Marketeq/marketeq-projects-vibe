@@ -8,9 +8,6 @@ import {
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 
-import { mapCmsProjectStaticDocToDto } from "./map-cms-project-static-doc";
-import type { ProjectStaticContent } from "./project-static-content.dto";
-
 /**
  * Read-only adapter over the `public.projects` table.
  *
@@ -82,13 +79,8 @@ export class CmsProjectsController {
     // ratings (§14.14). All best-effort: errors return sensible defaults
     // so the primary project response is never blocked by a secondary
     // query/service failure.
-    const [
-      similarProjects,
-      categorySuggestions,
-      team,
-      projectHistoryRatings,
-      projectStaticContent,
-    ] = await Promise.all([
+    const [similarProjects, categorySuggestions, team, projectHistoryRatings] =
+      await Promise.all([
       this.getSimilarProjects(rows[0]).catch((err) => {
         this.logger.warn(`similarProjects failed for ${slug}: ${err}`);
         return [];
@@ -107,12 +99,6 @@ export class CmsProjectsController {
           return null;
         },
       ),
-      this.getProjectStaticContent().catch((err) => {
-        this.logger.warn(
-          `projectStaticContent fetch failed for ${slug}: ${err}`,
-        );
-        return null;
-      }),
     ]);
 
     return {
@@ -122,7 +108,6 @@ export class CmsProjectsController {
       relatedSkills: categorySuggestions.relatedSkills,
       team,
       projectHistoryRatings,
-      projectStaticContent,
     };
   }
 
@@ -426,63 +411,6 @@ export class CmsProjectsController {
     } catch {
       return empty;
     }
-  }
-
-  /**
-   * Static copy for project details (sidebar guarantee + steps block DTO).
-   *
-   * Reads Payload `project-static-contents` (slug `default`) server-side and
-   * maps with {@link mapCmsProjectStaticDocToDto}. The UI never talks to CMS;
-   * it only sees `projectStaticContent` on this API. Returns null if missing
-   * or invalid so the client can fall back to built-in defaults.
-   */
-  private async getProjectStaticContent(): Promise<ProjectStaticContent | null> {
-    const baseUrl = (
-      process.env.CMS_PUBLIC_URL ||
-      process.env.CMS_SERVICE_URL ||
-      "http://localhost:3020"
-    ).replace(/\/+$/, "");
-
-    const query = new URLSearchParams({
-      limit: "1",
-      depth: "1",
-      draft: "false",
-      "where[slug][equals]": "default",
-    });
-
-    const headers: Record<string, string> = { Accept: "application/json" };
-    const cmsApiKey = process.env.CMS_API_KEY;
-    if (cmsApiKey) {
-      headers.Authorization = `API-Key ${cmsApiKey}`;
-    }
-
-    const url = `${baseUrl}/api/project-static-contents?${query.toString()}`;
-    let res: Response;
-    try {
-      res = await fetch(url, { headers });
-    } catch (err) {
-      this.logger.warn(
-        `project-static-contents fetch error (${baseUrl}): ${err}`,
-      );
-      return null;
-    }
-    if (!res.ok) {
-      this.logger.warn(
-        `project-static-contents HTTP ${res.status} from ${baseUrl}`,
-      );
-      return null;
-    }
-
-    const body = await res.json();
-    const doc = body?.docs?.[0];
-    if (!doc) {
-      this.logger.warn(
-        `project-static-contents: no published doc with slug "default" at ${baseUrl}`,
-      );
-      return null;
-    }
-
-    return mapCmsProjectStaticDocToDto(doc);
   }
 }
 

@@ -79,7 +79,7 @@ let scanned = 0
 for (let page = 1; ; page++) {
   const res = await fetch(`${CMS_SERVICE_URL}/api/blog-posts?page=${page}&limit=100&depth=0`, {
     headers: {
-      Authorization: `users API-Key ${CMS_API_KEY}`,
+      Authorization: `API-Key ${CMS_API_KEY}`,
       Accept: 'application/json',
     },
   }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`List failed: ${r.status}`))))
@@ -96,7 +96,7 @@ for (let page = 1; ; page++) {
     await fetch(`${CMS_SERVICE_URL}/api/blog-posts/${doc.id}`, {
       method: 'PATCH',
       headers: {
-        Authorization: `users API-Key ${CMS_API_KEY}`,
+        Authorization: `API-Key ${CMS_API_KEY}`,
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
@@ -110,4 +110,3 @@ for (let page = 1; ; page++) {
 
 console.log(`✔ Scanned ${scanned} blog posts; fixed ${updated} invalid richText bodies.`)
 process.exit(0)
-

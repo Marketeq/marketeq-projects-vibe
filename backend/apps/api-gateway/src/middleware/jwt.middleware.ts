@@ -31,8 +31,6 @@ const PUBLIC_EXACT_ROUTES = new Set([
   '/v1/users/health',
   '/v1/projects',
   '/v1/services',
-  // Blog (CMS → api-gateway public read endpoints)
-  '/blog/posts',
 ])
 
 // Only explicitly allowed dynamic routes are public.
@@ -47,7 +45,6 @@ const PUBLIC_PATTERNS = [
   /^\/v1\/users\/username\/[^/]+$/,
   /^\/v1\/projects(?:\/.*)?$/,
   /^\/v1\/services(?:\/.*)?$/,
-  /^\/blog\/posts(?:\/[^/]+)?$/,
   /^\/v1\/users\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
 ]
 

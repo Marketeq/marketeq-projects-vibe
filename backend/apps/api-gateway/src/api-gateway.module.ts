@@ -10,8 +10,6 @@ import { UserAvatarUploadController } from './controllers/user-avatar-upload.con
 import { PublishMediaController } from './controllers/publish-media.controller'
 import { HomepageModule } from './homepage/homepage.module'
 import { HomepageController } from './homepage/homepage.controller'
-import { BlogModule } from './blog/blog.module'
-import { BlogController } from './blog/blog.controller'
 import { JwtStrategy } from './guards/jwt-auth.guard'
 import { JwtMiddleware } from './middleware/jwt.middleware'
 import { LoggingMiddleware } from './middleware/logging.middleware'
@@ -24,7 +22,6 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
     }),
     HttpModule.register({ timeout: 30000 }),
     HomepageModule,
-    BlogModule,
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
@@ -48,7 +45,6 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
   providers: [ProxyService, JwtStrategy],
   controllers: [
     HomepageController,
-    BlogController,
     TalentUploadController,
     UserAvatarUploadController,
     PublishMediaController,

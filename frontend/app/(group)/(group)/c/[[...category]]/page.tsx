@@ -634,7 +634,6 @@ export default function Projects() {
   const [listingsProjects, setListingsProjects] = useState<any[]>([])
   const [listingsServices, setListingsServices] = useState<any[]>([])
   const [talentUsers, setTalentUsers] = useState<any[]>([])
-  const [relatedGuides, setRelatedGuides] = useState<any[]>([])
 
   // ✅ Extract l1, l2, l3
   const rawL1 = categoryPath?.l1
@@ -873,20 +872,6 @@ export default function Projects() {
           setTalentUsers(rich.length > 0 ? rich : fallback)
         }
 
-        // Fetch CMS guides (blog posts) related to this top-level category.
-        // Best-effort: if CMS/gateway is down, the UI just hides the section.
-        const guidesRes = await fetch(
-          `${apiBase}/blog/posts?limit=3&page=1&categorySlug=${encodeURIComponent(
-            l1Meta.slug,
-          )}`,
-        ).catch(() => null)
-        if (guidesRes?.ok) {
-          const guidesBody = await guidesRes.json().catch(() => null)
-          const items = Array.isArray(guidesBody?.items) ? guidesBody.items : []
-          setRelatedGuides(items)
-        } else {
-          setRelatedGuides([])
-        }
       } catch {
         // Services unavailable — cards will use placeholder data
       }
@@ -2369,84 +2354,119 @@ export default function Projects() {
               </Button>
             </div>
 
-            {relatedGuides.length > 0 ? (
-              <div className="grid grid-cols-2 gap-x-8 mt-6">
-                <div className="flex flex-col gap-y-8">
-                  {relatedGuides.slice(0, 2).map((g: any) => (
-                    <article key={g.id ?? g.slug} className="flex gap-x-6">
-                      <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0 bg-gray-100">
-                        <NextImage
-                          className="object-cover"
-                          sizes="25vw"
-                          fill
-                          src={g.coverImageUrl || "/artificial-hand.jpeg"}
-                          alt={g.title || "Guide"}
-                        />
-                      </div>
-                      <div className="py-3">
-                        <span className="text-xs font-medium leading-none text-dark-blue-400">
-                          {g.categoryName || sectionLabel}
-                        </span>
-                        <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400">
-                          {g.title || "Untitled guide"}
-                        </h1>
-                        <p className="mt-3 text-[13px] leading-[18px] font-light text-dark-blue-400">
-                          {g.excerpt || ""}
-                        </p>
-                        <div className="mt-3 flex flex-col gap-y-2">
-                          <span className="text-[13px] leading-none font-medium text-dark-blue-400">
-                            {`${g.readTimeMinutes ?? 1} min read`}
-                          </span>
-                          <Button
-                            size="lg"
-                            variant="link"
-                            visual="gray"
-                            className="p-0 h-auto justify-start w-fit"
-                          >
-                            Read more <ArrowRight className="size-[15px]" />
-                          </Button>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-                <div className="rounded-lg overflow-hidden relative bg-gray-100">
-                  <NextImage
-                    className="object-cover"
-                    src={relatedGuides[2]?.coverImageUrl || "/artificial-hand.jpeg"}
-                    alt={relatedGuides[2]?.title || "Guide"}
-                    sizes="50vw"
-                    fill
-                  />
-                  <div className="p-[50px] absolute inset-0 flex flex-col justify-end">
-                    <div className="p-8 rounded-lg bg-white">
-                      <span className="text-xs font-medium leading-none text-dark-blue-400">
-                        {relatedGuides[2]?.categoryName || sectionLabel}
-                      </span>
-                      <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400">
-                        {relatedGuides[2]?.title || "Untitled guide"}
-                      </h1>
-                      <p className="mt-3 text-[13px] leading-[18px] font-light text-dark-blue-400">
-                        {relatedGuides[2]?.excerpt || ""}
-                      </p>
-                      <div className="mt-3 flex flex-col gap-y-2">
-                        <span className="text-[13px] leading-none font-medium text-dark-blue-400">
-                          {`${relatedGuides[2]?.readTimeMinutes ?? 1} min read`}
-                        </span>
-                        <Button
-                          size="lg"
-                          variant="link"
-                          visual="gray"
-                          className="p-0 h-auto justify-start w-fit"
-                        >
-                          Read more <ArrowRight className="size-[15px]" />
-                        </Button>
-                      </div>
-                    </div>
+            <div className="grid grid-cols-2 gap-x-8 mt-6">
+              <div className="flex flex-col gap-y-8">
+                <article className="flex gap-x-6">
+                  <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
+                    <NextImage
+                      className="object-cover"
+                      sizes="25vw"
+                      fill
+                      src="/artificial-hand.jpeg"
+                    />
+                  </div>
+                  <div className="py-3">
+                    <span className="text-xs font-medium leading-none text-dark-blue-400">
+                      Software Testing
+                    </span>
+                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400">
+                      The Art of Software Testing: A Comprehensive Guide
+                    </h1>
+                    <p className="mt-2 text-sm leading-none font-light text-dark-blue-400">
+                      A few sentences about the content of the article. A few
+                      sentences about the content of the article. A few
+                      sentences about the content of the article. A few
+                      sentences about the content of the article.
+                    </p>
+                    <p className="mt-2 text-sm font-medium leading-none text-dark-blue-400">
+                      10 min read
+                    </p>
+
+                    <Button
+                      className="text-dark-blue-400 mt-3"
+                      size="md"
+                      variant="link"
+                      visual="gray"
+                    >
+                      Read more <ArrowRight className="size-[15px]" />
+                    </Button>
+                  </div>
+                </article>
+                <article className="flex gap-x-6">
+                  <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
+                    <NextImage
+                      className="object-cover"
+                      sizes="25vw"
+                      fill
+                      src="/artificial-hand.jpeg"
+                    />
+                  </div>
+                  <div className="py-3">
+                    <span className="text-xs font-medium leading-none text-dark-blue-400">
+                      Software Testing
+                    </span>
+                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400">
+                      The Art of Software Testing: A Comprehensive Guide
+                    </h1>
+                    <p className="mt-2 text-sm leading-none font-light text-dark-blue-400">
+                      A few sentences about the content of the article. A few
+                      sentences about the content of the article. A few
+                      sentences about the content of the article. A few
+                      sentences about the content of the article.
+                    </p>
+                    <p className="mt-2 text-sm font-medium leading-none text-dark-blue-400">
+                      10 min read
+                    </p>
+
+                    <Button
+                      className="text-dark-blue-400 mt-3"
+                      size="md"
+                      variant="link"
+                      visual="gray"
+                    >
+                      Read more <ArrowRight className="size-[15px]" />
+                    </Button>
+                  </div>
+                </article>
+              </div>
+              <div className="rounded-lg overflow-hidden relative">
+                <NextImage
+                  className="object-cover"
+                  src="/artificial-hand.jpeg"
+                  alt="Guide"
+                  sizes="50vw"
+                  fill
+                />
+                <div className="p-[50px] absolute inset-0 flex flex-col justify-end">
+                  <div className="p-8 rounded-lg bg-white">
+                    <span className="text-xs font-medium leading-none text-dark-blue-400">
+                      Software Testing
+                    </span>
+                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400">
+                      The Art of Software Testing: A Comprehensive Guide
+                    </h1>
+                    <p className="mt-2 text-sm leading-none font-light text-dark-blue-400">
+                      A few sentences about the content of the article. A few
+                      sentences about the content of the article. A few
+                      sentences about the content of the article. A few
+                      sentences about the content of the article.
+                    </p>
+                    <p className="mt-2 text-sm font-medium leading-none text-dark-blue-400">
+                      10 min read
+                    </p>
+
+                    <Button
+                      className="text-dark-blue-400 mt-3"
+                      size="md"
+                      variant="link"
+                      visual="gray"
+                    >
+                      Read more <ArrowRight className="size-[15px]" />
+                    </Button>
                   </div>
                 </div>
               </div>
-            ) : null}
+            </div>
           </div>
         </div>
       </div>
