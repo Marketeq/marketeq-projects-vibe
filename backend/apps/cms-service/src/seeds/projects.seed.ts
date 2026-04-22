@@ -160,6 +160,16 @@ function slugify(title: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
+// Projects.title validation forbids punctuation (letters/numbers/spaces only).
+// Seeds sanitize fixture titles to satisfy that constraint while keeping a
+// deterministic slug.
+function sanitizeTitle(title: string): string {
+  return title
+    .replace(/[^\p{L}\p{N} ]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /**
  * Fetch an external image and upload the bytes through Payload's normal
  * upload path so MinIO/R2 actually holds the file.
@@ -450,11 +460,12 @@ function buildProjectData(
   thumbnailMediaId: number,
   galleryMediaIds: number[],
 ): Record<string, unknown> {
+  const safeTitle = sanitizeTitle(p.title);
   const short = p.shortDescription ?? p.description;
   const stack = stackFor(p);
   return {
-    title: p.title,
-    slug: slugify(p.title),
+    title: safeTitle,
+    slug: slugify(safeTitle),
     shortDescription: short,
     fullDescription: richFullDescription(p),
     thumbnail: thumbnailMediaId,
@@ -492,7 +503,6 @@ function buildProjectData(
     projectType: 'team',
     klarnaPaymentEnabled: false,
     featured: p.featured ?? false,
-    chatEnabled: false,
     reportButtonEnabled: true,
     shareButtonEnabled: true,
     helpButtonEnabled: false,

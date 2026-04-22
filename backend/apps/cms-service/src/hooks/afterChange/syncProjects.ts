@@ -54,9 +54,6 @@ type ProjectSyncProjection = {
   klarnaPaymentEnabled?: boolean;
   recentQuestions?: unknown;
   skillsAndTools?: unknown;
-  chatEnabled?: boolean;
-  reportButtonEnabled?: boolean;
-  shareButtonEnabled?: boolean;
   helpButtonEnabled?: boolean;
   featured?: boolean;
   _status?: "draft" | "published" | "archived" | "flagged";
@@ -374,8 +371,6 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       // - report_button_enabled is a frontend-only feature (visible to logged-in users)
       // - share_button_enabled is always true for public projects
       // - help_button_enabled is an optional feature toggle (CMS-authored)
-      reportButtonEnabled: true,
-      shareButtonEnabled: true,
       helpButtonEnabled: (doc as any).helpButtonEnabled,
       featured: (doc as any).featured,
       _status: ((doc as any)._status ?? "published") as

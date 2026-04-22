@@ -61,7 +61,7 @@ export class ProjectSyncService {
            "estimatedHours", budget, duration, featured, status,
            "pricingModel", "priceViewMode", "priceMax", "projectType",
            "klarnaEnabled", "recentQuestions", "skillsAndTools",
-           "chatEnabled", "reportButtonEnabled", "shareButtonEnabled", "helpButtonEnabled",
+           "reportButtonEnabled", "shareButtonEnabled", "helpButtonEnabled",
            "scope", industries, "relatedProjectIds",
            "createdBy", "createdAt", "updatedAt"
          ) VALUES (
@@ -72,10 +72,10 @@ export class ProjectSyncService {
            $17, $18, $19, $20, $21::listing_status_enum,
            $22, $23, $24, $25,
            $26, $27::jsonb, $28::jsonb,
-           $29, $30, $31, $32,
-           $33::jsonb, $34::text[], $35::text[],
-           $36,
-           COALESCE($37::timestamptz, NOW()),
+           $29, $30, $31,
+           $32::jsonb, $33::text[], $34::text[],
+           $35,
+           COALESCE($36::timestamptz, NOW()),
            NOW()
          ) RETURNING id`,
         [
@@ -169,8 +169,8 @@ export class ProjectSyncService {
          -- overwrite a real owner once it's set, so §14.14 history
          -- doesn't churn when an unrelated field is edited.
          "createdBy" = CASE
-           WHEN $36::text IS NOT NULL AND $36::text <> '' AND "createdBy" = 'cms-sync'
-             THEN $36::text
+          WHEN $35::text IS NOT NULL AND $35::text <> '' AND "createdBy" = 'cms-sync'
+            THEN $35::text
            ELSE "createdBy"
          END,
          "updatedAt" = NOW()
