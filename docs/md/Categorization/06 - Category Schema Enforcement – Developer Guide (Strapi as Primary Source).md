@@ -1,29 +1,29 @@
-# **06 - Category Schema Enforcement -- Developer Guide (Strapi as Primary Source)**
+# **06 - Category Schema Enforcement -- Developer Guide (Payload as Primary Source)**
 
 ## **1. Purpose**
 
 This document defines how marketplace categories are modeled and
-validated across **Strapi CMS** and the **NestJS backend**, while
+validated across **Payload CMS** and the **NestJS backend**, while
 avoiding duplicate logic.
 
-- **Strapi** is the primary category source and handles admin-created
+- **Payload** is the primary category source and handles admin-created
   category validation.
 
 - **NestJS** mirrors the schema to maintain marketplace consistency and
-  enforces rules only for categories created outside Strapi
+  enforces rules only for categories created outside Payload
   (AI/user-generated).
 
 - Both systems share a universal UUID for syncing.
 
 ## **2. Division of Responsibility**
 
-### **Strapi (Admin Side)**
+### **Payload (Admin Side)**
 
 - Manages **all admin-created categories and subcategories**.
 
 - Handles parent-child nesting using native relations.
 
-- Generates unique slugs for categories created in Strapi.
+- Generates unique slugs for categories created in Payload.
 
 - Provides lifecycle hooks/webhooks to sync categories to NestJS.
 
@@ -31,7 +31,7 @@ avoiding duplicate logic.
 
 ### **NestJS (Marketplace Side)**
 
-- Receives and stores categories synced from Strapi.
+- Receives and stores categories synced from Payload.
 
 - Provides recursive API endpoints for marketplace frontend and
   autocomplete.
@@ -43,11 +43,11 @@ avoiding duplicate logic.
   - User input (through autocomplete microservice).
 
 - Ensures user/AI-generated categories pass validation before pushing to
-  Strapi.
+  Payload.
 
 ## **3. Data Model**
 
-Both Strapi and NestJS share the same core fields:
+Both Payload and NestJS share the same core fields:
 
 - uuid -- Shared universal ID.
 
@@ -69,18 +69,18 @@ Both Strapi and NestJS share the same core fields:
 
 - Categories form a **tree structure** with unlimited depth.
 
-- **Strapi** enforces parent-child relationships for admin-created
+- **Payload** enforces parent-child relationships for admin-created
   categories.
 
 - **NestJS** validates nesting only for categories created outside
-  Strapi.
+  Payload.
 
 ## **5. Validation Rules**
 
 ### **a. Prevent Circular References (NestJS-side)**
 
 Used only when AI/user-generated categories are created before syncing
-to Strapi.
+to Payload.
 
 async validateParent(childUuid: string, parentUuid: string) {
 
@@ -96,10 +96,10 @@ detected\');
 
 ### **b. Slug Uniqueness**
 
-- **Strapi** generates unique slugs for admin-created categories.
+- **Payload** generates unique slugs for admin-created categories.
 
 - **NestJS** generates slugs for AI/user-generated categories before
-  pushing to Strapi.
+  pushing to Payload.
 
 import slugify from \'slugify\';
 
@@ -125,7 +125,7 @@ return slug;
 
 ### **c. UUID Enforcement**
 
-- UUIDs are generated once on category creation (Strapi or NestJS).
+- UUIDs are generated once on category creation (Payload or NestJS).
 
 - Always synced to keep both systems in alignment.
 
@@ -169,46 +169,46 @@ return path;
 
 
 
-## **7. Strapi Lifecycle Hooks**
+## **7. Payload Lifecycle Hooks**
 
-- Strapi fires webhooks to NestJS on create/update/delete.
+- Payload fires webhooks to NestJS on create/update/delete.
 
 - NestJS mirrors categories but does not re-validate admin-created
   entries unless they conflict with UUID or slug rules.
 
 ## **8. Why This Split Matters**
 
-- Prevents duplicating Strapi's built-in content management logic.
+- Prevents duplicating Payload's built-in content management logic.
 
 - Keeps marketplace DB consistent when categories are created outside
-  Strapi.
+  Payload.
 
 - Ensures auto-complete and AI-generated subcategories follow the same
   rules as admin categories.
 
 ## **9. Testing Checklist**
 
-- ✅ Admin creates a category in Strapi → Syncs to NestJS with correct
+- ✅ Admin creates a category in Payload → Syncs to NestJS with correct
   parent/slug.
 
 - ✅ AI/user-generated category passes NestJS validation → Syncs to
-  Strapi.
+  Payload.
 
 - ✅ No duplicate slugs across systems.
 
 - ✅ Breadcrumb and tree queries return correct unlimited nesting.
 
-- ✅ UUID matches between Strapi and NestJS for all categories.
+- ✅ UUID matches between Payload and NestJS for all categories.
 
 ## **10. Related Documentation**
 
-- **Strapi ↔ NestJS Marketplace Category Sync -- Developer
+- **Payload ↔ NestJS Marketplace Category Sync -- Developer
   Implementation Guide\**
   Covers:
 
   - Real-time webhook sync
 
-  - NestJS → Strapi push logic
+  - NestJS → Payload push logic
 
   - Payload structure
 

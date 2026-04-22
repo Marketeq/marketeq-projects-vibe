@@ -1,10 +1,10 @@
-# **04 - Strapi Lifecycle & Next.js Category Pages -- Developer Integration Guide**
+# **04 - Payload Lifecycle & Next.js Category Pages -- Developer Integration Guide**
 
 ## **1. Purpose**
 
 This document provides the **complete implementation** for:
 
-- Strapi category & tag lifecycle hooks for syncing with NestJS.
+- Payload category & tag lifecycle hooks for syncing with NestJS.
 
 - Webhook configuration for real-time updates.
 
@@ -12,11 +12,11 @@ This document provides the **complete implementation** for:
 
 - Dynamic SEO template integration for category pages.
 
-## **2. Strapi Lifecycle Hooks**
+## **2. Payload Lifecycle Hooks**
 
 ### **a. Category Hooks**
 
-Create a lifecycle file in Strapi:
+Create a lifecycle file in Payload:
 
 /strapi/src/api/category/content-types/category/lifecycles.js
 
@@ -104,7 +104,7 @@ headers: { Authorization: \`Bearer \${process.env.NEST_TOKEN}\` }
 
 
 
-## **3. Strapi Webhook Configuration**
+## **3. Payload Webhook Configuration**
 
 If you prefer webhooks over lifecycles, configure:
 
@@ -256,7 +256,7 @@ return category;
 
 ## **6. Testing Checklist**
 
-- ✅ Creating/updating categories in Strapi fires NestJS sync via
+- ✅ Creating/updating categories in Payload fires NestJS sync via
   lifecycle or webhook.
 
 - ✅ Deleting categories triggers safe deletion in NestJS.

@@ -451,7 +451,7 @@ listings regardless of their organic popularity score.*
     evaluator.
 
 -   This follows the same hybrid mode pattern defined in the Category
-    Pages Product Overview: "Strapi switch enables Manual Overrides;
+    Pages Product Overview: "Payload switch enables Manual Overrides;
     manual items pin to the front, AI/rule-based content fills remaining
     slots."
 

@@ -1,4 +1,4 @@
-**The Category Pages Services and the Strapi Categories
+**The Category Pages Services and the Payload Categories
 [[nest.js]{.underline}](http://nest.js) logic will be in the same
 microservice folder.**
 
@@ -15,7 +15,7 @@ microservice**, as a separate Nest module + route prefix
   change.
 
 - **No duplication:** Editorial (FAQs/guides/courses/hero) stays in
-  Strapi; the assembler reads it---no extra DBs.
+  Payload; the assembler reads it---no extra DBs.
 
 ### **How to lay it out (quick)**
 
@@ -28,7 +28,7 @@ microservice**, as a separate Nest module + route prefix
 
   - SuggestionsLocalModule (HF embeddings helper; no separate service)
 
-  - EditorialProxy (reads Strapi for FAQ/guides/courses/hero)
+  - EditorialProxy (reads Payload for FAQ/guides/courses/hero)
 
 - **Routes:\**
 
@@ -37,4 +37,4 @@ microservice**, as a separate Nest module + route prefix
   - /api/category-pages/{l1}\[/{l2}\[/{l3}\]\]?kind=\... (frontend)
 
 - **Cache/invalidations:** Same process can purge edge cache on
-  Strapi/Nest webhooks (category/tax-group changes).
+  Payload/Nest webhooks (category/tax-group changes).

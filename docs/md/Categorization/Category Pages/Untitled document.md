@@ -1,6 +1,6 @@
 Got it. I'll give you **two tight docs**---one for the **Next.js
 slug/routing for Project listings** (so the 404 goes away), and a
-separate one for **Strapi ↔ Listing integration** (so projects in Strapi
+separate one for **Payload ↔ Listing integration** (so projects in Payload
 can sync and resolve by slug). No fluff, just what your dev needs.
 
 # **Doc A --- Project Details Routing (Next.js)**
@@ -149,17 +149,17 @@ alternates: { canonical:
 
 
 
-# **Doc B --- Projects in Strapi & Sync to Listing (backend contract)**
+# **Doc B --- Projects in Payload & Sync to Listing (backend contract)**
 
-**Goal:** Allow Projects that exist/edit in **Strapi** to sync into the
+**Goal:** Allow Projects that exist/edit in **Payload** to sync into the
 **Listing domain** your backend exposes to the site, with **slug** as
 the stable path key.\
-**Audience:** Backend/Strapi dev, and the Categories backend dev for
+**Audience:** Backend/Payload dev, and the Categories backend dev for
 expectations.\
 **Source of truth:** Your Listing layer served by Nest (the frontend
-calls only Nest). Strapi is for **admin editing + push**.
+calls only Nest). Payload is for **admin editing + push**.
 
-## **1) Strapi content-type (minimal fields for slug + display)**
+## **1) Payload content-type (minimal fields for slug + display)**
 
 - **Content type:** project (collection type)
 
@@ -178,10 +178,10 @@ calls only Nest). Strapi is for **admin editing + push**.
   - (any other editorial fields you already use)
 
 > This mirrors what the Listing layer needs. If project already exists
-> in Strapi, **do not rename**; just ensure slug is unique and
+> in Payload, **do not rename**; just ensure slug is unique and
 > published.
 
-## **2) Webhook (Strapi → Nest)**
+## **2) Webhook (Payload → Nest)**
 
 - **Trigger:** on project **create/update/publish/unpublish\**
 
@@ -215,7 +215,7 @@ calls only Nest). Strapi is for **admin editing + push**.
 > \[\[\"software-development\"\],\[\"software-development\",\"blockchain\"\],\[\"software-development\",\"blockchain\",\"smart-contracts\"\]\]
 > so the backend can resolve to UUIDs.
 
-**Strapi setup hint:** Use Strapi's **webhooks** UI (Settings →
+**Payload setup hint:** Use Payload's **webhooks** UI (Settings →
 Webhooks) or a lifecycle hook in project to fetch the Nest URL with an
 internal auth header.
 
@@ -304,10 +304,10 @@ await this.svc.upsertProjectFromStrapi(dto); // map → listing store
 
 ## **5) Where the slug comes from**
 
-- In **Strapi**, project.slug is auto-generated from title (editor can
+- In **Payload**, project.slug is auto-generated from title (editor can
   override).
 
-- When a project is **published** (or updated), Strapi pushes it to Nest
+- When a project is **published** (or updated), Payload pushes it to Nest
   via webhook with that **slug**.
 
 - The **Category Pages API** already returns each card's slug. Cards
@@ -315,9 +315,9 @@ await this.svc.upsertProjectFromStrapi(dto); // map → listing store
 
 ## **6) CSV import (optional)**
 
-If you bulk import projects to Strapi:
+If you bulk import projects to Payload:
 
-- Use Strapi's importer (or a small script) to create project entries
+- Use Payload's importer (or a small script) to create project entries
   with **unique slug**.
 
 - After import, **publish** them (or programmatically set published),
@@ -336,7 +336,7 @@ If you bulk import projects to Strapi:
 
 - Use fetchProjectBySlug(slug) → GET /api/listings/projects/:slug
 
-**Strapi**
+**Payload**
 
 - Ensure project type has **unique slug** (and is publishable)
 

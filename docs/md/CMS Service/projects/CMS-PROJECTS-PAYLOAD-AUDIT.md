@@ -1,6 +1,6 @@
 # CMS × Projects Integration Audit (Docs vs Payload)
 
-**Audit focus:** Editorial fields described in CMS Service docs (historically written for **Strapi**) versus what is implemented in **Payload CMS** (`backend/apps/cms-service/src/collections/Projects.ts`).
+**Audit focus:** Editorial fields described in CMS Service docs (historically written for **Payload**) versus what is implemented in **Payload CMS** (`backend/apps/cms-service/src/collections/Projects.ts`).
 
 **Related:** [`GAP-ANALYSIS.md`](./GAP-ANALYSIS.md) — deeper end-to-end pipeline audit (hooks, listings-service sync, read API, frontend).
 
@@ -8,14 +8,14 @@
 
 ## How to read the specs
 
-- Documentation often says **Strapi**; this repo uses **Payload v2** in **cms-service**. The editorial role is the same: admins author here; the marketplace reads **listings-service**, not Payload directly.
+- Documentation often says **Payload**; this repo uses **Payload v2** in **cms-service**. The editorial role is the same: admins author here; the marketplace reads **listings-service**, not Payload directly.
 - Public source of truth: **`public.projects`** (Postgres) in listings-service.
 
 ---
 
-## A. Strapi Collection Type — “editable in admin” vs Payload
+## A. Payload Collection Type — “editable in admin” vs Payload
 
-Reference: `projects/details/Strapi Collection Type_ Project Listings (Based on Final Project Details Design).md`
+Reference: `projects/details/Payload Collection Type_ Project Listings (Based on Final Project Details Design).md`
 
 | Doc (editable) | Payload field | Match |
 |----------------|---------------|--------|
@@ -35,18 +35,18 @@ Reference: `projects/details/Strapi Collection Type_ Project Listings (Based on 
 | Thumbnail | `thumbnail` → `media` | Yes |
 | Gallery | `gallery[]` | Yes |
 | Video walkthrough | `videoWalkthrough` (upload **or** `externalUrl`) | Broader than §16 “URL only” (see section B) |
-| Status | Payload drafts → `_status`; plus `visibility`, `moderationStatus` | Split workflow vs single Strapi status enum |
+| Status | Payload drafts → `_status`; plus `visibility`, `moderationStatus` | Split workflow vs single Payload status enum |
 | Featured | `featured` | Yes |
-| Created by (admin relation) | `ownerId` (UUID text, user-service) | Different: not Strapi admin user relation |
+| Created by (admin relation) | `ownerId` (UUID text, user-service) | Different: not Payload admin user relation |
 | Preview URL (computed) | `previewToken` (read-only); full preview URL not assembled in admin | Partial |
 | Meta title / description | `seoTitle`, `seoDescription` | Yes |
-| OG image (optional SEO) | Not a dedicated field on `Projects` | Gap vs Strapi Collection doc |
+| OG image (optional SEO) | Not a dedicated field on `Projects` | Gap vs Payload Collection doc |
 
 ---
 
 ## B. §16 — Project publishing fields vs Payload
 
-Reference: `projects/details/16 - Strapi Integration – Step-by-Step Developer Documentation (for Project Publishing Fields).md`
+Reference: `projects/details/16 - Payload Integration – Step-by-Step Developer Documentation (for Project Publishing Fields).md`
 
 | Doc field | Payload | Notes |
 |-----------|---------|--------|
@@ -107,7 +107,7 @@ Note: CSV lists `project_subcategories` twice; Payload has a single `subcategori
 | Core editorial, pricing, scope, categorization, media, moderation, SEO (except dedicated OG image) | Implemented with naming/shape differences above |
 | §16 team / workload (`assigned_team`, `work_schedule`, `custom_hours`) | **Not implemented** — only `assigneeEmail` on tasks |
 | §16 video as URL-only | **Payload allows video upload** |
-| Strapi Collection optional **OG image** | **No dedicated field** on `Projects` |
+| Payload Collection optional **OG image** | **No dedicated field** on `Projects` |
 | Activity log **old/new values** | **Not modeled** |
 | Tags as relation to global Tags collection | **Plain text arrays** |
 | Reverse sync (listings → Payload on moderation reject) | **Not implemented** (forward sync only; see GAP) |

@@ -1,9 +1,9 @@
-**Strapi ↔ NestJS API Integration Guide – Project Sync Architecture**
+**Payload ↔ NestJS API Integration Guide – Project Sync Architecture**
 
 This guide provides a step-by-step technical integration plan for
-syncing project data between **Strapi (Admin CMS)** and **NestJS
+syncing project data between **Payload (Admin CMS)** and **NestJS
 (Backend API with PostgreSQL)**. It ensures that changes made by either
-**frontend users** or **Strapi admins** are reflected in both systems
+**frontend users** or **Payload admins** are reflected in both systems
 while preserving content moderation workflows, audit logs, and data
 integrity.
 
@@ -11,7 +11,7 @@ integrity.
 
 ### **Primary Rule:**
 
-**NestJS PostgreSQL is the source of truth.** Strapi is an editorial
+**NestJS PostgreSQL is the source of truth.** Payload is an editorial
 overlay.
 
 ### **What Gets Synced:**
@@ -22,16 +22,16 @@ overlay.
 
 - Moderation statuses (pending, approved, needs_update)
 
-## **🟦 PART 1: Strapi → NestJS Sync**
+## **🟦 PART 1: Payload → NestJS Sync**
 
 ### **🔹 Trigger**
 
-- Happens **after Strapi admin saves the project** AND it passes
+- Happens **after Payload admin saves the project** AND it passes
   moderation rules.
 
 ### **🔹 Method**
 
-- Strapi fires a POST request to the NestJS backend API.
+- Payload fires a POST request to the NestJS backend API.
 
 - Auth is handled via internal API key or JWT.
 
@@ -79,7 +79,7 @@ overlay.
 > UID.\
 > ✅ This triggers a full update on NestJS side.
 
-## **🟨 PART 2: Frontend (Next.js) → NestJS → Strapi**
+## **🟨 PART 2: Frontend (Next.js) → NestJS → Payload**
 
 ### **🔹 Trigger**
 
@@ -88,12 +88,12 @@ overlay.
 
 ### **🔹 Method**
 
-- NestJS pushes to Strapi using the Admin API or a dedicated webhook
+- NestJS pushes to Payload using the Admin API or a dedicated webhook
   route.
 
 - Auth via API token.
 
-### **🔹 Endpoint (Strapi)**
+### **🔹 Endpoint (Payload)**
 
 ****POST /api/internal-sync/projects
 
@@ -128,7 +128,7 @@ overlay.
 }
 
 > 🔐 NestJS uses a secure internal token to authorize this write to
-> Strapi.\
+> Payload.\
 > 📦 Only send data fields that are relevant to admin display (no need
 > to sync pricing, orders, or user auth data).
 
@@ -136,12 +136,12 @@ overlay.
 
 ### **Auto Trigger:**
 
-- If moderation fails in Strapi (e.g., moderation_status: rejected), the
+- If moderation fails in Payload (e.g., moderation_status: rejected), the
   project gets marked needs_update in NestJS and vice versa.
 
 ### **Version Control:**
 
-- Each push from Strapi or NestJS creates a new version using the
+- Each push from Payload or NestJS creates a new version using the
   versioning plugin or custom history table.
 
 ## **🧾 Activity Log Structure (in NestJS)**
@@ -158,16 +158,16 @@ overlay.
 
 - If a sync fails, log the failure in both systems.
 
-- Show admin/moderator a UI alert in Strapi.
+- Show admin/moderator a UI alert in Payload.
 
 - Retry logic: Optional retry job with rate-limited queue (Redis or DB
   task queue).
 
 ## **✅ Summary Checklist**
 
-- Admin edits push from Strapi → NestJS
+- Admin edits push from Payload → NestJS
 
-- Frontend edits push from NestJS → Strapi
+- Frontend edits push from NestJS → Payload
 
 - Moderation status respected in both systems
 
@@ -177,4 +177,4 @@ overlay.
 
 - Activity logs include full change trail
 
-- Strapi is kept in sync so admin edits are always reflected
+- Payload is kept in sync so admin edits are always reflected

@@ -1,8 +1,8 @@
-**STRAPI INTEGRATION – DEVELOPER GUIDE FOR PROJECT PUBLISHING & EDITING
+**PAYLOAD INTEGRATION – DEVELOPER GUIDE FOR PROJECT PUBLISHING & EDITING
 (LISTINGS CMS)**
 
 **This guide provides a step by step implementation guide for building
-the Project content type in Strapi, syncing it with the Listings
+the Project content type in Payload, syncing it with the Listings
 microservice, and enabling admin editing, status moderation, and media
 handling.**
 
@@ -54,7 +54,7 @@ handling.**
 
 | **Field** | **Type** | **Notes** |
 |----|----|----|
-| **featured_image** | **Media (image)** | **Uses native Strapi uploader** |
+| **featured_image** | **Media (image)** | **Uses native Payload uploader** |
 | **additional_images** | **Media (multi-image)** | **Same as above** |
 | **video_url** | **Text** | **Only embed links (YouTube, Vimeo); no video uploads allowed** |
 
@@ -237,11 +237,11 @@ stores raw text URL only.***
 
 ### **🔐 5. Schema Sync (Manual – No DB Sync)**
 
-**Strapi and Listings microservice must use manual schema mirroring.**
+**Payload and Listings microservice must use manual schema mirroring.**
 
 - **Create strapi-cms/models/\**
 
-- **Export .json schemas of all Strapi content types\**
+- **Export .json schemas of all Payload content types\**
 
 - **Sync with NestJS ProjectDto in Listings\**
 
@@ -274,7 +274,7 @@ stores raw text URL only.***
 
 - **Autocomplete sync script included\**
 
-- **Strapi-native image upload & video URL logic handled\**
+- **Payload-native image upload & video URL logic handled\**
 
 - **Manual schema mirroring across backend\**
 

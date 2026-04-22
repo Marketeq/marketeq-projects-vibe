@@ -1,9 +1,9 @@
-# **Strapi Integration: Talent Profile (Admin-Editable Only)**
+# **Payload Integration: Talent Profile (Admin-Editable Only)**
 
 ### **📌 Purpose**
 
 This document defines the **admin-editable schema** for the
-TalentProfile collection in Strapi. It reflects only the fields that
+TalentProfile collection in Payload. It reflects only the fields that
 should be manually editable by administrators, based on the official UI
 wireframe and data architecture requirements.
 
@@ -106,4 +106,4 @@ wireframe and data architecture requirements.
 
 4.  Ensure UID validation on username.
 
-5.  Restart Strapi and test in Admin UI.
+5.  Restart Payload and test in Admin UI.

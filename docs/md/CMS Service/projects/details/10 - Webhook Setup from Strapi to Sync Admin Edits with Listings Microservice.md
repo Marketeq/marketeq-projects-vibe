@@ -1,29 +1,29 @@
-**Webhook Setup from Strapi to Sync Admin Edits with Listings
+**Webhook Setup from Payload to Sync Admin Edits with Listings
 Microservice**
 
 This document provides exact instructions for setting up a webhook in
-Strapi that sends project data to the NestJS Listings Microservice after
+Payload that sends project data to the NestJS Listings Microservice after
 an admin edits or updates a project. The webhook ensures all changes in
-Strapi are synced to the main PostgreSQL database used by the frontend.
+Payload are synced to the main PostgreSQL database used by the frontend.
 This webhook only fires if the content passes moderation and is approved
 for publishing.\
 \
-This webhook ensures real-time sync between Strapi and your
+This webhook ensures real-time sync between Payload and your
 frontend-facing microservices after admin edits. For full control, see
 version history tracking or activity logging guides.
 
 ## **📦 Prerequisites**
 
-- Strapi v4 is installed and running.
+- Payload v4 is installed and running.
 
 - Your Listings Microservice is live and accepts authenticated API
   requests (e.g., via internal API key or JWT).
 
 - Content moderation rules are already implemented.
 
-## **⚖️ Step 1: Create a Webhook in Strapi Admin**
+## **⚖️ Step 1: Create a Webhook in Payload Admin**
 
-1.  Go to the Strapi Admin Panel.
+1.  Go to the Payload Admin Panel.
 
 2.  Navigate to Settings \> Webhooks \> Create new webhook
 
@@ -46,7 +46,7 @@ version history tracking or activity logging guides.
 }
 
 - \
-  **Custom body**: Leave empty (Strapi will send full event payload)
+  **Custom body**: Leave empty (Payload will send full event payload)
 
 4.  Click **Save**.
 
@@ -98,7 +98,7 @@ return { success: true };
 
 ## **📊 Step 3: Build the Sync Service**
 
-Create a service that updates the database with the incoming Strapi
+Create a service that updates the database with the incoming Payload
 data.
 
 // app/listings-service/src/project/services/project-sync.service.ts
@@ -173,7 +173,7 @@ status,
 2.  \
     Restart your NestJS service.
 
-3.  Use this token in the Strapi webhook's Authorization header.
+3.  Use this token in the Payload webhook's Authorization header.
 
 ## **✅ Final Notes**
 

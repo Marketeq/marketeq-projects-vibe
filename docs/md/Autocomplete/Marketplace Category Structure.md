@@ -7,7 +7,7 @@ used to organize all core objects in the remote talent network ---
 including talent profiles, services, projects, job posts, skills, and
 insights.
 
-These categories are stored in PostgreSQL and will be mirrored in Strapi
+These categories are stored in PostgreSQL and will be mirrored in Payload
 CMS for dynamic management. Each category is organized into three tiers:
 top-level categories, secondary categories, and detailed subcategories.\
 \
@@ -379,7 +379,7 @@ Agreements\", \"Corporate Structuring\", \"Regulatory Advisory\",
   Talent, Projects, Jobs, Services, and Insights.
 
 - Categories are stored in Postgres (categories table) and mirrored in
-  Strapi CMS.
+  Payload CMS.
 
 - Each tier is indexed separately to support fuzzy matching,
   autocomplete, filters, and grouping logic.

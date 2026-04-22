@@ -1,6 +1,6 @@
-# **Strapi Quick Setup --- Dependencies & Bootstrap**
+# **Payload Quick Setup --- Dependencies & Bootstrap**
 
-**Goal:** A fast, repeatable setup so devs can clone the Strapi repo and
+**Goal:** A fast, repeatable setup so devs can clone the Payload repo and
 run it **without errors**.
 
 > This covers local dev and production Docker. Adjust versions to your
@@ -97,7 +97,7 @@ postgres:15
 
 - Create DB/user and set the .env accordingly.
 
-## **4) Run Strapi (Dev)**
+## **4) Run Payload (Dev)**
 
 ****yarn develop \# or: npm run develop
 
@@ -182,7 +182,7 @@ strapi-pg:
 ## **7) Content Types & Components (from Schema Doc)**
 
 After first boot, create content types/components **exactly** as in
-**"Strapi Schema --- L1/L2/L3 Category Pages."\**
+**"Payload Schema --- L1/L2/L3 Category Pages."\**
 Alternatively, copy the JSON schemas:
 
 - /src/api/category/content-types/category/schema.json
@@ -210,17 +210,17 @@ Then run:
 - Default local upload works out of the box.
 
 - If using a CDN (e.g., Cloudflare Images/S3), configure the
-  corresponding Strapi upload provider plugin and set env vars.
+  corresponding Payload upload provider plugin and set env vars.
 
 ## **9) Permissions & Security**
 
-- Restrict Public/Authenticated roles; only Admins log into Strapi.
+- Restrict Public/Authenticated roles; only Admins log into Payload.
 
 - Rotate secrets in .env for non‑dev.
 
 ## **10) Troubleshooting Quicklist**
 
-- **Port 1337 in use** → stop other Strapi instances.
+- **Port 1337 in use** → stop other Payload instances.
 
 - **DB auth failed** → check .env DB creds and container logs.
 

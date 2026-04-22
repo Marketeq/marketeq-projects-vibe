@@ -1,4 +1,4 @@
-# **🧪 Testing Strapi → NestJS Talent Profile Sync**
+# **🧪 Testing Payload → NestJS Talent Profile Sync**
 
 ## **1. Test the Webhook URL**
 
@@ -67,7 +67,7 @@ CSS\",\"Next.js\"\],
 
 ### **1.2 Compute the Signature**
 
-Strapi signs the **raw body** with HMAC SHA-256.
+Payload signs the **raw body** with HMAC SHA-256.
 
 Run:
 
@@ -146,7 +146,7 @@ If you added the reconcile service:
 3.  \
     Service should:
 
-    - Call Strapi REST API
+    - Call Payload REST API
 
     - Upsert all entries
 

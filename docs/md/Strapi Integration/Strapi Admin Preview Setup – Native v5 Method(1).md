@@ -1,8 +1,8 @@
-# **📄 Strapi Admin Preview Setup -- Native v5 Method**
+# **📄 Payload Admin Preview Setup -- Native v5 Method**
 
 This guide walks through how to add a frontend preview link for content
-entries inside the Strapi admin panel using **Strapi v5 native preview
-functionality**. It assumes Strapi is already deployed on Render and
+entries inside the Payload admin panel using **Payload v5 native preview
+functionality**. It assumes Payload is already deployed on Render and
 connected to its own Postgres database (not shared with NestJS). This
 guide covers **only preview button functionality**, using the officially
 supported config/admin.ts method introduced in v5+. No plugins are
@@ -10,7 +10,7 @@ required.
 
 ## **✅ Requirements**
 
-- Strapi v5 or later
+- Payload v5 or later
 
 - Frontend deployed (e.g. Vercel) with /preview API route
 
@@ -21,9 +21,9 @@ required.
 - Frontend must support **dynamic routing** for each content type using
   **slug-based URLs\**
 
-## **✅ 1. Enable Native Preview Support in Strapi v5**
+## **✅ 1. Enable Native Preview Support in Payload v5**
 
-Create or update the Strapi preview config.
+Create or update the Payload preview config.
 
 ### **📁 File: config/admin.ts**
 
@@ -96,10 +96,10 @@ throw new Error(\`Preview not configured for content type: \${uid}\`);
 
 PREVIEW_SECRET=secure_long_token_here
 
-> 🔐 Use an unguessable secret string --- required in both Strapi and
+> 🔐 Use an unguessable secret string --- required in both Payload and
 > frontend environments.
 
-## **🔁 2. Rebuild Strapi Admin**
+## **🔁 2. Rebuild Payload Admin**
 
 Any changes to admin.ts require a full rebuild:
 
@@ -110,7 +110,7 @@ content types (Project, Service, Job, Team, Talent Profile).
 
 ## **▶️ 3. How to Trigger the Preview Button**
 
-1.  Log into the Strapi Admin Panel
+1.  Log into the Payload Admin Panel
 
 2.  Go to any configured content type
 
@@ -224,7 +224,7 @@ preview: isPreview,
   ---------------------------------------------
   **Task**                         **Status**
   -------------------------------- ------------
-  Strapi config/admin.ts           ✅ Required
+  Payload config/admin.ts           ✅ Required
   configured                       
 
   Dynamic routing (\[slug\].tsx)   ✅ Required
@@ -263,6 +263,6 @@ preview: isPreview,
   unsupported
 
 ✅ Once this is in place, editors will see a **Preview** button when
-viewing an entry in Strapi Admin. Clicking it sends a secure GET request
+viewing an entry in Payload Admin. Clicking it sends a secure GET request
 to the frontend's /api/preview endpoint with type, slug, and secret. The
 frontend then redirects to the correct detail page in preview mode.

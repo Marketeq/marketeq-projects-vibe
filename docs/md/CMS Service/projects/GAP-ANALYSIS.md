@@ -2,7 +2,7 @@
 
 > **Audit date:** 2026-04-16
 > **Scope:** Project Details end-to-end — Payload admin authoring → CMS hooks (cms-service) → sync pipeline (listings-service) → read API → frontend `project-details/[slug]` page.
-> **Spec note:** The design docs reference **Strapi**. This repo uses **Payload v2**. The role is identical (editorial overlay, REST sync into a NestJS source-of-truth). Read every "Strapi" reference in the specs as "Payload".
+> **Spec note:** The design docs reference **Payload**. This repo uses **Payload v2**. The role is identical (editorial overlay, REST sync into a NestJS source-of-truth). Read every "Payload" reference in the specs as "Payload".
 > **Source-of-truth doc:** `public.projects` in listings-service Postgres. CMS is the editorial overlay.
 
 ---
@@ -96,7 +96,7 @@
 
 **Access control** (collection-level): `read: readPublishedOrCmsUser`, `create/update: isEditor`, `delete: isAdmin`.
 
-**Every field named in spec §16 / `Strapi Collection Type` / `data-dictionary.csv` has a Payload counterpart.** Some names differ (e.g., spec `user_email` → Payload `assigneeEmail`, spec `featured_image` → Payload `thumbnail`); the transform layer in `project-sync.service.ts` handles the mapping.
+**Every field named in spec §16 / `Payload Collection Type` / `data-dictionary.csv` has a Payload counterpart.** Some names differ (e.g., spec `user_email` → Payload `assigneeEmail`, spec `featured_image` → Payload `thumbnail`); the transform layer in `project-sync.service.ts` handles the mapping.
 
 ### 3.2 Moderation & audit
 
@@ -146,7 +146,7 @@ Skips when `_status !== 'published'` — only the published snapshot ships forwa
 - **INSERT**: `createdBy = dto.ownerId?.trim() || 'cms-sync'` (L99)
 - **UPDATE**: only backfills when current `createdBy = 'cms-sync'` AND `dto.ownerId` is now supplied (L149-157). Prevents churn when an unrelated field is edited and preserves stable `createdBy` for `§14.14 projectHistoryRatings`.
 
-**Scope normalization** (`scopePhases()` L398-471) defensively handles legacy snake_case field names (`role_name`, `experience_level`, `estimated_hours`) from the original Strapi migration, then emits the Payload casing every downstream consumer expects.
+**Scope normalization** (`scopePhases()` L398-471) defensively handles legacy snake_case field names (`role_name`, `experience_level`, `estimated_hours`) from the original Payload migration, then emits the Payload casing every downstream consumer expects.
 
 **Duration fallback** (L253-262): `dto.projectDurationLabel` wins when scope is populated; falls back to `${timelineValue} ${timelineUnit}` for author-authored-only projects.
 
@@ -348,9 +348,9 @@ These are **true gaps** — the API delivers them, the spec says they should ren
 
 2. **`task.end_day`.** Formula §14.2 references `task.end_day`, but the `Task` component definition has no such field (only `estimated_hours`). **Resolved** via capacity interpretation: `weeks = max(1, ceil(hours / (teamSize × 40)))`. Lives in `computeProjectFields.ts`; single point of change.
 
-3. **`description` vs `fullDescription`.** `data-dictionary.csv` uses `project_description`; §16 uses `description`; Strapi Collection Type says "Full Description"; §12 uses `description`. We author `fullDescription` in Payload and convert to HTML stored as `description` in listings-service. Pure naming inconsistency; no behaviour change needed.
+3. **`description` vs `fullDescription`.** `data-dictionary.csv` uses `project_description`; §16 uses `description`; Payload Collection Type says "Full Description"; §12 uses `description`. We author `fullDescription` in Payload and convert to HTML stored as `description` in listings-service. Pure naming inconsistency; no behaviour change needed.
 
-4. **`deliverables` format + AI derivation.** §16 L43 says "Rich Text, editable by humans". §01 §Deliverables says "derived from AI summary with LLM". Strapi Collection Type L28 says "Rich Text or JSON". We store a Phase-grouped array (`[{phaseLabel, phaseName, items[]}]`) closer to the Figma mock than any spec variant. **Resolved**: sync service runs `DeliverablesAdapterHuggingFace` (MiniLM-L6-v2 + cosine dedup) when author leaves them empty; authored content always wins. See §4.3.
+4. **`deliverables` format + AI derivation.** §16 L43 says "Rich Text, editable by humans". §01 §Deliverables says "derived from AI summary with LLM". Payload Collection Type L28 says "Rich Text or JSON". We store a Phase-grouped array (`[{phaseLabel, phaseName, items[]}]`) closer to the Figma mock than any spec variant. **Resolved**: sync service runs `DeliverablesAdapterHuggingFace` (MiniLM-L6-v2 + cosine dedup) when author leaves them empty; authored content always wins. See §4.3.
 
 5. **`moderationStatus` vs `_status`.** Payload v2 gives `_status: draft|published` via drafts plugin. Spec §16 adds a separate `moderationStatus`. **Resolved**: both exist as orthogonal workflows. `_status` controls visibility; `moderationStatus` tracks content-quality review. Editors can publish while content is flagged — the two workflows don't block each other.
 
@@ -376,7 +376,7 @@ Things we ship that no spec doc requires — recorded here so future spec update
 |---|---|
 | `relatedProjects` M2M self-ref | Editor override so curation can beat the §14.9 auto-ranker |
 | `industries` (distinct from categories) | Spec mentions "industry badges" in §13 L52 but doesn't define a field; we gave it one |
-| `videoWalkthrough.externalUrl` OR upload | Spec variously says "external only" (§16 L59) and "upload or URL" (Strapi Collection Type) — we support both |
+| `videoWalkthrough.externalUrl` OR upload | Spec variously says "external only" (§16 L59) and "upload or URL" (Payload Collection Type) — we support both |
 | `skillsAndTools` with per-item icon upload | Spec has the concept but no icon upload |
 | `adminNotes`, `adminTags`, `seoTitle`, `seoDescription` | §16 "SEO & Admin Features" lists them; admin tab consolidates |
 | `visibility` (public/private/unlisted) | §16 L34 mentions visibility but doesn't define the enum |

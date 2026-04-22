@@ -1,10 +1,10 @@
-# **02 - Strapi ↔ NestJS Marketplace Category Sync -- Developer Implementation Guide**
+# **02 - Payload ↔ NestJS Marketplace Category Sync -- Developer Implementation Guide**
 
 ## **1. Overview**
 
 This document provides complete implementation code and setup
 instructions to integrate marketplace category and tag synchronization
-between **Strapi CMS** and the **NestJS backend**, using:
+between **Payload CMS** and the **NestJS backend**, using:
 
 - Unlimited category nesting
 
@@ -274,11 +274,11 @@ await this.categoryService.syncFromStrapi(cat);
 
 
 
-## **3. Strapi Setup**
+## **3. Payload Setup**
 
 ### **a. Create Category Content-Type**
 
-- Use the Strapi admin panel to create fields matching the NestJS model:
+- Use the Payload admin panel to create fields matching the NestJS model:
 
   - uuid (UID)
 
@@ -302,7 +302,7 @@ await this.categoryService.syncFromStrapi(cat);
 
 ### **b. Webhooks**
 
-- Create a webhook in Strapi:
+- Create a webhook in Payload:
 
   - **Events:** Create, Update, Delete on Category
 
@@ -350,9 +350,9 @@ return (
 
 ## **5. Testing Checklist**
 
-- ✅ Create category in Strapi → Syncs to NestJS
+- ✅ Create category in Payload → Syncs to NestJS
 
-- ✅ Create subcategory in NestJS → Pushes to Strapi
+- ✅ Create subcategory in NestJS → Pushes to Payload
 
 - ✅ Auto-approved subcategories are unpublished but approved
 

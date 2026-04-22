@@ -49,7 +49,7 @@ service or feature.
 
 - **Search**: Algolia for marketplace search and autocomplete.
 
-- **CMS**: Strapi for category/editorial content.
+- **CMS**: Payload for category/editorial content.
 
 - **Object Storage**: Cloudflare R2 for media (e.g., screenshots).
 
@@ -354,7 +354,7 @@ rate limits, tokens, and email triggers.
 
 ### **listings-service**
 
-Reads editorial content from **Strapi** and combines it with internal
+Reads editorial content from **Payload** and combines it with internal
 metadata. **Includes core listing entities for *Projects*, *Services*,
 *Teams*, and *Talent*** so other microservices can reliably query
 listing types and their relationships (e.g., categories, tags, skills,

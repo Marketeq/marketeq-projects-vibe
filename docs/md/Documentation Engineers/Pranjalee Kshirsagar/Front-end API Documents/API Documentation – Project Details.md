@@ -89,7 +89,7 @@ deliverables, media relations, and soft-delete state.
 
 ### **3rd-Party Services / APIs**
 
-● **Strapi (if connected)** -- Acts as a CMS source (strapiId), used to
+● **Payload (if connected)** -- Acts as a CMS source (strapiId), used to
 sync or reference content-managed fields.\
 ● **CDN / Media Storage (currently Cloudflare)** -- Hosts project media
 (featured image, additional images, video URLs).

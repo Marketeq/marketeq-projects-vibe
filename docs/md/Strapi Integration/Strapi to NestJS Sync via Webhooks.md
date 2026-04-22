@@ -1,13 +1,13 @@
-# **Strapi to NestJS Sync via Webhooks**
+# **Payload to NestJS Sync via Webhooks**
 
 This document outlines how to set up webhook-based syncing between
-**Strapi** and the **NestJS backend**, ensuring any admin-side edits to
+**Payload** and the **NestJS backend**, ensuring any admin-side edits to
 marketplace projects are reflected in the main PostgreSQL database used
 by the frontend.
 
 ## **✨ Overview**
 
-- Strapi will trigger a webhook whenever a marketplace project is
+- Payload will trigger a webhook whenever a marketplace project is
   **created**, **updated**, or **deleted**.
 
 - The webhook will send a POST request to a secure NestJS endpoint
@@ -18,10 +18,10 @@ by the frontend.
 
 ## **📅 Events to Track**
 
-Enable the following in **Strapi \> Settings \> Webhooks**:
+Enable the following in **Payload \> Settings \> Webhooks**:
 
   ------------------------------------------------------------------
-  **Event     **Strapi         **Action**
+  **Event     **Payload         **Action**
   Type**      Trigger**        
   ----------- ---------------- -------------------------------------
   Entry       project.create   POST /internal/strapi-sync
@@ -98,9 +98,9 @@ process.env.STRAPI_SYNC_SECRET;
 
 
 
-## **✨ Strapi Webhook Setup (Render)**
+## **✨ Payload Webhook Setup (Render)**
 
-1.  Go to **Settings \> Webhooks** in your Strapi admin.
+1.  Go to **Settings \> Webhooks** in your Payload admin.
 
 2.  Click **+ Create New Webhook**.
 
@@ -142,7 +142,7 @@ title: string;
 
 description: string;
 
-// Add all fields expected from Strapi edits
+// Add all fields expected from Payload edits
 
 }
 

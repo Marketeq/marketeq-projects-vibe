@@ -242,7 +242,7 @@ listings-service-doc-04-api-endpoints.md
 
 \### Reason
 
-Aligning with new entity model in Strapi sync.
+Aligning with new entity model in Payload sync.
 
 \### Related Docs
 

@@ -1,14 +1,14 @@
-**Strapi Integration -- Step-by-Step Developer Documentation (for
+**Payload Integration -- Step-by-Step Developer Documentation (for
 Project Publishing Fields)**
 
-**This document provides exact instructions for implementing Strapi
+**This document provides exact instructions for implementing Payload
 admin support for editing and viewing all relevant project publishing
 fields.\
 \**
 
 ## **📁 Project Setup**
 
-1.  **Install Strapi (v4)\**
+1.  **Install Payload (v4)\**
 
 **npx create-strapi-app@latest my-project-cms \--quickstart**
 
@@ -36,7 +36,7 @@ fields.\
 
 ## **📦 Content Type: project**
 
-**In Strapi Admin Panel:**
+**In Payload Admin Panel:**
 
 - **Go to Content-Types Builder → Create new Collection Type → Name:
   Project\**
@@ -261,7 +261,7 @@ fields.\
 ## **🔄 Autocomplete Library Sync**
 
 **All autocomplete values (categories, subcategories, industries, tags,
-skills) must be synced into Strapi collections.**
+skills) must be synced into Payload collections.**
 
 **Use the following seed script in /scripts/seed-autocomplete.ts:**
 
@@ -318,7 +318,7 @@ name } });**
 
 ## **📸 Media Upload Handling**
 
-**Strapi's native media upload UI is required for:**
+**Payload's native media upload UI is required for:**
 
 - **Featured image\**
 
@@ -343,30 +343,30 @@ name } });**
 
 **In the content-type settings, enable i18n for each of these models.**
 
-## **🔁 Schema Sync Strategy Between Strapi and Listings Service (No DB Sync)**
+## **🔁 Schema Sync Strategy Between Payload and Listings Service (No DB Sync)**
 
-**Strapi does not connect directly to the Listings Microservice
+**Payload does not connect directly to the Listings Microservice
 database. Instead, we use manual schema mirroring to keep the content
-types in Strapi aligned with the data structure of the Listings
+types in Payload aligned with the data structure of the Listings
 Microservice.**
 
-> **This means you manually define each field in Strapi to match the
+> **This means you manually define each field in Payload to match the
 > same name, type, and structure as the NestJS Listings Microservice
-> schema. This ensures that Strapi and the backend stay in sync without
+> schema. This ensures that Payload and the backend stay in sync without
 > automatic connections.**
 
 ### **✅ How to implement:**
 
 1.  **Match Every Field Name and Type\
-    When creating fields in Strapi (e.g., title, description,
+    When creating fields in Payload (e.g., title, description,
     categories), make sure the name and structure exactly match the
     NestJS DTOs and database schema for /listings/projects.\**
 
-2.  **Save Strapi Schemas to GitHub\**
+2.  **Save Payload Schemas to GitHub\**
 
     - **Create a folder: strapi-cms/models/\**
 
-    - **Export your Strapi content type schemas and components\**
+    - **Export your Payload content type schemas and components\**
 
     - **Save JSON schema files for every model and component (e.g.,
       project.json, phase.json, task.json)\**
@@ -376,7 +376,7 @@ Microservice.**
 3.  **Update Procedure for Schema Changes\
     Any time the Listings Microservice schema is updated:\**
 
-    - **Make a matching update in Strapi\**
+    - **Make a matching update in Payload\**
 
     - **Export and commit the updated schema JSON to GitHub\**
 
@@ -384,10 +384,10 @@ Microservice.**
       v2.1\**
 
 4.  **Why Not Sync DBs Directly?\
-    Strapi uses its own internal database structure and admin interface.
+    Payload uses its own internal database structure and admin interface.
     Connecting it directly to the Listings DB can cause:\**
 
-    - **Incompatibility with Strapi's field types\**
+    - **Incompatibility with Payload's field types\**
 
     - **Risk of corrupting the backend DB\**
 

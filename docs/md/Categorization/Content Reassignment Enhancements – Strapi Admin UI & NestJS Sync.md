@@ -1,4 +1,4 @@
-**Content Reassignment Enhancements -- Strapi Admin UI & NestJS Sync**
+**Content Reassignment Enhancements -- Payload Admin UI & NestJS Sync**
 
 This doc will **not** rewrite any existing reassignment or deletion
 code.\
@@ -7,9 +7,9 @@ sync improvements** based on the plugin work and admin constraints.
 
 ## **Scope**
 
-This doc focuses on improving the **Strapi admin experience** for
+This doc focuses on improving the **Payload admin experience** for
 content/category reassignment when deleting parent categories, ensuring
-data integrity in both Strapi and NestJS while avoiding any automatic
+data integrity in both Payload and NestJS while avoiding any automatic
 deletions of child categories.
 
 ## **Objectives**
@@ -27,7 +27,7 @@ deletions of child categories.
 
 ## **Step 1 --- Admin UI Changes**
 
-We\'ll enhance the Strapi **content reassignment plugin** so that:
+We\'ll enhance the Payload **content reassignment plugin** so that:
 
 - When an **admin attempts to delete a parent category**, a **modal**
   appears:
@@ -69,9 +69,9 @@ We\'ll enhance the Strapi **content reassignment plugin** so that:
 4.  Admin clicks **Confirm** → Parent deleted → Children moved under the
     selected parent.
 
-5.  Strapi updates, then syncs changes to **NestJS** via webhook.
+5.  Payload updates, then syncs changes to **NestJS** via webhook.
 
-## **Step 2 --- Plugin Enhancement (Strapi-Side Code)**
+## **Step 2 --- Plugin Enhancement (Payload-Side Code)**
 
 **File:\**
 /src/plugins/content-reassignment/admin/src/components/ReassignModal/index.js
@@ -198,7 +198,7 @@ export default ReassignModal;
 
 ## **Step 3 --- NestJS Sync Endpoint**
 
-When reassignment is completed in Strapi, we **sync to NestJS** so
+When reassignment is completed in Payload, we **sync to NestJS** so
 autocomplete, marketplace filters, and project publishing forms stay
 correct.
 
@@ -244,7 +244,7 @@ data: { parentId: newParentId },
 
 ## **Step 4 --- Webhook for Automatic NestJS Update**
 
-Inside **Strapi plugin backend**:
+Inside **Payload plugin backend**:
 
 **File:**
 /src/plugins/content-reassignment/server/controllers/reassign.js
@@ -255,7 +255,7 @@ async reassign(ctx) {
 
 const { oldParentId, newParentId, childCategories } = ctx.request.body;
 
-// Update Strapi DB
+// Update Payload DB
 
 await strapi.db.query(\'api::category.category\').updateMany({
 
@@ -293,7 +293,7 @@ ctx.send({ ok: true });
 
 ## **Step 5 --- Admin UI Limitations**
 
-Strapi Admin UI is flexible, but has these constraints:
+Payload Admin UI is flexible, but has these constraints:
 
 - **Native UI doesn't handle cascading reassignments** → We must build a
   plugin.
@@ -301,7 +301,7 @@ Strapi Admin UI is flexible, but has these constraints:
 - No bulk auto-reassignment → Admin must manually select the new parent.
 
 - Required fields like created_at and updated_at are auto-managed by
-  Strapi and must **never** be altered manually.
+  Payload and must **never** be altered manually.
 
 - We rely on webhooks + custom plugin logic to keep NestJS in sync.
 
@@ -312,14 +312,14 @@ Strapi Admin UI is flexible, but has these constraints:
 
 - **Force new parent selection:** Avoids orphaning subcategories.
 
-- **NestJS + Strapi consistency:** One source of truth, synced in
+- **NestJS + Payload consistency:** One source of truth, synced in
   real-time.
 
-- **Audit trail:** Every reassignment stored in Strapi's system logs.
+- **Audit trail:** Every reassignment stored in Payload's system logs.
 
 ## **Next Steps**
 
-1.  Install the **enhanced reassignment plugin** in Strapi.
+1.  Install the **enhanced reassignment plugin** in Payload.
 
 2.  Test parent deletion + reassignment UI flow.
 

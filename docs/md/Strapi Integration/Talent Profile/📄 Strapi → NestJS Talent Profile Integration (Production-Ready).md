@@ -1,22 +1,22 @@
-# **📄 Strapi → NestJS Talent Profile Integration (Production-Ready)**
+# **📄 Payload → NestJS Talent Profile Integration (Production-Ready)**
 
 **Goal**
 
-- Admins edit Talent Profiles in **Strapi**.
+- Admins edit Talent Profiles in **Payload**.
 
 - Changes sync in near real time into your **user-service Postgres** via
   **webhooks**.
 
-- Frontend (Next.js) **only hits NestJS** (not Strapi).
+- Frontend (Next.js) **only hits NestJS** (not Payload).
 
-- Optional nightly **reconcile** pulls all profiles from Strapi to avoid
+- Optional nightly **reconcile** pulls all profiles from Payload to avoid
   drift.
 
 ## **0) Prerequisites**
 
 ### **Environment variables (add to your user-service .env)**
 
-****\# Strapi (CMS)
+****\# Payload (CMS)
 
 STRAPI_URL=https://your-strapi.example.com
 
@@ -35,9 +35,9 @@ connection vars)
 
 **Render/Heroku**: set the same keys via dashboard → Environment.
 
-## **1) Strapi Webhook (near-real-time sync)**
+## **1) Payload Webhook (near-real-time sync)**
 
-**In Strapi Admin:**
+**In Payload Admin:**
 
 - Settings → Webhooks → **Create new webhook\**
 
@@ -59,7 +59,7 @@ changes.
 
 ## **2) Capture Raw Body for HMAC verification (NestJS)**
 
-Strapi signs the **raw** body. We must capture it **before** JSON
+Payload signs the **raw** body. We must capture it **before** JSON
 parsing.
 
 ### **src/common/middleware/raw-body.middleware.ts**
@@ -198,7 +198,7 @@ RequestMethod.POST });
 
 \* WHY: Stores CMS-backed talent data for fast runtime reads by the app.
 
-\* WHAT: Mirrors Strapi \"Talent Profile\" essential fields; arrays kept
+\* WHAT: Mirrors Payload \"Talent Profile\" essential fields; arrays kept
 in JSONB for flexibility.
 
 \* HOW: Upserted by webhook/reconcile. Queried by user-service
@@ -223,7 +223,7 @@ export class TalentProfile {
 
 id: number;
 
-/\*\* Strapi record id (string or number) used as external key for
+/\*\* Payload record id (string or number) used as external key for
 idempotency \*/
 
 \@Index()
@@ -320,7 +320,7 @@ overview: string \| null;
 
 portfolio: any \| null; // cards/thumbnails/links if present
 
-/\*\* Strapi timestamps for freshness checks \*/
+/\*\* Payload timestamps for freshness checks \*/
 
 \@Column({ type: \'timestamptz\', nullable: true })
 
@@ -345,7 +345,7 @@ updatedAt: Date;
 
 ****/\*\*
 
-\* WHY: Verify Strapi webhook authenticity using HMAC SHA-256 over raw
+\* WHY: Verify Payload webhook authenticity using HMAC SHA-256 over raw
 body.
 
 \* HOW: Compare computed HMAC (hex) with header \'x-strapi-signature\'.
@@ -362,7 +362,7 @@ if (!rawBody \|\| !headerSig \|\| !secret) return false;
 const hmac = crypto.createHmac(\'sha256\',
 secret).update(rawBody).digest(\'hex\');
 
-// Strapi sends hex; if base64 in your env, adjust accordingly.
+// Payload sends hex; if base64 in your env, adjust accordingly.
 
 return crypto.timingSafeEqual(Buffer.from(hmac),
 Buffer.from(headerSig));
@@ -371,22 +371,22 @@ Buffer.from(headerSig));
 
 
 
-### **3.3 Payload mapper (Strapi → Entity)**
+### **3.3 Payload mapper (Payload → Entity)**
 
-> Adjust keys here to match your **actual Strapi fields**. This isolates
+> Adjust keys here to match your **actual Payload fields**. This isolates
 > changes to one file when schema evolves.
 
 #### **src/strapi-sync/talent-profile/mapper/strapi-to-entity.mapper.ts**
 
 ****/\*\*
 
-\* WHY: Centralize mapping from Strapi JSON -\> TalentProfile entity
+\* WHY: Centralize mapping from Payload JSON -\> TalentProfile entity
 fields.
 
 \* WHAT: Read from entry.attributes.\*; tolerate missing fields to avoid
 crashes.
 
-\* HOW: Update keys here when Strapi schema changes. Keep Nest schema
+\* HOW: Update keys here when Payload schema changes. Keep Nest schema
 stable.
 
 \*/
@@ -397,7 +397,7 @@ export type StrapiTalentPayload = {
 
 id: number \| string;
 
-attributes?: any; // Strapi v4 wraps fields under attributes
+attributes?: any; // Payload v4 wraps fields under attributes
 
 // older payloads may send fields at root, so guard accordingly
 
@@ -505,7 +505,7 @@ return null;
 
 ****/\*\*
 
-\* WHY: Upsert TalentProfile records based on Strapi webhook events or
+\* WHY: Upsert TalentProfile records based on Payload webhook events or
 reconcile pulls.
 
 \* WHAT: Idempotent write keyed by externalId; ignore stale updates via
@@ -607,13 +607,13 @@ catch (err) { this.logger.error(\`bulkUpsert failed for id=\${e?.id}:
 
 ****/\*\*
 
-\* WHY: Receive Strapi webhooks for Talent Profile changes
+\* WHY: Receive Payload webhooks for Talent Profile changes
 (create/update/delete).
 
 \* WHAT: Verify HMAC signature, then upsert or delete record by
 externalId.
 
-\* HOW: Strapi config uses the same secret set in STRAPI_WEBHOOK_SECRET.
+\* HOW: Payload config uses the same secret set in STRAPI_WEBHOOK_SECRET.
 
 \*/
 
@@ -637,7 +637,7 @@ async handle(@Body() payload: any, \@Headers() headers:
 Record\<string,string\>, \@Req() req: any) {
 
 const signature = headers\[\'x-strapi-signature\'\] \|\|
-headers\[\'X-STRAPI-SIGNATURE\'\];
+headers\[\'X-PAYLOAD-SIGNATURE\'\];
 
 const ok = verifyStrapiSignature(req.rawBody, signature,
 process.env.STRAPI_WEBHOOK_SECRET!);
@@ -645,7 +645,7 @@ process.env.STRAPI_WEBHOOK_SECRET!);
 if (!ok) throw new HttpException(\'Invalid signature\',
 HttpStatus.UNAUTHORIZED);
 
-// Strapi v4 webhook example: { event: \'entry.update\', model:
+// Payload v4 webhook example: { event: \'entry.update\', model:
 \'api::talent-profile.talent-profile\', entry: {\...} }
 
 const event = payload?.event ?? \'\';
@@ -681,7 +681,7 @@ saved.externalId };
 
 ****/\*\*
 
-\* WHY: Bundle controller/service for Strapi Talent Profile sync.
+\* WHY: Bundle controller/service for Payload Talent Profile sync.
 
 \*/
 
@@ -713,7 +713,7 @@ export class TalentProfileSyncModule {}
 
 
 
-## **4) Optional: Nightly Reconcile (API pull from Strapi)**
+## **4) Optional: Nightly Reconcile (API pull from Payload)**
 
 If a webhook is missed, run a cron that pulls all Talent Profiles and
 upserts them.
@@ -724,7 +724,7 @@ upserts them.
 
 ****/\*\*
 
-\* WHY: Fetch all Strapi entries via REST with pagination.
+\* WHY: Fetch all Payload entries via REST with pagination.
 
 \*/
 
@@ -773,7 +773,7 @@ return out;
 
 ****/\*\*
 
-\* WHY: Safety-net job to reconcile all Talent Profiles from Strapi
+\* WHY: Safety-net job to reconcile all Talent Profiles from Payload
 nightly.
 
 \* HOW: Pull every page, map to entity, upsert via
@@ -811,7 +811,7 @@ const baseUrl = process.env.STRAPI_URL!;
 
 const token = process.env.STRAPI_API_TOKEN!;
 
-const apiPath = \'talent-profiles\'; // adjust to your Strapi UID path
+const apiPath = \'talent-profiles\'; // adjust to your Payload UID path
 
 this.logger.log(\'Starting reconcile: talent-profiles\');
 
@@ -944,7 +944,7 @@ CSS\",\"Next.js\"\],
 
 JSON
 
-\# Compute signature (same as Strapi does): HMAC SHA-256 of raw body
+\# Compute signature (same as Payload does): HMAC SHA-256 of raw body
 
 SIG=\$(node -e \"const fs=require(\'fs\');const
 c=fs.readFileSync(\'body.json\');const crypto=require(\'crypto\');const
@@ -988,9 +988,9 @@ Example JSDoc snippet:
 
 /\*\*
 
-\* Upsert profile from a Strapi payload.
+\* Upsert profile from a Payload payload.
 
-\* \@param entry Strapi entry or { id, attributes } wrapper
+\* \@param entry Payload entry or { id, attributes } wrapper
 
 \* \@returns Persisted TalentProfile
 
@@ -1003,9 +1003,9 @@ Example JSDoc snippet:
 ## **8) What you still customize**
 
 - **Mapping keys** in strapi-to-entity.mapper.ts to match your actual
-  Strapi fields.
+  Payload fields.
 
-- **Strapi API path** in reconcile (api/talent-profiles) -- set it to
+- **Payload API path** in reconcile (api/talent-profiles) -- set it to
   your UID.
 
 - **Entity columns** as your schema stabilizes (you can later normalize

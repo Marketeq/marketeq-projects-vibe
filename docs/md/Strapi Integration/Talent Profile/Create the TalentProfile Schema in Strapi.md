@@ -1,23 +1,23 @@
-To create the **Strapi schema** for the **Talent Profile**, you use the
-**Strapi Admin UI** (no coding required), or you can define it manually
+To create the **Payload schema** for the **Talent Profile**, you use the
+**Payload Admin UI** (no coding required), or you can define it manually
 via code in your repo. Here's the best practice, you'll define it in the
 Admin UI and version it in code for backup, portability, and consistency
 across environments.
 
-## **✅ Step-by-Step: Create the TalentProfile Schema in Strapi**
+## **✅ Step-by-Step: Create the TalentProfile Schema in Payload**
 
 ### **🔧 Assumptions:**
 
-- Strapi is already running (Docker or local)
+- Payload is already running (Docker or local)
 
 - Connected to the same PostgreSQL DB used by your backend
 
-- You are using Strapi **for admin-only profile creation/editing**, not
+- You are using Payload **for admin-only profile creation/editing**, not
   public API
 
 ## **🧩 Part 1: Build Schema via Admin UI**
 
-### **1. Open Strapi Admin**
+### **1. Open Payload Admin**
 
 Visit: http://localhost:1337/admin
 
@@ -87,7 +87,7 @@ Log in to your admin account.
 
 ## **🧬 Part 3: Version Schema in Git (Recommended)**
 
-After creating fields via UI, Strapi will update files in:
+After creating fields via UI, Payload will update files in:
 
 /src/api/talent-profile/content-types/talent-profile/schema.json
 
@@ -106,5 +106,5 @@ If needed, configure:
 
 Enable find and findOne for talent-profile
 
-> ⚠️ Only do this if Strapi is handling public APIs (not recommended ---
+> ⚠️ Only do this if Payload is handling public APIs (not recommended ---
 > better to sync data to your own user-service and expose via NestJS)

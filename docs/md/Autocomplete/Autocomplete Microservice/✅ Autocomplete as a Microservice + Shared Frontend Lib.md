@@ -23,7 +23,7 @@ user-generated autocomplete data.
 
 │ ├── processors/ \# Normalization, deduplication, scoring
 
-│ ├── sync/ \# Sync with Strapi, Airtable, external APIs
+│ ├── sync/ \# Sync with Payload, Airtable, external APIs
 
 │ ├── controllers/ \# API for registering/receiving suggestions
 
@@ -97,9 +97,9 @@ These are created and managed by autocomplete-service:
 
 - autocomplete_review_queue
 
-## **4. Strapi Sync (Optional)**
+## **4. Payload Sync (Optional)**
 
-If Strapi CMS is used for tagging or moderation, it is synced **by the
+If Payload CMS is used for tagging or moderation, it is synced **by the
 microservice**, not directly by frontend devs. The frontend pulls only
 clean, validated data.
 
@@ -127,4 +127,4 @@ Frontend devs just:
   Frontend components    frontend/libs/autocomplete/     Reusable form inputs
   Static JSON (legacy)   frontend/data/autocomplete/     Internal seed lists only
   Shared DB Tables       Postgres (managed by service)   Canonical source of truth
-  CMS (optional)         Strapi, synced from backend     Admin editing and moderation interface
+  CMS (optional)         Payload, synced from backend     Admin editing and moderation interface

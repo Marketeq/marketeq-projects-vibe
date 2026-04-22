@@ -1,11 +1,11 @@
-# **Strapi Schema --- L1/L2/L3 Category Pages**
+# **Payload Schema --- L1/L2/L3 Category Pages**
 
-**Goal:** Define exactly what lives in Strapi for Category Pages so L1
+**Goal:** Define exactly what lives in Payload for Category Pages so L1
 (top level), L2 (subcategory of L1), and L3 (subcategory of L2) render
 correctly.
 
-Strapi is used for **admin authoring & overrides**. Core ranking/listing
-logic lives downstream. We **do not** store heavy runtime data in Strapi
+Payload is used for **admin authoring & overrides**. Core ranking/listing
+logic lives downstream. We **do not** store heavy runtime data in Payload
 (e.g., listings, profiles). FAQs, Guides, Courses, Hero/Editorial are
 authored here and exposed to the Category Pages API.
 
@@ -24,7 +24,7 @@ authored here and exposed to the Category Pages API.
 - **Collection-Type (rules engine):** taxonomy_group (with nested rule
   component)
 
-> Folder roots follow Strapi v4 layout:
+> Folder roots follow Payload v4 layout:
 > ./src/api/\<ct\>/content-types/\<ct\>/schema.json and
 > ./src/components/\<category\>/\<component\>.json.
 
@@ -52,7 +52,7 @@ L1. L3 parent = an L2.
 - parent (relation: category → category, many-to-one) --- null for L1
 
 - children (relation: category → category, one-to-many, mapped) ---
-  managed by Strapi
+  managed by Payload
 
 - published_in_marketplace (boolean, default false) --- Only
   **published** appear on site
@@ -327,13 +327,13 @@ Editors configure which **blocks** appear on each page and their caps
 
 ## **6) Permissions & Roles**
 
-- Only **Admin** roles access Strapi. No public access needed.
+- Only **Admin** roles access Payload. No public access needed.
 
 - Expose read endpoints to backend (server-to-server) only.
 
 ## **7) Notes**
 
-- FAQs/Guides/Courses/Hero are **authored in Strapi**, returned by
+- FAQs/Guides/Courses/Hero are **authored in Payload**, returned by
   backend to the front-end; they are **not** stored in the NestJS DB.
 
 - Keep categories lean: tree, SEO override, hero, marketplace publish

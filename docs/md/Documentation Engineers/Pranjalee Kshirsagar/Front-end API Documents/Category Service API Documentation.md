@@ -34,14 +34,14 @@
 # **1. System Overview**
 
 The **Category Service** keeps Marketplace categories and tags
-synchronized between **Strapi (CMS)** and the **NestJS database**, and
+synchronized between **Payload (CMS)** and the **NestJS database**, and
 serves **SEO category pages** for the frontend. It also supports
 category deletion, child reassignment, and content reassignment preview
 tooling for safe maintenance operations.
 
 # **2. High Level Architecture**
 
-Strapi triggers webhook-style sync calls into this service, which
+Payload triggers webhook-style sync calls into this service, which
 upserts categories/tags into Postgres via TypeORM. The frontend reads
 category-page content via /category-pages/\* routes which assemble
 metadata, navigation, blocks, suggestions, and editorial content using
@@ -49,7 +49,7 @@ internal adapters/services.
 
 # **3. Workflow Overview**
 
-1.  **Strapi publish/update → Nest sync:** Strapi calls /categories/sync
+1.  **Payload publish/update → Nest sync:** Payload calls /categories/sync
     and /tags/sync to upsert data locally.
 
 2.  **Marketplace category pages:** Frontend requests
@@ -65,7 +65,7 @@ internal adapters/services.
 
 - **TypeORM + Postgres**: categories_v2, tags_v2, join tables
 
-- **Strapi integration**: push/pull sync and deletion webhooks
+- **Payload integration**: push/pull sync and deletion webhooks
 
 - **Category Pages module**: slug-path resolution, breadcrumbs, blocks,
   editorial content, suggestions
@@ -78,7 +78,7 @@ internal adapters/services.
 - This document covers **only endpoints implemented in the repo** (no
   docs-only/QA-only endpoints).
 
-- Sync endpoints support Strapi-driven updates for **categories** and
+- Sync endpoints support Payload-driven updates for **categories** and
   **tags**.
 
 - Category deletion includes safe handling for children by
@@ -89,11 +89,11 @@ internal adapters/services.
   **Tool**                 **Purpose**                                                        **Notes**
   ------------------------ ------------------------------------------------------------------ -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
   GitHub Repo              Category service codebase                                          [marketeq-projects-nestjs](https://github.com/Marketeq/marketeq-projects-nestjs/tree/main)/[apps](https://github.com/Marketeq/marketeq-projects-nestjs/tree/main/apps)/category-service
-  Strapi Admin             Manage categories/tags, approvals, publish to marketplace          Example: https://strapi.\<env\>.yourdomain.com/admin (needs Strapi admin credentials + correct environment)
+  Payload Admin             Manage categories/tags, approvals, publish to marketplace          Example: https://strapi.\<env\>.yourdomain.com/admin (needs Payload admin credentials + correct environment)
   API Base URL (Gateway)   Call category-service endpoints via gateway                        Example: https://api.\<env\>.yourdomain.com/api (ensure /api prefix is included)
-  Postman Collection       Manual endpoint testing (sync, delete, reassign, category-pages)   Store BASE_URL, JWT_TOKEN, SERVICE_TOKEN as env vars; include sample payloads for Strapi sync + reassignment
+  Postman Collection       Manual endpoint testing (sync, delete, reassign, category-pages)   Store BASE_URL, JWT_TOKEN, SERVICE_TOKEN as env vars; include sample payloads for Payload sync + reassignment
   Database Console         Verify category/tag rows + relations after sync                    Example: pgAdmin / TablePlus; check categories_v2, tags_v2, join tables; confirm parent-child links + slugs
-  Logs / Observability     Debug Strapi webhook calls + sync failures                         Example: Render logs / CloudWatch / Grafana; filter by request path (/categories/sync, /tags/sync) and UUID
+  Logs / Observability     Debug Payload webhook calls + sync failures                         Example: Render logs / CloudWatch / Grafana; filter by request path (/categories/sync, /tags/sync) and UUID
 
 # **7. Endpoints**
 
@@ -152,9 +152,9 @@ internal adapters/services.
 ### **7.1.1 POST /api/categories/sync**
 
 **Summary :\**
-Upserts a category record from a Strapi payload into the local database.
-This is the primary "Strapi → NestJS" sync hook for categories. Returns
-a simple OK status so Strapi can treat the webhook as successful.
+Upserts a category record from a Payload payload into the local database.
+This is the primary "Payload → NestJS" sync hook for categories. Returns
+a simple OK status so Payload can treat the webhook as successful.
 
 **Auth:** Bearer token when available.
 
@@ -209,9 +209,9 @@ a simple OK status so Strapi can treat the webhook as successful.
 ### **7.1.2 POST /api/categories/push-test**
 
 **Summary :\**
-Creates a dummy category locally and pushes it to Strapi for
-validation/testing. Useful for confirming connectivity and Strapi
-permissions without needing a full Strapi lifecycle event.
+Creates a dummy category locally and pushes it to Payload for
+validation/testing. Useful for confirming connectivity and Payload
+permissions without needing a full Payload lifecycle event.
 
 **Auth:** Bearer token when available.
 
@@ -244,8 +244,8 @@ permissions without needing a full Strapi lifecycle event.
 
 **Summary :\**
 Upserts a category locally (same as sync) and then pushes the saved
-category to Strapi. This is used for manual "force publish" scenarios
-where the system needs to confirm Strapi has the latest category.
+category to Payload. This is used for manual "force publish" scenarios
+where the system needs to confirm Payload has the latest category.
 
 **Auth:** Bearer token when available.
 
@@ -386,7 +386,7 @@ reviewed before publishing.
 ### **7.1.6 POST /api/categories/strapi/delete**
 
 **Summary :\**
-Handles Strapi delete webhook payloads and deletes the corresponding
+Handles Payload delete webhook payloads and deletes the corresponding
 local category by UUID. The handler is idempotent: repeated delete
 events are treated as "already deleted" and will be ignored safely.
 
@@ -476,7 +476,7 @@ tags relations.
 ### **7.1.8 GET /api/categories/:uuid/reassign/preview**
 
 **Summary :\**
-Previews how much Strapi content would be impacted by deleting a
+Previews how much Payload content would be impacted by deleting a
 category. Returns counts by content type and a sample set of items that
 reference the category so admins can confirm impact before reassignment.
 
@@ -512,7 +512,7 @@ reference the category so admins can confirm impact before reassignment.
 ### **7.1.9 POST /api/categories/:uuid/reassign?to=\<uuid\>**
 
 **Summary :\**
-Reassigns content in Strapi from one category UUID to another. This is
+Reassigns content in Payload from one category UUID to another. This is
 used before deletion to keep marketplace content attached to a valid
 category. Returns a simple OK status when the reassignment completes.
 
@@ -657,9 +657,9 @@ quick manual checks.
 ### **7.1.13 GET /api/categories/test-strapi**
 
 **Summary :\**
-Connectivity test endpoint that checks if the service can talk to Strapi
-correctly. Use this to validate environment variables and Strapi
-credentials/config. Returns the Strapi connection test result from the
+Connectivity test endpoint that checks if the service can talk to Payload
+correctly. Use this to validate environment variables and Payload
+credentials/config. Returns the Payload connection test result from the
 service layer.
 
 **Auth:** Bearer token when available.
@@ -667,7 +667,7 @@ service layer.
 **Response Body (example)**
 
   -----------------------------------------------------------------------
-  { \"status\": \"ok\", \"message\": \"Strapi connection successful\" }
+  { \"status\": \"ok\", \"message\": \"Payload connection successful\" }
   -----------------------------------------------------------------------
 
   -----------------------------------------------------------------------
@@ -689,13 +689,13 @@ service layer.
 ### **7.2.1 POST /api/tags/sync**
 
 **Summary :\**
-Upserts a tag from a Strapi payload into the local database. The handler
-ignores Strapi intermediate update events (entry.update) and only
+Upserts a tag from a Payload payload into the local database. The handler
+ignores Payload intermediate update events (entry.update) and only
 processes publish payloads. Returns OK or ignored with a reason.
 
 **Auth:** Bearer token when available.
 
-**Request Body (example Strapi style)**
+**Request Body (example Payload style)**
 
   -----------------------------------------------------------------------
   {\
@@ -751,9 +751,9 @@ processes publish payloads. Returns OK or ignored with a reason.
 ### **7.2.2 POST /api/tags/push**
 
 **Summary :\**
-Upserts a tag locally and then pushes it to Strapi (create/update). Use
-this for manual "force push" when Strapi needs to be updated from the
-service state. Returns Strapi id for traceability.
+Upserts a tag locally and then pushes it to Payload (create/update). Use
+this for manual "force push" when Payload needs to be updated from the
+service state. Returns Payload id for traceability.
 
 **Auth:** Bearer token when available.
 
@@ -792,7 +792,7 @@ service state. Returns Strapi id for traceability.
 ### **7.2.3 POST /api/tags/push-test**
 
 **Summary :\**
-Creates a dummy local tag and pushes it to Strapi to validate
+Creates a dummy local tag and pushes it to Payload to validate
 connectivity and permissions. This is a fast sanity test during setup or
 troubleshooting. Returns created uuid/slug.
 

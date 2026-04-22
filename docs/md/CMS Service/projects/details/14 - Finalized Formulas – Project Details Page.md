@@ -190,7 +190,7 @@ timestamp: Date.now()
 
 }
 
-> Tracks updates from either the frontend or Strapi.
+> Tracks updates from either the frontend or Payload.
 
 ### **🔗 Token Logic & Preview**
 

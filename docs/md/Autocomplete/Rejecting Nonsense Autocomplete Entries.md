@@ -55,7 +55,7 @@ Use the shared nonsense keyword blocklist stored in:
 ## **✅ Step 2: Category Match Validation**
 
 Every entry must match a valid, active category from the categories
-table in PostgreSQL, as synced with Strapi CMS.
+table in PostgreSQL, as synced with Payload CMS.
 
 ### **Rejection Rules:**
 

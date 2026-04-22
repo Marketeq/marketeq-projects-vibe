@@ -253,7 +253,7 @@ marketplace.
 -   **Responsive Layout:** The hero section must scale gracefully across
     desktop, tablet, and mobile viewports
 
--   **Backend Dependency:** If dynamic, requires a CMS endpoint (Strapi)
+-   **Backend Dependency:** If dynamic, requires a CMS endpoint (Payload)
     or a home-page-config endpoint that returns the current hero content
     payload
 
@@ -906,7 +906,7 @@ function correctly.
 
   **invitations-service**    Talent Network signup    Signup/invite flow
 
-  **Strapi CMS**             Hero content, category   Editorial content
+  **Payload CMS**             Hero content, category   Editorial content
                              curation                 
   -------------------------- ------------------------ -------------------------
 

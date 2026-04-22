@@ -98,7 +98,7 @@ accordingly.
 
 - Hide widget if no chat members are online
 
-11. **Strapi Integration Phase\**
+11. **Payload Integration Phase\**
 
 - Sync field definitions for admin-side viewing only (read-only)
 

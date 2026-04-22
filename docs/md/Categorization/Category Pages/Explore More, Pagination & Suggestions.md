@@ -10,8 +10,8 @@ Pages module).
 - **Covers:** per‑block cursor pagination, "Explore more ..." behavior,
   suggestions source (now), priorities, and minimal mocks for editorial.
 
-- **Does NOT repeat**: base endpoint contract, FE rendering, or Strapi
-  schema. Jayesh owns Strapi and Strapi→Nest wiring.
+- **Does NOT repeat**: base endpoint contract, FE rendering, or Payload
+  schema. Jayesh owns Payload and Payload→Nest wiring.
 
 ## **1) "Explore more ..." --- URLs & API Calls**
 
@@ -328,7 +328,7 @@ link:\`/c/\${c.slug_path.join(\'/\')}\` }; }
 
 ## **4) Editorial mocks (temporary)**
 
-*Why:* FE can wire hero/guides/courses now; Jayesh swaps in Strapi
+*Why:* FE can wire hero/guides/courses now; Jayesh swaps in Payload
 later.
 
 **File:**
@@ -379,7 +379,7 @@ module.\*
 
 4.  **Mock editorial data?\**
     **Yes.** Populate light mocks via EditorialProxy so FE can build;
-    Jayesh replaces with Strapi adapter next.
+    Jayesh replaces with Payload adapter next.
 
 ## **6) QA checklist (quick)**
 

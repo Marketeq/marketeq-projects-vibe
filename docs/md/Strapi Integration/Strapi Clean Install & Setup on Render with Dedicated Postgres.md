@@ -1,13 +1,13 @@
-**Strapi Clean Install & Setup on Render with Dedicated Postgres**
+**Payload Clean Install & Setup on Render with Dedicated Postgres**
 
-This guide walks you through a **production-ready deployment** of Strapi
+This guide walks you through a **production-ready deployment** of Payload
 CMS on **Render**, using a **dedicated Postgres database**. This setup
 is completely isolated from your NestJS backend, ensuring safe admin
 editing and CMS-only access to data.
 
 ### **🧱 1. Prerequisites**
 
-- A GitHub repo for your Strapi project (public or private)
+- A GitHub repo for your Payload project (public or private)
 
 - A Render account
 
@@ -15,7 +15,7 @@ editing and CMS-only access to data.
 
 ### **📦 2. Project Structure**
 
-Your Strapi repo can be accessed below:\
+Your Payload repo can be accessed below:\
 [[https://github.com/Marketeq/marketeq-projects-strapi]{.underline}](https://github.com/Marketeq/marketeq-projects-strapi)
 
 marketeq-projects-strapi/
@@ -48,9 +48,9 @@ Your Strapi repo can be accessed below:\
 
     - **Database URL** (e.g., postgres://\...)
 
-> ✅ **This Postgres DB must be exclusive to Strapi.**
+> ✅ **This Postgres DB must be exclusive to Payload.**
 
-### **🛠️ 4. Create a New Web Service for Strapi**
+### **🛠️ 4. Create a New Web Service for Payload**
 
 1.  Go to **Render \> New \> Web Service\**
 
@@ -144,7 +144,7 @@ ssl: env.bool(\'DATABASE_SSL\', true),
 
 4.  Create your first admin user
 
-> 🎉 You now have a working Strapi CMS on Render with an isolated
+> 🎉 You now have a working Payload CMS on Render with an isolated
 > database.
 
 ### **🧼 8. Cleanup & Security Checklist**
@@ -155,7 +155,7 @@ ssl: env.bool(\'DATABASE_SSL\', true),
 
 - Set up backup snapshots in your Postgres service
 
-- Configure roles/permissions in Strapi before enabling API access
+- Configure roles/permissions in Payload before enabling API access
 
 ### **✅ Summary**
 
@@ -167,7 +167,7 @@ ssl: env.bool(\'DATABASE_SSL\', true),
   CMS DB        Render Postgres
                 (marketeq-strapi-db)
 
-  Admin Auth    Handled by Strapi (JWT)
+  Admin Auth    Handled by Payload (JWT)
 
   Integration   Webhooks / Sync service to
                 NestJS

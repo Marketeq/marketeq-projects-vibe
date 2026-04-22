@@ -68,7 +68,7 @@ document.
   ----------------------------- -------------------------------------------------
   **Technology**                **Purpose**
 
-  **Payload CMS 3.x**           Headless CMS. Replaces Strapi. Manages all
+  **Payload CMS 3.x**           Headless CMS. Replaces Payload. Manages all
                                 editorial content including homepage
                                 configurations, landing pages, blog posts,
                                 categories, and feature flags. Runs as a

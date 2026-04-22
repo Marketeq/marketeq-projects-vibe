@@ -1,4 +1,4 @@
-# **09 - Strapi Admin Guide -- Publishing Categories to the Marketplace**
+# **09 - Payload Admin Guide -- Publishing Categories to the Marketplace**
 
 ## **Purpose**
 
@@ -20,7 +20,7 @@ and professional.
 
 ## **2. How to Review a Category**
 
-1.  Log in to the **Strapi admin panel**.
+1.  Log in to the **Payload admin panel**.
 
 2.  Navigate to **Content Manager → Categories**.
 
@@ -39,7 +39,7 @@ and professional.
 
 - If the grid looks good:
 
-  - In Strapi, set Published in Marketplace = true.
+  - In Payload, set Published in Marketplace = true.
 
   - Save changes.
 
@@ -69,5 +69,5 @@ and professional.
 - Keep unpublished categories hidden until they create a strong first
   impression.
 
-- Use the "Created At" filter in Strapi to easily find new categories
+- Use the "Created At" filter in Payload to easily find new categories
   that need review.

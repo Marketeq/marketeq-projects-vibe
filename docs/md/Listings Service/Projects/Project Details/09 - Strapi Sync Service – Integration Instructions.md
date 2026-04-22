@@ -1,14 +1,14 @@
-**Strapi Sync Service -- Integration Instructions**
+**Payload Sync Service -- Integration Instructions**
 
 This document explains how to implement a NestJS service
-(strapi-sync.service.ts) that syncs approved project updates from Strapi
+(strapi-sync.service.ts) that syncs approved project updates from Payload
 into your NestJS-based Listings Microservice database. This assumes
-Strapi is hosted separately and uses its own PostgreSQL DB, while your
+Payload is hosted separately and uses its own PostgreSQL DB, while your
 frontend and backend use a separate NestJS PostgreSQL DB.
 
 ## **✅ Objective**
 
-When an admin edits a project in Strapi and the content moderation
+When an admin edits a project in Payload and the content moderation
 status is approved, we want to push that update to the Listings
 Microservice via API.
 
@@ -73,12 +73,12 @@ Authorization: \`Bearer \${process.env.INTERNAL_API_KEY}\`
 );
 
 this.logger.log(\`Successfully synced project \${projectPayload.id} from
-Strapi.\`);
+Payload.\`);
 
 } catch (error) {
 
 this.logger.error(\`Failed to sync project \${strapiProject.id} from
-Strapi\`, error);
+Payload\`, error);
 
 }
 
@@ -143,7 +143,7 @@ export class ListingsModule {}
 
 ### **3. Calling the Sync Function**
 
-You can trigger the sync via webhook (from Strapi) or admin panel via
+You can trigger the sync via webhook (from Payload) or admin panel via
 manual trigger. Here\'s a simple example for webhook controller:
 
 @Post(\'/strapi/webhook\')
@@ -163,7 +163,7 @@ return { message: \'Sync attempted\' };
 
 - Use an internal bearer token (INTERNAL_API_KEY) to secure sync calls.
 
-- Whitelist IPs or use webhook signatures from Strapi for extra
+- Whitelist IPs or use webhook signatures from Payload for extra
   protection.
 
 ## **🔄 Optional Enhancements**

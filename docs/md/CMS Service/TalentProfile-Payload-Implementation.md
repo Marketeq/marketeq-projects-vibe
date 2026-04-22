@@ -1,6 +1,6 @@
 # TalentProfile — Payload CMS Implementation Guide
 
-> **Context**: The original docs in `docs/md/CMS Service/check/` describe a Strapi-based TalentProfile sync.
+> **Context**: The original docs in `docs/md/CMS Service/check/` describe a Payload-based TalentProfile sync.
 > The CMS has since migrated to **Payload CMS** (v1, PostgreSQL adapter).
 > This document specifies how to implement the TalentProfile feature using the existing Payload patterns.
 
@@ -1103,16 +1103,16 @@ describe('TalentProfile CMS Sync (E2E)', () => {
 
 ---
 
-## 10. Migration from Original Strapi Docs
+## 10. Migration from Original Payload Docs
 
-| Original Strapi Concept | Payload Equivalent | Notes |
+| Original Payload Concept | Payload Equivalent | Notes |
 |--------------------------|-------------------|-------|
-| Strapi Content-Type Builder | `CollectionConfig` in code | Payload is code-first, no UI schema builder |
-| Strapi webhook + HMAC | Payload `afterChange` hooks | No webhook needed — hooks fire in-process |
+| Payload Content-Type Builder | `CollectionConfig` in code | Payload is code-first, no UI schema builder |
+| Payload webhook + HMAC | Payload `afterChange` hooks | No webhook needed — hooks fire in-process |
 | `strapi-to-entity.mapper.ts` | Direct field mapping in hooks | No mapper needed — we control both the CMS schema and the event payload |
 | Nightly reconcile via REST API | `reconcile-talent-profiles` plugin endpoint | Same concept, uses Payload local API instead of external HTTP |
-| Strapi `manyToMany` relations for skills | Payload `array` fields | Simpler — stored as arrays, flattened to string[] in events |
-| Strapi components (`shared.certification`) | Payload `array` with inline fields | Same data, different config syntax |
+| Payload `manyToMany` relations for skills | Payload `array` fields | Simpler — stored as arrays, flattened to string[] in events |
+| Payload components (`shared.certification`) | Payload `array` with inline fields | Same data, different config syntax |
 | Heroku deployment | Render deployment | Per project architecture |
 | `x-strapi-signature` HMAC verification | Not needed | Hooks run server-side — no external webhook to verify |
 

@@ -1,4 +1,4 @@
-# **✅ Strapi Clean Install & Setup on Heroku with Existing Postgres**
+# **✅ Payload Clean Install & Setup on Heroku with Existing Postgres**
 
 ## **🧱 Prerequisites**
 
@@ -27,9 +27,9 @@ If you\'re reinstalling:
 
 
 
-## **➋ Reinitialize Strapi Locally (Linked to Heroku Postgres)**
+## **➋ Reinitialize Payload Locally (Linked to Heroku Postgres)**
 
-1.  Scaffold a new Strapi project:
+1.  Scaffold a new Payload project:
 
 npx create-strapi-app@latest my-strapi-app \--no-run
 
@@ -60,7 +60,7 @@ DATABASE_URL=your_heroku_database_url
 
 git add .
 
-git commit -m \"Initial Strapi install\"
+git commit -m \"Initial Payload install\"
 
 
 
@@ -135,7 +135,7 @@ SELECT \* FROM strapi_admin_user;
   ------------------------------------
   **Task**                 **Done?**
   ------------------------ -----------
-  Cleaned previous Strapi  ✅
+  Cleaned previous Payload  ✅
   cache                    
 
   Linked to Heroku DB      ✅

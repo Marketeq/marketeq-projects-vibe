@@ -1,4 +1,4 @@
-# **03 - Strapi ↔ NestJS Marketplace Category Sync -- Developer Implementation Guide (Extended with Tags & Deletion Logic)**
+# **03 - Payload ↔ NestJS Marketplace Category Sync -- Developer Implementation Guide (Extended with Tags & Deletion Logic)**
 
 ## **1. Overview**
 
@@ -161,7 +161,7 @@ throw new Error(\'Cannot delete root category without reassignment.\');
 
 await this.categoryRepo.remove(category);
 
-// Notify Strapi to delete or mark inactive
+// Notify Payload to delete or mark inactive
 
 await axios.delete(\`\${process.env.STRAPI_URL}/categories/\${uuid}\`, {
 
@@ -197,7 +197,7 @@ async reassignCategory(oldUuid: string, newUuid: string) {
 
 
 
-## **4. Strapi Tag Setup**
+## **4. Payload Tag Setup**
 
 - Create Tag content-type with:
 
@@ -215,9 +215,9 @@ async reassignCategory(oldUuid: string, newUuid: string) {
 
 1.  Add Tag entity and service to NestJS.
 
-2.  Create Tag content-type in Strapi.
+2.  Create Tag content-type in Payload.
 
-3.  Update Strapi webhooks to include tags.
+3.  Update Payload webhooks to include tags.
 
 4.  Implement safe category deletion with reassignment.
 
@@ -225,7 +225,7 @@ async reassignCategory(oldUuid: string, newUuid: string) {
 
 ## **6. Testing Checklist (Extended)**
 
-- ✅ Tag creation in Strapi syncs to NestJS.
+- ✅ Tag creation in Payload syncs to NestJS.
 
 - ✅ Tags linked to categories sync both ways.
 

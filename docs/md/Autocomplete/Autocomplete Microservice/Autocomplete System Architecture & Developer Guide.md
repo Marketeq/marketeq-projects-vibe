@@ -36,7 +36,7 @@ certifications, tags, etc.). It must:
 
 ├── processors/ \# Normalize, deduplicate, lowercase, etc.
 
-├── sync/ \# Sync with Strapi, Airtable, etc.
+├── sync/ \# Sync with Payload, Airtable, etc.
 
 ├── controllers/ \# Express/NestJS routes
 
@@ -123,13 +123,13 @@ Examples:
 
 - universities.json
 
-## **🌐 4. Strapi CMS Sync (Optional)**
+## **🌐 4. Payload CMS Sync (Optional)**
 
 - Editable categories are synced **from** autocomplete-service
 
-- Strapi is **not** the source of truth
+- Payload is **not** the source of truth
 
-- Edits made in Strapi are pushed back via /sync logic
+- Edits made in Payload are pushed back via /sync logic
 
 ## **🧪 5. Semantic Categorization (Optional)**
 
@@ -159,7 +159,7 @@ Examples:
 
   Fetch values Use GET /autocomplete/:type
 
-  Add category Use admin dashboard or update Strapi if
+  Add category Use admin dashboard or update Payload if
                synced
   ------------------------------------------------------
 

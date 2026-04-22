@@ -1,8 +1,8 @@
-**Strapi Collection Type: Project Listings (Based on Final Project
+**Payload Collection Type: Project Listings (Based on Final Project
 Details Design)**
 
 This document outlines how to build the **"Projects"** collection type
-in Strapi v5, fully aligned with the editable fields from the **Project
+in Payload v5, fully aligned with the editable fields from the **Project
 Details design** in Figma. It ensures compatibility with frontend flows
 for listing, preview, media upload, and checkout.
 
@@ -90,7 +90,7 @@ using the listings service.
 
 - **Checkout**: Project selection, frequency, pricing
 
-- **Preview**: Uses Strapi's native preview button from config/admin.ts
+- **Preview**: Uses Payload's native preview button from config/admin.ts
 
 - **Thumbnail**: First image from Cloudflare upload
 

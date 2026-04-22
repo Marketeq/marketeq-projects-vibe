@@ -1,29 +1,29 @@
-**Strapi-to-NestJS API Integration – Developer Instructions (with
+**Payload-to-NestJS API Integration – Developer Instructions (with
 Embedded Starter Code)**
 
-This document explains how to sync project data edited in Strapi into
-your NestJS backend (PostgreSQL DB). It assumes Strapi and NestJS are
+This document explains how to sync project data edited in Payload into
+your NestJS backend (PostgreSQL DB). It assumes Payload and NestJS are
 running on separate databases and that your frontend pulls only from the
-NestJS backend, not from Strapi. Admin edits in Strapi must update the
+NestJS backend, not from Payload. Admin edits in Payload must update the
 main Listings Microservice via REST API **after passing content
 moderation.**
 
 ## **⚙️ Overview**
 
-- **Strapi DB is isolated** from NestJS
+- **Payload DB is isolated** from NestJS
 
-- Strapi mirrors the same project schema as the Listings Microservice
+- Payload mirrors the same project schema as the Listings Microservice
 
-- Any changes made to project records in Strapi (by admins or
+- Any changes made to project records in Payload (by admins or
   moderators) should be **pushed** to the NestJS backend
 
-- Moderation is enforced at time of save or publish within Strapi
+- Moderation is enforced at time of save or publish within Payload
 
 ## **🔁 Sync Strategy**
 
 ### **1. Trigger sync on update or publish**
 
-Use Strapi's [<u>lifecycle
+Use Payload's [<u>lifecycle
 hooks</u>](https://docs.strapi.io/dev-docs/backend-customization/models#lifecycle-hooks)
 to trigger a sync after edits:
 
@@ -136,7 +136,7 @@ In your .env file:
 
 ## **✅ Tasks to Complete**
 
-- Enable lifecycle hook for afterUpdate in Strapi
+- Enable lifecycle hook for afterUpdate in Payload
 
 - Create project-sync service with sync logic to backend
 
@@ -144,7 +144,7 @@ In your .env file:
 
 - Use .env to store sensitive values
 
-- Ensure Strapi content type matches Listings Microservice schema
+- Ensure Payload content type matches Listings Microservice schema
 
 - Run manual tests to confirm sync works
 
@@ -154,4 +154,4 @@ In your .env file:
 
 - Log sync history in project.activity_log
 
-- Use Strapi's admin UI to show sync status or last updated
+- Use Payload's admin UI to show sync status or last updated

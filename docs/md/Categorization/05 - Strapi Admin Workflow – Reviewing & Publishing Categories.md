@@ -1,15 +1,15 @@
-# **05 - Strapi Admin Workflow -- Reviewing & Publishing Categories**
+# **05 - Payload Admin Workflow -- Reviewing & Publishing Categories**
 
 ## **1. Purpose**
 
-This document explains how the **Strapi admin team** reviews, approves,
+This document explains how the **Payload admin team** reviews, approves,
 and publishes new categories and subcategories generated from user or AI
-input. All moderation happens inside the Strapi CMS, and changes
+input. All moderation happens inside the Payload CMS, and changes
 automatically sync to the NestJS backend.
 
 ## **2. Where to Find New Categories**
 
-1.  Log in to the Strapi admin panel.
+1.  Log in to the Payload admin panel.
 
 2.  Navigate to **Content Manager → Categories**.
 
@@ -81,7 +81,7 @@ If a category is irrelevant or inappropriate:
 
 - **Publishing:** Lifecycle hook sends updated category to NestJS.
 
-- **Editing:** Updates name, slug, and tags in both Strapi and NestJS.
+- **Editing:** Updates name, slug, and tags in both Payload and NestJS.
 
 - **Rejecting:** Marks category as inactive in NestJS; hidden from
   autocomplete and marketplace.

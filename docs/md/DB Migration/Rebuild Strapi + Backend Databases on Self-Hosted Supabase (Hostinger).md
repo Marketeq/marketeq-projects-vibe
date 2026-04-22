@@ -1,4 +1,4 @@
-# **Rebuild Strapi + Backend Databases on Self-Hosted Supabase (Hostinger)**
+# **Rebuild Payload + Backend Databases on Self-Hosted Supabase (Hostinger)**
 
 ## **1. Goal / Constraints**
 
@@ -10,14 +10,14 @@
 
   - **VPS A** -- Supabase (Postgres) on Hostinger
 
-  - **VPS B** -- Strapi on Hostinger
+  - **VPS B** -- Payload on Hostinger
 
   - **VPS C** -- NestJS backend on Hostinger (from
     marketeq-projects-nestjs repo)
 
 - Render config shows:
 
-  - Strapi DB: marketeq-strapi-db → marketeq_strapi_db, user
+  - Payload DB: marketeq-strapi-db → marketeq_strapi_db, user
     marketeq_strapi_db_user
 
   - Backend DB: marketeq-backend-DB → marketeq_backend_db, user
@@ -29,7 +29,7 @@ We will:
 
 1.  Create those two databases + users on Supabase.
 
-2.  Point Strapi to an **empty** marketeq_strapi_db and let Strapi
+2.  Point Payload to an **empty** marketeq_strapi_db and let Payload
     auto-create all tables.
 
 3.  Point the NestJS backend to an **empty** marketeq_backend_db and run
@@ -46,7 +46,7 @@ We will:
 postgresql://postgres:\<SUPERUSER_PASSWORD\>@127.0.0.1:5432/postgres
 
 2.  \
-    **Create Strapi DB + user\**
+    **Create Payload DB + user\**
 
 ****CREATE DATABASE marketeq_strapi_db;
 
@@ -75,19 +75,19 @@ TO marketeq_backend_db_user;
     (Optional but recommended) Restrict network access so **only VPS B +
     VPS C IPs** can talk to port 5432.
 
-## **3. Wire Strapi to Supabase and Let It Rebuild marketeq_strapi_db**
+## **3. Wire Payload to Supabase and Let It Rebuild marketeq_strapi_db**
 
-> All steps in this section are on **VPS B (Strapi)**, using the
+> All steps in this section are on **VPS B (Payload)**, using the
 > marketeq-projects-strapi repo.
 
-### **3.1 Set DATABASE_URL for Strapi**
+### **3.1 Set DATABASE_URL for Payload**
 
 1.  From the Supabase VPS, decide the public host/IP for Postgres, e.g.:
 
 \<SUPABASE_PUBLIC_IP\> \# From Hostinger panel for VPS A
 
 2.  \
-    On VPS B, edit Strapi environment (systemd service, .env, or Docker
+    On VPS B, edit Payload environment (systemd service, .env, or Docker
     env) and set:
 
 DATABASE_URL=postgresql://marketeq_strapi_db_user:\<STRONG_PASSWORD_1\>@\<SUPABASE_PUBLIC_IP\>:5432/marketeq_strapi_db
@@ -96,9 +96,9 @@ DATABASE_SSL=false \# or true if you later add SSL; for now internal
 traffic is fine
 
 3.  \
-    Keep all other Strapi secrets (JWT, admin keys, etc.) the same.
+    Keep all other Payload secrets (JWT, admin keys, etc.) the same.
 
-### **3.2 Install and build Strapi (same as Render)**
+### **3.2 Install and build Payload (same as Render)**
 
 According to the exported Render config:
 
@@ -112,7 +112,7 @@ npm ci
 
 npm run build
 
-### **3.3 Start Strapi and let it auto-create tables**
+### **3.3 Start Payload and let it auto-create tables**
 
 For the first run, you can use develop mode to watch logs:
 
@@ -123,9 +123,9 @@ For the first run, you can use develop mode to watch logs:
 \# npm run start
 
 - \
-  When Strapi starts with **an empty Postgres DB**, it automatically:
+  When Payload starts with **an empty Postgres DB**, it automatically:
 
-  - Creates all Strapi core tables
+  - Creates all Payload core tables
 
   - Creates component / relation / join tables
 
@@ -141,7 +141,7 @@ Back on the Supabase panel:
   - Tables like strapi_core_store_settings, up_permissions, your content
     types, etc. exist.
 
-- If Strapi schema looks good, stop npm run develop and configure your
+- If Payload schema looks good, stop npm run develop and configure your
   **production** start command (usually npm run start under a process
   manager).
 
@@ -156,7 +156,7 @@ service.
 
 ### **4.1 Set DATABASE_URL for backend**
 
-1.  Use same Supabase host/IP as for Strapi.
+1.  Use same Supabase host/IP as for Payload.
 
 2.  In the backend .env on VPS C (or service env vars), set:
 
@@ -225,13 +225,13 @@ node -r reflect-metadata dist/main.js
 
 ## **5. Quick Verification Checklist**
 
-**Strapi DB (marketeq_strapi_db)**
+**Payload DB (marketeq_strapi_db)**
 
 - marketeq_strapi_db exists on Supabase.
 
 - marketeq_strapi_db_user can connect.
 
-- Strapi boots successfully and you can log into the admin on Hostinger.
+- Payload boots successfully and you can log into the admin on Hostinger.
 
 - Tables are present in Supabase.
 

@@ -1,9 +1,9 @@
-# **Strapi Integration with Postgres: Step-by-Step API Integration Guide**
+# **Payload Integration with Postgres: Step-by-Step API Integration Guide**
 
 ### **📌 Purpose**
 
-This guide explains how to integrate Strapi with an existing PostgreSQL
-database using the Strapi API. It covers how to connect Strapi to the
+This guide explains how to integrate Payload with an existing PostgreSQL
+database using the Payload API. It covers how to connect Payload to the
 database, define content types, expose REST/GraphQL endpoints, and
 consume them from other backend services.
 
@@ -11,13 +11,13 @@ consume them from other backend services.
 
 - PostgreSQL already set up and running
 
-- Strapi project initialized (npx create-strapi-app) or running via
+- Payload project initialized (npx create-strapi-app) or running via
   Docker
 
 - API consumers (e.g., NestJS microservices) configured to send/receive
   requests
 
-### **➊ Configure Strapi to Use PostgreSQL**
+### **➊ Configure Payload to Use PostgreSQL**
 
 1.  **Edit** config/database.js (or config/database.ts):
 
@@ -59,7 +59,7 @@ DATABASE_USERNAME=your_user
 
 DATABASE_PASSWORD=your_password
 
-3.  **Restart Strapi**:
+3.  **Restart Payload**:
 
 yarn develop
 
@@ -121,7 +121,7 @@ GET /api/skills
 
 yarn strapi install graphql
 
-2.  Restart Strapi\
+2.  Restart Payload\
     → Visit http://localhost:1337/graphql for the GraphQL Playground
 
 ### **➎ Access from Other Services**
@@ -139,9 +139,9 @@ console.log(response.data);
 
 ### **🛡 Deployment Tips**
 
-- Never expose the Strapi Admin UI publicly
+- Never expose the Payload Admin UI publicly
 
 - Use role-based API access
 
-- Use Strapi for content/internal profile management, not for direct
+- Use Payload for content/internal profile management, not for direct
   public endpoints

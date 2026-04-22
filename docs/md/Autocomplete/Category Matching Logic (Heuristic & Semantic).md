@@ -13,7 +13,7 @@ embeddings.
 ## **🎯 Objective**
 
 To assign every autocomplete entry a valid, active category from the
-Strapi-managed PostgreSQL categories table. If no match is found, the
+Payload-managed PostgreSQL categories table. If no match is found, the
 entry is flagged or rejected.
 
 ## **🧠 1. Heuristic Matching (Rule-Based)**

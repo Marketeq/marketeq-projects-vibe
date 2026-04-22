@@ -9,7 +9,7 @@ user-generated subcategories in the marketplace. It covers:
 
 - NestJS database save logic.
 
-- Push-to-Strapi sync with payload.
+- Push-to-Payload sync with payload.
 
 - Step-by-step setup with all required code.
 
@@ -24,7 +24,7 @@ user-generated subcategories in the marketplace. It covers:
 3.  **Save to NestJS:** If approved, it's stored in the NestJS Postgres
     DB.
 
-4.  **Push to Strapi:** The category is synced to Strapi for admin
+4.  **Push to Payload:** The category is synced to Payload for admin
     visibility.
 
 5.  **Autocomplete Exposure:** Once saved, it's immediately available in
@@ -100,7 +100,7 @@ published_in_marketplace: false
 
 const saved = await this.categoryRepo.save(category);
 
-await this.pushToStrapi(saved); // Sync to Strapi for admin review
+await this.pushToStrapi(saved); // Sync to Payload for admin review
 
 return saved;
 
@@ -108,7 +108,7 @@ return saved;
 
 
 
-## **5. Push to Strapi Sync**
+## **5. Push to Payload Sync**
 
 /apps/marketeq-nestjs/src/categories/category.service.ts
 
@@ -183,7 +183,7 @@ headers: { Authorization: \`Bearer \${process.env.STRAPI_TOKEN}\` }
 
     - Confirm it passes filters.
 
-    - Verify it appears in NestJS DB, Strapi CMS, and autocomplete.
+    - Verify it appears in NestJS DB, Payload CMS, and autocomplete.
 
 ## **8. Testing Checklist**
 
@@ -194,13 +194,13 @@ headers: { Authorization: \`Bearer \${process.env.STRAPI_TOKEN}\` }
 
 - ✅ Approved categories save to NestJS DB with correct parent.
 
-- ✅ Categories sync to Strapi immediately.
+- ✅ Categories sync to Payload immediately.
 
 - ✅ Suggestions appear in autocomplete in real-time.
 
 ## **9. Notes**
 
-- No duplicate logic: Strapi handles admin-created categories; NestJS
+- No duplicate logic: Payload handles admin-created categories; NestJS
   handles user-generated ones.
 
 - All UUIDs are universal for cross-system sync.

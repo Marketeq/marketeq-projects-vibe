@@ -1,22 +1,22 @@
-# **Strapi Schema --- L1/L2/L3 Category Pages (Step‑by‑Step)**
+# **Payload Schema --- L1/L2/L3 Category Pages (Step‑by‑Step)**
 
-**Audience:** Strapi admins & backend devs.\
+**Audience:** Payload admins & backend devs.\
 **Goal:** Create the exact schema (content‑types + components +
 validation) so L1 (top), L2 (child of L1), L3 (child of L2) category
 pages render correctly and stay consistent.
 
-**Important:** Strapi is for **admin editing** (titles, SEO overrides,
+**Important:** Payload is for **admin editing** (titles, SEO overrides,
 hero, FAQ, guides/courses, taxonomy rules). Do **not** store heavy
 runtime data here (listings, profiles). Those are read from other
 services at runtime.
 
 ## **0) Prereqs**
 
-*Why:* Make sure Strapi runs locally and your database/env are set so
+*Why:* Make sure Payload runs locally and your database/env are set so
 the builder and schema files load correctly before you start creating
 types.
 
-- Strapi v4 project checked out and running (see \"Strapi Quick Setup
+- Payload v4 project checked out and running (see \"Payload Quick Setup
   --- Dependencies & Bootstrap\").
 
 - PostgreSQL configured in .env (or your DB of choice).
@@ -42,7 +42,7 @@ so you know what pieces exist and how they fit together.
 - **Collection type (rules engine):** taxonomy-group + **component**
   rules.rule --- defines which blocks show on each page
 
-> Folder layout follows Strapi v4:\
+> Folder layout follows Payload v4:\
 > ./src/api/\<ct\>/content-types/\<ct\>/schema.json\
 > ./src/components/\<category\>/\<component\>.json
 
@@ -363,7 +363,7 @@ parent\')
 }
 
 **How to enable lifecycles:** if you don't see the lifecycles file,
-create it and restart Strapi. Strapi auto‑loads it.
+create it and restart Payload. Payload auto‑loads it.
 
 ## **5) Create example data (sanity check)**
 
@@ -425,10 +425,10 @@ or edits that could break live navigation.
 between dev, staging, and production without hand-recreating items.\
 For bulk setup across environments:
 
-- Use Strapi's **Content Transfer** or a plugin (e.g., import/export) to
+- Use Payload's **Content Transfer** or a plugin (e.g., import/export) to
   move categories.
 
-- Alternatively, write a small bootstrap script using Strapi's
+- Alternatively, write a small bootstrap script using Payload's
   programmatic API to seed L1/L2/L3 from a CSV (UUIDs included).
 
 ## **8) Troubleshooting**
@@ -446,7 +446,7 @@ changing the schema and how to resolve them quickly.
   refresh Admin UI.
 
 - **DB errors after schema changes** → clear .cache and build folders;
-  restart Strapi.
+  restart Payload.
 
 ## **9) Hand‑off checklist**
 

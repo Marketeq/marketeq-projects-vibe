@@ -1,7 +1,7 @@
-**DTO and Schema Validation – Strapi to NestJS Integration Guide**
+**DTO and Schema Validation – Payload to NestJS Integration Guide**
 
 This document provides step-by-step instructions for validating incoming
-data from Strapi in your NestJS Listings Microservice. It uses DTOs and
+data from Payload in your NestJS Listings Microservice. It uses DTOs and
 class-validator to ensure schema compatibility and prevent invalid data
 from being saved to your production database.
 
@@ -180,9 +180,9 @@ seo_description?: string;
 
 
 
-## **Step 2: Use DTO in Your Strapi Sync Controller**
+## **Step 2: Use DTO in Your Payload Sync Controller**
 
-In your controller that receives webhook payloads from Strapi, use the
+In your controller that receives webhook payloads from Payload, use the
 DTO like this:
 
 @Post('strapi-sync')
@@ -207,4 +207,4 @@ return { success: true };
 ## **Step 3: Extend DTO as Needed**
 
 You can update this DTO as you add new fields in the future. Always
-match the Strapi field types and frontend data requirements.
+match the Payload field types and frontend data requirements.

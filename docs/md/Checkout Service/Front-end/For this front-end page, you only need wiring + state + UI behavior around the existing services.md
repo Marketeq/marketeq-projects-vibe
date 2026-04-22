@@ -213,6 +213,6 @@ And a shared API client that injects JWT.
 
 - No new services
 
-- No Strapi calls
+- No Payload calls
 
 - No pricing math on FE (backend is source of truth)

@@ -1,9 +1,9 @@
-**Audit Log Handler for Source = Strapi (Listings Microservice)**
+**Audit Log Handler for Source = Payload (Listings Microservice)**
 
 This document provides the complete implementation for tracking changes
-made through Strapi in your Listings Microservice audit log system. The
+made through Payload in your Listings Microservice audit log system. The
 purpose is to ensure a single unified audit trail for all updates,
-whether they originate from the frontend or the Strapi admin interface.
+whether they originate from the frontend or the Payload admin interface.
 
 ## **✍️ Step 1: Update the AuditLog Entity (PostgreSQL + TypeORM)**
 
@@ -16,7 +16,7 @@ export enum AuditSource {
 
 FRONTEND = \'frontend\',
 
-STRAPI = \'strapi\',
+PAYLOAD = \'strapi\',
 
 }
 
@@ -175,18 +175,18 @@ user_id: \'strapi-admin-id\',
 
 user_email: \'admin@example.com\',
 
-user_name: \'Strapi Admin\',
+user_name: \'Payload Admin\',
 
-source: AuditSource.STRAPI,
+source: AuditSource.PAYLOAD,
 
 });
 
-> ⚠️ You can dynamically pull the Strapi user info if included in the
+> ⚠️ You can dynamically pull the Payload user info if included in the
 > webhook payload.
 
 ## **✅ Notes**
 
-- This same structure supports logging from frontend and Strapi with no
+- This same structure supports logging from frontend and Payload with no
   separate logic branches.
 
 - Use the source field to filter or group audit logs in your admin UI.

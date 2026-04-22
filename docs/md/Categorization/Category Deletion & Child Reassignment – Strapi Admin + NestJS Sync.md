@@ -1,9 +1,9 @@
-**Category Deletion & Child Reassignment -- Strapi Admin + NestJS Sync**
+**Category Deletion & Child Reassignment -- Payload Admin + NestJS Sync**
 
 ## **1. Overview**
 
 This document defines the **full implementation** for handling **parent
-category deletions** in **Strapi Admin** while ensuring:
+category deletions** in **Payload Admin** while ensuring:
 
 - No **orphaned child categories** ever exist.
 
@@ -26,7 +26,7 @@ Currently, deleting a parent category risks:
 
 - Autocomplete suggestions showing outdated categories
 
-We solve this by enforcing **mandatory reassignment** at the **Strapi
+We solve this by enforcing **mandatory reassignment** at the **Payload
 admin UI** and syncing it to NestJS.
 
 ## **3. Core Requirements**
@@ -41,14 +41,14 @@ admin UI** and syncing it to NestJS.
 
 ## **4. Admin UI Flow**
 
-We'll extend the **Strapi Admin Panel** via a **custom plugin
+We'll extend the **Payload Admin Panel** via a **custom plugin
 override**.
 
 ### **Step 1 --- Click Delete**
 
 - Admin selects a parent category to delete.
 
-- We intercept the request via **Strapi's admin plugin lifecycle**.
+- We intercept the request via **Payload's admin plugin lifecycle**.
 
 ### **Step 2 --- Show Reassignment Modal**
 
@@ -69,12 +69,12 @@ override**.
 
 ### **Step 4 --- Sync Changes**
 
-- Strapi updates DB → triggers webhook → NestJS updates category
+- Payload updates DB → triggers webhook → NestJS updates category
   hierarchy.
 
 - NestJS verifies changes via fallback cron.
 
-## **5. Strapi Plugin Implementation**
+## **5. Payload Plugin Implementation**
 
 ### **5.1. File Structure**
 
@@ -154,7 +154,7 @@ Confirm Reassignment
 
 
 
-### **5.3. Strapi Service Logic**
+### **5.3. Payload Service Logic**
 
 ****// /src/plugins/category-reassignment/server/services/category.js
 
@@ -198,7 +198,7 @@ return { success: true };
 
 ## **6. Webhook → NestJS Sync**
 
-### **6.1. Strapi Webhook**
+### **6.1. Payload Webhook**
 
 Triggers on reassignment:
 

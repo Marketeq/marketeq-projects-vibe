@@ -1,7 +1,7 @@
-**Strapi Admin Preview Setup -- Native v5 Method**
+**Payload Admin Preview Setup -- Native v5 Method**
 
 This document walks through how to enable the **Preview** button inside
-the Strapi admin panel using the official method introduced in **Strapi
+the Payload admin panel using the official method introduced in **Payload
 v5+**. This allows admins to preview how the content will appear on the
 frontend (e.g. a Next.js project detail page) before publishing. This is
 the recommended, stable, and officially supported method for previewing
@@ -9,7 +9,7 @@ entries before publishing. No custom plugins are required.
 
 ### **✅ Requirements**
 
-- Strapi v5 or later
+- Payload v5 or later
 
 - Your frontend supports previewing content via a /preview route (e.g.
   in Next.js)
@@ -18,7 +18,7 @@ entries before publishing. No custom plugins are required.
 
 ### **1. Enable the Admin Preview Button**
 
-Strapi v5 includes native support for preview buttons.
+Payload v5 includes native support for preview buttons.
 
 **Steps:**
 
@@ -93,11 +93,11 @@ res.end();
 
 }
 
-> Set PREVIEW_SECRET in both frontend and Strapi .env files.
+> Set PREVIEW_SECRET in both frontend and Payload .env files.
 
-### **3. Configure .env in Strapi**
+### **3. Configure .env in Payload**
 
-**Add to your Strapi .env file:**
+**Add to your Payload .env file:**
 
 ****PREVIEW_SECRET=your_secure_token_here
 
@@ -107,7 +107,7 @@ res.end();
 
 Once configured:
 
-- Go to any **Project** entry in Strapi admin.
+- Go to any **Project** entry in Payload admin.
 
 - A **Preview** button will appear in the top-right.
 

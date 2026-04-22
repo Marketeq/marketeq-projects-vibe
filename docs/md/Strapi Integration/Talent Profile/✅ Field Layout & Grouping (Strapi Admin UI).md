@@ -1,4 +1,4 @@
-## **✅ Field Layout & Grouping (Strapi Admin UI)**
+## **✅ Field Layout & Grouping (Payload Admin UI)**
 
 ### **🔝 Top Section (Basic Identity)**
 

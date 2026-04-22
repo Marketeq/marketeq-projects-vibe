@@ -124,7 +124,7 @@
 |:------:|--------|----------|:----:|-------|
 | PASS | `POST` | `/api/category-pages/cms-sync` | 201 | Payload CMS webhook shape (collection + doc) |
 | PASS | `POST` | `/api/category-pages/cms-sync` | 201 | Tag sync via webhook |
-| PASS | `POST` | `/api/category-pages/strapi-sync` | 201 | Strapi v4 webhook shape (model + entry) |
+| PASS | `POST` | `/api/category-pages/strapi-sync` | 201 | Payload v4 webhook shape (model + entry) |
 | PASS | `POST` | `/api/category-pages/cms-sync` | 201 | Returns {status:'ignored'} for unhandled models |
 | PASS | `POST` | `/api/category-pages/cms-sync` | 400 | Rejects empty payload |
 
@@ -216,7 +216,7 @@
 | Result | Method | Endpoint | HTTP | Notes |
 |:------:|--------|----------|:----:|-------|
 | PASS | `POST` | `/api/categories/cms/delete` | 201 | Handles CMS delete event |
-| PASS | `POST` | `/api/categories/strapi/delete` | 201 | Strapi-style delete webhook |
+| PASS | `POST` | `/api/categories/strapi/delete` | 201 | Payload-style delete webhook |
 | PASS | `POST` | `/api/categories/cms/delete` | 201 | Idempotent — returns ignored if already deleted |
 
 **Sample Responses:**

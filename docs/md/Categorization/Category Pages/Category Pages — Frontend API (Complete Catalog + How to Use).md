@@ -120,7 +120,7 @@ new items.
 ### **D.3 Hero / Editorial**
 
 **GET** /api/category-pages/{l1}\[/{l2}\[/{l3}\]\]/hero\
-**Purpose:** Optional hero/editorial card from Strapi.\
+**Purpose:** Optional hero/editorial card from Payload.\
 **Returns:** { title, image?, link? } \| null\
 **How to use it:** Show the hero section if present.
 
@@ -131,9 +131,9 @@ new items.
 **Returns:** { title, description, canonical }\
 **How to use it:** Set \<title\>, meta description, canonical URL.
 
-## **E) Editorial & Knowledge (Strapi-sourced)**
+## **E) Editorial & Knowledge (Payload-sourced)**
 
-> **Authored in Strapi**; the API simply returns them. Not stored in the
+> **Authored in Payload**; the API simply returns them. Not stored in the
 > NestJS DB.
 
 ### **E.1 Guides (articles)**

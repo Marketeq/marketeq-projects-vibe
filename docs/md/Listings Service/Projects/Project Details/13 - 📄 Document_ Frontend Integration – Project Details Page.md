@@ -2,7 +2,7 @@
 
 This guide provides **step-by-step frontend integration instructions**
 for rendering the full Project Details Page using data from the NestJS
-backend (PostgreSQL). This does **not** include Strapi, which is only
+backend (PostgreSQL). This does **not** include Payload, which is only
 used for admin edits on the backend.
 
 #### **🧭 Directory**
@@ -90,7 +90,7 @@ return res.data;
 - All fields come from the NestJS backend via the
   /api/projects/:projectId route.
 
-- Do **not** use Strapi data unless explicitly handling admin edits
+- Do **not** use Payload data unless explicitly handling admin edits
   (covered in a separate backend document).
 
 - Component-level props should be explicitly typed using the response

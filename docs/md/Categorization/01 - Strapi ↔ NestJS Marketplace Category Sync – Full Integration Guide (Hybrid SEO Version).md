@@ -1,9 +1,9 @@
-# **01- Strapi ↔ NestJS Marketplace Category Sync -- Full Integration Guide (Hybrid SEO Version)**
+# **01- Payload ↔ NestJS Marketplace Category Sync -- Full Integration Guide (Hybrid SEO Version)**
 
 ## **1. Purpose**
 
 This document provides full step-by-step integration instructions for
-syncing marketplace categories and tags between **Strapi CMS** and the
+syncing marketplace categories and tags between **Payload CMS** and the
 **NestJS backend database** with:
 
 - Unlimited nesting support
@@ -23,9 +23,9 @@ syncing marketplace categories and tags between **Strapi CMS** and the
 
 ## **2. Database Models**
 
-### **Strapi Category Model**
+### **Payload Category Model**
 
-- id: Auto (Strapi default)
+- id: Auto (Payload default)
 
 - uuid: UUID (shared with NestJS)
 
@@ -55,7 +55,7 @@ syncing marketplace categories and tags between **Strapi CMS** and the
 
 - id: Auto increment
 
-- uuid: UUID (same as Strapi)
+- uuid: UUID (same as Payload)
 
 - name: String
 
@@ -95,7 +95,7 @@ syncing marketplace categories and tags between **Strapi CMS** and the
 
 - Categories can have unlimited parent-child relationships.
 
-- Both Strapi and NestJS models use recursive relations to support a
+- Both Payload and NestJS models use recursive relations to support a
   hierarchy similar to WordPress.
 
 ## **4. Hybrid SEO Approach**
@@ -114,7 +114,7 @@ syncing marketplace categories and tags between **Strapi CMS** and the
 
 ### **Optional Overrides**
 
-- Admin can define seo_meta_title and seo_meta_description in Strapi.
+- Admin can define seo_meta_title and seo_meta_description in Payload.
 
 - If these fields are filled, they override the default SEO template.
 
@@ -129,9 +129,9 @@ syncing marketplace categories and tags between **Strapi CMS** and the
 
 ## **5. Real-Time Webhook Sync**
 
-### **Strapi → NestJS (Admin Updates)**
+### **Payload → NestJS (Admin Updates)**
 
-- **Trigger:** Category created/updated/deleted in Strapi.
+- **Trigger:** Category created/updated/deleted in Payload.
 
 - **Action:** Webhook sends category JSON to NestJS
   /api/categories/sync.
@@ -160,11 +160,11 @@ return { status: \'ok\' };
 
 - If deleted: mark inactive and trigger reassignment.
 
-### **NestJS → Strapi (User/AI-Generated Subcategories)**
+### **NestJS → Payload (User/AI-Generated Subcategories)**
 
 - **Trigger:** New subcategory passes autocomplete filters.
 
-- **Action:** Push to Strapi with approved = true and
+- **Action:** Push to Payload with approved = true and
   published_in_marketplace = false.
 
 **Service Example:**
@@ -217,7 +217,7 @@ headers: { Authorization: \`Bearer \${process.env.STRAPI_TOKEN}\` }
 - Auto-approved categories = approved = true, published_in_marketplace =
   false.
 
-- Admin can review unpublished categories in Strapi sorted by
+- Admin can review unpublished categories in Payload sorted by
   created_at.
 
 ## **8. Deletion and Rename Handling**
@@ -241,15 +241,15 @@ headers: { Authorization: \`Bearer \${process.env.STRAPI_TOKEN}\` }
 ## **10. Step-by-Step Setup**
 
 1.  Add uuid, seo_meta_title, seo_meta_description, and
-    published_in_marketplace to both Strapi and NestJS models.
+    published_in_marketplace to both Payload and NestJS models.
 
-2.  Create Strapi webhooks for category lifecycle events.
+2.  Create Payload webhooks for category lifecycle events.
 
 3.  Build NestJS /categories/sync endpoint.
 
 4.  Implement NestJS category service with upsert and tag sync logic.
 
-5.  Create NestJS → Strapi push service for user/AI-generated
+5.  Create NestJS → Payload push service for user/AI-generated
     categories.
 
 6.  Add cron job to NestJS for fallback sync.
@@ -260,7 +260,7 @@ headers: { Authorization: \`Bearer \${process.env.STRAPI_TOKEN}\` }
 
 9.  Test auto-generated subcategory SEO using default template.
 
-10. Test optional override fields in Strapi to ensure they override
+10. Test optional override fields in Payload to ensure they override
     defaults.
 
 ## **11. Developer Notes**

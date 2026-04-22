@@ -4,19 +4,19 @@
 
 This document defines how marketplace categories and subcategories are
 integrated with the **Autocomplete Microservice** and synchronized with
-Strapi. It ensures:
+Payload. It ensures:
 
 - Categories are exposed to autocomplete endpoints.
 
 - User-generated subcategories follow the same moderation filters.
 
-- Changes in Strapi propagate to autocomplete suggestions in real-time.
+- Changes in Payload propagate to autocomplete suggestions in real-time.
 
 ## **2. Data Flow Overview**
 
 ### **Sources:**
 
-- **Strapi:** Admin-created categories and subcategories.
+- **Payload:** Admin-created categories and subcategories.
 
 - **NestJS:** User-generated and AI-generated subcategories (via
   publishing flows).
@@ -71,7 +71,7 @@ return this.autocompleteService.getCategoryMatches(query);
 
 ### **a. Real-Time**
 
-- Strapi lifecycle/webhooks trigger updates to NestJS.
+- Payload lifecycle/webhooks trigger updates to NestJS.
 
 - NestJS writes categories into the categories table.
 
@@ -79,7 +79,7 @@ return this.autocompleteService.getCategoryMatches(query);
 
 ### **b. Cron Fallback**
 
-- Every 10 min, NestJS compares Strapi updated_at timestamps to resync
+- Every 10 min, NestJS compares Payload updated_at timestamps to resync
   any missed categories.
 
 - Autocomplete service automatically reflects updated DB entries.
@@ -103,7 +103,7 @@ return this.autocompleteService.getCategoryMatches(query);
 
     - Immediately exposed to autocomplete suggestions.
 
-    - Sent to Strapi for admin review via API.
+    - Sent to Payload for admin review via API.
 
 4.  If rejected:
 
@@ -140,7 +140,7 @@ await this.pushToStrapi(category);
 - Autocomplete microservice **reads directly from the NestJS category
   table**.
 
-- When Strapi updates categories:
+- When Payload updates categories:
 
   - Lifecycle/webhook triggers NestJS update.
 
@@ -174,6 +174,6 @@ All category and subcategory suggestions must pass:
 
 - ✅ Rejected categories never appear in autocomplete.
 
-- ✅ Updates in Strapi propagate to suggestions in real-time.
+- ✅ Updates in Payload propagate to suggestions in real-time.
 
 - ✅ Cron job catches missed updates within 10 minutes.

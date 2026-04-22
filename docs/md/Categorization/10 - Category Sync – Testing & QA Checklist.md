@@ -6,20 +6,20 @@ This document provides a single QA reference for all category-related
 features, combining testing steps that were previously scattered across
 multiple implementation docs.
 
-## **1. Strapi ↔ NestJS Sync**
+## **1. Payload ↔ NestJS Sync**
 
 ### **Goals:**
 
-- Ensure categories created in Strapi appear in NestJS with correct
+- Ensure categories created in Payload appear in NestJS with correct
   UUID, slug, and parent relationships.
 
-- Ensure user/AI-generated subcategories in NestJS sync back to Strapi.
+- Ensure user/AI-generated subcategories in NestJS sync back to Payload.
 
 ### **Tests:**
 
-✅ **Strapi → NestJS**
+✅ **Payload → NestJS**
 
-1.  Create a new category in Strapi (top-level and subcategory).
+1.  Create a new category in Payload (top-level and subcategory).
 
 2.  Verify:
 
@@ -29,15 +29,15 @@ multiple implementation docs.
 
     - Parent-child relationship preserved.
 
-3.  Update the name in Strapi.
+3.  Update the name in Payload.
 
     - Confirm NestJS reflects updated name and slug.
 
-4.  Delete category in Strapi.
+4.  Delete category in Payload.
 
     - Confirm NestJS triggers reassignment logic for linked content.
 
-✅ **NestJS → Strapi**
+✅ **NestJS → Payload**
 
 1.  Create a user-generated subcategory via publishing flow.
 
@@ -45,7 +45,7 @@ multiple implementation docs.
 
     - Category appears in NestJS DB.
 
-    - Category pushes to Strapi with published_in_marketplace = false.
+    - Category pushes to Payload with published_in_marketplace = false.
 
 3.  Confirm UUID and slug match between systems.
 
@@ -57,9 +57,9 @@ multiple implementation docs.
 
 ### **Tests:**
 
-1.  Disable Strapi webhook temporarily.
+1.  Disable Payload webhook temporarily.
 
-2.  Create a category in Strapi.
+2.  Create a category in Payload.
 
 3.  Wait for cron job (10 min default).
 
@@ -74,7 +74,7 @@ multiple implementation docs.
 
 ### **Tests:**
 
-1.  Create a 5-level deep category chain in Strapi.
+1.  Create a 5-level deep category chain in Payload.
 
 2.  Fetch category tree via NestJS API:
 
@@ -108,7 +108,7 @@ multiple implementation docs.
 
     - Confirm frontend uses custom meta title/description.
 
-3.  Update SEO fields in Strapi:
+3.  Update SEO fields in Payload:
 
     - Confirm NestJS API reflects changes.
 
@@ -126,7 +126,7 @@ multiple implementation docs.
 
 1.  Link projects, jobs, and services to a category.
 
-2.  Delete category in Strapi.
+2.  Delete category in Payload.
 
 3.  Verify:
 
@@ -144,13 +144,13 @@ multiple implementation docs.
 
 ### **Tests:**
 
-1.  Create a new category in Strapi.
+1.  Create a new category in Payload.
 
 2.  Call GET /autocomplete/categories?q=\<term\>.
 
     - Confirm new category appears in suggestions.
 
-3.  Update category name in Strapi.
+3.  Update category name in Payload.
 
     - Confirm autocomplete reflects new name in real-time.
 

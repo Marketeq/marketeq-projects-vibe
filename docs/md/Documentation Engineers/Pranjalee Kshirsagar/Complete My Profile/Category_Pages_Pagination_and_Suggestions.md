@@ -145,7 +145,7 @@ Folder path: /apps/api/src/category-pages/suggestions.service.ts;
 ## Step 8 --- Editorial blocks & mock data (temporary)
 
 Explanation: Seed minimal mock data for hero/guides/courses in dev to
-unblock FE until Strapi integration is wired via the editorial proxy.
+unblock FE until Payload integration is wired via the editorial proxy.
 
 Folder path: /apps/api/src/category-pages/editorial.proxy.ts;
 /apps/web/components/category/\*; /apps/api/.env.development

@@ -1,9 +1,9 @@
-## **✅ Developer Task List: Strapi ↔ NestJS Project Sync**
+## **✅ Developer Task List: Payload ↔ NestJS Project Sync**
 
-### **1. Strapi Setup**
+### **1. Payload Setup**
 
 - Confirm all editable fields and components from the project schema are
-  implemented in Strapi.
+  implemented in Payload.
 
 - Ensure the force_review_on_edit flag is correctly triggered on all
   relevant updates.
@@ -16,7 +16,7 @@
 
 ### **2. Webhook & Job Queue**
 
-- Create a webhook in Strapi to trigger on project update or publish
+- Create a webhook in Payload to trigger on project update or publish
   events.
 
 - Ensure webhook calls a NestJS endpoint or pushes a job to a Redis
@@ -38,7 +38,7 @@
 
 ### **4. Database Sync Logic**
 
-- Build service to apply the Strapi payload to the corresponding
+- Build service to apply the Payload payload to the corresponding
   Postgres record.
 
 - Ensure content moderation status is respected:
@@ -54,23 +54,23 @@
 
   - source: "strapi"
 
-  - modified_by: full name, email, user ID of Strapi admin
+  - modified_by: full name, email, user ID of Payload admin
 
 - Include all field-level changes and timestamps.
 
 ### **6. Front-End Consistency**
 
-- Confirm project updates from Strapi reflect in frontend UI via the
+- Confirm project updates from Payload reflect in frontend UI via the
   existing API.
 
 - Invalidate relevant frontend cache (if using any).
 
-- Confirm marketplace reflects updated data within seconds of Strapi
+- Confirm marketplace reflects updated data within seconds of Payload
   update.
 
 ### **7. Backfill & Resync (One-Time)**
 
-- Write a CLI script to backfill existing projects from Strapi to NestJS
+- Write a CLI script to backfill existing projects from Payload to NestJS
   for initial sync.
 
 - Allow forced resync per project ID (via internal admin endpoint or CLI
@@ -82,7 +82,7 @@
 
 - Perform end-to-end test for full cycle:
 
-  - Admin edits project in Strapi
+  - Admin edits project in Payload
 
   - Project passes moderation
 

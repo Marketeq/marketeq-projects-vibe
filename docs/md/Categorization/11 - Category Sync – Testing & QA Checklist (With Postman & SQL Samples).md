@@ -5,11 +5,11 @@
 Full QA checklist for category syncing and validation with ready-to-use
 Postman requests and SQL queries for QA testers.
 
-## **1. Strapi ↔ NestJS Sync**
+## **1. Payload ↔ NestJS Sync**
 
-### **Postman: Strapi → NestJS**
+### **Postman: Payload → NestJS**
 
-- **Create Category (Strapi):\**
+- **Create Category (Payload):\**
 
 ****POST {{STRAPI_URL}}/categories
 
@@ -32,7 +32,7 @@ Body:
 ****SELECT uuid, name, slug, parent_id FROM categories WHERE name =
 \'Test Category\';
 
-### **NestJS → Strapi**
+### **NestJS → Payload**
 
 - **Create User Subcategory (NestJS):\**
 
@@ -42,7 +42,7 @@ Body:
 
 { \"name\": \"New User Subcategory\" }
 
-- **Verify in Strapi:\**
+- **Verify in Payload:\**
 
 ****GET {{STRAPI_URL}}/categories?filters\[name\]\[\$eq\]=New User
 Subcategory
@@ -53,9 +53,9 @@ Subcategory
 
 ### **Disable Webhook, Trigger Cron:**
 
-- Temporarily turn off Strapi webhook.
+- Temporarily turn off Payload webhook.
 
-- Create a new category in Strapi.
+- Create a new category in Payload.
 
 - Wait for 10-min cron to run.
 
@@ -69,7 +69,7 @@ Subcategory
 
 ### **Postman:**
 
-- Create multiple levels in Strapi:
+- Create multiple levels in Payload:
 
 POST {{STRAPI_URL}}/categories
 
@@ -103,7 +103,7 @@ Subcategory
 
 - Verify default meta title/description.
 
-- Add SEO override in Strapi:
+- Add SEO override in Payload:
 
 PATCH {{STRAPI_URL}}/categories/{{UUID}}
 
@@ -136,7 +136,7 @@ uuid=\'{{UUID}}\';
 
 }
 
-- Delete category in Strapi:
+- Delete category in Payload:
 
 DELETE {{STRAPI_URL}}/categories/{{CATEGORY_UUID}}
 
@@ -150,7 +150,7 @@ uuid=\'{{UUID}}\';
 
 ### **Postman:**
 
-- Create category in Strapi.
+- Create category in Payload.
 
 - Test Autocomplete:
 

@@ -1,23 +1,23 @@
-**Cloudflare Media Upload – Project Listings (Strapi + Frontend Flow)**
+**Cloudflare Media Upload – Project Listings (Payload + Frontend Flow)**
 
 This document ensures that all media files (images, PDFs, etc.) related
 to **Project Listings** are reliably uploaded to **Cloudflare**, whether
-added via **Strapi Admin** or during **frontend-driven publishing**
-(bypassing Strapi).
+added via **Payload Admin** or during **frontend-driven publishing**
+(bypassing Payload).
 
 ### **✅ Overview**
 
 | **Upload Source** | **Target System** | **Upload Destination** | **Required Code/Setup** |
 |----|----|----|----|
-| Strapi Admin Panel | Strapi backend | Cloudflare R2 | Upload plugin configuration |
+| Payload Admin Panel | Payload backend | Cloudflare R2 | Upload plugin configuration |
 | Frontend (Next.js) | NestJS API | Cloudflare R2 | Manual file upload endpoint |
 
-### **🔧 Part 1: Strapi Admin – Uploads to Cloudflare R2**
+### **🔧 Part 1: Payload Admin – Uploads to Cloudflare R2**
 
-This assumes you’re using **Strapi v4+** with a **Cloudflare R2 upload
+This assumes you’re using **Payload v4+** with a **Cloudflare R2 upload
 provider plugin**.
 
-#### **1. Install Required Plugin (Strapi Upload Provider for R2)**
+#### **1. Install Required Plugin (Payload Upload Provider for R2)**
 
 ****npm install strapi-provider-upload-r2 --save
 
@@ -65,19 +65,19 @@ R2_BUCKET=your-bucket-name
 
 R2_PUBLIC_URL=https://cdn.yourdomain.com
 
-> 🔐 You must **rebuild Strapi** after setting the config:
+> 🔐 You must **rebuild Payload** after setting the config:
 
 npm run build && npm run start
 
 #### **✅ Result:**
 
-Any image uploaded via the Strapi Admin (e.g., in the Project listing
+Any image uploaded via the Payload Admin (e.g., in the Project listing
 CMS fields) will be stored in Cloudflare R2, and url fields returned by
-Strapi will point to R2_PUBLIC_URL.
+Payload will point to R2_PUBLIC_URL.
 
 ### **🔧 Part 2: Frontend Upload via NestJS Project Publishing Flow**
 
-If your frontend includes a **custom publish flow** (not using Strapi),
+If your frontend includes a **custom publish flow** (not using Payload),
 you need to:
 
 1.  Accept media file uploads in NestJS
@@ -219,7 +219,7 @@ your project publishing API.
 
 ### **✅ Summary**
 
-- Use Strapi plugin config to upload admin content to R2
+- Use Payload plugin config to upload admin content to R2
 
 - Use NestJS + S3 SDK to upload frontend files to R2
 

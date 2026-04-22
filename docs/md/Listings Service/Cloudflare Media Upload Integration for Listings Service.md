@@ -211,10 +211,10 @@ data.
 
 **9. Important Notes**
 
-- This upload logic works for both Strapi and frontend-driven flows
+- This upload logic works for both Payload and frontend-driven flows
 
 - All uploads go to Cloudflare regardless of whether they originate from
-  Strapi or the frontend
+  Payload or the frontend
 
 - Use the same bucket and ACL strategy to avoid permission mismatches
 

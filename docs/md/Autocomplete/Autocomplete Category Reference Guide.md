@@ -5,7 +5,7 @@
 This guide defines the full category system used to validate, assign,
 and organize user-generated autocomplete entries across job titles,
 skills, certifications, industries, and more. Use this guide to keep
-category assignments aligned with your Strapi CMS and database, and to
+category assignments aligned with your Payload CMS and database, and to
 maintain a clean, moderated autocomplete experience.
 
 ## **🎯 Purpose of Categories**
@@ -20,14 +20,14 @@ Categories ensure that all user-submitted data:
   Trainer\")
 
 All category records are stored in **PostgreSQL** and managed through
-the **Strapi CMS**. Strapi acts as the administrative interface for
+the **Payload CMS**. Payload acts as the administrative interface for
 adding, editing, or deactivating categories.
 
 ## **🧱 Primary Category Types**
 
 All autocomplete entries should belong to one of the following **root
 categories**, which are stored in the categories table in Postgres and
-mirrored in Strapi:
+mirrored in Payload:
 
   --------------------------------------------------
   **Category**   **Common Use Cases**
@@ -111,7 +111,7 @@ Reject a user submission if:
 
 - ❌ Its assigned category contradicts known semantic clusters
 
-- ❌ It is nonsensical or irrelevant to any category Strapi has enabled
+- ❌ It is nonsensical or irrelevant to any category Payload has enabled
 
 Example:
 
@@ -131,9 +131,9 @@ Example:
 
 
 
-## **🛠️ Managing Categories in Strapi**
+## **🛠️ Managing Categories in Payload**
 
-- Use the **Strapi Admin UI** to:
+- Use the **Payload Admin UI** to:
 
   - Add new root categories
 
@@ -141,7 +141,7 @@ Example:
 
   - Deactivate obsolete categories (is_active = false)
 
-- Strapi writes changes to the categories table in PostgreSQL
+- Payload writes changes to the categories table in PostgreSQL
 
 - Validation logic uses **only active categories** when assigning or
   checking entries
@@ -155,6 +155,6 @@ Example:
 
 - Database source of truth: public.categories (Postgres)
 
-- CMS interface: Strapi \> Collections \> Categories
+- CMS interface: Payload \> Collections \> Categories
 
 - Unknown: /data/user_suggestions/new_categories_pending.json

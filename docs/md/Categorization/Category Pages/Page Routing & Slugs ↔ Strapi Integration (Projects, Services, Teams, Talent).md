@@ -1,8 +1,8 @@
-# **Page Routing & Slugs ↔ Strapi Integration (Projects, Services, Teams, Talent)**
+# **Page Routing & Slugs ↔ Payload Integration (Projects, Services, Teams, Talent)**
 
-**Audience:** Strapi admins + backend devs (NestJS).\
+**Audience:** Payload admins + backend devs (NestJS).\
 \
-**Goal:** Map L1/L2/L3 category paths and typed detail URLs to Strapi
+**Goal:** Map L1/L2/L3 category paths and typed detail URLs to Payload
 data, with minimal glue code and clear responsibilities.\
 \
 **Principles:** Human slugs + short id in URLs (no UUIDs in public
@@ -11,11 +11,11 @@ for Projects/Services.
 
 ## **0) What integrates with what (one-liner)**
 
-We compute each page's **canonical URL** from Strapi's categories
+We compute each page's **canonical URL** from Payload's categories
 (slugPath) + the item's own slug, publicId, and (for Projects/Services)
 required **type**.
 
-## **1) Required fields in Strapi (per listing type)**
+## **1) Required fields in Payload (per listing type)**
 
 Each item must carry just enough data for the backend to build a
 canonical path consistently.
@@ -49,7 +49,7 @@ canonical path consistently.
 > then build the final URL using the item slug, public_id, and the
 > **type** (for Projects/Services).
 
-## **2) Strapi lifecycle: enforce & cache the canonical category (per item)**
+## **2) Payload lifecycle: enforce & cache the canonical category (per item)**
 
 **Purpose:** Ensure every item always has one unambiguous canonical
 trail.
@@ -116,9 +116,9 @@ data.public_id = String(Math.floor(10000 + Math.random()\*90000));
 > Replicate this file (with field names adjusted) for **Services**,
 > **Teams**, and **Talent**.
 
-## **3) Strapi helper: resolve slugPath by category UUID**
+## **3) Payload helper: resolve slugPath by category UUID**
 
-**Purpose:** A small shared helper Strapi can use (and/or Nest can call
+**Purpose:** A small shared helper Payload can use (and/or Nest can call
 via a categories endpoint) to get \[\"l1\",\"l2\",\"l3\"\] from the
 chosen primary_category_uuid.
 
@@ -161,7 +161,7 @@ return parts; // e.g.
 
 
 
-## **4) Strapi REST projection: expose only what the backend needs**
+## **4) Payload REST projection: expose only what the backend needs**
 
 **Purpose:** Keep payloads lean: the backend assembler should receive
 exactly the link-building fields, not entire items.
@@ -177,7 +177,7 @@ routes: \[
 
 method: \'GET\',
 
-path: \'/projects/:id/slug-meta\', // Strapi internal id OR uuid; choose
+path: \'/projects/:id/slug-meta\', // Payload internal id OR uuid; choose
 one
 
 handler: \'project.slugMeta\',
@@ -303,7 +303,7 @@ async getByPublicId(@Param(\'publicId\') publicId:string, \@Res()
 res:Response) {
 
 const p = await this.svc.findDetailByPublicId(publicId); // reads from
-Listing Service (not Strapi)
+Listing Service (not Payload)
 
 if (!p) return res.status(404).send();
 
@@ -338,10 +338,10 @@ p.publicId));
 > Implement equivalent controllers for **Services** (uses serviceUrl
 > with serviceType), **Teams**, **Talent**.
 
-## **7) Category listing pages: using Strapi to resolve the trail**
+## **7) Category listing pages: using Payload to resolve the trail**
 
 **Purpose:** When building listing pages, Nest takes the path parts
-(l1/l2/l3), validates against Strapi Categories, and uses the page's
+(l1/l2/l3), validates against Payload Categories, and uses the page's
 **Taxonomy Group rules** to populate blocks.
 
 **Minimal flow (L3 example):**
@@ -349,7 +349,7 @@ p.publicId));
 1.  Parse URL: /c/{l1}/{l2}/{l3}/services
 
 2.  Verify each slug exists and forms a valid parent→child→grandchild
-    chain in Strapi Categories.
+    chain in Payload Categories.
 
 3.  Read taxonomy-group rules for the matched Category (and pageKind =
     services) to render blocks.
@@ -363,7 +363,7 @@ p.publicId));
 **Purpose:** Push only what Nest needs when categories or item slugs
 change; do **not** rebuild the category service.
 
-**Strapi → Nest webhooks (examples):**
+**Payload → Nest webhooks (examples):**
 
 - **Category changed/published** → POST /internal/hooks/category-updated
   with { uuid, slug, level, parent_uuid, published_in_marketplace }
@@ -420,7 +420,7 @@ change; do **not** rebuild the category service.
 
 - Canonical URL → /c/\.../talent/{slug}-{id}
 
-## **11) Hand-off checklist (Strapi ↔ Routing ready)**
+## **11) Hand-off checklist (Payload ↔ Routing ready)**
 
 - Each item type has slug, public_id, uuid, categories,
   primary_category_uuid, and **type** where required.
@@ -432,7 +432,7 @@ change; do **not** rebuild the category service.
   trails.
 
 - Minimal /slug-meta endpoints exist for Projects/Services/Teams/Talent
-  (Strapi-side) **or** equivalent data is available to Nest via existing
+  (Payload-side) **or** equivalent data is available to Nest via existing
   projections.
 
 - Nest link builders (projectUrl, serviceUrl, teamUrl, talentUrl) used
@@ -446,8 +446,8 @@ change; do **not** rebuild the category service.
 
 - **Do not** expose UUIDs in URLs; they remain internal.
 
-- **Do not** duplicate heavy listing data in Strapi; keep it in the
+- **Do not** duplicate heavy listing data in Payload; keep it in the
   Listing/User services.
 
-- Strapi remains the **editorial + taxonomy** source (categories,
+- Payload remains the **editorial + taxonomy** source (categories,
   overrides, rules), not the runtime catalog.
