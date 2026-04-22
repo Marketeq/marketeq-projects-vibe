@@ -57,8 +57,11 @@ interface ItemData {
   rating?: number
   reviewCount?: number
   duration?: string
+  projectDurationLabel?: string
   budget?: string | number
-  scopeTotal?: { budget?: string | number }
+  priceRangeMin?: string | number
+  priceRangeMax?: string | number
+  scopeTotal?: { budget?: string | number; timeline?: string }
   deliveryTime?: string
   priceMin?: string | number
   priceMax?: string | number
@@ -122,7 +125,7 @@ const ProjectGridCard = ({ item, favorite, onRemove }: { item: ItemData; favorit
             <span className="font-medium text-sm leading-none text-dark-blue-400">
               {isService
                 ? (item.deliveryTime || "Monthly")
-                : `Starting from ${item.duration || "12 weeks"}`}
+                : `Starting from ${item.projectDurationLabel || item.duration || item.scopeTotal?.timeline || "12 weeks"}`}
             </span>
           </div>
           <div className="flex items-center gap-x-[6.4px]">
@@ -130,7 +133,7 @@ const ProjectGridCard = ({ item, favorite, onRemove }: { item: ItemData; favorit
             <span className="font-medium text-sm leading-none text-dark-blue-400">
               {isService
                 ? `$${item.priceMin ? `${Number(item.priceMin).toLocaleString()} - $${Number(item.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month`
-                : `$${item.budget ? Number(item.budget).toLocaleString() : item.scopeTotal?.budget || "50,000"} budget`}
+                : `$${Number(item.priceRangeMin ?? item.budget ?? item.scopeTotal?.budget ?? 50000).toLocaleString()} budget`}
             </span>
           </div>
         </div>
@@ -206,7 +209,7 @@ const ProjectListCard = ({ item, favorite, onRemove }: { item: ItemData; favorit
                 <div className="flex items-center gap-x-[6.4px]">
                   <Clock className="size-[16px] shrink-0 text-primary-500" />
                   <span className="font-medium text-sm leading-none text-dark-blue-400">
-                    {isService ? (item.deliveryTime || "Monthly") : (item.duration || "12 weeks")}
+                    {isService ? (item.deliveryTime || "Monthly") : (item.projectDurationLabel || item.duration || item.scopeTotal?.timeline || "12 weeks")}
                   </span>
                 </div>
                 <div className="flex items-center gap-x-[6.4px]">
@@ -214,7 +217,7 @@ const ProjectListCard = ({ item, favorite, onRemove }: { item: ItemData; favorit
                   <span className="font-medium text-sm leading-none text-dark-blue-400">
                     {isService
                       ? `$${item.priceMin ? `${Number(item.priceMin).toLocaleString()} - $${Number(item.priceMax).toLocaleString()}` : "5,000 - $15,000"}/mo`
-                      : `$${item.budget ? Number(item.budget).toLocaleString() : item.scopeTotal?.budget || "50,000"}`}
+                      : `$${Number(item.priceRangeMin ?? item.budget ?? item.scopeTotal?.budget ?? 50000).toLocaleString()}`}
                   </span>
                 </div>
               </div>

@@ -59,11 +59,11 @@ return res.data;
 | Top Rated? | isTopRated | Hide if false |
 | Show Reviews? | showReviews | Hide if false |
 | Team Info | team\[\] | Names, usernames, skills, languages |
-| Project Duration | duration | Calculated backend value |
+| Project Duration | projectDurationLabel (fallback: duration) | Calculated backend value derived from scope. `duration` is kept for backward compatibility. |
 | Team Member Count | team.length | Actual number of assigned members |
 | Similar Projects | similarProjects\[\] | Use project IDs and titles |
 | Recommended Projects | recommendedProjects\[\] | Use hybrid model metadata |
-| Pricing | totalPrice, priceBreakdown | Display by week/month/quarter/year |
+| Pricing | startingPriceTotal, priceViewAmount, priceViewMode, priceRangeMin, priceRangeMax | Use `priceViewMode` to label the period; show `priceViewAmount` as the per-period price and `startingPriceTotal` / `priceRangeMin–Max` as the total range. |
 | Payment Plan Tooltip | Static | On hover, show payment plan options |
 
 ## **🧪 Conditional UI**

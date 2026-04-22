@@ -1,15 +1,38 @@
 // frontend/src/lib/api/favorites.ts
 
-import Cookies from "js-cookie"
-
 const FAVORITES_API_URL =
   process.env.NEXT_PUBLIC_FAVORITES_API_URL || "http://localhost:3012/favorites"
 
-function authHeaders(): HeadersInit {
-  const token = Cookies.get("access_token")
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+async function authHeaders(): Promise<HeadersInit> {
+  // This module is imported from both client and server codepaths.
+  // `js-cookie` (and `document.cookie`) are client-only, so we resolve
+  // the token dynamically in the browser and fall back to anonymous
+  // requests on the server.
+  if (typeof window === "undefined") {
+    return { "Content-Type": "application/json" }
+  }
+
+  try {
+    const { default: Cookies } = await import("js-cookie")
+    const token = Cookies.get("access_token")
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+  } catch {
+    return { "Content-Type": "application/json" }
+  }
+}
+
+async function safeFetch(url: string, init?: RequestInit): Promise<Response | null> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 4000)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
@@ -60,12 +83,13 @@ export interface RenameGroupDto {
 /** Create a new favorites group */
 export async function createGroup(dto: CreateGroupDto): Promise<FavoriteGroup | null> {
   try {
-    const res = await fetch(`${FAVORITES_API_URL}/groups`, {
+    const headers = await authHeaders()
+    const res = await safeFetch(`${FAVORITES_API_URL}/groups`, {
       method: "POST",
-      headers: authHeaders(),
+      headers,
       body: JSON.stringify(dto),
     })
-    if (!res.ok) return null
+    if (!res || !res.ok) return null
     return res.json()
   } catch (error) {
     console.error("Error creating group:", error)
@@ -76,11 +100,12 @@ export async function createGroup(dto: CreateGroupDto): Promise<FavoriteGroup | 
 /** Get all groups for the current user (includes favorites in each group) */
 export async function getGroups(): Promise<FavoriteGroup[]> {
   try {
-    const res = await fetch(`${FAVORITES_API_URL}/groups`, {
-      headers: authHeaders(),
+    const headers = await authHeaders()
+    const res = await safeFetch(`${FAVORITES_API_URL}/groups`, {
+      headers,
       cache: "no-store",
     })
-    if (!res.ok) return []
+    if (!res || !res.ok) return []
     return res.json()
   } catch (error) {
     console.error("Error fetching groups:", error)
@@ -91,12 +116,13 @@ export async function getGroups(): Promise<FavoriteGroup[]> {
 /** Rename a favorites group */
 export async function renameGroup(groupId: string, dto: RenameGroupDto): Promise<FavoriteGroup | null> {
   try {
-    const res = await fetch(`${FAVORITES_API_URL}/groups/${groupId}`, {
+    const headers = await authHeaders()
+    const res = await safeFetch(`${FAVORITES_API_URL}/groups/${groupId}`, {
       method: "PATCH",
-      headers: authHeaders(),
+      headers,
       body: JSON.stringify(dto),
     })
-    if (!res.ok) return null
+    if (!res || !res.ok) return null
     return res.json()
   } catch (error) {
     console.error("Error renaming group:", error)
@@ -107,11 +133,12 @@ export async function renameGroup(groupId: string, dto: RenameGroupDto): Promise
 /** Delete a favorites group (cascades to all favorites in it) */
 export async function deleteGroup(groupId: string): Promise<boolean> {
   try {
-    const res = await fetch(`${FAVORITES_API_URL}/groups/${groupId}`, {
+    const headers = await authHeaders()
+    const res = await safeFetch(`${FAVORITES_API_URL}/groups/${groupId}`, {
       method: "DELETE",
-      headers: authHeaders(),
+      headers,
     })
-    return res.ok
+    return !!res?.ok
   } catch (error) {
     console.error("Error deleting group:", error)
     return false
@@ -129,14 +156,14 @@ export async function getAllFavoritesGrouped(type?: FavoriteType): Promise<Favor
     const url = type
       ? `${FAVORITES_API_URL}?type=${type}`
       : FAVORITES_API_URL
-    const res = await fetch(url, {
-      headers: authHeaders(),
+    const headers = await authHeaders()
+    const res = await safeFetch(url, {
+      headers,
       cache: "no-store",
     })
-    if (!res.ok) return []
+    if (!res || !res.ok) return []
     return res.json()
-  } catch (error) {
-    console.error("Error fetching favorites:", error)
+  } catch {
     return []
   }
 }
@@ -153,12 +180,13 @@ export async function getAllFavorites(type?: FavoriteType): Promise<Favorite[]> 
 /** Add a favorite */
 export async function addFavorite(dto: CreateFavoriteDto): Promise<Favorite | null> {
   try {
-    const res = await fetch(FAVORITES_API_URL, {
+    const headers = await authHeaders()
+    const res = await safeFetch(FAVORITES_API_URL, {
       method: "POST",
-      headers: authHeaders(),
+      headers,
       body: JSON.stringify(dto),
     })
-    if (!res.ok) return null
+    if (!res || !res.ok) return null
     return res.json()
   } catch (error) {
     console.error("Error adding favorite:", error)
@@ -172,12 +200,13 @@ export async function moveFavorite(
   dto: UpdateFavoriteDto
 ): Promise<Favorite | null> {
   try {
-    const res = await fetch(`${FAVORITES_API_URL}/${favoriteId}`, {
+    const headers = await authHeaders()
+    const res = await safeFetch(`${FAVORITES_API_URL}/${favoriteId}`, {
       method: "PATCH",
-      headers: authHeaders(),
+      headers,
       body: JSON.stringify(dto),
     })
-    if (!res.ok) return null
+    if (!res || !res.ok) return null
     return res.json()
   } catch (error) {
     console.error("Error moving favorite:", error)
@@ -188,11 +217,12 @@ export async function moveFavorite(
 /** Remove a favorite */
 export async function removeFavorite(favoriteId: string): Promise<boolean> {
   try {
-    const res = await fetch(`${FAVORITES_API_URL}/${favoriteId}`, {
+    const headers = await authHeaders()
+    const res = await safeFetch(`${FAVORITES_API_URL}/${favoriteId}`, {
       method: "DELETE",
-      headers: authHeaders(),
+      headers,
     })
-    return res.ok
+    return !!res?.ok
   } catch (error) {
     console.error("Error removing favorite:", error)
     return false

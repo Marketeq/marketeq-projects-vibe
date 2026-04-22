@@ -315,7 +315,7 @@ export const Projects: CollectionConfig = {
               },
               admin: {
                 description:
-                  'Auto-generated from the Scope above and backfilled into CMS as rich text. Admins can edit/override this generated content.',
+                  'Flow: Save Scope → click “Generate deliverables from scope” above → Deliverables will be backfilled as rich text. After generation, admins can edit/override.',
               },
             },
             {
@@ -370,7 +370,20 @@ export const Projects: CollectionConfig = {
               type: 'number',
               required: true,
               min: 1,
-              admin: { description: 'Total scope hours used for pricing logic.' },
+              admin: {
+                description:
+                  'Fallback only: used when Scope is empty. When Scope is present, this value is auto-recomputed from scope task hours.',
+              },
+            },
+            {
+              name: 'pricingScopeHint',
+              type: 'ui',
+              admin: {
+                components: {
+                  Field: () =>
+                    'Tip: duration + computed pricing come from Scope (tasks + assignees). Use Timeline only if Scope is empty.',
+                },
+              },
             },
             {
               type: 'row',
@@ -380,7 +393,11 @@ export const Projects: CollectionConfig = {
                   type: 'number',
                   required: true,
                   min: 1,
-                  admin: { width: '50%' },
+                  admin: {
+                    width: '50%',
+                    description:
+                      'Fallback only when Scope is empty. When Scope is present, duration is derived automatically from scope hours + team size.',
+                  },
                 },
                 {
                   name: 'timelineUnit',
@@ -391,7 +408,10 @@ export const Projects: CollectionConfig = {
                     { label: 'Weeks', value: 'weeks' },
                     { label: 'Months', value: 'months' },
                   ],
-                  admin: { width: '50%' },
+                  admin: {
+                    width: '50%',
+                    description: 'Used with Timeline Value (fallback mode only).',
+                  },
                 },
               ],
             },
@@ -407,7 +427,11 @@ export const Projects: CollectionConfig = {
                 { label: 'Quarterly', value: 'quarterly' },
                 { label: 'Yearly', value: 'yearly' },
               ],
-              admin: { description: 'How project pricing is broken down for the buyer.' },
+              label: 'Billing cadence',
+              admin: {
+                description:
+                  'How pricing is presented for the buyer (cadence label).',
+              },
             },
             {
               name: 'priceViewMode',
@@ -420,6 +444,7 @@ export const Projects: CollectionConfig = {
                 { label: 'Quarterly', value: 'quarterly' },
                 { label: 'Yearly', value: 'yearly' },
               ],
+              label: 'Default payment view (UI)',
               admin: {
                 description:
                   'Default payment view mode shown to the buyer on the project page.',

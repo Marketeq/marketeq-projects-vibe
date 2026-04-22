@@ -64,6 +64,12 @@ interface ProjectItem extends BlockItem {
     timeline?: string;
     budget?: number | string;
   };
+  // Computed-first pricing/duration (docs-aligned, exposed by listings-service)
+  priceRangeMin?: number | string;
+  priceRangeMax?: number | string;
+  budget?: number | string;
+  duration?: string;
+  projectDurationLabel?: string;
 }
 
 export default function Projects() {
@@ -401,8 +407,8 @@ export default function Projects() {
                             project.thumbnail ||
                             "/dashboard.png"
                           }
-                          budget={`$${project.scopeTotal?.budget || project.price || "50,000"} budget`}
-                          duration={`Starting from ${project.scopeTotal?.timeline || "12 weeks"}`}
+                          budget={`$${Number(project.priceRangeMin ?? project.budget ?? project.scopeTotal?.budget ?? project.price ?? 50000).toLocaleString()} budget`}
+                          duration={`Starting from ${project.projectDurationLabel || project.duration || project.scopeTotal?.timeline || "12 weeks"}`}
                           rating={
                             project.rating && (project.reviewCount ?? 0) > 0
                               ? project.rating

@@ -587,12 +587,30 @@ export default function ProjectDetails() {
       yearly: "Year",
     }
     const billingPeriodDefault = periodMap[m] || "2-week"
+    const viewAmount =
+      (project as any).priceViewAmount != null
+        ? Number((project as any).priceViewAmount)
+        : null
     const priceDisplay =
-      project.priceMin != null
-        ? `$${Number(project.priceMin).toLocaleString()}`
-        : project.budget != null
-          ? `$${Number(project.budget).toLocaleString()}`
-          : "—"
+      viewAmount != null && !Number.isNaN(viewAmount)
+        ? `$${viewAmount.toLocaleString()}`
+        : project.priceMin != null
+          ? `$${Number(project.priceMin).toLocaleString()}`
+          : project.budget != null
+            ? `$${Number(project.budget).toLocaleString()}`
+            : "—"
+    const rangeMin =
+      (project as any).priceRangeMin != null
+        ? Number((project as any).priceRangeMin)
+        : project.priceMin ?? project.budget ?? null
+    const rangeMax =
+      (project as any).priceRangeMax != null
+        ? Number((project as any).priceRangeMax)
+        : project.priceMax ?? null
+    const startingTotal =
+      (project as any).startingPriceTotal != null
+        ? Number((project as any).startingPriceTotal)
+        : null
     const total = project.priceMax ?? project.budget ?? project.priceMin
     const kickNum =
       total != null && !Number.isNaN(Number(total))
@@ -601,12 +619,21 @@ export default function ProjectDetails() {
     const billingSubtitle =
       kickNum != null
         ? `with an initial payment of $${kickNum.toLocaleString()} to kickoff`
-        : project.priceMax != null
-          ? `Up to $${Number(project.priceMax).toLocaleString()} total · ${project.pricingModel || "biweekly"} billing`
-          : `Billing: ${project.pricingModel || "biweekly"}`
+        : rangeMin != null && rangeMax != null
+          ? `$${rangeMin.toLocaleString()}–$${rangeMax.toLocaleString()} total · ${m} billing`
+          : startingTotal != null
+            ? `$${startingTotal.toLocaleString()} total · ${m} billing`
+            : project.priceMax != null
+              ? `Up to $${Number(project.priceMax).toLocaleString()} total · ${m} billing`
+              : `Billing: ${m}`
     const teamHeading = "Current Team"
+    const durComputed =
+      typeof (project as any).projectDurationLabel === "string"
+        ? String((project as any).projectDurationLabel).trim()
+        : ""
     const durRaw =
-      typeof project.duration === "string" ? project.duration.trim() : ""
+      durComputed ||
+      (typeof project.duration === "string" ? project.duration.trim() : "")
     const durationPrimaryLine =
       durRaw.length === 0
         ? "Duration: TBD"

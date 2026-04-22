@@ -1139,8 +1139,8 @@ export default function Projects() {
                               title={project?.title || "The Ultimate Mobile App Experience"}
                               description={project?.summary || project?.description?.slice(0, 120) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}
                               mediaUrl={project?.mediaUrls?.[0] || project?.coverImage || project?.thumbnail || "/dashboard.png"}
-                              budget={`$${project?.budget ? Number(project.budget).toLocaleString() : project?.scopeTotal?.budget || "50,000"} budget`}
-                              duration={`Starting from ${project?.duration || "12 weeks"}`}
+                              budget={`$${Number(project?.priceRangeMin ?? project?.budget ?? project?.scopeTotal?.budget ?? 50000).toLocaleString()} budget`}
+                              duration={`Starting from ${project?.projectDurationLabel || project?.duration || project?.scopeTotal?.timeline || "12 weeks"}`}
                               rating={Number(project?.rating) || 4.9}
                               reviewCount={project?.reviewCount || 5}
                               href={project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")}

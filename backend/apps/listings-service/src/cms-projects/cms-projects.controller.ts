@@ -548,6 +548,105 @@ function deriveBadges(row: {
   return badges;
 }
 
+const HOURLY_RATE_BY_LEVEL: Record<string, number> = {
+  Student: 25,
+  Junior: 50,
+  Medior: 75,
+  Senior: 125,
+  Guru: 200,
+};
+const FALLBACK_RATE = HOURLY_RATE_BY_LEVEL.Medior;
+
+function periodsForViewMode(viewMode: string, durationWeeks: number): number {
+  const weeks = Math.max(1, Math.ceil(Number(durationWeeks) || 1));
+  switch (viewMode) {
+    case "weekly":
+      return weeks;
+    case "biweekly":
+      return Math.max(1, Math.ceil(weeks / 2));
+    case "monthly":
+      return Math.max(1, Math.ceil(weeks / 4.345));
+    case "quarterly":
+      return Math.max(1, Math.ceil(weeks / (4.345 * 3)));
+    case "yearly":
+      return 1;
+    default:
+      return Math.max(1, Math.ceil(weeks / 2));
+  }
+}
+
+function computePricingAndDurationFromScope(scope: unknown, viewMode: string | null) {
+  const teamRoles = new Set<string>();
+  let totalHours = 0;
+  let totalCost = 0;
+
+  if (Array.isArray(scope)) {
+    for (const phase of scope) {
+      if (!phase || typeof phase !== "object") continue;
+      const tasks = Array.isArray((phase as any).tasks) ? (phase as any).tasks : [];
+      for (const task of tasks) {
+        if (!task || typeof task !== "object") continue;
+        const hours = Number((task as any).estimatedHours);
+        const level =
+          typeof (task as any).experienceLevel === "string"
+            ? (task as any).experienceLevel
+            : "Medior";
+        const rate = HOURLY_RATE_BY_LEVEL[level] ?? FALLBACK_RATE;
+        if (Number.isFinite(hours) && hours > 0) {
+          totalHours += hours;
+          totalCost += hours * rate;
+        }
+
+        const email =
+          typeof (task as any).assigneeEmail === "string"
+            ? (task as any).assigneeEmail.trim().toLowerCase()
+            : "";
+        if (email) teamRoles.add(`email::${email}`);
+        else {
+          const role =
+            typeof (task as any).roleName === "string" ? (task as any).roleName.trim() : "";
+          if (role) teamRoles.add(`role::${role}::${level}`);
+        }
+      }
+    }
+  }
+
+  if (totalHours <= 0) {
+    return {
+      totalEstimatedHours: null as number | null,
+      startingPriceTotal: null as number | null,
+      projectDurationTotal: null as number | null,
+      projectDurationLabel: null as string | null,
+      priceViewAmount: null as number | null,
+    };
+  }
+
+  const teamSize = Math.max(1, teamRoles.size);
+  const weeksFloat = totalHours / (teamSize * 40);
+  const weeks = Math.max(1, Math.ceil(weeksFloat));
+
+  const days = Math.max(1, Math.ceil(weeksFloat * 7));
+  let label: string;
+  if (days < 7) label = days === 1 ? "1 day" : `${days} days`;
+  else if (weeks < 4) label = weeks === 1 ? "1 week" : `${weeks} weeks`;
+  else {
+    const months = Math.max(1, Math.ceil(weeksFloat / 4.345));
+    label = months === 1 ? "1 month" : `${months} months`;
+  }
+
+  const starting = Math.round(totalCost);
+  const periods = periodsForViewMode(viewMode || "biweekly", weeks);
+  const viewAmount = Math.round(starting / periods);
+
+  return {
+    totalEstimatedHours: totalHours,
+    startingPriceTotal: starting,
+    projectDurationTotal: weeks,
+    projectDurationLabel: label,
+    priceViewAmount: viewAmount,
+  };
+}
+
 function shapeProject(row: any) {
   const normalizeMediaUrl = (value: unknown): string | null => {
     if (typeof value !== "string") return null;
@@ -559,6 +658,11 @@ function shapeProject(row: any) {
     }
     return trimmed;
   };
+
+  const computed = computePricingAndDurationFromScope(
+    row.scope,
+    typeof row.priceViewMode === "string" ? row.priceViewMode : null,
+  );
 
   return {
     id: String(row.id),
@@ -572,15 +676,27 @@ function shapeProject(row: any) {
     status: row.status,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    // Pricing range (editorial): cms-service maps priceRangeMin→budget and
+    // priceRangeMax→priceMax. Expose both canonical names and the existing
+    // UI aliases for backwards compatibility.
     budget: row.budget != null ? Number(row.budget) : null,
+    priceRangeMin: row.budget != null ? Number(row.budget) : null,
     priceMin: row.budget != null ? Number(row.budget) : null,
     priceMax: row.priceMax != null ? Number(row.priceMax) : null,
+    priceRangeMax: row.priceMax != null ? Number(row.priceMax) : null,
     pricingModel: row.pricingModel ?? null,
     priceViewMode: row.priceViewMode ?? null,
     projectType: row.projectType ?? null,
     klarnaEnabled: row.klarnaEnabled ?? false,
+    // Computed fields (docs): derived from scope at read time so the UI can
+    // be computed-first without requiring schema changes.
+    totalEstimatedHours: computed.totalEstimatedHours,
+    startingPriceTotal: computed.startingPriceTotal,
+    priceViewAmount: computed.priceViewAmount,
+    projectDurationTotal: computed.projectDurationTotal,
+    projectDurationLabel: computed.projectDurationLabel,
     estimatedHours: row.estimatedHours ?? null,
-    duration: row.duration,
+    duration: row.duration ?? computed.projectDurationLabel,
     mediaUrls: Array.isArray(row.mediaUrls)
       ? row.mediaUrls
           .map(normalizeMediaUrl)
