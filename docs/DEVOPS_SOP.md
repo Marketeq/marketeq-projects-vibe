@@ -49,38 +49,46 @@ Each Vercel project has its own env var set in the Vercel dashboard, populated f
 
 ## 3. Render topology
 
-**One Render service, single-instance, budget-constrained.**
+**Two Render services — staging and production.**
 
-| Render service | Branch | Auto-deploy | Serves |
-|---|---|---|---|
-| `marketeq-vibe-backend` (`srv-d76r48nafjfc73e1djf0`) | `live-mvp` | yes | All three Vercel projects |
+| Render service | ID | Branch | Auto-deploy | Serves | URL |
+|---|---|---|---|---|---|
+| `marketeq-vibe-backend-staging` | `srv-d7fbl028qa3s73d6ea0g` | `staging` | yes | Vercel dev + Vercel staging | `https://marketeq-vibe-backend-staging.onrender.com` |
+| `marketeq-backend` | `srv-d76r48nafjfc73e1djf0` | `live-mvp` | yes | Vercel live only | `https://marketeq-backend.onrender.com` |
 
-### 3.1 Why `live-mvp` and not `staging` or `dev-main`
+### 3.1 Why two services
 
-This is the CTO call, documented here so future sessions don't relitigate it. With one Render service, there are only three choices and two of them are catastrophic:
+QA needs to test full-stack changes (frontend + backend together) on staging before promoting to production. Two services give us:
 
-- **Render on `dev-main`** (the state before this SOP existed): production Vercel hits a backend running unreviewed dev code. Untested endpoints are in front of real users every time a dev merges. This is the bug `post-merge-audit.yml` exists to rescue us from.
-- **Render on `staging`**: production Vercel hits a pre-QA backend. Any non-backwards-compatible API change QA is still testing is instantly visible to real users. QA bug-hunting also hits the production DB, Stripe keys, R2 bucket, and email sender. Staging becomes production by accident.
-- **Render on `live-mvp`**: production Vercel hits a stable production backend. Dev and staging Vercel projects hit the same stable backend. Backend-frontend skew can only happen during the seconds-long window of a `live-mvp` promotion, when Vercel and Render deploy in lockstep.
+- **Staging Render** deploys when code reaches `staging` — QA tests new backend endpoints on `staging-marketeq-projects.vercel.app`
+- **Live Render** deploys only when code reaches `live-mvp` — production is isolated from QA testing
+- Dev Vercel also hits the staging Render backend, so developers can see new backend endpoints on dev preview
 
-`live-mvp` is the only option where **production is always coherent** (frontend and backend in lockstep) and where **QA cannot accidentally touch production state**. The cost of this choice is that dev previews cannot see new backend endpoints until a `live-mvp` promotion — which is what forces backend devs to test locally (§4), which is what we already want.
+### 3.2 Vercel → Render mapping
 
-### 3.2 Trade-offs of a single Render service, said out loud
-
-- **Backend changes cannot be previewed on `dev-main` or `staging` Vercel.** A new backend endpoint only becomes visible to Vercel after `live-mvp` promotion.
-- **Backend devs must test locally.** `pnpm dev` (or service-specific dev command) against a localhost backend is the only way to see a new backend change before promotion.
-- **Backend changes must be reasonably backwards-compatible.** In the brief window while `live-mvp` promotion is in flight, the new backend and the old frontend coexist for a few seconds. Any breaking change must be split into a two-step shipping plan: deploy the backwards-compatible backend first, then ship the frontend that depends on it. This is a standard production discipline.
-
-### 3.3 The day we outgrow one Render service
-
-When the team is ready to spend ~$7/mo on a second Render instance, the correct topology is:
-
-| Render service | Branch | Serves |
+| Vercel Project | Branch | Points to |
 |---|---|---|
-| `marketeq-vibe-backend-staging` | `staging` | Vercel dev + Vercel staging |
-| `marketeq-vibe-backend-live` | `live-mvp` | Vercel live |
+| `marketeq-projects-dev` | `dev-main` | `marketeq-vibe-backend-staging` |
+| `marketeq-projects-staging` | `staging` | `marketeq-vibe-backend-staging` |
+| `marketeq-projects-live-mvp` | `live-mvp` | `marketeq-backend` |
 
-At that point, dev/staging Vercel can preview new backend endpoints on the staging Render instance, and backend devs regain their "push to staging, see it on Vercel" workflow. Until then, we live with the single-service trade-offs above.
+### 3.3 Database isolation
+
+Each Render service has its own Supabase PostgreSQL instance on the Hostinger VPS (`72.61.77.231`):
+
+| Database | Docker Project | Port | Used by |
+|---|---|---|---|
+| `supabase-staging` | `supabase-staging` | `5434` | Staging Render (`marketeq-vibe-backend-staging`) |
+| `supabase-live` | `supabase-live` | `5433` | Live Render (`marketeq-backend`) |
+| `supabase-dev` | `supabase-dev` | `5432` | Local development only |
+
+QA cannot corrupt production data. Staging and live databases are completely separate — different Docker containers, different ports, different credentials.
+
+Migrations run per-environment. When code with a new migration reaches `staging`, it runs against the staging DB. When promoted to `live-mvp`, it runs against the production DB.
+
+### 3.4 Backwards-compatibility requirement
+
+Backend changes must remain backwards-compatible. During the promotion window when `staging` → `live-mvp` lands, the live Vercel frontend (old code) briefly hits the live Render backend (newly promoted code). This window is seconds long and the backwards-compatibility rule ensures no breakage.
 
 ---
 

@@ -425,6 +425,7 @@ export const PictureEditor = ({
 export const ImageEditor = ({
   onValueChange,
   startingPoint,
+  defaultDataUrl,
 }: {
   onValueChange?: (files: readonly FileWithPath[] | undefined) => void
   startingPoint: (options: {
@@ -432,6 +433,7 @@ export const ImageEditor = ({
     dataUrl: string | null
     style: Record<string, string | number>
   }) => React.ReactNode
+  defaultDataUrl?: string | null
 }) => {
   const [state, send] = useStateMachine("ideal", {
     ideal: {
@@ -488,9 +490,26 @@ export const ImageEditor = ({
   const [dataUrl, setDataUrl] = useUncontrolledState<string | null>({
     defaultValue: null,
     onChange: (value) => {
-      value ? onValueChange?.(acceptedFiles) : onValueChange?.(undefined)
+      if (!value) {
+        onValueChange?.(undefined)
+        return
+      }
+      if (acceptedFiles.length > 0) {
+        onValueChange?.(acceptedFiles)
+      }
     },
   })
+
+  // Restore a previously saved image (e.g. when navigating back to this step).
+  // No ref gating needed: onChange above skips notification when acceptedFiles
+  // is empty, so this setDataUrl call won't clobber the form state.
+  const defaultDataUrlApplied = useRef(false)
+  useEffect(() => {
+    if (defaultDataUrl && !defaultDataUrlApplied.current) {
+      defaultDataUrlApplied.current = true
+      setDataUrl(defaultDataUrl)
+    }
+  }, [defaultDataUrl, setDataUrl])
 
   useEffect(() => {
     const [firstAcceptedFile] = acceptedFiles
@@ -610,13 +629,18 @@ export const ImageEditor = ({
 
   return (
     <>
-      <Dialog open={state === "uploading"}>
-        {startingPoint({
-          open: () => (dataUrl ? send("REMOVE") : send("UPLOAD")),
-          dataUrl,
-          style,
-        })}
+      {/* Keep input mounted so open() works from any step/dialog state. */}
+      <div className="sr-only">
+        <input {...getInputProps()} />
+      </div>
 
+      {startingPoint({
+        open: () => (dataUrl ? send("REMOVE") : send("UPLOAD")),
+        dataUrl,
+        style,
+      })}
+
+      <Dialog open={state === "uploading"}>
         <DialogContent className="max-w-[467px] bg-white p-6 shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03),0px_20px_24px_-4px_rgba(16,24,40,.08)]">
           <DialogTitle className="text-lg leading-7 text-center font-semibold text-dark-blue-400">
             Change Profile Image
@@ -637,7 +661,6 @@ export const ImageEditor = ({
               className="size-[160px] shrink-0 rounded-full bg-gray-100 flex items-center justify-center text-center"
               {...getRootProps()}
             >
-              <input {...getInputProps()} />
               <span className="text-[60px] leading-none text-gray-300 font-medium">
                 CH
               </span>
@@ -645,7 +668,10 @@ export const ImageEditor = ({
           </div>
 
           <div className="mt-8">
-            <div className="border border-gray-200  rounded-[4px] py-4 px-6">
+            <div
+              className="border border-gray-200 rounded-[4px] py-4 px-6"
+              {...getRootProps()}
+            >
               <span className="block text-sm leading-5 text-center text-gray-600">
                 <button
                   className="font-semibold transition duration-300 text-dark-blue-400 hover:underline focus-visible:outline-none"

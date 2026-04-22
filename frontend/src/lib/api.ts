@@ -18,5 +18,11 @@ export async function apiFetch<T = any>(
     body: body != null ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`)
-  return (await res.json()) as T
+  // Handle empty responses (e.g. 204 No Content from DELETE)
+  if (res.status === 204 || res.headers.get("content-length") === "0") {
+    return undefined as T
+  }
+  const text = await res.text()
+  if (!text) return undefined as T
+  return JSON.parse(text) as T
 }

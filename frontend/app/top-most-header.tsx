@@ -458,7 +458,7 @@ const suggestions = [
   { id: 6, value: "Magento development" },
 ]
 
-const listingTypes = ["Projects", "Services", "Teams", "Talent"]
+const listingTypes = ["Projects", "Services", "Talent", "Teams", "Jobs"]
 
 const SearchBar = () => {
   const router = useRouter()
@@ -468,6 +468,7 @@ const SearchBar = () => {
     id: number
     value: string
     icon?: React.JSXElementConstructor<any>
+    route?: string
   }>()
   const [query, setQuery] = React.useState("")
   // Nonce used as `key` on the Combobox wrapper. Incrementing it forces
@@ -575,7 +576,15 @@ const SearchBar = () => {
         )
   }, [liveSuggestions, query])
 
-  const reset = () => setQuery("")
+  // Only clear the input text when the dropdown closes after an explicit
+  // submit. Switching the category Listbox also triggers afterLeave — we
+  // must NOT erase the user's query in that case. (Amazon, Upwork, Google
+  // all preserve the search term when toggling the category selector.)
+  const reset = () => {
+    if (submittingRef.current) {
+      setQuery("")
+    }
+  }
 
   return (
     <Combobox
@@ -674,9 +683,17 @@ const SearchBar = () => {
             placeholder="View All"
             iconClassName="size-[12.5px]"
           />
-          <ListboxOptions className="w-max -right-3 left-auto mt-3.5">
+          <ListboxOptions
+              className="w-[160px] -right-3 left-auto mt-3.5 rounded-lg border border-gray-100 shadow-lg overflow-hidden"
+              viewportClassName="max-h-none"
+              wrapperClassName="p-1 space-y-0"
+            >
             {listingTypes.map((type) => (
-              <ListboxOption key={type} value={type}>
+              <ListboxOption
+                key={type}
+                value={type}
+                className="rounded-md px-3 py-2.5 text-sm font-medium text-gray-700 ui-active:bg-gray-50"
+              >
                 {type}
               </ListboxOption>
             ))}
@@ -765,7 +782,13 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
   const router = useRouter()
   const { logoutHandler, user, setUser } = useAuth()
 
-  const hasSecondaryNav = HAS_SECONDARY_NAV.includes(pathname) || pathname.startsWith("/c/") || pathname.startsWith("/project-details/")
+  // Job details pages use the same marketplace secondary nav shell as the
+  // homepage/category surfaces, so the primary header must coordinate with it.
+  const hasSecondaryNav =
+    HAS_SECONDARY_NAV.includes(pathname) ||
+    pathname.startsWith("/c/") ||
+    pathname.startsWith("/project-details/") ||
+    pathname.startsWith("/job-details/")
 
   // Listen for secondary nav visibility changes
   React.useEffect(() => {
@@ -786,9 +809,11 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
   const showNavShadow = !hasSecondaryNav || secondaryNavHidden
 
   return (
-    <div
-      className={cn(
-        "px-3.5 md:px-6 lg:px-[50px] bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 sticky top-0 z-50",
+      <div
+        className={cn(
+        // Keep the primary nav pinned to the viewport so iOS/macOS overscroll
+        // bounce only affects page content, not the header itself.
+        "fixed inset-x-0 top-0 px-3.5 md:px-6 lg:px-[50px] bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 z-50",
         showNavShadow
           ? "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]"
           : "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] md:shadow-none",
@@ -887,7 +912,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                     </span>
                   </div>
 
-                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>My Account</Button>
+                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push("/settings") }}>My Account</Button>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />

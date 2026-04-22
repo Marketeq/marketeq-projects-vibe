@@ -57,6 +57,11 @@ class RabbitMQCoreModule {}
     ConfigModule.forRoot({
       isGlobal: true,
       validate,
+      envFilePath: [
+        `apps/transaction-service/.env.${process.env.NODE_ENV || 'development'}`,
+        'apps/transaction-service/.env',
+        '.env',
+      ],
     }),
 
     // ── Scheduler (cron jobs) ──────────────────────────────────────────

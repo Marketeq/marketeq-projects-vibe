@@ -72,7 +72,13 @@ import {
   Toggle,
   inputVariants,
 } from "@/components/ui"
-import { Sidebar } from "./sidebar"
+import {
+  Sidebar,
+  SidebarJobs,
+  SidebarServices,
+  SidebarTalent,
+  SidebarTeams,
+} from "./sidebar"
 
 const GRID_LAYOUT = "GRID"
 const LIST_LAYOUT = "LIST"
@@ -122,16 +128,29 @@ function getHitMeta(hit: SearchHit): string {
  */
 function hitToListingCardProps(
   hit: SearchHit,
-  kind: "project" | "service" | "talent" | "team"
+  kind: "project" | "service" | "talent" | "team",
+  cardVariant: "default" | "job" | "job-grid" = "default"
 ): ListingCardProps {
   const id = String(hit.objectID ?? hit.id ?? "")
 
   if (kind === "project" || kind === "service") {
+    const isJobPlaceholder =
+      (cardVariant === "job" || cardVariant === "job-grid") &&
+      String(hit.objectID ?? hit.id ?? "").startsWith("placeholder-")
+
     return {
       kind,
       id,
-      title: getHitTitle(hit),
-      description: hit.description || hit.overview || hit.headline || "",
+      title: isJobPlaceholder
+        ? cardVariant === "job-grid"
+          ? "The Ultimate Mobile App Experience"
+          : "Corporate Dashboard Project"
+        : getHitTitle(hit),
+      description: isJobPlaceholder
+        ? cardVariant === "job-grid"
+          ? "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
+          : "Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."
+        : hit.description || hit.overview || hit.headline || "",
       mediaUrl: hit.image || hit.cover_image || hit.media_url || undefined,
       budget:
         kind === "service"
@@ -157,9 +176,10 @@ function hitToListingCardProps(
       badge: kind === "service" ? "Service" : undefined,
       favoriteSlot: (
         <FavoriteRoot>
-          <Favorite />
+          {() => <Favorite />}
         </FavoriteRoot>
       ),
+      cardVariant,
     }
   }
 
@@ -232,7 +252,7 @@ function hitToListingCardProps(
         : undefined,
     favoriteSlot: (
       <FavoriteRoot>
-        <Favorite />
+        {() => <Favorite />}
       </FavoriteRoot>
     ),
   }
@@ -299,8 +319,36 @@ export default function SearchPage() {
   )
 }
 
-function Search() {
-  const [value, setValue] = useState([GRID_LAYOUT])
+type SearchProps = {
+  defaultCategory?: string
+  defaultQuery?: string
+  forcedSidebarCategory?: SearchCategoryType | "all" | "jobs"
+}
+
+export function SearchPageContent({
+  defaultCategory = "",
+  defaultQuery = "Swift Development",
+  forcedSidebarCategory,
+}: SearchProps) {
+  return (
+    <Suspense fallback={null}>
+      <Search
+        defaultCategory={defaultCategory}
+        defaultQuery={defaultQuery}
+        forcedSidebarCategory={forcedSidebarCategory}
+      />
+    </Suspense>
+  )
+}
+
+function Search({
+  defaultCategory = "",
+  defaultQuery = "Swift Development",
+  forcedSidebarCategory,
+}: SearchProps) {
+  const [value, setValue] = useState([
+    forcedSidebarCategory === "jobs" ? LIST_LAYOUT : GRID_LAYOUT,
+  ])
   const [isOpen, toggleIsOpen] = useToggle(false)
 
   // Ensure the search page always loads scrolled to the very top, regardless
@@ -318,8 +366,8 @@ function Search() {
   // /search?skill=Docker renders "Docker" as the displayed search term
   // instead of the hardcoded "Swift Development" placeholder.
   const query =
-    searchParams?.get("q") ?? (skillParam ? skillParam : "Swift Development")
-  const categorySlug = searchParams?.get("category") ?? ""
+    searchParams?.get("q") ?? (skillParam ? skillParam : defaultQuery)
+  const categorySlug = searchParams?.get("category") ?? defaultCategory
   const categoryLabel = categorySlug
     ? categorySlug
         .split("-")
@@ -418,12 +466,39 @@ function Search() {
     }
   }, [backendCategory])
 
+  // Render the correct sidebar variant for the active category
+  const renderSidebar = (sidebarClassName?: string) => {
+    switch (forcedSidebarCategory ?? backendCategory) {
+      case "jobs":
+        return <SidebarJobs className={sidebarClassName} />
+      case "services":
+        return <SidebarServices className={sidebarClassName} />
+      case "talent":
+        return <SidebarTalent className={sidebarClassName} />
+      case "teams":
+        return <SidebarTeams className={sidebarClassName} />
+      case "projects":
+      case "all":
+      default:
+        return <Sidebar className={sidebarClassName} />
+    }
+  }
+
   // Build the list that will actually be rendered — real hits when available,
   // placeholders of the same kind otherwise so the grid isn't empty.
   const rendered: SearchHit[] =
     searchHits.length > 0
       ? searchHits
       : Array.from({ length: 8 }).map((_, i) => placeholderHit(cardKind, i))
+  // Jobs uses the same search surface, but the result card itself follows a
+  // dedicated landscape treatment instead of the project/service tile.
+  const listingCardVariant =
+    forcedSidebarCategory === "jobs" &&
+    (cardKind === "project" || cardKind === "service")
+      ? getFirstItem(value) === GRID_LAYOUT
+        ? "job-grid"
+        : "job"
+      : "default"
 
   return (
     <>
@@ -446,7 +521,7 @@ function Search() {
             className="h-full"
             scrollBar={<ScrollBar className="w-4 p-1" />}
           >
-            <Sidebar className="block w-full px-5" />
+            {renderSidebar("block w-full px-5")}
           </ScrollArea>
           <div className="h-12 absolute border-t border-gray-200 bg-white bottom-0 inset-x-0 flex items-center justify-between pl-3.5 p-1">
             <Button
@@ -490,10 +565,12 @@ function Search() {
       */}
 
       <div className="lg:p-[50px] lg:flex gap-x-[50px]">
-        <Sidebar />
+        {renderSidebar()}
 
         <div className="flex-auto">
-          {/* Contextual search banner — appears directly above the results count. */}
+          {/* Contextual search banner hidden for now. Keep this block in place so
+              we can restore it later without changing the surrounding layout. */}
+          {/*
           <div className="mb-5 rounded-lg overflow-hidden">
             <img
               src="/search-banner-swift.png"
@@ -501,6 +578,7 @@ function Search() {
               className="w-full h-auto block"
             />
           </div>
+          */}
 
           <div className="hidden lg:inline-flex items-center gap-x-3">
             <h1 className="text-base leading-[19.36px] font-light text-dark-blue-400">
@@ -696,6 +774,9 @@ function Search() {
               <div
                 className={cn(
                   "grid gap-[15px] lg:gap-5",
+                  listingCardVariant === "job"
+                    ? "grid-cols-1 md:grid-cols-1 lg:grid-cols-1"
+                    : "",
                   cardKind === "talent" || cardKind === "team"
                     ? "md:grid-cols-3 lg:grid-cols-4"
                     : "md:grid-cols-2 lg:grid-cols-3"
@@ -704,7 +785,11 @@ function Search() {
                 {rendered.map((hit) => (
                   <ListingCard
                     key={String(hit.objectID)}
-                    {...(hitToListingCardProps(hit, cardKind) as ListingCardProps)}
+                    {...(hitToListingCardProps(
+                      hit,
+                      cardKind,
+                      listingCardVariant
+                    ) as ListingCardProps)}
                   />
                 ))}
               </div>
@@ -713,7 +798,11 @@ function Search() {
                 {rendered.map((hit) => (
                   <ListingCard
                     key={String(hit.objectID)}
-                    {...(hitToListingCardProps(hit, cardKind) as ListingCardProps)}
+                    {...(hitToListingCardProps(
+                      hit,
+                      cardKind,
+                      listingCardVariant
+                    ) as ListingCardProps)}
                   />
                 ))}
               </div>

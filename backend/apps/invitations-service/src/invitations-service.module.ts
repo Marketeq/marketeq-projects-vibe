@@ -34,15 +34,18 @@ import { BrevoModule } from '../../notification-service/src/brevo/brevo.service'
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        url: config.get<string>('DATABASE_URL'),
-        entities: [Invitation],
-        synchronize: false,
-        migrationsRun: true,
-        migrations: [__dirname + '/migrations/*{.ts,.js}'],
-        ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
-      }),
+      useFactory: (config: ConfigService) => {
+        const useSSL = String(config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true'
+        return {
+          type: 'postgres',
+          url: config.get<string>('DATABASE_URL'),
+          entities: [Invitation],
+          synchronize: false,
+          migrationsRun: true,
+          migrations: [__dirname + '/migrations/*{.ts,.js}'],
+          ssl: useSSL ? { rejectUnauthorized: false } : false,
+        }
+      },
     }),
     TypeOrmModule.forFeature([Invitation]),
     BrevoModule,

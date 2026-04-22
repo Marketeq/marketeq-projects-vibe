@@ -52,6 +52,7 @@ export default function SignIn() {
   const [isVisible, toggleIsVisible] = useToggle(false)
 
   const [isLoading, setIsLoading] = useState(false)
+  const [loginError, setLoginError] = useState<string | null>(null)
   const redirectTarget = searchParams.get("redirect")
   const nextRoute =
     redirectTarget && redirectTarget.startsWith("/") && !redirectTarget.startsWith("//")
@@ -75,6 +76,7 @@ export default function SignIn() {
   const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password }) => {
     setIsLoading(true)
 
+    setLoginError(null)
     AuthAPI.LoginWithEmail({ email, password })
       .then(async (response) => {
         if (response?.status === 200 && response?.data?.access_token) {
@@ -129,12 +131,12 @@ export default function SignIn() {
         }
       })
       .catch((error) => {
-        if (error?.response?.data?.errors?.message) {
-          toast({
-            title: error?.response?.data?.errors?.message,
-            variant: "destructive",
-          })
-        }
+        const msg =
+          error?.response?.data?.message ??
+          error?.response?.data?.errors?.message ??
+          error?.message ??
+          "Login failed"
+        setLoginError(msg)
       })
       .finally(() => {
         setIsLoading(false)
@@ -279,6 +281,10 @@ export default function SignIn() {
                   )}
                 />
               </div>
+
+              {loginError && (
+                <p className="mt-2 text-sm text-red-500">{loginError}</p>
+              )}
 
               <div className="mt-2 flex items-center justify-between">
                 <div className="flex items-center gap-x-2">

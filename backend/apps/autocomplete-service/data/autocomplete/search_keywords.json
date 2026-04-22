@@ -1,0 +1,22 @@
+[
+  { "label": "Web App" },
+  { "label": "Mobile App" },
+  { "label": "AI" },
+  { "label": "Blockchain" },
+  { "label": "UI/UX" },
+  { "label": "SaaS" },
+  { "label": "Analytics" },
+  { "label": "Security" },
+  { "label": "E-commerce" },
+  { "label": "Automation" },
+  { "label": "API Integration" },
+  { "label": "Machine Learning" },
+  { "label": "Data Visualization" },
+  { "label": "Cloud Infrastructure" },
+  { "label": "DevOps" },
+  { "label": "Brand Identity" },
+  { "label": "Design Systems" },
+  { "label": "Product Strategy" },
+  { "label": "Performance Optimization" },
+  { "label": "Marketplace" }
+]

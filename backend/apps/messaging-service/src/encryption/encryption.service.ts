@@ -31,8 +31,10 @@ export class EncryptionService {
   async storePublicKey(userId: string, publicKey: string): Promise<UserPublicKey> {
     const existing = await this.publicKeyRepo.findOne({ where: { userId } });
     if (existing) {
-      existing.publicKey = publicKey;
-      return this.publicKeyRepo.save(existing);
+      // Don't overwrite — would invalidate all wrapped conversation keys.
+      // To rotate keys, the client must explicitly call a rotation endpoint
+      // that re-wraps all conversation keys.
+      return existing;
     }
     return this.publicKeyRepo.save(this.publicKeyRepo.create({ userId, publicKey }));
   }

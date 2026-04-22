@@ -20,6 +20,6 @@ export class TimelineController {
       throw new ForbiddenException('You can only view your own timeline');
     }
 
-    return this.svc.buildTimeline({ userId, projectId: query.projectId, from: query.from, to: query.to });
+    return this.svc.buildTimeline({ userId, contractId: query.contractId, from: query.from, to: query.to });
   }
 }

@@ -3,14 +3,14 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
   Query,
   Req,
   UseGuards,
-  HttpCode,
-  HttpStatus,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { JobListingOwnerGuard } from '../guards/job-listing-owner.guard';
@@ -18,9 +18,11 @@ import { JobListingService } from '../services/job-listing.service';
 import { JobListingPublishService } from '../services/job-listing-publish.service';
 import { CreateJobListingDto } from '../dto/create-job-listing.dto';
 import { UpdateJobListingDto } from '../dto/update-job-listing.dto';
+import { UpdateBasicInformationDto } from '../dto/update-basic-info.dto';
 import { SendInvitesDto } from '../dto/send-invites.dto';
 import { PresignBriefUploadDto } from '../dto/presign-brief-upload.dto';
 import { ListJobListingsQueryDto } from '../dto/list-job-listings-query.dto';
+import { CreateRoleRowDto } from '../dto/create-role-row.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('v1/job-listings')
@@ -54,6 +56,13 @@ export class JobListingController {
   @UseGuards(JobListingOwnerGuard)
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateJobListingDto) {
     return this.jobListingService.update(req.user.sub, id, dto);
+  }
+
+  // ── PATCH /v1/job-listings/:id/basic-information ─────────────
+  @Patch(':id/basic-information')
+  @UseGuards(JobListingOwnerGuard)
+  updateBasicInformation(@Param('id') id: string, @Body() dto: UpdateBasicInformationDto) {
+    return this.jobListingService.updateBasicInformation(id, dto);
   }
 
   // ── POST /v1/job-listings/:id/publish ────────────────────────
@@ -111,5 +120,16 @@ export class JobListingController {
     @Body() dto: PresignBriefUploadDto,
   ) {
     return this.jobListingService.presignBriefUpload(id, dto);
+  }
+
+  // ── POST /v1/job-listings/:id/roles ──────────────────────────
+  @Post(':id/roles')
+  @UseGuards(JobListingOwnerGuard)
+  @HttpCode(HttpStatus.CREATED)
+  createRoleRow(
+    @Param('id') id: string,
+    @Body() dto: CreateRoleRowDto,
+  ) {
+    return this.jobListingService.createRoleRow(id, dto);
   }
 }

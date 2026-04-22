@@ -20,9 +20,17 @@
 # never break it in another.
 /frontend/app/sign-in/                              @CTorres9800 @Marketeq/code-review
 /frontend/app/sign-up/                              @CTorres9800 @Marketeq/code-review
+/frontend/app/forgot-password/                      @CTorres9800 @Marketeq/code-review
+/frontend/app/reset-password/                       @CTorres9800 @Marketeq/code-review
 /frontend/contexts/auth.tsx                         @CTorres9800 @Marketeq/code-review
+/frontend/service/http/auth.ts                      @CTorres9800 @Marketeq/code-review
 /frontend/src/lib/api/auth.ts                       @CTorres9800 @Marketeq/code-review
+/frontend/hoc/AuthenticatedRoute.tsx                @CTorres9800 @Marketeq/code-review
+/frontend/hoc/UnauthenticatedRoute.tsx              @CTorres9800 @Marketeq/code-review
+/frontend/components/auth/                          @CTorres9800 @Marketeq/code-review
 /backend/apps/auth-service/                         @CTorres9800 @Marketeq/code-review
+/backend/apps/user-service/src/guards/              @CTorres9800 @Marketeq/code-review
+/backend/apps/api-gateway/src/proxy/proxy.service.ts @CTorres9800 @Marketeq/code-review
 /backend/libs/shared/src/guards/                    @CTorres9800 @Marketeq/code-review
 /backend/libs/shared/src/decorators/                @CTorres9800 @Marketeq/code-review
 

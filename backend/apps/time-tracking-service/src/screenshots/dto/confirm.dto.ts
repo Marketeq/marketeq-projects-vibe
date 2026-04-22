@@ -6,7 +6,7 @@ export class ConfirmScreenshotDto {
   @IsString() mimeType!: string;
   @IsInt() @IsPositive() bytes!: number;
   @IsOptional() @IsISO8601() timestamp?: string;
-  @IsOptional() @IsString() projectId?: string;
+  @IsOptional() @IsString() contractId?: string;
   @IsOptional() @IsString() taskId?: string;
   @IsOptional() @IsInt() keyboard?: number;
   @IsOptional() @IsInt() mouse?: number;

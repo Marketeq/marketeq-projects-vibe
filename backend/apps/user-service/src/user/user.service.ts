@@ -47,9 +47,18 @@ export class UserService {
   }
 
   async getUserById(id: string): Promise<User> {
-    const user = await this.userRepository.findOne({ where: { id } });
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: ['skills'],
+    });
     if (!user) throw new NotFoundException('User not found');
     return user;
+  }
+
+  async updateAvatarUrl(id: string, avatarUrl: string): Promise<User> {
+    const user = await this.getUserById(id);
+    user.avatarUrl = avatarUrl;
+    return this.userRepository.save(user);
   }
 
   async listUsers(limit = 50, offset = 0): Promise<User[]> {
@@ -295,6 +304,19 @@ export class UserService {
     });
 
     return this.userRepository.save(user);
+  }
+
+  // Load a user with skills + languages relations for the internal
+  // profile endpoint. getUserById intentionally skips relations for
+  // perf on the auth-gated path; this variant pays the join cost only
+  // when the caller explicitly needs the nested data.
+  async getUserWithRelations(id: string): Promise<User> {
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: ['skills', 'languages'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return user;
   }
 
   /* ── Aliases used by vibe controllers (me.controller, internal.controller) ── */

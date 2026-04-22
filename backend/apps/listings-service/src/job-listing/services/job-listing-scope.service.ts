@@ -159,10 +159,24 @@ export class JobListingScopeService {
       });
     }
 
-    // Persist new positionOrder values.
-    for (let i = 0; i < dto.orderedPhaseIds.length; i++) {
-      await this.phaseRepo.update(dto.orderedPhaseIds[i], { positionOrder: i });
-    }
+    // Persist new positionOrder values safely under the unique
+    // (job_listing_id, position_order) index. We first move every phase to a
+    // temporary offset range, then write the final 0..n-1 order.
+    await this.dataSource.transaction(async (manager) => {
+      const temporaryOffset = dto.orderedPhaseIds.length;
+
+      for (let i = 0; i < dto.orderedPhaseIds.length; i++) {
+        await manager.update(JobListingPhase, dto.orderedPhaseIds[i], {
+          positionOrder: i + temporaryOffset,
+        });
+      }
+
+      for (let i = 0; i < dto.orderedPhaseIds.length; i++) {
+        await manager.update(JobListingPhase, dto.orderedPhaseIds[i], {
+          positionOrder: i,
+        });
+      }
+    });
   }
 
   // ── applyAiGeneratedScope ──────────────────────────────────────────────────

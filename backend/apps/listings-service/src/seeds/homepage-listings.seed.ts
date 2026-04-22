@@ -3,31 +3,23 @@ import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
 
 /**
- * Seed enough published project + service data to populate every homepage
- * section end-to-end.
+ * Seed the marketing-automation services used by the homepage.
  *
- * Target distribution (matches api-gateway HOMEPAGE_SECTIONS config):
- *   • 12 featured projects      → Our Favorite Projects (carousel, limit 12)
- *   •  9 newest projects        → Newest Additions (grid, limit 9)
- *   •  9 per category for tabs  → Most Popular (View All, Web, Mobile, Cloud, Digital Marketing)
- *   •  8 online-sales projects  → Online Sales Funnels carousel
- *   •  8 customer-service       → Customer Service Solutions carousel
- *   •  8 cloud-software         → Cloud Software Applications carousel
- *   •  8 mobile-apps            → Mobile Applications carousel
- *   • 10 marketing services     → Marketing Automation Campaigns carousel
+ * NOTE: projects are no longer seeded here. They now come from Payload CMS
+ * via the `seed:projects` script in cms-service, which uses the same
+ * fixture arrays (FEATURED_PROJECTS / NEWEST_PROJECTS / POPULAR_TAB_PROJECTS /
+ * THEMED_PROJECTS) exported from this file and runs each one through the
+ * Payload Local API. The afterChange sync hook then writes them into
+ * public.projects with payloadId set, so editors can manage them from the
+ * CMS admin UI. This file keeps only the services seed — services don't
+ * yet have a matching CMS collection, so they stay authored as raw SQL
+ * inserts until that work lands.
  *
- * Since the gateway dedupes via a global `usedIds` set across sections,
- * we need unique projects for the serialized path: 12 + 9 + 8 + 8 + 8 + 8 = 53.
- * Seeding 60 projects leaves a small buffer.
- *
- * IDEMPOTENT: skips if any project with `createdBy = 'seed:homepage'` exists.
+ * IDEMPOTENT: skips if any service with `createdBy = 'seed:homepage'` exists.
  * To force reseed, delete those rows in the DB first.
- *
- * Gated by SEED_HOMEPAGE_LISTINGS env (true to enable, defaults to running
- * once when the DB is empty of seeded rows).
  */
 
-const SEED_MARKER = 'seed:homepage';
+export const SEED_MARKER = 'seed:homepage';
 
 // Vetted Unsplash photo IDs reused from the static homepage's SECTION_POOLS
 // (frontend/app/(group)/(group)/page.tsx @ commit feb1716^). Same format helper
@@ -37,7 +29,7 @@ const u = (id: string, w = 800) =>
 
 // ── Helper builders ─────────────────────────────────────────────────────────
 
-interface ProjectSeed {
+export interface ProjectSeed {
   title: string;
   description: string;
   shortDescription?: string;
@@ -155,7 +147,7 @@ function serviceRow(
 
 // ── Project seed data ───────────────────────────────────────────────────────
 
-const FEATURED_PROJECTS: ProjectSeed[] = [
+export const FEATURED_PROJECTS: ProjectSeed[] = [
   projectRow('Modern Brand Identity System',      'Logo, type, color, and visual guidelines for a SaaS launch.', ['design', 'web'],             { featured: true, rating: 4.9, reviewCount: 32, completionsCount: 18, views90d: 4200, daysAgo: 2,  thumbnail: u('1558655146-9f40138edfeb') }),
   projectRow('AI Analytics Dashboard',             'Real-time BI with predictive insights and forecasting.',       ['development', 'web'],        { featured: true, rating: 4.8, reviewCount: 27, completionsCount: 14, views90d: 3800, daysAgo: 4,  thumbnail: u('1551288049-bebda4e38f71') }),
   projectRow('Cybersecurity Audit Platform',       'Continuous threat detection and SOC 2 compliance.',            ['security', 'cloud'],         { featured: true, rating: 4.9, reviewCount: 19, completionsCount: 10, views90d: 3100, daysAgo: 6,  thumbnail: u('1518770660439-4636190af475') }),
@@ -170,7 +162,7 @@ const FEATURED_PROJECTS: ProjectSeed[] = [
   projectRow('Performance Marketing Overhaul',     'Paid ads, SEO, and analytics refresh across channels.',        ['digital-marketing'],         { featured: true, rating: 4.9, reviewCount: 41, completionsCount: 23, views90d: 4400, daysAgo: 24, thumbnail: u('1557838923-2985c318be48') }),
 ];
 
-const NEWEST_PROJECTS: ProjectSeed[] = [
+export const NEWEST_PROJECTS: ProjectSeed[] = [
   projectRow('Voice AI Customer Onboarding',       'Conversational onboarding flow powered by GPT-4o.',            ['development'],        { daysAgo: 1, thumbnail: u('1581091226825-a6a2a5aee158') }),
   projectRow('Sustainable Brand Refresh',          'Eco-conscious visual identity for a DTC clothing brand.',      ['design'],             { daysAgo: 1, thumbnail: u('1455390582262-044cdead277a') }),
   projectRow('Real-Time Sports Analytics',         'Live data pipelines and dashboards for team performance.',    ['cloud'],              { daysAgo: 1, thumbnail: u('1518186285589-2f7649de83e0') }),
@@ -182,7 +174,7 @@ const NEWEST_PROJECTS: ProjectSeed[] = [
   projectRow('Computer Vision QA System',          'Defect detection on a manufacturing line at 60 fps.',         ['development', 'cloud'], { daysAgo: 3, thumbnail: u('1581094794329-c8112a89af12') }),
 ];
 
-const POPULAR_TAB_PROJECTS: ProjectSeed[] = [
+export const POPULAR_TAB_PROJECTS: ProjectSeed[] = [
   // Web projects — 9 total for Most Popular > Top Web tab
   projectRow('Shopify Plus Migration',             'Replatforming from Magento with zero downtime.',              ['web'], { rating: 4.7, completionsCount: 21, views90d: 5100, daysAgo: 30, thumbnail: u('1557838923-2985c318be48') }),
   projectRow('FinTech Onboarding Flow',            'KYC + AML compliant signup with Plaid integration.',          ['web'], { rating: 4.8, completionsCount: 19, views90d: 4800, daysAgo: 32, thumbnail: u('1486406146926-c627a92ad1ab') }),
@@ -228,7 +220,7 @@ const POPULAR_TAB_PROJECTS: ProjectSeed[] = [
   projectRow('Brand Awareness Campaign',            'Multi-channel creative with earned media tracking.',            ['digital-marketing'], { rating: 4.7, completionsCount: 14, views90d: 3600, daysAgo: 100, thumbnail: u('1486406146926-c627a92ad1ab') }),
 ];
 
-const THEMED_PROJECTS: ProjectSeed[] = [
+export const THEMED_PROJECTS: ProjectSeed[] = [
   // Online Sales Funnels — 8
   projectRow('High-Converting SaaS Landing Page',  'Above-the-fold rebuild with A/B test infrastructure.',          ['sales-funnels', 'web'], { daysAgo: 110, thumbnail: u('1557838923-2985c318be48') }),
   projectRow('Webinar Funnel Build',               'Registration, replay, and follow-up sequence end-to-end.',      ['sales-funnels'],        { daysAgo: 112, thumbnail: u('1432888622747-4eb9a8efeb07') }),
@@ -294,60 +286,17 @@ export async function seedHomepageListings(
 
   // Idempotency — any row created by this seed will have createdBy = SEED_MARKER
   const existing = await dataSource.query(
-    `SELECT COUNT(*)::int AS n FROM public.projects WHERE "createdBy" = $1`,
+    `SELECT COUNT(*)::int AS n FROM public.services WHERE "createdBy" = $1`,
     [SEED_MARKER],
   );
   if (existing[0]?.n > 0) {
     logger.log(
-      `homepage-listings seed: ${existing[0].n} seeded projects already exist — skipping`,
+      `homepage-listings seed: ${existing[0].n} seeded services already exist — skipping`,
     );
     return;
   }
 
-  logger.log('homepage-listings seed: inserting project + service fixtures');
-
-  const allProjects = [
-    ...FEATURED_PROJECTS,
-    ...NEWEST_PROJECTS,
-    ...POPULAR_TAB_PROJECTS,
-    ...THEMED_PROJECTS,
-  ];
-
-  for (const p of allProjects) {
-    await dataSource.query(
-      `INSERT INTO public.projects (
-         title, description, slug, categories, skills, tags, "mediaUrls",
-         "shortDescription", status, budget, duration,
-         rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
-         "createdBy", "createdAt"
-       ) VALUES (
-         $1, $2, $3, $4::text[], $5::text[], '{}'::text[], $6::text[],
-         $7, $8, $9, $10,
-         $11, $12, $13, $14, $15, $16,
-         $17, $18
-       )`,
-      [
-        p.title,
-        p.description,
-        slugify(p.title),
-        p.categories,
-        p.skills ?? [],
-        p.mediaUrls ?? [],
-        p.shortDescription ?? p.description,
-        p.status ?? ListingStatus.Published,
-        p.budget ?? null,
-        p.duration ?? null,
-        p.rating ?? 0,
-        p.reviewCount ?? 0,
-        p.completionsCount ?? 0,
-        p.views90d ?? 0,
-        p.adminBoost ?? 0,
-        p.featured ?? false,
-        SEED_MARKER,
-        p.createdAt ?? new Date(),
-      ],
-    );
-  }
+  logger.log('homepage-listings seed: inserting service fixtures (projects come from CMS)');
 
   for (const s of MARKETING_SERVICES) {
     await dataSource.query(
@@ -387,6 +336,6 @@ export async function seedHomepageListings(
   }
 
   logger.log(
-    `homepage-listings seed: inserted ${allProjects.length} projects + ${MARKETING_SERVICES.length} services`,
+    `homepage-listings seed: inserted ${MARKETING_SERVICES.length} services`,
   );
 }

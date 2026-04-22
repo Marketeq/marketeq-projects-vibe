@@ -25,7 +25,7 @@ export class ManualTimeService {
 
     const entry = this.repo.create({
       userId,
-      projectId: dto.projectId ?? null,
+      contractId: dto.contractId ?? null,
       taskId: dto.taskId ?? null,
       startTime: start,
       endTime: end,

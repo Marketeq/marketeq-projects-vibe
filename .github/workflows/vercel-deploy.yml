@@ -5,7 +5,7 @@ on:
     branches:
       - dev-main
       - staging
-      - 'live/mvp'
+      - live-mvp
     paths:
       - 'frontend/**'
       - 'package.json'
@@ -25,7 +25,7 @@ jobs:
           case "${{ github.ref_name }}" in
             dev-main)  echo "project=marketeq-projects-dev" >> $GITHUB_OUTPUT ;;
             staging)   echo "project=marketeq-projects-staging" >> $GITHUB_OUTPUT ;;
-            live/mvp)  echo "project=marketeq-projects-live-mvp" >> $GITHUB_OUTPUT ;;
+            live-mvp)  echo "project=marketeq-projects-live-mvp" >> $GITHUB_OUTPUT ;;
           esac
 
       - name: Make repo public
@@ -45,7 +45,7 @@ jobs:
           MAX_ATTEMPTS=60
           for i in $(seq 1 $MAX_ATTEMPTS); do
             LATEST=$(curl -sf -H "Authorization: Bearer $VERCEL_TOKEN" \
-              "https://api.vercel.com/v6/deployments?projectId=$PROJECT&limit=1&target=production" \
+              "https://api.vercel.com/v6/deployments?project=$PROJECT&limit=1&target=production" \
               | jq -r '.deployments[0].state // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
 
             echo "Attempt $i/$MAX_ATTEMPTS: deployment state = $LATEST"
