@@ -93,4 +93,37 @@ describe("mapCmsProjectStaticDocToDto", () => {
     });
     expect(dto!.howItWorks!.steps[0].stepNumber).toBe("1");
   });
+
+  it("sanitizes unsafe policy link protocols", () => {
+    const dto = mapCmsProjectStaticDocToDto({
+      ...cmsDocFixture,
+      policy: {
+        ...cmsDocFixture.policy,
+        linkHref: "javascript:alert(1)",
+      },
+    });
+
+    expect(dto).not.toBeNull();
+    expect(dto!.policy.linkHref).toBe("/policy");
+  });
+
+  it("drops unsafe icon URL protocols", () => {
+    const dto = mapCmsProjectStaticDocToDto({
+      ...cmsDocFixture,
+      howItWorks: {
+        steps: [
+          {
+            stepNumber: "1",
+            title: "Unsafe icon step",
+            description: "Body.",
+            icon: "javascript:alert(1)",
+          },
+        ],
+      },
+    });
+
+    expect(dto).not.toBeNull();
+    expect(dto!.howItWorks).not.toBeNull();
+    expect(dto!.howItWorks!.steps[0].iconUrl).toBeUndefined();
+  });
 });

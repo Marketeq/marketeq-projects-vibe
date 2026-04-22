@@ -8,6 +8,12 @@ const guaranteeIconOptions = [
   { label: "Shield Dollar", value: "shield-dollar" },
 ];
 
+const isSafePolicyLink = (value: unknown): boolean => {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  return trimmed.startsWith("/") || /^https?:\/\//i.test(trimmed);
+};
+
 /**
  * Project static content shown on project details pages:
  * right-rail guarantee block and main-column "How It Works" card.
@@ -163,6 +169,9 @@ export const ProjectStaticContents: CollectionConfig = {
               type: "text",
               required: true,
               defaultValue: "/policy",
+              validate: (value: unknown) =>
+                isSafePolicyLink(value) ||
+                "Use a relative path (/policy) or an absolute https:// URL.",
               admin: { width: "50%" },
             },
           ],
@@ -185,13 +194,13 @@ export const ProjectStaticContents: CollectionConfig = {
           maxRows: 6,
           defaultValue: [
             {
-              stepNumber: "1",
+              stepNumber: "2",
               title: "Customize Your Scope",
               description:
                 "Lorem ipsum odor amet, consectetuer adipiscing elit.",
             },
             {
-              stepNumber: "1",
+              stepNumber: "3",
               title: "Customize Your Scope",
               description:
                 "Lorem ipsum odor amet, consectetuer adipiscing elit.",

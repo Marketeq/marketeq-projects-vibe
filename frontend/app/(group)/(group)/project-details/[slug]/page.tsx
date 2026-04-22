@@ -4477,13 +4477,15 @@ export default function ProjectDetails() {
                   className="text-xs p-0 h-auto"
                   variant="link"
                   onClick={() => {
-                    const href = projectStaticContent.policy.linkHref
+                    const href = projectStaticContent.policy.linkHref?.trim()
                     if (!href) return
                     if (/^https?:\/\//i.test(href)) {
                       window.open(href, "_self")
                       return
                     }
-                    router.push(href)
+                    if (href.startsWith("/")) {
+                      router.push(href)
+                    }
                   }}
                 >
                   {projectStaticContent.policy.linkLabel}

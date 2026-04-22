@@ -11,6 +11,9 @@ import { DataSource } from "typeorm";
 import { mapCmsProjectStaticDocToDto } from "./map-cms-project-static-doc";
 import type { ProjectStaticContent } from "./project-static-content.dto";
 
+const PROJECT_STATIC_CONTENT_CACHE_TTL_MS = 60_000;
+const PROJECT_STATIC_CONTENT_TIMEOUT_MS = 3_000;
+
 /**
  * Read-only adapter over the `public.projects` table.
  *
@@ -32,6 +35,10 @@ import type { ProjectStaticContent } from "./project-static-content.dto";
 @Controller("v1/projects")
 export class CmsProjectsController {
   private readonly logger = new Logger(CmsProjectsController.name);
+  private projectStaticCache: {
+    value: ProjectStaticContent;
+    expiresAt: number;
+  } | null = null;
 
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
@@ -437,6 +444,13 @@ export class CmsProjectsController {
    * or invalid so the client can fall back to built-in defaults.
    */
   private async getProjectStaticContent(): Promise<ProjectStaticContent | null> {
+    if (
+      this.projectStaticCache &&
+      this.projectStaticCache.expiresAt > Date.now()
+    ) {
+      return this.projectStaticCache.value;
+    }
+
     const baseUrl = (
       process.env.CMS_PUBLIC_URL ||
       process.env.CMS_SERVICE_URL ||
@@ -457,14 +471,21 @@ export class CmsProjectsController {
     }
 
     const url = `${baseUrl}/api/project-static-contents?${query.toString()}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      PROJECT_STATIC_CONTENT_TIMEOUT_MS,
+    );
     let res: Response;
     try {
-      res = await fetch(url, { headers });
+      res = await fetch(url, { headers, signal: controller.signal });
     } catch (err) {
       this.logger.warn(
         `project-static-contents fetch error (${baseUrl}): ${err}`,
       );
       return null;
+    } finally {
+      clearTimeout(timeout);
     }
     if (!res.ok) {
       this.logger.warn(
@@ -482,7 +503,14 @@ export class CmsProjectsController {
       return null;
     }
 
-    return mapCmsProjectStaticDocToDto(doc);
+    const mapped = mapCmsProjectStaticDocToDto(doc);
+    if (mapped) {
+      this.projectStaticCache = {
+        value: mapped,
+        expiresAt: Date.now() + PROJECT_STATIC_CONTENT_CACHE_TTL_MS,
+      };
+    }
+    return mapped;
   }
 }
 
