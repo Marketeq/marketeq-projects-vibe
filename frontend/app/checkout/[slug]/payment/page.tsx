@@ -102,6 +102,14 @@ const parseCurrencyAmount = (value?: string | null) => {
   return Number.isFinite(numericValue) ? numericValue : undefined
 }
 
+const safeDecodeSlug = (value: string): string => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
 type PaymentPlanOption = {
   id: string
   label: string
@@ -308,7 +316,7 @@ export default function PaymentPage() {
   const slug = params.slug as string
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
-  const decodedSlug = decodeURIComponent(slug)
+  const decodedSlug = safeDecodeSlug(slug)
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(null)
 
   React.useEffect(() => {
