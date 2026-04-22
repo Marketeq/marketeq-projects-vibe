@@ -72,6 +72,7 @@ export default function ConfirmationPage() {
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
   const decodedSlug = safeDecodeSlug(slug)
+  const safeSlugSegment = encodeURIComponent(decodedSlug)
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(null)
   const [isEditOfferOpen, setIsEditOfferOpen] = React.useState(false)
   const [hasAuthorizedPayment, setHasAuthorizedPayment] = React.useState(false)
@@ -154,10 +155,10 @@ export default function ConfirmationPage() {
 
   const handleEditPaymentMethods = React.useCallback(() => {
     const nextUrl = searchParams.toString()
-      ? `${basePath}/${slug}/payment?${searchParams.toString()}`
-      : `${basePath}/${slug}/payment`
+      ? `${basePath}/${safeSlugSegment}/payment?${searchParams.toString()}`
+      : `${basePath}/${safeSlugSegment}/payment`
     router.push(nextUrl)
-  }, [basePath, router, searchParams, slug])
+  }, [basePath, router, safeSlugSegment, searchParams])
 
   const handleSubmitPayment = () => {
     if (!hasAuthorizedPayment) {
@@ -172,7 +173,7 @@ export default function ConfirmationPage() {
     }
 
     setIsSubmittingPayment(true)
-    router.push(`${basePath}/${slug}/thank-you`)
+    router.push(`${basePath}/${safeSlugSegment}/thank-you`)
   }
 
   return (
