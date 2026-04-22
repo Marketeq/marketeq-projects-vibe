@@ -112,6 +112,7 @@ export const IPC = {
   // --- Contracts (fetched from backend API) ---
   contractsGetMine: 'contracts:get-mine',
 
+
   // --- Shell helpers ---
   shellOpenExternal: 'shell:open-external',
 } as const;
