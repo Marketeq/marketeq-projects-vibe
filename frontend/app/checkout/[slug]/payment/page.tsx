@@ -102,6 +102,21 @@ const parseCurrencyAmount = (value?: string | null) => {
   return Number.isFinite(numericValue) ? numericValue : undefined
 }
 
+const sanitizeBalanceInput = (value: string): string => {
+  const sanitized = value.replace(/[^0-9.]/g, "")
+  const [integerPart, ...decimalParts] = sanitized.split(".")
+  const normalizedIntegerPart = integerPart.replace(/^0+(?=\d)/, "")
+
+  if (decimalParts.length === 0) {
+    return normalizedIntegerPart
+  }
+
+  return `${normalizedIntegerPart}.${decimalParts.join("").slice(0, 2)}`
+}
+
+const normalizeGiftCardCode = (value: string): string =>
+  value.trim().toUpperCase().replace(/[\s-]+/g, "")
+
 const safeDecodeSlug = (value: string): string => {
   try {
     return decodeURIComponent(value)
@@ -317,6 +332,7 @@ export default function PaymentPage() {
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
   const decodedSlug = safeDecodeSlug(slug)
+  const safeSlugSegment = encodeURIComponent(decodedSlug)
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(null)
 
   React.useEffect(() => {
@@ -622,26 +638,34 @@ export default function PaymentPage() {
 
   const availableBalance = 4000
   const fullAmount = 98_000
+  const parsedCustomAmount = parseCurrencyAmount(customAmount)
+  const normalizedCustomAmount =
+    parsedCustomAmount === undefined
+      ? undefined
+      : Math.min(Math.max(parsedCustomAmount, 0), availableBalance)
+  const appliedBalanceAmount = useBalance ? (normalizedCustomAmount ?? availableBalance) : 0
+  const remainingAvailableBalance = availableBalance - appliedBalanceAmount
 
   const handleSubmitOrder = () => {
     setIsProcessing(true)
     setTimeout(() => {
       const nextSearchParams = new URLSearchParams(searchParams.toString())
       const nextUrl = nextSearchParams.toString()
-        ? `${basePath}/${slug}/confirmation?${nextSearchParams.toString()}`
-        : `${basePath}/${slug}/confirmation`
+        ? `${basePath}/${safeSlugSegment}/confirmation?${nextSearchParams.toString()}`
+        : `${basePath}/${safeSlugSegment}/confirmation`
       router.push(nextUrl)
     }, 1500)
   }
 
   const handleGiftCardSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (giftCardInput) {
-      setGiftCards((prev) => [...prev, giftCardInput])
-      setGiftCardInput("")
-      setShowGiftCardSuccess(true)
-      setTimeout(() => setShowGiftCardSuccess(false), 5000)
-    }
+    const normalizedGiftCardCode = normalizeGiftCardCode(giftCardInput)
+    if (!normalizedGiftCardCode || giftCards.includes(normalizedGiftCardCode)) return
+
+    setGiftCards((prev) => [...prev, normalizedGiftCardCode])
+    setGiftCardInput("")
+    setShowGiftCardSuccess(true)
+    setTimeout(() => setShowGiftCardSuccess(false), 5000)
   }
 
   const billingAddressSummary = {
@@ -1402,7 +1426,7 @@ export default function PaymentPage() {
             size="md"
             variant="link"
             visual="gray"
-            onClick={() => router.push(`${basePath}/${slug}`)}
+            onClick={() => router.push(`${basePath}/${safeSlugSegment}`)}
           >
             <ArrowLeft className="size-[15px] group-hover:-translate-x-1 transition duration-300" />{" "}
             Back
@@ -1492,18 +1516,14 @@ export default function PaymentPage() {
                           className="flex-auto"
                           placeholder="Enter amount"
                           value={customAmount}
-                          onChange={(e) => setCustomAmount(e.target.value)}
+                          onChange={(e) => setCustomAmount(sanitizeBalanceInput(e.target.value))}
                         />
                         <Button size="lg">Apply</Button>
                       </div>
 
                       <div className="mt-2">
                         <span className="block text-xs leading-none text-gray-500">
-                          {formatter.format(
-                            customAmount
-                              ? availableBalance - Number(customAmount)
-                              : availableBalance
-                          )}{" "}
+                          {formatter.format(remainingAvailableBalance)}{" "}
                           remaining of available balance
                         </span>
                       </div>
@@ -1521,12 +1541,12 @@ export default function PaymentPage() {
                         Use full balance
                       </Button>
                     </form>
-                  ) : customAmount ? (
+                  ) : normalizedCustomAmount !== undefined ? (
                     <>
                       <Label size="sm">
                         Using{" "}
                         <span className="font-bold">
-                          {formatter.format(Number(customAmount))}
+                          {formatter.format(normalizedCustomAmount)}
                         </span>{" "}
                         of total available balance of{" "}
                         {formatter.format(availableBalance)}
@@ -1613,7 +1633,7 @@ export default function PaymentPage() {
                       </AlertIcon>
                       <AlertContent>
                         <AlertTitle>
-                          Gift Card &quot;{giftCards.slice(-1)}&quot; has been applied.
+                          Gift Card &quot;{giftCards.at(-1)}&quot; has been applied.
                         </AlertTitle>
                       </AlertContent>
                     </Alert>
@@ -3182,7 +3202,7 @@ export default function PaymentPage() {
                       {useBalance && (
                         <div className="flex items-center justify-between">
                           <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">Balance applied</span>
-                          <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">- {formatter.format(customAmount ? Number(customAmount) : availableBalance)}</span>
+                          <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">- {formatter.format(appliedBalanceAmount)}</span>
                         </div>
                       )}
                     </div>
