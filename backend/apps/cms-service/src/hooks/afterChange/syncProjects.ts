@@ -369,9 +369,14 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       klarnaPaymentEnabled: (doc as any).klarnaPaymentEnabled,
       recentQuestions: (doc as any).recentQuestions,
       skillsAndTools: (doc as any).skillsAndTools,
-      chatEnabled: (doc as any).chatEnabled,
-      reportButtonEnabled: (doc as any).reportButtonEnabled,
-      shareButtonEnabled: (doc as any).shareButtonEnabled,
+      // Docs source-of-truth:
+      // - chat_enabled is runtime-computed from team presence (not CMS-authored)
+      // - report_button_enabled is a frontend-only feature (visible to logged-in users)
+      // - share_button_enabled is always true for public projects
+      // - help_button_enabled is an optional feature toggle (CMS-authored)
+      chatEnabled: false,
+      reportButtonEnabled: true,
+      shareButtonEnabled: true,
       helpButtonEnabled: (doc as any).helpButtonEnabled,
       featured: (doc as any).featured,
       _status: ((doc as any)._status ?? "published") as

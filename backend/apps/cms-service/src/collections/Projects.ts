@@ -926,8 +926,9 @@ export const Projects: CollectionConfig = {
       defaultValue: false,
       admin: {
         position: 'sidebar',
+        readOnly: true,
         description:
-          'Spec: runtime-computed from team online status. Currently an admin override — frontend will AND with real-time presence when messaging-service lands.',
+          'Docs: runtime-computed from team online status (not CMS-editable). Will be enabled automatically when messaging presence is wired.',
       },
     },
     {
@@ -941,7 +942,9 @@ export const Projects: CollectionConfig = {
       defaultValue: true,
       admin: {
         position: 'sidebar',
-        description: 'Spec: frontend-only feature. Kept as admin override for edge cases (e.g. disable on internal projects).',
+        readOnly: true,
+        description:
+          'Docs: visible to logged-in users only (not a per-project CMS toggle).',
       },
     },
     {
@@ -953,7 +956,8 @@ export const Projects: CollectionConfig = {
       defaultValue: true,
       admin: {
         position: 'sidebar',
-        description: 'Spec: always true for public projects. Kept as admin override; default matches spec.',
+        readOnly: true,
+        description: 'Docs: always true for public projects (not CMS-editable).',
       },
     },
     {
