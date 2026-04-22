@@ -299,13 +299,15 @@ export function Chats({
   const handleIncoming = useCallback(
     async (incoming: {
       id: string
-      ciphertext: string
+      ciphertext: string | null
       senderId: string
       threadId: string
       createdAt: string
       updatedAt: string
       pinned?: boolean
       deleted?: boolean
+      forwardedFromId?: string
+      quotedCiphertext?: string | null
     }) => {
       const convId = incoming.threadId
       let key: Uint8Array | null = null
@@ -318,12 +320,23 @@ export function Chats({
         console.error("No AES key for", convId)
         return
       }
-      let plain: string
-      try {
-        plain = await decryptAES(incoming.ciphertext, key)
-      } catch (err) {
-        console.error("Failed to decrypt incoming:", err)
-        return
+      let plain = ""
+      if (incoming.ciphertext) {
+        try {
+          plain = await decryptAES(incoming.ciphertext, key)
+        } catch (err) {
+          console.error("Failed to decrypt incoming:", err)
+          return
+        }
+      }
+      let quotedPlain: string | null = null
+      if (incoming.quotedCiphertext) {
+        try {
+          quotedPlain = await decryptAES(incoming.quotedCiphertext, key)
+        } catch (err) {
+          console.error("Failed to decrypt quoted content:", err)
+          quotedPlain = "🔒 Encrypted message"
+        }
       }
       setLocalMsgs((prev) => {
         if (prev.some((m) => m.id === incoming.id)) return prev
@@ -332,6 +345,7 @@ export function Chats({
           {
             ...incoming,
             content: plain,
+            quotedContent: quotedPlain,
             isRead: false,
             isPinned: incoming.pinned ?? false,
             isDeleted: incoming.deleted ?? false,
@@ -822,7 +836,7 @@ export function Chats({
           </ToggleGroupRoot>
 
           <div className="flex items-center gap-x-1">
-            <IconButton visual="gray" variant="ghost" size="lg">
+            <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
               <Info className="size-[22px]" />
             </IconButton>
             <FavoriteRoot
@@ -1057,6 +1071,7 @@ export function Chats({
               visual="gray"
               variant="ghost"
               size="sm"
+              className="rounded-full"
               onClick={() => setReplyingTo(null)}
             >
               <X className="size-4" />
@@ -1073,6 +1088,7 @@ export function Chats({
               visual="gray"
               variant="ghost"
               size="sm"
+              className="rounded-full"
               onClick={handleCancelEdit}
             >
               <X className="size-4" />
@@ -1084,14 +1100,14 @@ export function Chats({
         {/* Emoji + File + Upload */}
         <div className="flex items-center gap-x-1">
           <EmojiPicker onEmojiSelect={handleEmojiSelect}>
-            <IconButton visual="gray" variant="ghost" size="lg">
+            <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
               <Smile className="size-[22px]" />
             </IconButton>
           </EmojiPicker>
 
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <IconButton visual="gray" variant="ghost" size="lg">
+              <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
                 <Image03 className="size-[22px]" />
               </IconButton>
             </DialogTrigger>
@@ -1104,7 +1120,7 @@ export function Chats({
                   visual="gray"
                   variant="ghost"
                   size="sm"
-                  className="absolute top-2 right-2"
+                  className="absolute top-2 right-2 rounded-full"
                 >
                   <X className="size-4" />
                 </IconButton>
@@ -1142,7 +1158,7 @@ export function Chats({
           {/* // Updated attachment dropdown with file input */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <IconButton visual="gray" variant="ghost" size="lg">
+              <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
                 <Attachment01 className="size-[22px]" />
               </IconButton>
             </DropdownMenuTrigger>

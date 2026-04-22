@@ -84,7 +84,7 @@ export function mapCmsProjectStaticDocToDto(
     policy: {
       prefixText: policyPrefixText,
       linkLabel: policyLinkLabel,
-      linkHref: policyLinkHref || "/policy",
+      linkHref: normalizePolicyLinkHref(policyLinkHref),
     },
     howItWorks: mapHowItWorksGroup((doc as any)?.howItWorks),
   };
@@ -138,8 +138,7 @@ function resolveStepIconUrl(value: unknown): string | undefined {
   // Payload may return an ID (number/string) when depth is 0.
   // We request depth=1 so in practice this should be a Media object.
   if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed ? trimmed : undefined;
+    return normalizeImageUrl(value);
   }
 
   if (typeof value !== "object") return undefined;
@@ -154,11 +153,31 @@ function resolveStepIconUrl(value: unknown): string | undefined {
     if (url.startsWith("/media/")) {
       return url;
     }
-    return url;
+    return normalizeImageUrl(url);
   }
 
   const filename = typeof v.filename === "string" ? v.filename.trim() : "";
   if (filename) return `/media/${filename}`;
 
+  return undefined;
+}
+
+function normalizePolicyLinkHref(rawValue: string): string {
+  const trimmed = rawValue.trim();
+  if (!trimmed) return "/policy";
+  if (trimmed.startsWith("/")) return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return "/policy";
+}
+
+function normalizeImageUrl(rawValue: string): string | undefined {
+  const trimmed = rawValue.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith("/")) {
+    return trimmed.startsWith("/cms-media/")
+      ? "/media/" + trimmed.slice("/cms-media/".length)
+      : trimmed;
+  }
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
   return undefined;
 }

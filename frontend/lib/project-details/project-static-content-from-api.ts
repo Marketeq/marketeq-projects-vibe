@@ -47,6 +47,28 @@ function normalizeStepNumber(value: unknown): string {
   return String(value).trim()
 }
 
+function normalizeSafeNavigationHref(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (trimmed.startsWith("/")) return trimmed
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return null
+}
+
+function normalizeSafeImageHref(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  if (trimmed.startsWith("/")) {
+    return trimmed.startsWith("/cms-media/")
+      ? "/media/" + trimmed.slice("/cms-media/".length)
+      : trimmed
+  }
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return undefined
+}
+
 /**
  * Parses `howItWorks.steps` from the gateway payload. Returns null if missing
  * or if no valid steps (same rules as listings-service mapper).
@@ -67,7 +89,7 @@ function parseHowItWorksFromPayload(
       const description =
         typeof row.description === "string" ? row.description.trim() : ""
       const iconUrlRaw =
-        typeof row.iconUrl === "string" ? row.iconUrl.trim() : ""
+        normalizeSafeImageHref(row.iconUrl) ?? ""
       if (!stepNumber || !stepTitle || !description) return null
       return {
         stepNumber,
@@ -117,13 +139,13 @@ export const DEFAULT_PROJECT_STATIC_CONTENT: ProjectStaticContent = {
         iconUrl: "/media/seed-1558655146-9f40138edfeb.jpg",
       },
       {
-        stepNumber: "1",
+        stepNumber: "2",
         title: "Customize Your Scope",
         description: "Lorem ipsum odor amet, consectetuer adipiscing elit.",
         iconUrl: "/media/seed-1454165804606-c3d57bc86b40.jpg",
       },
       {
-        stepNumber: "1",
+        stepNumber: "3",
         title: "Customize Your Scope",
         description: "Lorem ipsum odor amet, consectetuer adipiscing elit.",
         iconUrl: "/media/seed-1455390582262-044cdead277a.jpg",
@@ -225,9 +247,8 @@ export function buildProjectStaticContentFromGateway(
       ? pol.linkLabel.trim()
       : DEFAULT_PROJECT_STATIC_CONTENT.policy.linkLabel
   const policyLinkHref =
-    pol && typeof pol.linkHref === "string" && pol.linkHref.trim()
-      ? pol.linkHref.trim()
-      : DEFAULT_PROJECT_STATIC_CONTENT.policy.linkHref
+    normalizeSafeNavigationHref(pol?.linkHref) ??
+    DEFAULT_PROJECT_STATIC_CONTENT.policy.linkHref
 
   return {
     heading,

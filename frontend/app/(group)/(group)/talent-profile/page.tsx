@@ -754,7 +754,7 @@ function Default() {
               /* Skeleton loading state */
               <>
                 <div className="p-10 flex items-start gap-x-10">
-                  <Shimmer className="size-[318px] rounded-lg shrink-0" />
+                  <Shimmer className="size-[318px] rounded-full shrink-0" />
                   <div className="flex-auto space-y-4 pt-2">
                     <Shimmer className="h-8 w-64" />
                     <Shimmer className="h-6 w-48" />
@@ -795,7 +795,7 @@ function Default() {
                 <div className="flex items-start">
                   <div className="flex-auto">
                     <h1 className="text-[28px] leading-[34px] font-bold text-dark-blue-400">
-                      {profile?.firstName ?? "Talent"}{profile?.lastName ? ` ${profile.lastName}` : ""}
+                      {profile?.firstName ?? "Talent"}
                       {profile?.username && (
                         <span className="text-[26px] font-extralight">
                           {" "}@{profile.username}

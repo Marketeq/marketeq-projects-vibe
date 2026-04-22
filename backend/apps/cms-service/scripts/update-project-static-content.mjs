@@ -51,6 +51,16 @@ async function main() {
   }
 
   const marker = new Date().toISOString().slice(0, 19);
+  const iconFilenames = [
+    "seed-1558655146-9f40138edfeb.jpg",
+    "seed-1454165804606-c3d57bc86b40.jpg",
+    "seed-1455390582262-044cdead277a.jpg",
+  ];
+
+  const iconIds = await Promise.all(
+    iconFilenames.map((filename) => findMediaIdByFilename(filename, auth)),
+  );
+
   const body = {
     howItWorks: {
       steps: [
@@ -58,19 +68,19 @@ async function main() {
           stepNumber: "1",
           title: `CMS step one (${marker})`,
           description: "Updated by scripts/update-project-static-content.mjs — one.",
-          iconUrl: "/cms-media/seed-1558655146-9f40138edfeb.jpg",
+          ...(iconIds[0] ? { icon: iconIds[0] } : {}),
         },
         {
           stepNumber: "2",
           title: `CMS step two (${marker})`,
           description: "Updated by scripts/update-project-static-content.mjs — two.",
-          iconUrl: "/cms-media/seed-1454165804606-c3d57bc86b40.jpg",
+          ...(iconIds[1] ? { icon: iconIds[1] } : {}),
         },
         {
           stepNumber: "3",
           title: `CMS step three (${marker})`,
           description: "Updated by scripts/update-project-static-content.mjs — three.",
-          iconUrl: "/cms-media/seed-1455390582262-044cdead277a.jpg",
+          ...(iconIds[2] ? { icon: iconIds[2] } : {}),
         },
       ],
     },
@@ -115,3 +125,23 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
+
+async function findMediaIdByFilename(filename, authHeaders) {
+  const query = new URLSearchParams({
+    limit: "1",
+    depth: "0",
+    "where[filename][equals]": filename,
+  });
+  const url = `${CMS_BASE_URL}/api/media?${query.toString()}`;
+  const res = await fetch(url, { headers: { ...authHeaders } });
+  if (!res.ok) {
+    console.warn(`Media lookup failed for ${filename}: HTTP ${res.status}`);
+    return null;
+  }
+  const body = await res.json();
+  const id = body?.docs?.[0]?.id ?? null;
+  if (!id) {
+    console.warn(`Media not found for filename: ${filename}`);
+  }
+  return id;
+}

@@ -1408,7 +1408,17 @@ function ScreenshotDetailsDialog({
 //   doc 30 — Auto-Update & Release Channels  (GitHub releases feed)
 //   doc 41 — In-App Help, Empty States & Onboarding Copy
 
-// Versionless artifact names from electron-builder.yml — URLs stay stable across releases
+// Stable download URLs. The underlying repo is a dedicated release-only repo
+// (Marketeq/desktop-time-tracker) so the main codebase stays private while
+// /releases/latest/download/<file> remains publicly downloadable.
+//
+// Filenames are intentionally versionless so these URLs never break across
+// version bumps — GitHub redirects `/releases/latest/download/<file>` to the
+// current release asset. This is the same pattern Obsidian, Standard Notes,
+// and Linear use.
+//
+// electron-builder artifactName in desktop/electron-builder.yml MUST stay in
+// sync with these filenames (doc 29 §1.1).
 const DTT_RELEASES_BASE = "https://github.com/Marketeq/desktop-time-tracker/releases/latest/download"
 
 type DesktopPlatform = "mac-arm64" | "mac-x64" | "win-x64" | "win-arm64"
@@ -1420,6 +1430,7 @@ interface PlatformOption {
   fileName: string
   fileSize: string
   downloadUrl: string
+  available: boolean
 }
 
 const platformOptions: Record<DesktopPlatform, PlatformOption> = {
@@ -1430,6 +1441,7 @@ const platformOptions: Record<DesktopPlatform, PlatformOption> = {
     fileName: "Marketeq-mac-arm64.dmg",
     fileSize: "102 MB",
     downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-mac-arm64.dmg`,
+    available: true,
   },
   "mac-x64": {
     value: "mac-x64",
@@ -1438,6 +1450,7 @@ const platformOptions: Record<DesktopPlatform, PlatformOption> = {
     fileName: "Marketeq-mac-x64.dmg",
     fileSize: "107 MB",
     downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-mac-x64.dmg`,
+    available: true,
   },
   "win-x64": {
     value: "win-x64",
@@ -1446,6 +1459,7 @@ const platformOptions: Record<DesktopPlatform, PlatformOption> = {
     fileName: "Marketeq-Setup-win-x64.exe",
     fileSize: "~97 MB",
     downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Setup-win-x64.exe`,
+    available: true,
   },
   "win-arm64": {
     value: "win-arm64",
@@ -1454,6 +1468,7 @@ const platformOptions: Record<DesktopPlatform, PlatformOption> = {
     fileName: "Marketeq-Setup-win-arm64.exe",
     fileSize: "~94 MB",
     downloadUrl: `${DTT_RELEASES_BASE}/Marketeq-Setup-win-arm64.exe`,
+    available: true,
   },
 }
 
@@ -1514,11 +1529,17 @@ function DownloadDesktopTrackerDialog({
       title: "Download started",
       description: `${selected.fileName} is downloading to your Downloads folder.`,
     })
+    if (typeof window !== "undefined") {
+      window.location.href = selected.downloadUrl
+    }
   }
 
-  // Auto-start the download when the dialog opens (per flowchart Step 2)
+  // Auto-start the download when the dialog opens (per flowchart Step 2).
+  // Only for platforms whose installers actually exist — otherwise we'd
+  // send the user into a 404 without their consent.
   useEffect(() => {
     if (!open || downloadStarted) return
+    if (!selected.available) return
     const t = setTimeout(() => {
       const a = document.createElement("a")
       a.href = selected.downloadUrl
@@ -1531,10 +1552,13 @@ function DownloadDesktopTrackerDialog({
         title: "Download started",
         description: `${selected.fileName} is downloading to your Downloads folder.`,
       })
+      if (typeof window !== "undefined") {
+        window.location.href = selected.downloadUrl
+      }
     }, 400)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, selected.available])
 
   const otherOsPlatform: DesktopPlatform = isMac ? "win-x64" : "mac-arm64"
 
@@ -1586,8 +1610,8 @@ function DownloadDesktopTrackerDialog({
                   macOS — Apple Silicon (M1/M2/M3)
                 </SelectItem>
                 <SelectItem value="mac-x64">macOS — Intel</SelectItem>
-                <SelectItem value="win-x64">Windows 10/11 — 64-bit</SelectItem>
-                <SelectItem value="win-arm64">Windows 10/11 — ARM64</SelectItem>
+                <SelectItem value="win-x64">Windows 10/11 — 64-bit (coming soon)</SelectItem>
+                <SelectItem value="win-arm64">Windows 10/11 — ARM64 (coming soon)</SelectItem>
               </SelectContent>
             </Select>
           </div>

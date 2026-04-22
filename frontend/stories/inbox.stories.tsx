@@ -219,11 +219,6 @@ export const Bubble = ({
   return (
     <article className="group inline-flex flex-col items-start gap-y-2">
       <div className="p-5 pt-2.5 flex-auto rounded-xl flex flex-col gap-y-2 bg-primary-500/[.04]">
-        {message.forwardedFromId && !isDeleted && (
-          <span className="inline-flex items-center gap-x-1 text-[11px] text-gray-400 italic">
-            <Send03 className="size-3" /> Forwarded
-          </span>
-        )}
         <div className="flex items-end justify-between">
           <h3 className="text-sm leading-[16.8px] font-bold text-dark-blue-400">
             {senderName}{" "}
@@ -278,6 +273,19 @@ export const Bubble = ({
         {/* <span className="text-sm leading-[16.94px] text-dark-blue-400">
           {value}
         </span> */}
+
+        {message.forwardedFromId && !isDeleted && (
+          <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">
+            <p className="inline-flex items-center gap-x-1 text-xs font-semibold text-primary-600">
+              <Send03 className="size-3" /> Forwarded
+            </p>
+            {message.quotedContent && (
+              <p className="text-xs text-gray-600 line-clamp-3 mt-0.5">
+                {message.quotedContent}
+              </p>
+            )}
+          </div>
+        )}
 
         {replyToMessage && !isDeleted && (
           <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">
@@ -416,11 +424,6 @@ export const YourBubble = ({
 
       <div className="group inline-flex flex-col items-start gap-y-2">
         <div className="p-5 pt-2.5 flex-auto rounded-xl flex flex-col gap-y-2 bg-primary-500/[.04]">
-          {message.forwardedFromId && !isDeleted && (
-            <span className="inline-flex items-center gap-x-1 text-[11px] text-gray-400 italic">
-              <Send03 className="size-3" /> Forwarded
-            </span>
-          )}
           <div className="flex items-end justify-between">
             <h3 className="text-sm leading-[16.8px] font-bold text-dark-blue-400">
               {senderName}{" "}
@@ -459,6 +462,19 @@ export const YourBubble = ({
               </DropdownMenu>
             </div>
           </div>
+
+          {message.forwardedFromId && !isDeleted && (
+            <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">
+              <p className="inline-flex items-center gap-x-1 text-xs font-semibold text-primary-600">
+                <Send03 className="size-3" /> Forwarded
+              </p>
+              {message.quotedContent && (
+                <p className="text-xs text-gray-600 line-clamp-3 mt-0.5">
+                  {message.quotedContent}
+                </p>
+              )}
+            </div>
+          )}
 
           {replyToMessage && !isDeleted && (
             <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">

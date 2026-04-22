@@ -40,6 +40,7 @@ const Tabs = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root> & {
     unanimated?: boolean
+    layoutId?: string
   }
 >(
   (
@@ -48,6 +49,7 @@ const Tabs = React.forwardRef<
       onValueChange: onValueChangeProp,
       defaultValue,
       unanimated = false,
+      layoutId,
 
       ...props
     },
@@ -58,7 +60,8 @@ const Tabs = React.forwardRef<
       onChange: onValueChangeProp,
       defaultValue,
     })
-    const id = React.useId()
+    const generatedId = React.useId()
+    const id = layoutId ?? generatedId
     const ctxValue = React.useMemo(
       () => ({ value, onValueChange, id, unanimated }),
       [value, onValueChange, id, unanimated]

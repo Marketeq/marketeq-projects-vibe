@@ -32,6 +32,9 @@ export class Message {
   @Column({ nullable: true })
   forwardedFromId: string;
 
+  @Column('text', { nullable: true })
+  quotedCiphertext: string;
+
   @Column({ type: 'enum', enum: ['sent', 'delivered', 'read'], default: 'sent' })
   status: MessageStatus;
 
