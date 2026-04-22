@@ -374,7 +374,6 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       // - report_button_enabled is a frontend-only feature (visible to logged-in users)
       // - share_button_enabled is always true for public projects
       // - help_button_enabled is an optional feature toggle (CMS-authored)
-      chatEnabled: false,
       reportButtonEnabled: true,
       shareButtonEnabled: true,
       helpButtonEnabled: (doc as any).helpButtonEnabled,

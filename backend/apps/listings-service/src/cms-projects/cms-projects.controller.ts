@@ -728,6 +728,9 @@ function shapeProject(row: any) {
     badges: deriveBadges(row),
     recentQuestions: row.recentQuestions ?? [],
     skillsAndTools: row.skillsAndTools ?? [],
+    // Docs: chat_enabled is runtime-computed from team presence. Until
+    // presence is wired, default to false.
+    chatEnabled: false,
     // Docs: report/share are not CMS-controlled:
     // - Report is available to logged-in users (frontend decides gating)
     // - Share is always enabled for public projects

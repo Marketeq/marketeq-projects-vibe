@@ -258,10 +258,6 @@ export class ProjectSyncDto {
 
   @IsOptional()
   @IsBoolean()
-  chatEnabled?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
   reportButtonEnabled?: boolean;
 
   @IsOptional()

@@ -26,7 +26,6 @@ const PROJECT_SYNC_ALLOWED_KEYS = new Set([
   "klarnaPaymentEnabled",
   "recentQuestions",
   "skillsAndTools",
-  "chatEnabled",
   "helpButtonEnabled",
   "featured",
   "_status",

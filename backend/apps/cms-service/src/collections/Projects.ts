@@ -921,17 +921,6 @@ export const Projects: CollectionConfig = {
       // it as an admin override toggle so editors can force-disable the
       // widget for specific projects. The frontend ANDs this with the
       // real-time presence check when messaging-service lands.
-      name: 'chatEnabled',
-      type: 'checkbox',
-      defaultValue: false,
-      admin: {
-        position: 'sidebar',
-        readOnly: true,
-        description:
-          'Docs: runtime-computed from team online status (not CMS-editable). Will be enabled automatically when messaging presence is wired.',
-      },
-    },
-    {
       // Per data-dictionary.csv:25 — "Visible to logged-in users only."
       // Spec treats this as a frontend feature, not a per-project CMS
       // toggle. Kept for backwards compat with the sync pipeline, but
