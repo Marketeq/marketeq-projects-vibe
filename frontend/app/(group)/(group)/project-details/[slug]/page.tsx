@@ -16,6 +16,7 @@ import {
   type ProjectStaticContent,
   type ProjectStaticIcon,
 } from "@/lib/project-details/project-static-content-from-api"
+import { ProjectDetailsPricingSidebar } from "@/components/project-details/project-details-pricing-sidebar"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -26,20 +27,16 @@ import {
   Check,
   CheckCircle,
   ChevronDown,
-  Clock,
   FileText,
-  Flag,
   HelpCircle,
   Home03,
   Image03,
-  Info,
   MapPin,
   MessageTextCircle01,
   MessageTextSquare01,
   Rocket02,
   Send,
   Share,
-  Share06,
   ShieldDollar,
   ShieldZap,
   ShoppingCart,
@@ -47,7 +44,6 @@ import {
   Star,
   Stars02,
   UploadCloud,
-  Users03,
   X,
 } from "@blend-metrics/icons"
 import {
@@ -97,9 +93,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   DialogTrigger,
   DisclosureContent,
   DisclosureTrigger,
@@ -108,16 +101,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Favorite,
-  FavoriteRoot,
   IconButton,
   Input,
   InputGroup,
   InputRightElement,
   Label,
-  Listbox,
-  ListboxButton,
-  ListboxOption,
-  ListboxOptions,
   Progress,
   RatingGroupContext,
   RatingGroupControl,
@@ -584,6 +572,89 @@ export default function ProjectDetails() {
   const projectStaticContent = React.useMemo<ProjectStaticContent>(() => {
     return buildProjectStaticContentFromGateway(project?.projectStaticContent)
   }, [project?.projectStaticContent])
+
+  /** Pricing card props — aligned with project-details sidebar design comp. */
+  const pricingSidebarProps = React.useMemo(() => {
+    if (!project) return null
+    const m = (project.priceViewMode ||
+      project.pricingModel ||
+      "biweekly") as string
+    const periodMap: Record<string, string> = {
+      weekly: "Week",
+      biweekly: "2-week",
+      monthly: "Month",
+      quarterly: "Quarter",
+      yearly: "Year",
+    }
+    const billingPeriodDefault = periodMap[m] || "2-week"
+    const priceDisplay =
+      project.priceMin != null
+        ? `$${Number(project.priceMin).toLocaleString()}`
+        : project.budget != null
+          ? `$${Number(project.budget).toLocaleString()}`
+          : "—"
+    const total = project.priceMax ?? project.budget ?? project.priceMin
+    const kickNum =
+      total != null && !Number.isNaN(Number(total))
+        ? Math.max(1, Math.round(Number(total) / 6))
+        : null
+    const billingSubtitle =
+      kickNum != null
+        ? `with an initial payment of $${kickNum.toLocaleString()} to kickoff`
+        : project.priceMax != null
+          ? `Up to $${Number(project.priceMax).toLocaleString()} total · ${project.pricingModel || "biweekly"} billing`
+          : `Billing: ${project.pricingModel || "biweekly"}`
+    const teamHeading =
+      Array.isArray(project.team) && project.team.length > 1
+        ? "Current Team"
+        : "Created By"
+    const durRaw =
+      typeof project.duration === "string" ? project.duration.trim() : ""
+    const durationPrimaryLine =
+      durRaw.length === 0
+        ? "Duration: TBD"
+        : /^starting from/i.test(durRaw)
+          ? durRaw
+          : `Starting from a ${durRaw}${/duration$/i.test(durRaw) ? "" : " duration"}`
+    const emails = new Set<string>()
+    if (Array.isArray(project.scope)) {
+      for (const phase of project.scope as { tasks?: unknown }[]) {
+        const tasks = phase.tasks
+        if (!Array.isArray(tasks)) continue
+        for (const t of tasks) {
+          const raw = (t as { assigneeEmail?: string }).assigneeEmail
+          const e =
+            typeof raw === "string" ? raw.trim().toLowerCase() : ""
+          if (e) emails.add(e)
+        }
+      }
+    }
+    const scopeTeam = emails.size
+    const listedTeam = Array.isArray(project.team) ? project.team.length : 0
+    const minN = Math.max(scopeTeam, listedTeam, 1)
+    const minimumTeamMembersLine = `Minimum ${minN} team member${minN === 1 ? "" : "s"}`
+    const teamMembers = Array.isArray(project.team)
+      ? project.team.map((t: Record<string, unknown>) => ({
+          firstName: String(t.firstName ?? "?"),
+          username:
+            typeof t.username === "string" ? t.username : undefined,
+          avatarUrl:
+            typeof t.avatarUrl === "string" ? t.avatarUrl : null,
+          location:
+            typeof t.location === "string" ? t.location : null,
+          skills: Array.isArray(t.skills) ? (t.skills as string[]) : undefined,
+        }))
+      : []
+    return {
+      billingPeriodDefault,
+      priceDisplay,
+      billingSubtitle,
+      teamHeading,
+      durationPrimaryLine,
+      minimumTeamMembersLine,
+      teamMembers,
+    }
+  }, [project])
 
   if (loading) {
     return (
@@ -4130,306 +4201,19 @@ export default function ProjectDetails() {
         </div>
 
         <div className="pt-[51px] sticky top-[65px] pb-8 w-[390px] shrink-0 z-10">
-          <div className="bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg border border-gray-200">
-            <div className="relative border-b p-6 border-gray-200">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center">
-                  <Badge className="rounded-[5px]" visual="gray">
-                    Starting At
-                  </Badge>
-                  <div className="inline-flex items-center gap-x-1.5 ml-2">
-                    <span className="text-2xl leading-none font-bold text-dark-blue-400">
-                      {project.priceMin != null
-                        ? `$${Number(project.priceMin).toLocaleString()}`
-                        : project.budget != null
-                          ? `$${Number(project.budget).toLocaleString()}`
-                          : "—"}
-                    </span>
-                    <span className="text-sm font-medium leading-none text-dark-blue-400">
-                      per
-                    </span>
-                  </div>
-
-                  <div className="ml-1.5">
-                    <Listbox
-                      defaultValue={(() => {
-                        const m = (project.priceViewMode ||
-                          project.pricingModel ||
-                          "biweekly") as string
-                        const map: Record<string, string> = {
-                          weekly: "Week",
-                          biweekly: "2-week",
-                          monthly: "Month",
-                          quarterly: "Quarter",
-                          yearly: "Year",
-                        }
-                        return map[m] || "2-week"
-                      })()}
-                    >
-                      <ListboxButton
-                        className="text-sm lowercase py-[5px] px-[7px] h-max w-auto"
-                        iconClassName="ml-1"
-                        placeholder="Select"
-                      />
-                      <ListboxOptions className="w-[153px]">
-                        {["Week", "2-week", "Month", "Quarter", "Year"].map(
-                          (timeline) => (
-                            <ListboxOption key={timeline} value={timeline}>
-                              {timeline}
-                            </ListboxOption>
-                          )
-                        )}
-                      </ListboxOptions>
-                    </Listbox>
-                  </div>
-                </div>
-
-                <FavoriteRoot
-                  value={isFavorited}
-                  onValueChange={handleFavoriteToggle}
-                >
-                  {({ pressed }) => (
-                    <TooltipProvider delayDuration={75}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-block">
-                            <Favorite />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {pressed ? (
-                            <span className="inline-flex items-center gap-x-1">
-                              <Check className="size-[15px] shrink-0 text-green-500" />
-                              Saved
-                            </span>
-                          ) : (
-                            "Save to favorites"
-                          )}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-                </FavoriteRoot>
-              </div>
-
-              <div className="mt-3">
-                <span className="inline-block text-sm leading-none font-medium text-dark-blue-400">
-                  {project.priceMax != null
-                    ? `Up to $${Number(project.priceMax).toLocaleString()} total · ${project.pricingModel || "biweekly"} billing`
-                    : `Billing: ${project.pricingModel || "biweekly"}`}
-                </span>
-              </div>
-
-              <div className="flex flex-col items-start gap-y-3 mt-6">
-                <span className="inline-block text-xs font-medium text-dark-blue-400">
-                  {Array.isArray(project.team) && project.team.length > 1
-                    ? "Current Team"
-                    : "Created By"}
-                </span>
-
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <AvatarGroup size="sm" excess>
-                        {(Array.isArray(project.team) && project.team.length > 0
-                          ? project.team
-                          : [
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                            ]
-                        ).map((m: any, i: number) => (
-                          <Avatar
-                            key={m.username ?? i}
-                            className="border-2 border-white hover:ring-0 active:ring-0"
-                            size="sm"
-                          >
-                            {m.avatarUrl ? (
-                              <AvatarImage
-                                src={m.avatarUrl}
-                                alt={m.firstName}
-                              />
-                            ) : null}
-                            <AvatarFallback>
-                              {(m.firstName || "?").charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        ))}
-                      </AvatarGroup>
-                    </TooltipTrigger>
-                    <TooltipContent className="p-0" size="md">
-                      <ScrollArea
-                        className="h-[192px] p-3 pr-4"
-                        scrollBar={
-                          <ScrollBar
-                            className="w-4 p-1"
-                            thumbClassName="bg-white/20"
-                          />
-                        }
-                      >
-                        <div className="space-y-3 pr-5">
-                          {(Array.isArray(project.team) &&
-                          project.team.length > 0
-                            ? project.team
-                            : [
-                                {
-                                  firstName: "Sevil",
-                                  username: "designsuperstar23",
-                                  location: null,
-                                  skills: ["Full-stack Developer"],
-                                },
-                                {
-                                  firstName: "Sevil",
-                                  username: "designsuperstar23",
-                                  location: null,
-                                  skills: ["Full-stack Developer"],
-                                },
-                              ]
-                          ).map((m: any, i: number) => (
-                            <div
-                              key={m.username ?? i}
-                              className="flex items-center gap-x-[18px]"
-                            >
-                              <div className="flex items-center gap-x-2 flex-auto">
-                                <Avatar>
-                                  {m.avatarUrl ? (
-                                    <AvatarImage
-                                      src={m.avatarUrl}
-                                      alt={m.firstName}
-                                    />
-                                  ) : null}
-                                  <AvatarFallback>
-                                    {(m.firstName || "?")
-                                      .charAt(0)
-                                      .toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex flex-col flex-auto">
-                                  <div className="flex items-center gap-x-0.5">
-                                    <span className="text-xs leading-5 font-semibold text-white">
-                                      {m.firstName}
-                                    </span>
-                                    <span className="text-[10px] leading-none font-light text-white">
-                                      @{m.username}
-                                    </span>
-                                  </div>
-                                  <span className="text-[10px] font-light text-white">
-                                    {m.location ||
-                                      m.skills?.[0] ||
-                                      "Team Member"}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </ScrollArea>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-
-              <div className="mt-6 space-y-3">
-                <div className="flex items-center gap-x-[6.4px]">
-                  <Clock className="size-[18px] text-primary-500" />
-                  <span className="text-sm leading-none font-medium text-dark-blue-400">
-                    {project.duration
-                      ? `${project.duration} duration`
-                      : "Duration: TBD"}
-                  </span>
-                </div>
-                {project.estimatedHours != null && (
-                  <div className="flex items-center gap-x-[6.4px]">
-                    <Users03 className="size-[18px] text-primary-500" />
-                    <span className="text-sm leading-none font-medium text-dark-blue-400">
-                      {project.estimatedHours} estimated hours
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button
-                    size="lg"
-                    className="mt-6 w-full border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white"
-                    variant="outlined"
-                  >
-                    Start Project
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>
-                      Would you like to customize the project scope before
-                      checkout?
-                    </DialogTitle>
-                  </DialogHeader>
-                  <DialogFooter className="mt-8">
-                    <DialogClose asChild>
-                      <Button variant="outlined" visual="gray">
-                        Edit Scope
-                      </Button>
-                    </DialogClose>
-                    <Button
-                      onClick={() => router.push(`/checkout/${params.slug}`)}
-                    >
-                      Continue to Checkout
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-
-              <div className="flex items-center gap-x-1 mt-6">
-                <span className="text-sm font-medium leading-none text-dark-blue-400">
-                  Additional payment plans available with
-                </span>
-
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger className="focus-visible:outline-none text-gray-500">
-                      <Info className="size-[17px]" />
-                    </TooltipTrigger>
-
-                    <TooltipContent className="max-w-[286px]" visual="gray">
-                      Select Klarna at checkout to split your purchase into
-                      smaller payments over time. Klarna makes it easy to buy
-                      now and pay later, with no impact on your credit score.
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            </div>
-
-            <div className="h-[50px] rounded-b-lg bg-gray-50 flex items-center justify-evenly">
-              {project.reportButtonEnabled !== false && (
-                <div className="inline-flex items-center gap-x-2">
-                  <Flag className="size-[15px] text-gray-500" />
-                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                    Report
-                  </span>
-                </div>
-              )}
-
-              {project.helpButtonEnabled === true && (
-                <div className="inline-flex items-center gap-x-2">
-                  <HelpCircle className="size-[15px] text-gray-500" />
-                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                    Help
-                  </span>
-                </div>
-              )}
-
-              {project.shareButtonEnabled !== false && (
-                <div className="inline-flex items-center gap-x-2">
-                  <Share06 className="size-[15px] text-gray-500" />
-                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                    Share
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
+          {pricingSidebarProps ? (
+            <ProjectDetailsPricingSidebar
+              {...pricingSidebarProps}
+              favorited={isFavorited}
+              onFavoriteChange={(next) => void handleFavoriteToggle(next)}
+              onApplyToJoin={() =>
+                router.push(`/checkout/${params.slug as string}`)
+              }
+              reportButtonEnabled={project.reportButtonEnabled}
+              helpButtonEnabled={project.helpButtonEnabled}
+              shareButtonEnabled={project.shareButtonEnabled}
+            />
+          ) : null}
 
           <div className="mt-3 p-6">
             <h1 className="text-base leading-none font-semibold text-dark-blue-400">
