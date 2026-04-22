@@ -604,10 +604,7 @@ export default function ProjectDetails() {
         : project.priceMax != null
           ? `Up to $${Number(project.priceMax).toLocaleString()} total · ${project.pricingModel || "biweekly"} billing`
           : `Billing: ${project.pricingModel || "biweekly"}`
-    const teamHeading =
-      Array.isArray(project.team) && project.team.length > 1
-        ? "Current Team"
-        : "Created By"
+    const teamHeading = "Current Team"
     const durRaw =
       typeof project.duration === "string" ? project.duration.trim() : ""
     const durationPrimaryLine =
@@ -1431,12 +1428,10 @@ export default function ProjectDetails() {
                             const visibleSkills = allSkills.slice(0, 5)
                             const extraSkillCount =
                               allSkills.length - visibleSkills.length
-                            const headerLabel =
-                              members.length > 1 ? "Current Team" : "Created By"
                             return (
                               <div className="p-6">
                                 <h3 className="text-base leading-none font-semibold text-dark-blue-400">
-                                  {headerLabel}
+                                  Current Team
                                 </h3>
                                 <div className="grid grid-cols-2 gap-x-6 mt-6">
                                   <div className="flex items-start gap-x-3">

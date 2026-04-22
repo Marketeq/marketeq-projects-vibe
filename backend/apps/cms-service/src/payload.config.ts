@@ -20,6 +20,7 @@ import { Media } from "./collections/Media";
 import { Testimonials } from "./collections/Testimonials";
 import { LandingPages } from "./collections/LandingPages";
 import { Homepages } from "./collections/Homepages";
+import { CategoryPages } from "./collections/CategoryPages";
 import { Projects } from "./collections/Projects";
 import { ProjectStaticContents } from "./collections/ProjectStaticContents";
 
@@ -89,6 +90,7 @@ export default buildConfig({
     Users,
     Orders,
     Categories,
+    CategoryPages,
     TalentProfiles,
     BlogPosts,
     HelpArticles,

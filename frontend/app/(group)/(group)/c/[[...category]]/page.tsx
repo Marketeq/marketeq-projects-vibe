@@ -902,10 +902,18 @@ export default function Projects() {
           <CategoryBanner
             image={heroBannerFor(l1Meta.slug, l2Meta?.slug ?? "", l3Meta?.slug ?? "")}
             alt={`${currentName} banner`}
-            title={pageKind === "show-all" ? currentName : sectionLabel}
+            title={
+              pageKind === "show-all"
+                ? (pageData?.hero?.title ??
+                    pageData?.editorial?.hero?.title ??
+                    currentName)
+                : sectionLabel
+            }
             description={
               pageKind === "show-all"
-                ? currentDescription
+                ? (pageData?.hero?.subtitle ??
+                    pageData?.editorial?.hero?.subtitle ??
+                    currentDescription)
                 : pageKind === "projects"
                 ? `Browse ${currentName.toLowerCase()} projects posted by clients worldwide.`
                 : pageKind === "services"
@@ -2448,6 +2456,40 @@ export default function Projects() {
               </div>
             ) : null}
           </div>
+
+          {(() => {
+            const faqItems =
+              (Array.isArray(pageData?.faq) ? pageData.faq : null) ??
+              (Array.isArray(pageData?.editorial?.faq) ? pageData.editorial.faq : null) ??
+              [];
+
+            if (!faqItems.length) return null;
+
+            return (
+              <div className="mt-[50px]">
+                <div className="flex items-center justify-between">
+                  <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                    Frequently Asked Questions
+                  </h1>
+                </div>
+
+                <div className="mt-6">
+                  <Accordion type="single" collapsible className="w-full bg-white rounded-lg border border-gray-200">
+                    {faqItems.map((f: any, idx: number) => (
+                      <AccordionItem key={idx} value={`faq-${idx}`} className="px-6">
+                        <AccordionTrigger className="text-dark-blue-400 text-left">
+                          {String(f?.question ?? "")}
+                        </AccordionTrigger>
+                        <DisclosureContent className="text-dark-blue-400/80">
+                          {String(f?.answer ?? "")}
+                        </DisclosureContent>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

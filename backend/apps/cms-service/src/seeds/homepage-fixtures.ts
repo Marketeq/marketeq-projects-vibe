@@ -48,6 +48,10 @@ function projectRow(
     daysAgo?: number;
   } = {},
 ): ProjectSeed {
+  // Ensure every project fixture has at least one image so the marketplace
+  // homepage always matches the mock (no empty image tiles).
+  const fallbackThumbnail = u('1519389950473-47ba0277781c');
+  const thumbnail = opts.thumbnail || fallbackThumbnail;
   return {
     title,
     description,
@@ -55,7 +59,7 @@ function projectRow(
     categories,
     skills: categories,
     tags: [],
-    mediaUrls: opts.thumbnail ? [opts.thumbnail] : [],
+    mediaUrls: [thumbnail],
     budget: opts.budget ?? 25_000,
     duration: opts.duration ?? '12 weeks',
     rating: opts.rating ?? 4.5,
@@ -70,30 +74,124 @@ function projectRow(
 }
 
 export const FEATURED_PROJECTS: ProjectSeed[] = [
-  projectRow('Modern Brand Identity System',      'Logo, type, color, and visual guidelines for a SaaS launch.', ['design', 'web'],             { featured: true, rating: 4.9, reviewCount: 32, completionsCount: 18, views90d: 4200, daysAgo: 2,  thumbnail: u('1558655146-9f40138edfeb') }),
-  projectRow('AI Analytics Dashboard',             'Real-time BI with predictive insights and forecasting.',       ['development', 'web'],        { featured: true, rating: 4.8, reviewCount: 27, completionsCount: 14, views90d: 3800, daysAgo: 4,  thumbnail: u('1551288049-bebda4e38f71') }),
-  projectRow('Cybersecurity Audit Platform',       'Continuous threat detection and SOC 2 compliance.',            ['security', 'cloud'],         { featured: true, rating: 4.9, reviewCount: 19, completionsCount: 10, views90d: 3100, daysAgo: 6,  thumbnail: u('1518770660439-4636190af475') }),
-  projectRow('Cross-Platform Mobile Banking',      'Native iOS and Android with biometric authentication.',        ['mobile', 'development'],     { featured: true, rating: 4.8, reviewCount: 44, completionsCount: 22, views90d: 5200, daysAgo: 8,  thumbnail: u('1542831371-29b0f74f9713') }),
-  projectRow('Headless E-commerce Storefront',     'Next.js storefront with Shopify backend, sub-second loads.',   ['web', 'development'],        { featured: true, rating: 4.7, reviewCount: 36, completionsCount: 19, views90d: 4700, daysAgo: 10, thumbnail: u('1461749280684-dccba630e2f6') }),
-  projectRow('Series A Pitch Deck',                'Investor-ready narrative with custom illustrations.',          ['design', 'digital-marketing'], { featured: true, rating: 4.9, reviewCount: 28, completionsCount: 15, views90d: 2900, daysAgo: 12, thumbnail: u('1454165804606-c3d57bc86b40') }),
-  projectRow('RAG Knowledge Assistant',            'LLM search over 50k internal documents with citations.',       ['development', 'cloud'],      { featured: true, rating: 4.8, reviewCount: 22, completionsCount: 11, views90d: 3400, daysAgo: 14, thumbnail: u('1517180102446-f3ece451e9d8') }),
-  projectRow('Marketing Site Rebuild',             'Conversion-optimized landing pages and CMS migration.',        ['digital-marketing', 'web'],  { featured: true, rating: 4.6, reviewCount: 31, completionsCount: 17, views90d: 3900, daysAgo: 16, thumbnail: u('1455390582262-044cdead277a') }),
-  projectRow('Fintech KYC Compliance Suite',       'Automated identity verification with Plaid integration.',      ['security', 'development'],   { featured: true, rating: 4.8, reviewCount: 25, completionsCount: 13, views90d: 3300, daysAgo: 18, thumbnail: u('1486406146926-c627a92ad1ab') }),
-  projectRow('AR Product Configurator',            'WebXR configurator for retail product customization.',         ['web', 'design'],             { featured: true, rating: 4.7, reviewCount: 21, completionsCount: 9,  views90d: 2600, daysAgo: 20, thumbnail: u('1555066931-4365d14bab8c') }),
-  projectRow('Realtime IoT Fleet Tracker',         'GPS + telemetry pipeline serving 10k devices.',                ['cloud', 'development'],      { featured: true, rating: 4.8, reviewCount: 29, completionsCount: 16, views90d: 3500, daysAgo: 22, thumbnail: u('1614064641938-3bbee52942c7') }),
-  projectRow('Performance Marketing Overhaul',     'Paid ads, SEO, and analytics refresh across channels.',        ['digital-marketing'],         { featured: true, rating: 4.9, reviewCount: 41, completionsCount: 23, views90d: 4400, daysAgo: 24, thumbnail: u('1557838923-2985c318be48') }),
+  // Matches the Marketplace Home PDF copy/titles so the default homepage
+  // looks like the mock immediately after seeding.
+  projectRow(
+    'The Ultimate Mobile App Experience',
+    'Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.',
+    ['mobile', 'development'],
+    {
+      featured: true,
+      rating: 4.9,
+      reviewCount: 5,
+      completionsCount: 5,
+      views90d: 5200,
+      daysAgo: 2,
+      budget: 50_000,
+      duration: '12 weeks',
+      thumbnail: u('1542831371-29b0f74f9713'),
+    },
+  ),
+  projectRow(
+    'Ecommerce Experience Design',
+    'Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.',
+    ['design', 'web'],
+    {
+      featured: true,
+      rating: 4.9,
+      reviewCount: 5,
+      completionsCount: 5,
+      views90d: 4700,
+      daysAgo: 4,
+      budget: 50_000,
+      duration: '12 weeks',
+      thumbnail: u('1461749280684-dccba630e2f6'),
+    },
+  ),
+  projectRow(
+    'Big Data Security Lockdown',
+    'Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.',
+    ['security', 'cloud'],
+    {
+      featured: true,
+      rating: 4.9,
+      reviewCount: 5,
+      completionsCount: 5,
+      views90d: 4400,
+      daysAgo: 6,
+      budget: 50_000,
+      duration: '12 weeks',
+      thumbnail: u('1518770660439-4636190af475'),
+    },
+  ),
+  projectRow(
+    'BI Sales Forecasting',
+    'Tempor nam commodo sapien lobortis pellentesque non. Elementum adipiscing sit senectus faucibus mauris amet.',
+    ['cloud', 'development'],
+    { featured: true, rating: 4.8, reviewCount: 12, completionsCount: 8, views90d: 3800, daysAgo: 8, thumbnail: u('1551288049-bebda4e38f71') },
+  ),
+  projectRow(
+    'Critical Infrastructure Cybersecurity Assessment',
+    'Tellus integer in sollicitudin nec dignissim mauris magnis aliquam sit. Proin vel dignissim malesuada odio purus eget.',
+    ['security'],
+    { featured: true, rating: 4.8, reviewCount: 19, completionsCount: 10, views90d: 3100, daysAgo: 10, thumbnail: u('1517245386807-bb43f82c33c4') },
+  ),
+  projectRow(
+    'Blockchain Real Estate',
+    'Cursus nibh in orci aliquam arcu aliquam fringilla consectetur. Nunc pulvinar elementum cursus ornare duis magna quisque turpis.',
+    ['development', 'web'],
+    { featured: true, rating: 4.7, reviewCount: 21, completionsCount: 9, views90d: 2600, daysAgo: 12, thumbnail: u('1555066931-4365d14bab8c') },
+  ),
+  projectRow(
+    'AI Manufacturing Optimization',
+    'Molestie vitae vulputate proin venenatis. Lorem id lacus suspendisse mi lacus. Ut amet morbi etiam mauris.',
+    ['development', 'cloud'],
+    { featured: true, rating: 4.7, reviewCount: 14, completionsCount: 7, views90d: 3200, daysAgo: 14, thumbnail: u('1581094794329-c8112a89af12') },
+  ),
 ];
 
 export const NEWEST_PROJECTS: ProjectSeed[] = [
-  projectRow('Voice AI Customer Onboarding',       'Conversational onboarding flow powered by GPT-4o.',            ['development'],        { daysAgo: 1, thumbnail: u('1581091226825-a6a2a5aee158') }),
-  projectRow('Sustainable Brand Refresh',          'Eco-conscious visual identity for a DTC clothing brand.',      ['design'],             { daysAgo: 1, thumbnail: u('1455390582262-044cdead277a') }),
-  projectRow('Real-Time Sports Analytics',         'Live data pipelines and dashboards for team performance.',    ['cloud'],              { daysAgo: 1, thumbnail: u('1518186285589-2f7649de83e0') }),
-  projectRow('Event Ticketing iOS App',            'Apple Wallet integration with QR check-in.',                  ['mobile'],             { daysAgo: 2, thumbnail: u('1542831371-29b0f74f9713') }),
-  projectRow('Telehealth Patient Portal',          'HIPAA-compliant scheduling and video consultations.',         ['web', 'development'], { daysAgo: 2, thumbnail: u('1576086213369-97a306d36557') }),
-  projectRow('Web3 Wallet UX Audit',               'Heuristic review and redesign of a multi-chain wallet.',      ['design'],             { daysAgo: 2, thumbnail: u('1558655146-9f40138edfeb') }),
-  projectRow('Vector Search Service',              'Pinecone-backed semantic search across 10M docs.',             ['cloud'],              { daysAgo: 3, thumbnail: u('1518770660439-4636190af475') }),
-  projectRow('Social Audio Platform',              'Live rooms with low-latency audio streaming.',                 ['mobile'],             { daysAgo: 3, thumbnail: u('1581091226825-a6a2a5aee158') }),
-  projectRow('Computer Vision QA System',          'Defect detection on a manufacturing line at 60 fps.',         ['development', 'cloud'], { daysAgo: 3, thumbnail: u('1581094794329-c8112a89af12') }),
+  // Newest Additions — keep the PDF titles/copy so UI matches the mock.
+  projectRow(
+    'BI Sales Forecasting',
+    'Tempor nam commodo sapien lobortis pellentesque non. Elementum adipiscing sit senectus faucibus mauris amet. Elementum vitae semper lorem ornare congue.',
+    ['cloud'],
+    { daysAgo: 1, duration: '2 weeks', thumbnail: u('1551288049-bebda4e38f71') },
+  ),
+  projectRow(
+    'The Ultimate Mobile App Experience',
+    'Congue id proin est orci aliquam amet a tempor sit. Cras tristique at egestas potenti at. Nisl porta aenean tempor elit.',
+    ['mobile'],
+    {
+      daysAgo: 1,
+      duration: '12 weeks',
+      budget: 50_000,
+      featured: true,
+      rating: 4.9,
+      reviewCount: 5,
+      completionsCount: 5,
+      views90d: 5200,
+      thumbnail: u('1542831371-29b0f74f9713'),
+    },
+  ),
+  projectRow(
+    'Critical Infrastructure Cybersecurity Assessment',
+    'Tellus integer in sollicitudin nec dignissim mauris magnis aliquam sit. Proin vel dignissim malesuada odio purus eget.',
+    ['security'],
+    { daysAgo: 2, duration: '4 months', budget: 25_996, thumbnail: u('1517245386807-bb43f82c33c4') },
+  ),
+  projectRow(
+    'Blockchain Real Estate',
+    'Cursus nibh in orci aliquam arcu aliquam fringilla consectetur. Nunc pulvinar elementum cursus ornare duis magna quisque turpis.',
+    ['development', 'web'],
+    { daysAgo: 2, duration: '9 months', budget: 51_457, thumbnail: u('1555066931-4365d14bab8c') },
+  ),
+  projectRow(
+    'AI Manufacturing Optimization',
+    'Molestie vitae vulputate proin venenatis. Lorem id lacus suspendisse mi lacus. Ut amet morbi etiam mauris.',
+    ['development', 'cloud'],
+    { daysAgo: 3, duration: '2 months', budget: 69_043, thumbnail: u('1581094794329-c8112a89af12') },
+  ),
 ];
 
 export const POPULAR_TAB_PROJECTS: ProjectSeed[] = [

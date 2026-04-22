@@ -13,22 +13,25 @@ import type { Payload } from 'payload';
  */
 export async function seedDefaultHomepage(payload: Payload): Promise<void> {
   try {
+    const force = String(process.env.FORCE_HOMEPAGE_SEED ?? '').trim() === '1';
     const existing = await payload.find({
       collection: 'homepages',
       where: { slug: { equals: 'home' } },
       limit: 1,
     });
 
-    if (existing.totalDocs > 0) {
-      payload.logger.info('Homepages: default "home" document already exists — skipping seed');
+    if (existing.totalDocs > 0 && !force) {
+      payload.logger.info(
+        'Homepages: default "home" document already exists — skipping seed (set FORCE_HOMEPAGE_SEED=1 to overwrite)',
+      );
       return;
     }
 
-    payload.logger.info('Homepages: seeding default "home" document');
+    payload.logger.info(
+      `Homepages: ${existing.totalDocs > 0 ? 'overwriting' : 'seeding'} default "home" document`,
+    );
 
-    await payload.create({
-      collection: 'homepages',
-      data: {
+    const data = {
         title: 'Marketeq Home',
         slug: 'home',
         status: 'active',
@@ -279,8 +282,22 @@ export async function seedDefaultHomepage(payload: Payload): Promise<void> {
           canonical: 'https://marketeq.com',
           noindex: false,
         },
-      } as any,
-    });
+      } as any;
+
+    if (existing.totalDocs > 0) {
+      await payload.update({
+        collection: 'homepages',
+        id: existing.docs[0].id,
+        data,
+        overrideAccess: true,
+      });
+    } else {
+      await payload.create({
+        collection: 'homepages',
+        data,
+        overrideAccess: true,
+      });
+    }
 
     payload.logger.info('Homepages: default "home" document seeded successfully');
   } catch (err) {

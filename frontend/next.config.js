@@ -68,14 +68,24 @@ const nextConfig = {
       rewrites.push({ source: `/${kind}/:l1/:l2`, destination: `/c/:l1/:l2/${kind}` })
       rewrites.push({ source: `/${kind}/:l1/:l2/:l3`, destination: `/c/:l1/:l2/:l3/${kind}` })
     }
-    // CMS media proxy. In dev the Payload cloud-storage plugin uploads to a
-    // MinIO container on localhost:9000; we expose them on a same-origin
-    // `/media/<filename>` route so the Next.js Image Optimizer doesn't trip
-    // doesn't trip its private-IP SSRF guard. This rewrite forwards those
-    // requests to MinIO. In production the env override CMS_MEDIA_ORIGIN
-    // can point at the real Cloudflare R2 / CDN host.
+    // CMS media proxy. Payload stores media URLs as `/cms-media/<filename>`
+    // (see cms-service `generateFileURL`). We also keep `/media/<filename>`
+    // as a legacy alias. Both are routed to a same-origin path so the Next.js
+    // Image Optimizer doesn't trip its private-IP SSRF guard in dev.
+    //
+    // In dev:
+    // - frontend `/cms-media/*`  → cms-service `/cms-media/*` (proxy to MinIO)
+    // - frontend `/media/*`      → MinIO directly (legacy)
+    //
+    // In prod the env override CMS_MEDIA_ORIGIN can point at the real
+    // Cloudflare R2 / CDN host.
     const cmsMediaOrigin =
       process.env.CMS_MEDIA_ORIGIN || "http://localhost:9000/marketeq-media"
+    const cmsServiceOrigin = process.env.CMS_SERVICE_URL || "http://localhost:3020"
+    rewrites.push({
+      source: "/cms-media/:path*",
+      destination: `${cmsServiceOrigin}/cms-media/:path*`,
+    })
     rewrites.push({
       source: "/media/:path*",
       destination: `${cmsMediaOrigin}/:path*`,

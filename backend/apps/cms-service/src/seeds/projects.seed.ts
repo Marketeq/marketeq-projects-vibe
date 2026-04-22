@@ -241,6 +241,17 @@ async function upsertExternalMedia(
   }
 }
 
+async function upsertAnyExternalMedia(
+  payload: Payload,
+  urls: string[],
+): Promise<number | null> {
+  for (const url of urls) {
+    const id = await upsertExternalMedia(payload, url);
+    if (id != null) return id;
+  }
+  return null;
+}
+
 // ── Category → stack mapping ──────────────────────────────────────────────
 // Keyed off the first category on each fixture. Gives every seeded project
 // plausible tags / programming languages / dev techs / subcategories /
@@ -490,24 +501,72 @@ function buildProjectData(
 }
 
 export async function seedProjects(payload: Payload): Promise<void> {
+  const force = String(process.env.FORCE_PROJECTS_SEED ?? '').trim() === '1';
   const existing = await payload.find({
     collection: 'projects',
     where: { slug: { like: 'modern-brand-identity-system' } },
     limit: 1,
   });
-  if (existing.totalDocs > 0) {
+  if (existing.totalDocs > 0 && !force) {
     payload.logger.info(
-      `projects seed: fixture project "${existing.docs[0].slug}" already exists — skipping (delete it in admin to force reseed)`,
+      `projects seed: fixture project "${existing.docs[0].slug}" already exists — skipping (set FORCE_PROJECTS_SEED=1 to upsert)`,
     );
     return;
   }
 
-  const allFixtures: ProjectSeed[] = [
+  // Merge duplicates by slug (same title appears across FEATURED/NEWEST/etc).
+  // Without this, a later fixture with `featured` omitted would overwrite an
+  // earlier `featured: true`, causing Our Favorite Projects to have too few
+  // featured items and downgrade from carousel to grid.
+  const mergedBySlug = new Map<string, ProjectSeed>();
+  const mergeFixture = (prev: ProjectSeed, next: ProjectSeed): ProjectSeed => {
+    const pickText = (a?: string, b?: string) => (a && a.trim() ? a : b);
+    const pickNum = (a?: number, b?: number) =>
+      typeof a === 'number' ? a : typeof b === 'number' ? b : undefined;
+    const pickMax = (a?: number, b?: number) =>
+      typeof a === 'number' && typeof b === 'number'
+        ? Math.max(a, b)
+        : typeof a === 'number'
+          ? a
+          : typeof b === 'number'
+            ? b
+            : undefined;
+    return {
+      title: prev.title,
+      description: pickText(prev.description, next.description) ?? '',
+      shortDescription: pickText(prev.shortDescription, next.shortDescription),
+      categories: prev.categories?.length ? prev.categories : next.categories,
+      skills: prev.skills?.length ? prev.skills : next.skills,
+      tags: prev.tags?.length ? prev.tags : next.tags,
+      mediaUrls: prev.mediaUrls?.length ? prev.mediaUrls : next.mediaUrls,
+      budget: pickNum(prev.budget, next.budget),
+      duration: pickText(prev.duration, next.duration),
+      // Keep the strongest "signal" values across variants.
+      rating: pickMax(prev.rating, next.rating),
+      reviewCount: pickMax(prev.reviewCount, next.reviewCount),
+      completionsCount: pickMax(prev.completionsCount, next.completionsCount),
+      views90d: pickMax(prev.views90d, next.views90d),
+      adminBoost: pickMax(prev.adminBoost, next.adminBoost),
+      // If any variant marks it featured, keep it featured.
+      featured: Boolean(prev.featured) || Boolean(next.featured),
+      // Keep the newest createdAt for deterministic "newest" sections.
+      createdAt:
+        prev.createdAt && next.createdAt
+          ? new Date(Math.max(prev.createdAt.getTime(), next.createdAt.getTime()))
+          : prev.createdAt ?? next.createdAt,
+    };
+  };
+  for (const fixture of [
     ...FEATURED_PROJECTS,
     ...NEWEST_PROJECTS,
     ...POPULAR_TAB_PROJECTS,
     ...THEMED_PROJECTS,
-  ];
+  ]) {
+    const slug = slugify(fixture.title);
+    const prev = mergedBySlug.get(slug);
+    mergedBySlug.set(slug, prev ? mergeFixture(prev, fixture) : fixture);
+  }
+  const allFixtures: ProjectSeed[] = Array.from(mergedBySlug.values());
 
   payload.logger.info(
     `projects seed: inserting ${allFixtures.length} fixtures via Payload Local API`,
@@ -523,6 +582,7 @@ export async function seedProjects(payload: Payload): Promise<void> {
       completionsCount: number;
       views90d: number;
       adminBoost: number;
+      featured: boolean;
       createdAt?: Date;
     }
   >();
@@ -536,7 +596,14 @@ export async function seedProjects(payload: Payload): Promise<void> {
         payload.logger.warn(`projects seed: ${slug} has no thumbnail URL, skipping`);
         continue;
       }
-      const thumbnailId = await upsertExternalMedia(payload, thumbnailUrl);
+      // Ensure every project ends up with a media doc even if the primary URL
+      // flakes (rate limits, transient network issues, etc.).
+      const thumbnailId = await upsertAnyExternalMedia(payload, [
+        thumbnailUrl,
+        // fallbacks
+        `https://picsum.photos/seed/${encodeURIComponent(slug)}/1400/933`,
+        `https://fastly.picsum.photos/seed/${encodeURIComponent(slug)}/1400/933.jpg?hmac=0`,
+      ]);
       if (thumbnailId == null) {
         payload.logger.warn(
           `projects seed: ${slug} could not upload thumbnail — skipping`,
@@ -553,23 +620,43 @@ export async function seedProjects(payload: Payload): Promise<void> {
         .filter((url) => url !== thumbnailUrl)
         .slice(0, 3);
       const galleryResults = await Promise.all(
-        galleryUrls.map((url) => upsertExternalMedia(payload, url)),
+        galleryUrls.map((url) =>
+          upsertAnyExternalMedia(payload, [
+            url,
+            `https://picsum.photos/seed/${encodeURIComponent(slug + '-' + url)}/1400/933`,
+          ]),
+        ),
       );
       const galleryIds = galleryResults.filter(
         (id): id is number => id != null,
       );
 
-      await payload.create({
+      const existingBySlug = await payload.find({
         collection: 'projects',
-        data: buildProjectData(fixture, thumbnailId, galleryIds) as any,
-        overrideAccess: true,
+        where: { slug: { equals: slug } },
+        limit: 1,
       });
+      if (existingBySlug.totalDocs > 0) {
+        await payload.update({
+          collection: 'projects',
+          id: existingBySlug.docs[0].id,
+          data: buildProjectData(fixture, thumbnailId, galleryIds) as any,
+          overrideAccess: true,
+        });
+      } else {
+        await payload.create({
+          collection: 'projects',
+          data: buildProjectData(fixture, thumbnailId, galleryIds) as any,
+          overrideAccess: true,
+        });
+      }
       scoringBySlug.set(slug, {
         rating: fixture.rating ?? 0,
         reviewCount: fixture.reviewCount ?? 0,
         completionsCount: fixture.completionsCount ?? 0,
         views90d: fixture.views90d ?? 0,
         adminBoost: fixture.adminBoost ?? 0,
+        featured: fixture.featured ?? false,
         createdAt: fixture.createdAt,
       });
       created++;
@@ -600,6 +687,7 @@ async function overlayScoringSignals(
       completionsCount: number;
       views90d: number;
       adminBoost: number;
+      featured: boolean;
       createdAt?: Date;
     }
   >,
@@ -639,20 +727,33 @@ async function overlayScoringSignals(
          "completionsCount" = $3,
          "views90d" = $4,
          "adminBoost" = $5,
-         "createdAt" = COALESCE($6, "createdAt")
-       WHERE slug = $7`,
+         featured = $6,
+         "createdAt" = COALESCE($7, "createdAt")
+       WHERE slug = $8`,
       [
         signals.rating,
         signals.reviewCount,
         signals.completionsCount,
         signals.views90d,
         signals.adminBoost,
+        signals.featured,
         signals.createdAt ?? null,
         slug,
       ],
     );
     if (res.rowCount && res.rowCount > 0) updated++;
   }
+
+  // Ensure every listings row has at least one media URL so the homepage
+  // grids ("Newest Additions", "Most Popular") never show blank thumbnails,
+  // even if older rows were created without mediaUrls.
+  await pool.query(
+    `UPDATE public.projects
+        SET "mediaUrls" = ARRAY[
+          CONCAT('https://picsum.photos/seed/', slug, '/800/600')
+        ]
+      WHERE ("mediaUrls" IS NULL OR array_length("mediaUrls", 1) IS NULL OR array_length("mediaUrls", 1) = 0)`,
+  );
   payload.logger.info(
     `projects seed: overlaid scoring signals on ${updated} / ${scoring.size} listings rows`,
   );

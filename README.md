@@ -67,14 +67,16 @@ Vibe Coding Marketeq Projects talent network platform.
 - npx nest start transaction-service
 
 ### Start CMS service
-cd backend/apps/cms-service  
-npm run start:dev
-or
-npx ts-node src/server.ts
 
-###  boot CMS
-cd backend/apps/cms-service  
-node -r ts-node/register/transpile-only src/server.ts
+```bash
+cd backend/apps/cms-service
+npm install
+npm run start:dev
+```
+
+`start:dev` runs `npm run bootstrap` once before the dev server (first admin from `CMS_ADMIN_*` if none exists; sample CategoryPages for L1 “design”; project fixtures from `src/seeds/projects.seed.ts` when not already present — can take a while on first run). Set `SKIP_PROJECT_SEED=true` to skip project seeding. To run bootstrap only: `npm run bootstrap`. To re-run project seed alone after changing fixtures: `npm run seed:projects`.
+
+Alternatively without the dev watcher: `npx ts-node src/server.ts` (run `npm run bootstrap` first if the DB is empty).
 
 #### Log in to Payload CMS admin at
 http://localhost:3020/admin

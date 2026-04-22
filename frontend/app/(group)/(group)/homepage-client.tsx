@@ -450,7 +450,7 @@ function FavoriteButton() {
 
 function formatBudget(budget: number | null): string {
   if (budget == null) return "Budget TBD"
-  return `Starting at $${budget.toLocaleString()}`
+  return `$${budget.toLocaleString()} budget`
 }
 
 function formatDuration(duration: string | null): string {

@@ -87,10 +87,99 @@ export class CmsAdapterReal extends CmsAdapter {
   }
 
   async getEditorial(categoryUuid: string): Promise<EditorialContent | null> {
-    // Not yet implemented — editorial content collection not yet added to CMS.
-    // Returns null so category pages render without editorial sections.
-    this.logger.debug(`Editorial content not available for category: ${categoryUuid}`);
-    return null;
+    try {
+      // CategoryPages.categoryRef.categoryId was intended to store the
+      // category-service UUID, but some seeds store the category slug instead.
+      // We resolve the CMS category slug by UUID, then try both lookups.
+      let categorySlug: string | undefined;
+      try {
+        const catUrl =
+          `${this.cmsUrl}/api/categories` +
+          `?where[uuid][equals]=${encodeURIComponent(categoryUuid)}` +
+          `&limit=1&depth=0`;
+        const catRes = await firstValueFrom(
+          this.httpService.get(catUrl, {
+            headers: this.authHeaders(),
+            timeout: 5000,
+          }),
+        );
+        const catDoc = (catRes.data?.docs ?? catRes.data?.data ?? [])?.[0];
+        if (catDoc?.slug) categorySlug = String(catDoc.slug);
+      } catch {
+        // non-fatal; we can still try UUID-based lookup
+      }
+
+      const fetchByCategoryId = async (categoryId: string) => {
+        const url =
+          `${this.cmsUrl}/api/category-pages` +
+          `?where[categoryRef.categoryId][equals]=${encodeURIComponent(categoryId)}` +
+          `&limit=1&depth=2`;
+        const response = await firstValueFrom(
+          this.httpService.get(url, {
+            headers: this.authHeaders(),
+            timeout: 5000,
+          }),
+        );
+        return response.data?.docs ?? response.data?.data ?? [];
+      };
+
+      const docsByUuid = await fetchByCategoryId(categoryUuid);
+      const docsBySlug = categorySlug ? await fetchByCategoryId(categorySlug) : [];
+      const doc = (docsByUuid?.[0] ?? docsBySlug?.[0]) as any;
+      if (!doc) return null;
+
+      const hero = (() => {
+        const banner = doc.heroBanner ?? doc.hero ?? null;
+        if (!banner) return undefined;
+
+        const title =
+          banner.titleOverride ||
+          doc.categoryRef?.name ||
+          doc.displayTitle ||
+          undefined;
+        const subtitle = banner.descriptionOverride || undefined;
+
+        const rawImage =
+          banner.image?.url ||
+          banner.image?.sizes?.card?.url ||
+          banner.image?.sizes?.thumbnail?.url ||
+          banner.image?.filename ||
+          undefined;
+
+        const image =
+          typeof rawImage === 'string'
+            ? rawImage.startsWith('http')
+              ? rawImage
+              : `${this.cmsUrl}${rawImage.startsWith('/') ? '' : '/'}${rawImage}`
+            : undefined;
+
+        if (!title && !subtitle && !image) return undefined;
+
+        return {
+          title: title ?? doc.categoryRef?.name ?? doc.displayTitle ?? 'Category',
+          subtitle,
+          image: image ?? '',
+          link: banner.ctaHref || undefined,
+        };
+      })();
+
+      const faq =
+        Array.isArray(doc.faq)
+          ? doc.faq
+              .filter((f: any) => f?.question && f?.answer)
+              .map((f: any) => ({ question: String(f.question), answer: String(f.answer) }))
+          : undefined;
+
+      return {
+        hero,
+        faq,
+      };
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to fetch editorial content for category ${categoryUuid}: ${error?.message ?? error}`,
+      );
+      return null;
+    }
   }
 
   private transformTaxonomyGroup(doc: any): TaxonomyGroup {

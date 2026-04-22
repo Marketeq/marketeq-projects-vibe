@@ -6,9 +6,11 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "start:dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "bootstrap": "node scripts/bootstrap.mjs",
+    "start:dev": "npm run bootstrap && ts-node-dev --respawn --transpile-only src/server.ts",
+    "bootstrap": "ts-node-dev --transpile-only --no-respawn --exit-child scripts/bootstrap.ts",
     "fix:blog-richtext": "ts-node-dev --transpile-only --no-respawn --exit-child src/scripts/fix-blog-richtext.ts",
+    "seed:default-content": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-default-content-seed.ts",
+    "seed:blog-posts": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-blog-posts-seed.ts",
     "seed:homepage": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-homepage-seed.ts",
     "seed:projects": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-projects-seed.ts"
   },
