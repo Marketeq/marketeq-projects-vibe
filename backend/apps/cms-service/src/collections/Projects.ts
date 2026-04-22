@@ -937,30 +937,6 @@ export const Projects: CollectionConfig = {
       // toggle. Kept for backwards compat with the sync pipeline, but
       // the spec intent is that the report button always exists for
       // logged-in users.
-      name: 'reportButtonEnabled',
-      type: 'checkbox',
-      defaultValue: true,
-      admin: {
-        position: 'sidebar',
-        readOnly: true,
-        description:
-          'Docs: visible to logged-in users only (not a per-project CMS toggle).',
-      },
-    },
-    {
-      // Per data-dictionary.csv:26 — "Always true for public projects."
-      // Spec says not configurable. Kept for backwards compat; default
-      // true matches spec intent.
-      name: 'shareButtonEnabled',
-      type: 'checkbox',
-      defaultValue: true,
-      admin: {
-        position: 'sidebar',
-        readOnly: true,
-        description: 'Docs: always true for public projects (not CMS-editable).',
-      },
-    },
-    {
       name: 'helpButtonEnabled',
       type: 'checkbox',
       defaultValue: false,

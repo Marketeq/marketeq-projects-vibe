@@ -51,7 +51,7 @@ export class CmsProjectsController {
               budget, "priceMax", "pricingModel", "priceViewMode", "projectType", "klarnaEnabled",
               "estimatedHours", duration,
               "recentQuestions", "skillsAndTools",
-              "reportButtonEnabled", "shareButtonEnabled", "helpButtonEnabled",
+              "helpButtonEnabled",
               rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
               status, "createdAt", "updatedAt"
          FROM public.projects
@@ -71,7 +71,7 @@ export class CmsProjectsController {
               budget, "priceMax", "pricingModel", "priceViewMode", "projectType", "klarnaEnabled",
               "estimatedHours", duration,
               "recentQuestions", "skillsAndTools",
-              "reportButtonEnabled", "shareButtonEnabled", "helpButtonEnabled",
+              "helpButtonEnabled",
               rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
               status, "createdBy", "createdAt", "updatedAt"
          FROM public.projects
@@ -728,8 +728,11 @@ function shapeProject(row: any) {
     badges: deriveBadges(row),
     recentQuestions: row.recentQuestions ?? [],
     skillsAndTools: row.skillsAndTools ?? [],
-    reportButtonEnabled: row.reportButtonEnabled ?? true,
-    shareButtonEnabled: row.shareButtonEnabled ?? true,
+    // Docs: report/share are not CMS-controlled:
+    // - Report is available to logged-in users (frontend decides gating)
+    // - Share is always enabled for public projects
+    reportButtonEnabled: true,
+    shareButtonEnabled: true,
     helpButtonEnabled: row.helpButtonEnabled ?? false,
     rating: row.rating != null ? Number(row.rating) : 0,
     reviewCount: row.reviewCount ?? 0,

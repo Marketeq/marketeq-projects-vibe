@@ -27,8 +27,6 @@ const PROJECT_SYNC_ALLOWED_KEYS = new Set([
   "recentQuestions",
   "skillsAndTools",
   "chatEnabled",
-  "reportButtonEnabled",
-  "shareButtonEnabled",
   "helpButtonEnabled",
   "featured",
   "_status",
