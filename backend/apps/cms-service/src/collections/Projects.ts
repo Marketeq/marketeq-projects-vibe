@@ -6,6 +6,7 @@ import {
   isEditor,
   readPublishedOrCmsUser,
 } from '../access/roles';
+import { GenerateDeliverablesButton } from '../admin/components/GenerateDeliverablesButton'
 import {
   syncProjectToListings,
   deleteProjectFromListings,
@@ -74,6 +75,74 @@ export const Projects: CollectionConfig = {
     singular: 'Project',
     plural: 'Projects',
   },
+  endpoints: [
+    {
+      path: '/:id/generate-deliverables',
+      method: 'post',
+      handler: async (req, res) => {
+        try {
+          const role = (req.user as any)?.role
+          if (role !== 'admin') return res.status(403).json({ error: 'Forbidden' })
+
+          const listingsUrl = process.env.LISTINGS_SERVICE_URL
+          const token = process.env.CMS_SYNC_TOKEN
+          if (!listingsUrl || !token) {
+            return res.status(500).json({ error: 'LISTINGS_SERVICE_URL / CMS_SYNC_TOKEN not configured' })
+          }
+
+          const id = String((req as any).params?.id || '')
+          if (!id) return res.status(400).json({ error: 'Missing project id' })
+
+          const project = await req.payload.findByID({
+            collection: 'projects' as any,
+            id: id as any,
+            depth: 0,
+          })
+          const scope = (project as any)?.scope
+          if (!Array.isArray(scope) || scope.length === 0) {
+            return res.status(400).json({ error: 'Scope is empty' })
+          }
+
+          const deriveUrl = `${listingsUrl.replace(/\/$/, '')}/internal/project-sync/derive-deliverables`
+          const deriveRes = await fetch(deriveUrl, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ scope }),
+          })
+          if (!deriveRes.ok) {
+            const text = await deriveRes.text().catch(() => '')
+            return res.status(502).json({ error: text || `derive failed (${deriveRes.status})` })
+          }
+
+          const derived = (await deriveRes.json()) as any
+          const deliverablesLexical =
+            derived?.deliverablesLexical && typeof derived.deliverablesLexical === 'object'
+              ? derived.deliverablesLexical
+              : null
+          if (!deliverablesLexical) {
+            return res.status(502).json({ error: 'derive response missing deliverablesLexical' })
+          }
+
+          const updated = await req.payload.update({
+            collection: 'projects' as any,
+            id: id as any,
+            overrideAccess: true,
+            data: {
+              deliverables: deliverablesLexical,
+              deliverablesGenerated: true,
+            } as any,
+          })
+
+          return res.json({ ok: true, id, deliverablesGenerated: true, updatedAt: (updated as any)?.updatedAt })
+        } catch (e) {
+          return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal error' })
+        }
+      },
+    },
+  ],
   admin: {
     useAsTitle: 'title',
     defaultColumns: ['title', 'projectType', 'pricingModel', 'featured', 'updatedAt'],
@@ -217,6 +286,15 @@ export const Projects: CollectionConfig = {
                   ],
                 },
               ],
+            },
+            {
+              name: 'generateDeliverables',
+              type: 'ui',
+              admin: {
+                components: {
+                  Field: GenerateDeliverablesButton as any,
+                },
+              },
             },
             {
               name: 'deliverables',
