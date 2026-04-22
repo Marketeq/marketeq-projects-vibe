@@ -1,7 +1,7 @@
 export interface Message {
   id: string
-  content: string // encrypted by default
-  ciphertext: string // encrypted payload
+  content: string // decrypted display content
+  ciphertext?: string | null // encrypted payload (nullable for wrapper-only forwards)
   senderId: string
   threadId: string
   conversationId?: string // legacy alias for threadId

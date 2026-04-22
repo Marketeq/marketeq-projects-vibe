@@ -468,7 +468,8 @@ const SearchBar = () => {
     id: number
     value: string
     icon?: React.JSXElementConstructor<any>
-  } | null>(null)
+    route?: string
+  }>()
   const [query, setQuery] = React.useState("")
   // Nonce used as `key` on the Combobox wrapper. Incrementing it forces
   // Headless UI to unmount/remount, which reliably resets its internal open
@@ -489,10 +490,10 @@ const SearchBar = () => {
       const qParam = searchParamsHook?.get("q") ?? ""
       setQuery(qParam)
       // Mirror into `selected` so Headless UI's displayValue renders the term
-      setSelected(qParam ? { id: -1, value: qParam } : null)
+      setSelected(qParam ? { id: -1, value: qParam } : undefined)
     } else {
       setQuery("")
-      setSelected(null)
+      setSelected(undefined)
     }
   }, [pathname, searchParamsHook])
 
@@ -595,7 +596,7 @@ const SearchBar = () => {
         // Fixed "Browse ..." items have a route — navigate instead of searching.
         if (value.route) {
           closeDropdown()
-          setSelected(null)
+          setSelected(undefined)
           router.push(value.route)
           return
         }
@@ -604,7 +605,7 @@ const SearchBar = () => {
           // Do NOT persist the selected object — pathname effect will reset
           // on the next route, and we want the bar to show the term via the
           // pathname-synced query instead.
-          setSelected(null)
+          setSelected(undefined)
         }
       }}
     >
@@ -662,7 +663,7 @@ const SearchBar = () => {
               } else if (e.key === "Escape") {
                 // Standard: Escape clears the input without submitting
                 setQuery("")
-                setSelected(null)
+                setSelected(undefined)
               }
             }}
           />
@@ -911,7 +912,7 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                     </span>
                   </div>
 
-                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>My Account</Button>
+                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push("/settings") }}>My Account</Button>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />

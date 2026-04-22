@@ -10,6 +10,12 @@ import {
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
+import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
+import {
+  buildProjectStaticContentFromGateway,
+  type ProjectStaticContent,
+  type ProjectStaticIcon,
+} from "@/lib/project-details/project-static-content-from-api"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -455,6 +461,21 @@ const CarouselNextTrigger = () => {
   ) : null
 }
 
+const renderProjectStaticIcon = (
+  icon: ProjectStaticIcon,
+  className: string
+) => {
+  switch (icon) {
+    case "rocket":
+      return <Rocket02 className={className} />
+    case "shield-dollar":
+      return <ShieldDollar className={className} />
+    case "shield-zap":
+    default:
+      return <ShieldZap className={className} />
+  }
+}
+
 export default function ProjectDetails() {
   const params = useParams()
   const router = useRouter()
@@ -559,6 +580,10 @@ export default function ProjectDetails() {
   React.useEffect(() => {
     window.scrollTo(0, 0)
   }, [])
+
+  const projectStaticContent = React.useMemo<ProjectStaticContent>(() => {
+    return buildProjectStaticContentFromGateway(project?.projectStaticContent)
+  }, [project?.projectStaticContent])
 
   if (loading) {
     return (
@@ -727,6 +752,8 @@ export default function ProjectDetails() {
                     src={project.mediaUrls?.[0] || "/dashboard.png"}
                     alt={project.title}
                     sizes="25vw"
+                    loading="eager"
+                    priority
                     fill
                   />
                 </div>
@@ -1612,84 +1639,9 @@ export default function ProjectDetails() {
                         )}
                       </div>
 
-                      <div className="relative border mt-6 border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                        <h3 className="text-center text-xs leading-none text-dark-blue-400 font-semibold">
-                          How It Works
-                        </h3>
-
-                        <h1 className="mt-3 text-center text-2xl leading-none text-dark-blue-400 font-semibold">
-                          Unlock your project vision, your way
-                        </h1>
-
-                        <div className="mt-8 grid grid-cols-3 gap-x-[47px] px-6">
-                          <article>
-                            <div className="size-[77px] bg-gray-100 rounded-lg" />
-
-                            <div className="flex items-center gap-x-3 mt-3">
-                              <h1 className="text-[32px] font-bold leading-none text-dark-blue-400">
-                                1
-                              </h1>
-
-                              <h3 className="text-base leading-none font-semibold text-dark-blue-400">
-                                Customize Your Scope
-                              </h3>
-                            </div>
-
-                            <div className="pl-[28px]">
-                              <p className="text-xs text-dark-blue-400 leading-none">
-                                Lorem ipsum odor amet, consectetuer adipiscing
-                                elit.
-                              </p>
-                            </div>
-                          </article>
-                          <article>
-                            <div className="size-[77px] bg-gray-100 rounded-lg" />
-
-                            <div className="flex items-center gap-x-3 mt-3">
-                              <h1 className="text-[32px] font-bold leading-none text-dark-blue-400">
-                                1
-                              </h1>
-
-                              <h3 className="text-base leading-none font-semibold text-dark-blue-400">
-                                Customize Your Scope
-                              </h3>
-                            </div>
-
-                            <div className="pl-[28px]">
-                              <p className="text-xs text-dark-blue-400 leading-none">
-                                Lorem ipsum odor amet, consectetuer adipiscing
-                                elit.
-                              </p>
-                            </div>
-                          </article>
-                          <article>
-                            <div className="size-[77px] bg-gray-100 rounded-lg" />
-
-                            <div className="flex items-center gap-x-3 mt-3">
-                              <h1 className="text-[32px] font-bold leading-none text-dark-blue-400">
-                                1
-                              </h1>
-
-                              <h3 className="text-base leading-none font-semibold text-dark-blue-400">
-                                Customize Your Scope
-                              </h3>
-                            </div>
-
-                            <div className="pl-[28px]">
-                              <p className="text-xs text-dark-blue-400 leading-none">
-                                Lorem ipsum odor amet, consectetuer adipiscing
-                                elit.
-                              </p>
-                            </div>
-                          </article>
-                        </div>
-
-                        <div className="mt-8  flex items-center justify-center">
-                          <Button visual="gray" variant="outlined">
-                            Learn More
-                          </Button>
-                        </div>
-                      </div>
+                      <ProjectDetailsStepsSection
+                        steps={projectStaticContent.howItWorks.steps}
+                      />
 
                       <div className="relative p-6 mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                         <h1 className="text-xl font-bold leading-none text-dark-blue-400">
@@ -4481,52 +4433,62 @@ export default function ProjectDetails() {
 
           <div className="mt-3 p-6">
             <h1 className="text-base leading-none font-semibold text-dark-blue-400">
-              Peace of Mind Guarantee
+              {projectStaticContent.heading}
             </h1>
 
             <div className="mt-5 space-y-5">
-              <article className="flex items-start gap-x-2">
-                <Rocket02 className="size-[18px] text-dark-blue-400" />
-                <div className="flex-auto space-y-1">
-                  <h1 className="text-xs leading-none font-semibold text-dark-blue-400">
-                    Peace of Mind Guarantee
-                  </h1>
-                  <p className="text-xs leading-none font-extralight text-dark-blue-400">
-                    If the project falls short, you can initiate a dispute for a
-                    full refund.
-                  </p>
-                </div>
-              </article>
-              <article className="flex items-start gap-x-2">
-                <ShieldZap className="size-[18px] text-dark-blue-400" />
-                <div className="flex-auto space-y-1">
-                  <h1 className="text-xs leading-none font-semibold text-dark-blue-400">
-                    Peace of Mind Guarantee
-                  </h1>
-                  <p className="text-xs leading-none font-extralight text-dark-blue-400">
-                    If the project falls short, you can initiate a dispute for a
-                    full refund.
-                  </p>
-                </div>
-              </article>
+              {projectStaticContent.guaranteeItems.map((item, idx) => (
+                <article
+                  key={`${item.title}-${idx}`}
+                  className="flex items-start gap-x-2"
+                >
+                  {renderProjectStaticIcon(
+                    item.icon,
+                    "size-[18px] text-dark-blue-400"
+                  )}
+                  <div className="flex-auto space-y-1">
+                    <h1 className="text-xs leading-none font-semibold text-dark-blue-400">
+                      {item.title}
+                    </h1>
+                    <p className="text-xs leading-none font-extralight text-dark-blue-400">
+                      {item.description}
+                    </p>
+                  </div>
+                </article>
+              ))}
             </div>
 
             <article className="flex items-start gap-x-2 p-3 mt-3 rounded-lg bg-primary-50">
-              <ShieldDollar className="size-[18px] text-primary-500" />
+              {renderProjectStaticIcon(
+                projectStaticContent.highlightedNotice.icon,
+                "size-[18px] text-primary-500"
+              )}
               <div className="flex-auto">
                 <p className="text-xs leading-none font-extralight text-dark-blue-400">
-                  If the project falls short, you can initiate a dispute for a
-                  full refund.
+                  {projectStaticContent.highlightedNotice.description}
                 </p>
               </div>
             </article>
 
             <div className="mt-3">
               <span className="text-xs text-dark-blue-400">
-                We securely process payments and release upon rating. We
-                securely process payments{" "}
-                <Button className="text-xs" variant="link">
-                  See Policy Details.
+                {projectStaticContent.policy.prefixText}{" "}
+                <Button
+                  className="text-xs p-0 h-auto"
+                  variant="link"
+                  onClick={() => {
+                    const href = projectStaticContent.policy.linkHref?.trim()
+                    if (!href) return
+                    if (/^https?:\/\//i.test(href)) {
+                      window.open(href, "_self")
+                      return
+                    }
+                    if (href.startsWith("/")) {
+                      router.push(href)
+                    }
+                  }}
+                >
+                  {projectStaticContent.policy.linkLabel}
                 </Button>
               </span>
             </div>
