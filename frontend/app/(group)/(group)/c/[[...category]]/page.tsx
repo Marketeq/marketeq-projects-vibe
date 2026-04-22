@@ -871,6 +871,7 @@ export default function Projects() {
           const fallback = users.filter((u: any) => u.username)
           setTalentUsers(rich.length > 0 ? rich : fallback)
         }
+
       } catch {
         // Services unavailable — cards will use placeholder data
       }
@@ -2432,6 +2433,7 @@ export default function Projects() {
                 <NextImage
                   className="object-cover"
                   src="/artificial-hand.jpeg"
+                  alt="Guide"
                   sizes="50vw"
                   fill
                 />
