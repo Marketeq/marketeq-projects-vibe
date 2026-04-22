@@ -40,7 +40,7 @@ handling.**
 | **slug** | **UID** | **Based on title, auto-generated** |
 | **short_description** | **Textarea** | **Required, max 300 chars** |
 | **description** | **Rich Text** | **Required, max 2000 chars** |
-| **deliverables** | **Rich Text** | **Editable by humans, triggers moderation on edit or save** |
+| **deliverables** | **Rich Text** | **AI-derived from scope, then editable by humans; triggers moderation on edit or save** |
 | **status** | **Enum** | **draft, in_review, needs_update, published, archived** |
 | **visibility** | **Enum** | **public, private, unlisted** |
 | **owner_id** | **Text** | **Stores UUID from user-service** |

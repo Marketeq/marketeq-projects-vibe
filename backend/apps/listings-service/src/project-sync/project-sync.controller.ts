@@ -12,6 +12,72 @@ import {
 } from "@nestjs/common";
 import { ProjectSyncService } from "./project-sync.service";
 import { ProjectSyncDto } from "./dto/project-sync.dto";
+import { DeriveDeliverablesDto } from "./dto/derive-deliverables.dto";
+
+type DeliverableGroup = { phaseLabel: string; phaseName: string; items: string[] };
+
+function lexicalFromDeliverables(groups: DeliverableGroup[]) {
+  const children: any[] = [];
+  const safeText = (s: unknown) => (typeof s === "string" ? s : "").trim();
+
+  for (const g of groups) {
+    const phaseName = safeText(g.phaseName) || "Deliverables";
+    const items = Array.isArray(g.items)
+      ? g.items.map((i) => safeText(i)).filter(Boolean)
+      : [];
+    if (items.length === 0) continue;
+
+    children.push({
+      type: "heading",
+      tag: "h2",
+      format: "",
+      indent: 0,
+      version: 1,
+      direction: "ltr",
+      children: [{ type: "text", text: phaseName, version: 1 }],
+    });
+
+    children.push({
+      type: "list",
+      listType: "bullet",
+      start: 1,
+      tag: "ul",
+      format: "",
+      indent: 0,
+      version: 1,
+      direction: "ltr",
+      children: items.map((text) => ({
+        type: "listitem",
+        value: 1,
+        format: "",
+        indent: 0,
+        version: 1,
+        direction: "ltr",
+        children: [
+          {
+            type: "paragraph",
+            format: "",
+            indent: 0,
+            version: 1,
+            direction: "ltr",
+            children: [{ type: "text", text, version: 1 }],
+          },
+        ],
+      })),
+    });
+  }
+
+  return {
+    root: {
+      type: "root",
+      format: "",
+      indent: 0,
+      version: 1,
+      direction: "ltr",
+      children,
+    },
+  };
+}
 
 /**
  * Internal sync endpoint called by the cms-service Payload afterChange
@@ -23,6 +89,29 @@ export class ProjectSyncController {
   private readonly logger = new Logger(ProjectSyncController.name);
 
   constructor(private readonly projectSyncService: ProjectSyncService) {}
+
+  @Post("derive-deliverables")
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
+  )
+  async deriveDeliverables(
+    @Body() body: DeriveDeliverablesDto,
+    @Headers("authorization") authHeader: string,
+  ) {
+    this.assertAuthorized(authHeader);
+    const deliverables = await this.projectSyncService.deriveDeliverablesFromScope(
+      body.scope as any,
+    );
+    return {
+      status: "ok",
+      deliverables,
+      deliverablesLexical: lexicalFromDeliverables(deliverables as any),
+    };
+  }
 
   @Post()
   @UsePipes(

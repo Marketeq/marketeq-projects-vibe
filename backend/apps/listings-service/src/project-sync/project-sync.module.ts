@@ -45,6 +45,12 @@ export class ProjectSyncModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer
       .apply(ProjectSyncContractMiddleware)
-      .forRoutes({ path: "internal/project-sync", method: RequestMethod.POST });
+      .forRoutes(
+        { path: "internal/project-sync", method: RequestMethod.POST },
+        {
+          path: "internal/project-sync/derive-deliverables",
+          method: RequestMethod.POST,
+        },
+      );
   }
 }

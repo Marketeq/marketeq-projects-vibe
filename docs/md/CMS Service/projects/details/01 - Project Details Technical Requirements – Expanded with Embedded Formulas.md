@@ -83,6 +83,14 @@ The deliverables are edited by the team lead. Calculations are needed to
 determine the project duration as well as the total price of hiring each
 team member.
 
+**Implementation note (Payload + listings-service):**
+
+- In `listings-service`, the generator derives deliverables as **structured phase groups**
+  (`[{ phaseName, phaseLabel, items: string[] }]`) so the frontend can render them as grouped lists.
+- In `cms-service` (Payload), the generated groups are **converted into Lexical rich-text**
+  (headings + bullet lists) and **backfilled into the `deliverables` richText field** so admins can
+  view/edit rich formatting in the CMS admin UI after generation.
+
 ### **Title: Team Members**
 
 **Summary:** The number of team members is chosen by the client, while

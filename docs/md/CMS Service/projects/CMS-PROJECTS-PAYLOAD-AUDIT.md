@@ -52,7 +52,7 @@ Reference: `projects/details/16 - Strapi Integration – Step-by-Step Developer 
 |-----------|---------|--------|
 | `short_description` | `shortDescription` | Limit mismatch vs §16 (300 vs 320) |
 | `description` | `fullDescription` | Same role |
-| `deliverables` | `deliverables` | Doc: rich text; Payload: phased structure; listings-service can fill via LLM when empty |
+| `deliverables` | `deliverables` | Doc: rich text; listings-service derives structured phase groups when empty; cms-service backfills into Payload as Lexical rich-text for admin editing |
 | `status` | `_status` + `moderationStatus` | Two axes vs one combined enum |
 | `visibility` | `visibility` | Yes |
 | `owner_id` | `ownerId` | Yes |

@@ -33,6 +33,13 @@ export class ProjectSyncService {
     private readonly skillsAdapter: SkillsAdapter,
   ) {}
 
+  async deriveDeliverablesFromScope(
+    scope: NonNullable<ProjectSyncDto["scope"]>,
+  ) {
+    const normalized = this.scopePhases(scope);
+    return this.deliverablesAdapter.deriveDeliverables(normalized);
+  }
+
   async syncFromCms(
     dto: ProjectSyncDto,
   ): Promise<{ id: string; payloadId: string; action: "created" | "updated" }> {
@@ -503,34 +510,120 @@ export class ProjectSyncService {
   private deliverablePhases(
     value: unknown,
   ): Array<{ phaseLabel: string; phaseName: string; items: string[] }> {
-    if (!Array.isArray(value)) return [];
-    return value
-      .map((phase) => {
-        if (!phase || typeof phase !== "object") return null;
-        const p = phase as Record<string, unknown>;
-        const phaseLabel = typeof p.phaseLabel === "string" ? p.phaseLabel : "";
-        const phaseName = typeof p.phaseName === "string" ? p.phaseName : "";
-        const rawItems = Array.isArray(p.items) ? p.items : [];
-        const items = rawItems
-          .map((it) => {
-            if (typeof it === "string") return it;
-            if (
-              it &&
-              typeof it === "object" &&
-              typeof (it as { text?: unknown }).text === "string"
-            ) {
-              return (it as { text: string }).text;
-            }
-            return "";
-          })
-          .filter(Boolean);
-        if (!phaseLabel && !phaseName && items.length === 0) return null;
-        return { phaseLabel, phaseName, items };
-      })
-      .filter(
-        (p): p is { phaseLabel: string; phaseName: string; items: string[] } =>
-          !!p,
-      );
+    // Back-compat: older Payload schema shipped deliverables as a phased array:
+    //   [{ phaseLabel, phaseName, items: [{text}] }]
+    if (Array.isArray(value)) {
+      return value
+        .map((phase) => {
+          if (!phase || typeof phase !== "object") return null;
+          const p = phase as Record<string, unknown>;
+          const phaseLabel =
+            typeof p.phaseLabel === "string" ? p.phaseLabel : "";
+          const phaseName = typeof p.phaseName === "string" ? p.phaseName : "";
+          const rawItems = Array.isArray(p.items) ? p.items : [];
+          const items = rawItems
+            .map((it) => {
+              if (typeof it === "string") return it;
+              if (
+                it &&
+                typeof it === "object" &&
+                typeof (it as { text?: unknown }).text === "string"
+              ) {
+                return (it as { text: string }).text;
+              }
+              return "";
+            })
+            .filter(Boolean);
+          if (!phaseLabel && !phaseName && items.length === 0) return null;
+          return { phaseLabel, phaseName, items };
+        })
+        .filter(
+          (p): p is { phaseLabel: string; phaseName: string; items: string[] } =>
+            !!p,
+        );
+    }
+
+    // Docs-aligned: Payload now authors deliverables as Lexical rich-text.
+    // Normalize rich-text → grouped phases by extracting headings + list items.
+    const html =
+      typeof value === "string"
+        ? value
+        : value && typeof value === "object"
+        ? this.lexicalToHtml(value)
+        : "";
+    return this.deliverablesFromHtml(html);
+  }
+
+  private deliverablesFromHtml(
+    html: string,
+  ): Array<{ phaseLabel: string; phaseName: string; items: string[] }> {
+    const stripTags = (s: string) =>
+      s
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const tokens: Array<
+      | { type: "heading"; text: string }
+      | { type: "li"; text: string }
+      | { type: "text"; text: string }
+    > = [];
+
+    const tokenRe =
+      /<(h[1-6])[^>]*>([\s\S]*?)<\/\1>|<li[^>]*>([\s\S]*?)<\/li>|<p[^>]*>([\s\S]*?)<\/p>/gi;
+    let m: RegExpExecArray | null = null;
+    while ((m = tokenRe.exec(html))) {
+      const headingInner = m[2];
+      const liInner = m[3];
+      const pInner = m[4];
+      if (headingInner != null) {
+        const text = stripTags(headingInner);
+        if (text) tokens.push({ type: "heading", text });
+      } else if (liInner != null) {
+        const text = stripTags(liInner);
+        if (text) tokens.push({ type: "li", text });
+      } else if (pInner != null) {
+        const text = stripTags(pInner);
+        if (text) tokens.push({ type: "text", text });
+      }
+    }
+
+    const groups: Array<{
+      phaseLabel: string;
+      phaseName: string;
+      items: string[];
+    }> = [];
+
+    let current: { phaseLabel: string; phaseName: string; items: string[] } | null =
+      null;
+
+    for (const t of tokens) {
+      if (t.type === "heading") {
+        if (current && current.items.length > 0) groups.push(current);
+        current = { phaseLabel: "", phaseName: t.text, items: [] };
+        continue;
+      }
+      if (t.type === "li") {
+        if (!current) current = { phaseLabel: "", phaseName: "Deliverables", items: [] };
+        current.items.push(t.text);
+        continue;
+      }
+    }
+
+    if (current && current.items.length > 0) groups.push(current);
+
+    // Fallback: no list items; use paragraph text as single-item list.
+    if (groups.length === 0) {
+      const textItems = tokens
+        .filter((t) => t.type === "text")
+        .map((t) => t.text)
+        .filter(Boolean);
+      if (textItems.length > 0) {
+        groups.push({ phaseLabel: "", phaseName: "Deliverables", items: textItems });
+      }
+    }
+
+    return groups;
   }
 
   /**

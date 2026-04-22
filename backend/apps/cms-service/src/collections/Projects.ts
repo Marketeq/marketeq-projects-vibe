@@ -2,6 +2,7 @@ import { CollectionConfig, FieldHook } from 'payload/types';
 
 import {
   isAdmin,
+  isAdminField,
   isEditor,
   readPublishedOrCmsUser,
 } from '../access/roles';
@@ -140,21 +141,16 @@ export const Projects: CollectionConfig = {
                   'Rich-text overview shown on the project details page. No external links or custom fonts; must pass content moderation.',
               },
             },
+            // ── Scope Builder (drives deliverables generation) ────────────────
             {
-              name: 'deliverables',
+              name: 'scope',
               type: 'array',
-              labels: { singular: 'Phase', plural: 'Phases' },
+              labels: { singular: 'Phase', plural: 'Scope (phases)' },
               admin: {
                 description:
-                  'Project deliverables grouped by phase. Each phase has a label (e.g. "Phase One"), a name (e.g. "Research"), and a list of check items rendered on the project details page.',
+                  'Ordered list of phases. Each phase contains tasks with role, experience, and estimated hours. Deliverables are auto-generated from this scope (admins can override deliverables below).',
               },
               fields: [
-                {
-                  name: 'phaseLabel',
-                  type: 'text',
-                  required: true,
-                  admin: { description: 'e.g. "Phase One", "Phase Two"' },
-                },
                 {
                   name: 'phaseName',
                   type: 'text',
@@ -162,16 +158,96 @@ export const Projects: CollectionConfig = {
                   admin: { description: 'e.g. "Research", "Design", "Front-End"' },
                 },
                 {
-                  name: 'items',
+                  name: 'order',
+                  type: 'number',
+                  required: true,
+                  min: 1,
+                  admin: {
+                    description:
+                      'Phase order (1-indexed). Used to sort phases on the project details page.',
+                  },
+                },
+                {
+                  name: 'tasks',
                   type: 'array',
-                  labels: { singular: 'Item', plural: 'Items' },
                   required: true,
                   minRows: 1,
+                  labels: { singular: 'Task', plural: 'Tasks' },
                   fields: [
-                    { name: 'text', type: 'text', required: true },
+                    { name: 'title', type: 'text', required: true },
+                    {
+                      name: 'roleName',
+                      type: 'text',
+                      required: true,
+                      admin: { description: 'Role required for this task (e.g. "Senior Designer").' },
+                    },
+                    {
+                      name: 'location',
+                      type: 'text',
+                      admin: { description: 'Country preference (optional).' },
+                    },
+                    {
+                      name: 'experienceLevel',
+                      type: 'select',
+                      required: true,
+                      defaultValue: 'Medior',
+                      options: [
+                        { label: 'Student', value: 'Student' },
+                        { label: 'Junior', value: 'Junior' },
+                        { label: 'Medior', value: 'Medior' },
+                        { label: 'Senior', value: 'Senior' },
+                        { label: 'Guru', value: 'Guru' },
+                      ],
+                    },
+                    {
+                      name: 'estimatedHours',
+                      type: 'number',
+                      required: true,
+                      min: 1,
+                      admin: { description: 'Estimated hours for this task. Drives pricing + duration.' },
+                    },
+                    {
+                      name: 'assigneeEmail',
+                      type: 'email',
+                      admin: {
+                        description:
+                          'Email of the user assigned to this task. Resolved to a profile at render time via user-service. Leave empty if unassigned.',
+                      },
+                    },
                   ],
                 },
               ],
+            },
+            {
+              name: 'deliverables',
+              type: 'richText',
+              required: false,
+              access: {
+                // Not editable at first. After listings-service generates deliverables
+                // and cms-service backfills them, we flip `deliverablesGenerated=true`
+                // so admins can override the generated rich text.
+                create: () => false,
+                update: ({ req, data, doc }) => {
+                  if (!isAdminField({ req })) return false;
+                  return (
+                    (doc as any)?.deliverablesGenerated === true ||
+                    (data as any)?.deliverablesGenerated === true
+                  );
+                },
+              },
+              admin: {
+                description:
+                  'Auto-generated from the Scope above and backfilled into CMS as rich text. Admins can edit/override this generated content.',
+              },
+            },
+            {
+              name: 'deliverablesGenerated',
+              type: 'checkbox',
+              defaultValue: false,
+              admin: {
+                hidden: true,
+                readOnly: true,
+              },
             },
             {
               name: 'faqQuestions',
@@ -306,104 +382,6 @@ export const Projects: CollectionConfig = {
               type: 'checkbox',
               defaultValue: false,
               admin: { description: 'Show Klarna installment options at checkout.' },
-            },
-            // ── Scope Builder ────────────────────────────────────────────────
-            // Per docs/md/CMS Service/projects/creation/Strapi Integration §Step 3
-            // Scope Builder. Phase { phase_name, order, tasks[] } and
-            // Task { title, role_name, location, experience_level, estimated_hours }
-            // are the primary data the entire pricing + deliverables +
-            // skills + duration pipeline derives from.
-            //
-            // The spec's warning applies verbatim:
-            //   ⛔ Do NOT add editable fields for duration, weeks, start day,
-            //      or end day. These are calculated automatically based on
-            //      task hours and work schedules.
-            {
-              name: 'scope',
-              type: 'array',
-              labels: { singular: 'Phase', plural: 'Scope (phases)' },
-              admin: {
-                description:
-                  'Ordered list of phases. Each phase contains tasks with role, experience, and estimated hours. Pricing and duration are computed from this tree — do not add duration fields here.',
-              },
-              fields: [
-                {
-                  name: 'phaseName',
-                  type: 'text',
-                  required: true,
-                  admin: { description: 'e.g. "Research", "Design", "Front-End"' },
-                },
-                {
-                  name: 'order',
-                  type: 'number',
-                  required: true,
-                  min: 1,
-                  admin: {
-                    description:
-                      'Phase order (1-indexed). Used to sort phases on the project details page.',
-                  },
-                },
-                {
-                  name: 'tasks',
-                  type: 'array',
-                  required: true,
-                  minRows: 1,
-                  labels: { singular: 'Task', plural: 'Tasks' },
-                  fields: [
-                    { name: 'title', type: 'text', required: true },
-                    {
-                      name: 'roleName',
-                      type: 'text',
-                      required: true,
-                      admin: { description: 'Role required for this task (e.g. "Senior Designer").' },
-                    },
-                    {
-                      name: 'location',
-                      type: 'text',
-                      admin: { description: 'Country preference (optional).' },
-                    },
-                    {
-                      name: 'experienceLevel',
-                      type: 'select',
-                      required: true,
-                      defaultValue: 'Medior',
-                      options: [
-                        { label: 'Student', value: 'Student' },
-                        { label: 'Junior', value: 'Junior' },
-                        { label: 'Medior', value: 'Medior' },
-                        { label: 'Senior', value: 'Senior' },
-                        { label: 'Guru', value: 'Guru' },
-                      ],
-                    },
-                    {
-                      name: 'estimatedHours',
-                      type: 'number',
-                      required: true,
-                      min: 1,
-                      admin: { description: 'Estimated hours for this task. Drives pricing + duration.' },
-                    },
-                    // Hybrid team model (see GAP-ANALYSIS §3.3): the
-                    // assignee lives on the Task, not in a separate
-                    // assignedTeam component. The team emerges as
-                    // unique(scope[].tasks[].assigneeEmail).
-                    //
-                    // Per spec §16 TeamMemberAssignment L96: the author
-                    // types `user_email`, NOT a UUID. Emails are safe
-                    // to expose in the admin (editors already know them)
-                    // and don't leak the internal UUID space. The sync
-                    // hook and hydrateTeam both resolve emails →
-                    // user-service profiles at read time.
-                    {
-                      name: 'assigneeEmail',
-                      type: 'email',
-                      admin: {
-                        description:
-                          'Email of the user assigned to this task. Resolved to a profile at render time via user-service. Leave empty if unassigned.',
-                      },
-                    },
-                  ],
-                },
-              ],
             },
           ],
         },

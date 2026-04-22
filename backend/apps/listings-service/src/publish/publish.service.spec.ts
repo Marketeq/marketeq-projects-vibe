@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
 import { CreateProjectDto } from './dto/create-project.dto';
 import {
   ModerationInvalidResponseError,
@@ -45,6 +46,15 @@ describe('PublishService moderation flow', () => {
     uploadProjectMedia: jest.fn(),
   };
 
+  const httpService = {
+    post: jest.fn(),
+    get: jest.fn(),
+    patch: jest.fn(),
+    delete: jest.fn(),
+    put: jest.fn(),
+    request: jest.fn(),
+  } as unknown as HttpService;
+
   let service: PublishService;
 
   const createDto: CreateProjectDto = {
@@ -63,6 +73,7 @@ describe('PublishService moderation flow', () => {
       taskRepository as any,
       moderationService,
       cloudflareStorageService as any,
+      httpService,
     );
   });
 
