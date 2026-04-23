@@ -10,9 +10,9 @@ import { SKILLS_ADAPTER, SkillsAdapter } from "./skills/skills.adapter";
 
 /**
  * ProjectSyncService — receives Payload CMS project documents and
- * upserts them into `public.projects` keyed on `payloadId`.
+ * upserts them into `listings.projects` keyed on `payloadId`.
  *
- * The frontend reads from `public.projects` via CmsProjectsController.
+ * The frontend reads from `listings.projects` via CmsProjectsController.
  * This service is the write path for that table from CMS edits, so a
  * round-trip through Payload admin lands on the project listing page
  * without any other moving parts.
@@ -47,13 +47,13 @@ export class ProjectSyncService {
     const row = await this.toRow(dto);
 
     const existing = await this.dataSource.query(
-      `SELECT id FROM public.projects WHERE "payloadId" = $1 LIMIT 1`,
+      `SELECT id FROM listings.projects WHERE "payloadId" = $1 LIMIT 1`,
       [payloadId],
     );
 
     if (existing.length === 0) {
       const result = await this.dataSource.query(
-        `INSERT INTO public.projects (
+        `INSERT INTO listings.projects (
            "payloadId", title, slug, description, "shortDescription",
            category, categories, subcategories, tags, skills,
            "programmingLanguages", "developmentTech",
@@ -69,7 +69,7 @@ export class ProjectSyncService {
            $6, $7::text[], $8::text[], $9::text[], $10::text[],
            $11::text[], $12::text[],
            $13::text[], $14, $15::jsonb, $16::jsonb,
-           $17, $18, $19, $20, $21::listing_status_enum,
+           $17, $18, $19, $20, $21::listings.listing_status_enum,
            $22, $23, $24, $25,
            $26, $27::jsonb, $28::jsonb,
            $29, $30, $31,
@@ -130,7 +130,7 @@ export class ProjectSyncService {
 
     const id = existing[0].id as string;
     await this.dataSource.query(
-      `UPDATE public.projects SET
+      `UPDATE listings.projects SET
          title = $2,
          slug = $3,
          description = $4,
@@ -150,7 +150,7 @@ export class ProjectSyncService {
          budget = $18,
          duration = $19,
          featured = $20,
-         status = $21::listing_status_enum,
+         status = $21::listings.listing_status_enum,
          "pricingModel" = $22,
          "priceViewMode" = $23,
          "priceMax" = $24,
@@ -221,8 +221,8 @@ export class ProjectSyncService {
 
   async deleteByPayloadId(payloadId: string): Promise<{ deleted: boolean }> {
     const result = await this.dataSource.query(
-      `UPDATE public.projects
-          SET status = 'archived'::listing_status_enum, "updatedAt" = NOW()
+      `UPDATE listings.projects
+          SET status = 'archived'::listings.listing_status_enum, "updatedAt" = NOW()
         WHERE "payloadId" = $1`,
       [payloadId],
     );
@@ -284,7 +284,7 @@ export class ProjectSyncService {
     // `SkillsAdapter` seam when the editor hasn't supplied
     // `projectSkills`. Bound adapter
     // (`SkillsAdapterHuggingFace`) embeds the description + category +
-    // tags + scope task titles and ranks against the `public.projects`
+    // tags + scope task titles and ranks against the `listings.projects`
     // skills vocabulary; `SkillsAdapterHeuristic` is the no-model
     // fallback. Authored content always wins.
     const scopeTaskTitles = scope

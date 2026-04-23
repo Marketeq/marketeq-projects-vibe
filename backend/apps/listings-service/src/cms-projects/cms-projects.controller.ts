@@ -15,7 +15,7 @@ const PROJECT_STATIC_CONTENT_CACHE_TTL_MS = 60_000;
 const PROJECT_STATIC_CONTENT_TIMEOUT_MS = 3_000;
 
 /**
- * Read-only adapter over the `public.projects` table.
+ * Read-only adapter over the `listings.projects` table.
  *
  * The frontend expects `/v1/projects` to return a list of project cards and
  * `/v1/projects/slug/:slug` to return a single project by slug. This controller
@@ -26,7 +26,7 @@ const PROJECT_STATIC_CONTENT_TIMEOUT_MS = 3_000;
  *   GET /v1/projects/:slug/similar
  *     Returns top-6 similar projects using spec §14.9 RelatedScore formula:
  *       RelatedScore = 0.5 × skill_overlap + 0.3 × tag_overlap + 0.2 × subcategory_overlap
- *     Pure SQL against public.projects — no embedding service needed.
+ *     Pure SQL against listings.projects — no embedding service needed.
  *
  *   GET /v1/projects/:slug/related-categories
  *     Proxies to category-service for the project's primary category and
@@ -54,7 +54,7 @@ export class CmsProjectsController {
               "helpButtonEnabled",
               rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
               status, "createdAt", "updatedAt"
-         FROM public.projects
+         FROM listings.projects
         WHERE status = 'published'
         ORDER BY featured DESC NULLS LAST, "createdAt" DESC
         LIMIT 50`,
@@ -74,7 +74,7 @@ export class CmsProjectsController {
               "helpButtonEnabled",
               rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
               status, "createdBy", "createdAt", "updatedAt"
-         FROM public.projects
+         FROM listings.projects
         WHERE slug = $1
           AND status = 'published'
         LIMIT 1`,
@@ -143,7 +143,7 @@ export class CmsProjectsController {
   async findSimilar(@Param("slug") slug: string) {
     const rows = await this.dataSource.query(
       `SELECT skills, tags, subcategories, id
-         FROM public.projects
+         FROM listings.projects
         WHERE slug = $1
           AND status = 'published'
         LIMIT 1`,
@@ -163,7 +163,7 @@ export class CmsProjectsController {
   async findRelatedCategories(@Param("slug") slug: string) {
     const rows = await this.dataSource.query(
       `SELECT category
-         FROM public.projects
+         FROM listings.projects
         WHERE slug = $1
           AND status = 'published'
         LIMIT 1`,
@@ -226,7 +226,7 @@ export class CmsProjectsController {
                 THEN 0.2 * cardinality(ARRAY(SELECT unnest(p.subcategories) INTERSECT SELECT unnest(s.subcats)))::float / cardinality(s.subcats)
                 ELSE 0 END
          ) AS score
-       FROM public.projects p, source s
+       FROM listings.projects p, source s
        WHERE p.id != $4
          AND p.status = 'published'
          AND (p.skills && s.skills OR p.tags && s.tags OR p.subcategories && s.subcats)
@@ -277,7 +277,7 @@ export class CmsProjectsController {
               THEN (SUM(rating * "reviewCount") / SUM("reviewCount"))::float
               ELSE NULL
          END AS average
-       FROM public.projects
+       FROM listings.projects
        WHERE "createdBy" = $1
          AND id != $2
          AND status = 'published'

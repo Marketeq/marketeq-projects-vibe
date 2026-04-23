@@ -14,11 +14,11 @@ import {
 /**
  * Seed 89 project fixtures directly into Payload CMS so they show up in
  * the admin UI. The afterChange sync hook on the Projects collection
- * fires automatically and writes each project into public.projects, so
+ * fires automatically and writes each project into listings.projects, so
  * the homepage frontend keeps rendering the same content without any
  * extra glue.
  *
- * The old listings-service seed used to INSERT into public.projects
+ * The old listings-service seed used to INSERT into listings.projects
  * directly, which left 89 projects invisible in the CMS admin. This
  * script replaces that path — runs once via `npm run seed:projects`
  * from the cms-service package.
@@ -29,13 +29,13 @@ import {
  * defaults so validation passes. Editors can tweak them in admin later.
  *
  * Scoring signals (rating / reviewCount / completionsCount / views90d /
- * adminBoost) are NOT Payload fields — they live only on public.projects
+ * adminBoost) are NOT Payload fields — they live only on listings.projects
  * as computed columns. After each project syncs, we run a one-shot
- * UPDATE on public.projects to keep the homepage ranking working.
+ * UPDATE on listings.projects to keep the homepage ranking working.
  *
  * IDEMPOTENT: skips if any Payload project has `createdBy = seed:projects`
  * in the sidebar field. To force reseed, delete the rows via admin first
- * (or clear `cms.projects` + `public.projects` WHERE createdBy='cms-sync'
+ * (or clear `cms.projects` + `listings.projects` WHERE createdBy='cms-sync'
  * via SQL).
  */
 
@@ -174,7 +174,7 @@ function faqAnswer(prefix: string, bold: string, suffix: string) {
 }
 
 // Slug lookup — matches how the listings-service project-sync service
-// slugifies titles, so we can UPDATE public.projects rows by slug later.
+// slugifies titles, so we can UPDATE listings.projects rows by slug later.
 function slugify(title: string): string {
   return title
     .toLowerCase()
@@ -658,7 +658,7 @@ export async function seedProjects(payload: Payload): Promise<void> {
     `projects seed: inserting ${allFixtures.length} fixtures via Payload Local API`,
   );
 
-  // Track scoring signals to overlay on public.projects after sync.
+  // Track scoring signals to overlay on listings.projects after sync.
   // Keyed by slug so we can match the row the hook upserted.
   const scoringBySlug = new Map<
     string,
@@ -755,7 +755,7 @@ export async function seedProjects(payload: Payload): Promise<void> {
 
   payload.logger.info(`projects seed: created ${created} / ${allFixtures.length}`);
 
-  // Overlay scoring signals onto public.projects. The afterChange hook
+  // Overlay scoring signals onto listings.projects. The afterChange hook
   // already populated each row via the CMS → listings sync endpoint, but
   // rating / reviewCount / views90d / etc. aren't on the sync DTO — they're
   // pure listings-side signals. Run a single batched UPDATE so the
@@ -791,8 +791,8 @@ async function overlayScoringSignals(
 
   // Write the overlay via a single HTTP call to a tiny internal endpoint.
   // Rather than add a new endpoint, we reuse the DB connection the CMS
-  // already has and run raw SQL against `public.projects`. Because the
-  // CMS Payload DB and the listings-service `public.projects` table live
+  // already has and run raw SQL against `listings.projects`. Because the
+  // CMS Payload DB and the listings-service `listings.projects` table live
   // in the same Postgres instance (same DATABASE_URL, different schemas),
   // the cms-service pool can update the listings row directly.
   const rawDb = (payload.db as any).drizzle ?? (payload.db as any);
@@ -807,7 +807,7 @@ async function overlayScoringSignals(
   let updated = 0;
   for (const [slug, signals] of scoring.entries()) {
     const res = await pool.query(
-      `UPDATE public.projects SET
+      `UPDATE listings.projects SET
          rating = $1,
          "reviewCount" = $2,
          "completionsCount" = $3,
@@ -834,7 +834,7 @@ async function overlayScoringSignals(
   // grids ("Newest Additions", "Most Popular") never show blank thumbnails,
   // even if older rows were created without mediaUrls.
   await pool.query(
-    `UPDATE public.projects
+    `UPDATE listings.projects
         SET "mediaUrls" = ARRAY[
           CONCAT('https://picsum.photos/seed/', slug, '/800/600')
         ]

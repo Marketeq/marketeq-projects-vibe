@@ -3,7 +3,7 @@
  *
  * One deliverable group per scope phase, items are client-facing
  * statements (one per bullet). Matches the jsonb column on
- * `public.projects.deliverables` and the frontend Figma mock.
+ * `listings.projects.deliverables` and the frontend Figma mock.
  */
 export interface DeliverableGroup {
   phaseLabel: string;

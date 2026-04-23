@@ -9,7 +9,7 @@ import {
  * NestJS Postgres is the source of truth (per the project-sync architecture
  * doc); Payload is the editorial overlay. After every save / delete in the
  * Payload admin we POST the document to listings-service which upserts
- * `public.projects` keyed on `payloadId`.
+ * `listings.projects` keyed on `payloadId`.
  *
  * Uses HTTP rather than the existing CmsEventPublisher path because:
  *   1. RabbitMQ is not running locally and the listings-service has no

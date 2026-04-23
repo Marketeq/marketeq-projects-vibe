@@ -6,7 +6,7 @@
 //
 // Pre-condition: DATABASE_URL must be set in .env
 //
-// Uses raw SQL against public.projects + public.services, matching the
+// Uses raw SQL against listings.projects + listings.services, matching the
 // CmsProjectsController pattern. Idempotent: re-runs are no-ops.
 
 import 'reflect-metadata';

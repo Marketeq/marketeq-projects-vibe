@@ -20,6 +20,12 @@ function validateTitleLikePublishProject(value: unknown): true | string {
   if (!trimmed) return 'Title is required.'
   if (trimmed.length < 10) return 'Please enter at least 10 character(s)'
   if (trimmed.length > 120) return 'Please do not enter more than 120 character(s)'
+  
+  // Guard rail: No special characters or numbers allowed
+  if (!/^[a-zA-Z\s]+$/.test(trimmed)) {
+    return 'Title should not contain special characters or numbers.'
+  }
+
   return true
 }
 
@@ -370,6 +376,13 @@ export const Projects: CollectionConfig = {
               name: 'fullDescription',
               type: 'richText',
               required: true,
+              validate: (value) =>
+                validateLexicalLengthLikePublishProject(value, {
+                  min: 300,
+                  max: 10000,
+                  minMessage: 'Please enter at least 300 character(s)',
+                  maxMessage: 'Please do not enter more than 10000 character(s)',
+                }),
               admin: {
                 description:
                   'Long description shown on the project details page.',

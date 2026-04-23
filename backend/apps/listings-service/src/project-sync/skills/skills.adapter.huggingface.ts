@@ -15,7 +15,7 @@ import { SkillExtractionInput } from './skills.types';
  * Strategy (mirrors the deliverables adapter's cosine-similarity
  * approach, same model/pipeline as `favorites-service/ai/ai.service.ts`):
  *
- *   1. Build a skills vocabulary from existing `public.projects.skills`
+ *   1. Build a skills vocabulary from existing `listings.projects.skills`
  *      — the shared marketplace taxonomy. Cached for the process
  *      lifetime; refreshed once per `VOCAB_TTL_MS` so newly-added
  *      skills get picked up without restarts.
@@ -159,7 +159,7 @@ export class SkillsAdapterHuggingFace extends SkillsAdapter {
       // the vocab focused on marketplace-relevant skills.
       const rows = await this.dataSource.query(
         `SELECT s AS term, COUNT(*)::int AS freq
-           FROM public.projects, unnest(skills) AS s
+           FROM listings.projects, unnest(skills) AS s
           WHERE status != 'draft'
           GROUP BY s
           ORDER BY freq DESC

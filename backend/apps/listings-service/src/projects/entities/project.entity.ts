@@ -6,37 +6,40 @@ export class Project {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ name: 'payloadId', nullable: true })
+  payloadId: string;
+
+  @Column({ name: 'title' })
   title: string;
 
-  @Column('text')
+  @Column({ name: 'description', type: 'text' })
   description: string;
 
-  @Column({ nullable: true })
+  @Column({ name: 'slug', nullable: true })
   slug: string;
 
-  @Column({ nullable: true })
+  @Column({ name: 'category', nullable: true })
   category: string;
 
-  @Column('text', { array: true, default: [] })
+  @Column('text', { name: 'categories', array: true, default: [] })
   categories: string[];
 
-  @Column('text', { array: true, default: [] })
+  @Column('text', { name: 'skills', array: true, default: [] })
   skills: string[];
 
-  @Column('text', { array: true, default: [] })
+  @Column('text', { name: 'tags', array: true, default: [] })
   tags: string[];
 
-  @Column('text', { array: true, default: [] })
-  industry: string[];
+  @Column('text', { name: 'industries', array: true, default: [] })
+  industries: string[];
 
-  @Column('text', { array: true, default: [] })
+  @Column('text', { name: 'subcategories', array: true, default: [] })
   subcategories: string[];
 
-  @Column('text', { array: true, default: [] })
+  @Column('text', { name: 'programmingLanguages', array: true, default: [] })
   programmingLanguages: string[];
 
-  @Column('text', { array: true, default: [] })
+  @Column('text', { name: 'developmentTech', array: true, default: [] })
   developmentTech: string[];
 
   @Column('text', { array: true, default: [] })
@@ -45,13 +48,13 @@ export class Project {
   @Column('text', { array: true, default: [] })
   locations: string[];
 
-  @Column('text', { array: true, default: [] })
+  @Column('text', { name: 'mediaUrls', array: true, default: [] })
   mediaUrls: string[];
 
-  @Column({ nullable: true, type: 'text' })
+  @Column({ name: 'shortDescription', nullable: true, type: 'text' })
   shortDescription: string;
 
-  @Column({ nullable: true, type: 'text' })
+  @Column({ name: 'videoUrl', nullable: true, type: 'text' })
   videoUrl: string;
 
   @Column('jsonb', { nullable: true, default: () => "'[]'" })
@@ -60,7 +63,7 @@ export class Project {
   @Column('jsonb', { nullable: true, default: '[]' })
   faqs: { question: string; answer: string }[];
 
-  @Column('jsonb', { nullable: true, default: '[]' })
+  @Column({ name: 'scope', type: 'jsonb', nullable: true, default: '[]' })
   scope: {
     phaseName: string;
     order: number;
@@ -72,7 +75,7 @@ export class Project {
     }[];
   }[];
 
-  @Column({ nullable: true, type: 'int' })
+  @Column({ name: 'estimatedHours', nullable: true, type: 'int' })
   estimatedHours: number;
 
   @Column({ type: 'enum', enum: ListingStatus, default: ListingStatus.Draft })
@@ -84,30 +87,63 @@ export class Project {
   @Column({ nullable: true })
   duration: string;
 
+  @Column({ name: 'pricingModel', nullable: true })
+  pricingModel: string;
+
+  @Column({ name: 'priceViewMode', nullable: true })
+  priceViewMode: string;
+
+  @Column({ name: 'priceMax', nullable: true, type: 'decimal', precision: 10, scale: 2 })
+  priceMax: number;
+
+  @Column({ name: 'projectType', nullable: true })
+  projectType: string;
+
+  @Column({ name: 'klarnaEnabled', default: false })
+  klarnaEnabled: boolean;
+
+  @Column({ name: 'recentQuestions', type: 'jsonb', nullable: true })
+  recentQuestions: string;
+
+  @Column({ name: 'skillsAndTools', type: 'jsonb', nullable: true })
+  skillsAndTools: string;
+
+  @Column({ name: 'reportButtonEnabled', default: true })
+  reportButtonEnabled: boolean;
+
+  @Column({ name: 'shareButtonEnabled', default: true })
+  shareButtonEnabled: boolean;
+
+  @Column({ name: 'helpButtonEnabled', default: false })
+  helpButtonEnabled: boolean;
+
+  @Column({ name: 'relatedProjectIds', type: 'text', array: true, default: [] })
+  relatedProjectIds: string[];
+
   @Column({ type: 'decimal', precision: 3, scale: 1, default: 0 })
   rating: number;
 
-  @Column({ type: 'int', default: 0 })
+  @Column({ name: 'reviewCount', type: 'int', default: 0 })
   reviewCount: number;
 
-  @Column({ type: 'int', default: 0 })
+  @Column({ name: 'completionsCount', type: 'int', default: 0 })
   completionsCount: number;
 
-  @Column({ type: 'int', default: 0 })
+  @Column({ name: 'views90d', type: 'int', default: 0 })
   views90d: number;
 
-  @Column({ type: 'decimal', default: 0 })
+  @Column({ name: 'adminBoost', type: 'decimal', default: 0 })
   adminBoost: number;
 
   @Column({ type: 'boolean', default: false })
   featured: boolean;
 
-  @Column()
+  @Column({ name: 'createdBy' })
   createdBy: string;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'createdAt' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updatedAt' })
   updatedAt: Date;
 }

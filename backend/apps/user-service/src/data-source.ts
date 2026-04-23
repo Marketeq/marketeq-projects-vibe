@@ -26,7 +26,7 @@ export const AppDataSource = new DataSource({
   // runs default to `public` and diverge from the live service schema.
   schema: 'user_service',
   // Keep migration state deterministic across environments.
-  synchronize: false,
+  synchronize: true,
   logging: process.env.NODE_ENV !== 'production',
   entities: [__dirname + '/**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/migrations/**/*{.ts,.js}'],

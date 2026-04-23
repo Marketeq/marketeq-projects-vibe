@@ -7,12 +7,12 @@
 // Pre-condition: PAYLOAD_SECRET + DATABASE_URL must be set in .env
 // Pre-condition: listings-service must be reachable at LISTINGS_SERVICE_URL
 //                so the afterChange sync hook can push each project into
-//                public.projects. (The hook logs a warning and skips if
+//                listings.projects. (The hook logs a warning and skips if
 //                unreachable — the CMS rows will still be created.)
 //
 // Initializes Payload locally (without the Express server), creates each
 // fixture project via payload.create(), then overlays homepage scoring
-// signals on public.projects and exits. Idempotent.
+// signals on listings.projects and exits. Idempotent.
 
 import 'dotenv/config';
 import payload from 'payload';

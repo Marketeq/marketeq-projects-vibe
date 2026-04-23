@@ -10,7 +10,7 @@ import { slugify } from '../shared/utils/slugify';
  * fixture arrays (FEATURED_PROJECTS / NEWEST_PROJECTS / POPULAR_TAB_PROJECTS /
  * THEMED_PROJECTS) exported from this file and runs each one through the
  * Payload Local API. The afterChange sync hook then writes them into
- * public.projects with payloadId set, so editors can manage them from the
+ * listings.projects with payloadId set, so editors can manage them from the
  * CMS admin UI. This file keeps only the services seed — services don't
  * yet have a matching CMS collection, so they stay authored as raw SQL
  * inserts until that work lands.
@@ -286,7 +286,7 @@ export async function seedHomepageListings(
 
   // Idempotency — any row created by this seed will have createdBy = SEED_MARKER
   const existing = await dataSource.query(
-    `SELECT COUNT(*)::int AS n FROM public.services WHERE "createdBy" = $1`,
+    `SELECT COUNT(*)::int AS n FROM listings.services WHERE "createdBy" = $1`,
     [SEED_MARKER],
   );
   if (existing[0]?.n > 0) {
@@ -300,7 +300,7 @@ export async function seedHomepageListings(
 
   for (const s of MARKETING_SERVICES) {
     await dataSource.query(
-      `INSERT INTO public.services (
+      `INSERT INTO listings.services (
          title, description, slug, categories, skills, tags, "mediaUrls",
          "shortDescription", status, "priceMin", "priceMax", "deliveryTime",
          rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
