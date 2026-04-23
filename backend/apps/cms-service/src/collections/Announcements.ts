@@ -9,7 +9,7 @@ import {
 // values `all`, `clients`, `talent`, `admins` describe who should see
 // the banner. Editors (and above) see everything for management; everyone
 // else sees only published, in-window, audience-matching rows.
-const readPublishedToAudience: Access = ({ req: { user } }) => {
+const readPublishedToAudience: any = ({ req: { user } }: any) => {
   const role = (user as { role?: string } | null | undefined)?.role;
   if (role && ['admin', 'developer', 'content_editor'].includes(role)) return true;
   const userType = (user as { userType?: string } | null | undefined)?.userType;

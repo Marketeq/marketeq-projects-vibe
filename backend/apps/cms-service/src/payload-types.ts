@@ -417,10 +417,6 @@ export interface Project {
   /**
    * Show the live-chat widget. Effective state is computed at runtime from team online status.
    */
-  chatEnabled?: boolean | null;
-  reportButtonEnabled?: boolean | null;
-  shareButtonEnabled?: boolean | null;
-  helpButtonEnabled?: boolean | null;
   meta?: {
     title?: string | null;
     description?: string | null;
@@ -974,10 +970,6 @@ export interface ProjectsSelect<T extends boolean = true> {
   projectHistoryRatings?: T;
   datePublished?: T;
   featured?: T;
-  chatEnabled?: T;
-  reportButtonEnabled?: T;
-  shareButtonEnabled?: T;
-  helpButtonEnabled?: T;
   meta?:
     | T
     | {

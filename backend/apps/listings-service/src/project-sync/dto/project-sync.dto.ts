@@ -264,9 +264,6 @@ export class ProjectSyncDto {
   @IsBoolean()
   shareButtonEnabled?: boolean;
 
-  @IsOptional()
-  @IsBoolean()
-  helpButtonEnabled?: boolean;
 
   @IsOptional()
   @IsBoolean()

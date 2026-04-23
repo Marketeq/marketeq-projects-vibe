@@ -17,10 +17,10 @@ interface HomepageBannerDoc {
  * this hook the banner update only surfaces after the 300 s cache TTL
  * (Cache Strategy §6 documented limitation).
  */
-export const syncHomepageBannerToBroadcast: GlobalAfterChangeHook<HomepageBannerDoc> = async ({
+export const syncHomepageBannerToBroadcast: any = async ({
   doc,
   req,
-}) => {
+}: any) => {
   const publisher = CmsEventPublisher.getInstance();
   if (!publisher.isConnected()) {
     req.payload.logger.warn('[syncHomepageBannerToBroadcast] publisher not connected — skipping');

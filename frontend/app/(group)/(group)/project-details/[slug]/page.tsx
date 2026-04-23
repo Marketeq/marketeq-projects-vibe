@@ -4227,9 +4227,6 @@ export default function ProjectDetails() {
               onApplyToJoin={() =>
                 router.push(`/checkout/${params.slug as string}`)
               }
-              reportButtonEnabled={project.reportButtonEnabled}
-              helpButtonEnabled={project.helpButtonEnabled}
-              shareButtonEnabled={project.shareButtonEnabled}
             />
           ) : null}
 

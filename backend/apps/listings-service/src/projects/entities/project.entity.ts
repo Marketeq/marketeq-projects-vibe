@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { ListingStatus } from '../../shared/enums/listing.enum';
 
-@Entity('projects')
+@Entity('projects', { schema: 'listings' })
 export class Project {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -42,11 +42,7 @@ export class Project {
   @Column('text', { name: 'developmentTech', array: true, default: [] })
   developmentTech: string[];
 
-  @Column('text', { array: true, default: [] })
-  languages: string[];
 
-  @Column('text', { array: true, default: [] })
-  locations: string[];
 
   @Column('text', { name: 'mediaUrls', array: true, default: [] })
   mediaUrls: string[];
@@ -114,8 +110,6 @@ export class Project {
   @Column({ name: 'shareButtonEnabled', default: true })
   shareButtonEnabled: boolean;
 
-  @Column({ name: 'helpButtonEnabled', default: false })
-  helpButtonEnabled: boolean;
 
   @Column({ name: 'relatedProjectIds', type: 'text', array: true, default: [] })
   relatedProjectIds: string[];

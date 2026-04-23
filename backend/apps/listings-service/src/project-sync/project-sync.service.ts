@@ -61,7 +61,7 @@ export class ProjectSyncService {
            "estimatedHours", budget, duration, featured, status,
            "pricingModel", "priceViewMode", "priceMax", "projectType",
            "klarnaEnabled", "recentQuestions", "skillsAndTools",
-           "reportButtonEnabled", "shareButtonEnabled", "helpButtonEnabled",
+           "reportButtonEnabled", "shareButtonEnabled",
            "scope", industries, "relatedProjectIds",
            "createdBy", "createdAt", "updatedAt"
          ) VALUES (
@@ -72,10 +72,10 @@ export class ProjectSyncService {
            $17, $18, $19, $20, $21::listings.listing_status_enum,
            $22, $23, $24, $25,
            $26, $27::jsonb, $28::jsonb,
-           $29, $30, $31,
-           $32::jsonb, $33::text[], $34::text[],
-           $35,
-           COALESCE($36::timestamptz, NOW()),
+           $29, $30,
+           $31::jsonb, $32::text[], $33::text[],
+           $34,
+           COALESCE($35::timestamptz, NOW()),
            NOW()
          ) RETURNING id`,
         [
@@ -109,7 +109,6 @@ export class ProjectSyncService {
           row.skillsAndTools,
           row.reportButtonEnabled,
           row.shareButtonEnabled,
-          row.helpButtonEnabled,
           row.scope,
           row.industries,
           row.relatedProjectIds,
@@ -160,17 +159,16 @@ export class ProjectSyncService {
          "skillsAndTools" = $28::jsonb,
          "reportButtonEnabled" = $29,
          "shareButtonEnabled" = $30,
-         "helpButtonEnabled" = $31,
-         "scope" = $32::jsonb,
-         industries = $33::text[],
-         "relatedProjectIds" = $34::text[],
+         "scope" = $31::jsonb,
+         industries = $32::text[],
+         "relatedProjectIds" = $33::text[],
          -- Backfill ownership when the CMS now supplies an ownerId and
          -- the row still has the legacy 'cms-sync' placeholder. Never
          -- overwrite a real owner once it's set, so §14.14 history
          -- doesn't churn when an unrelated field is edited.
          "createdBy" = CASE
-          WHEN $35::text IS NOT NULL AND $35::text <> '' AND "createdBy" = 'cms-sync'
-            THEN $35::text
+          WHEN $34::text IS NOT NULL AND $34::text <> '' AND "createdBy" = 'cms-sync'
+            THEN $34::text
            ELSE "createdBy"
          END,
          "updatedAt" = NOW()
@@ -206,7 +204,6 @@ export class ProjectSyncService {
         row.skillsAndTools,
         row.reportButtonEnabled,
         row.shareButtonEnabled,
-        row.helpButtonEnabled,
         row.scope,
         row.industries,
         row.relatedProjectIds,
@@ -382,7 +379,6 @@ export class ProjectSyncService {
       relatedProjectIds,
       reportButtonEnabled: dto.reportButtonEnabled ?? true,
       shareButtonEnabled: dto.shareButtonEnabled ?? true,
-      helpButtonEnabled: dto.helpButtonEnabled ?? false,
     };
   }
 

@@ -581,7 +581,6 @@ function buildProjectData(
     featured: p.featured ?? false,
     reportButtonEnabled: true,
     shareButtonEnabled: true,
-    helpButtonEnabled: false,
     _status: 'published',
   };
 }

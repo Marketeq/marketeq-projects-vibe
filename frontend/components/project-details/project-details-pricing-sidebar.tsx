@@ -53,9 +53,6 @@ export type ProjectDetailsPricingSidebarProps = {
   favorited?: boolean
   onFavoriteChange?: (next: boolean) => void
   onApplyToJoin: () => void
-  reportButtonEnabled?: boolean
-  helpButtonEnabled?: boolean
-  shareButtonEnabled?: boolean
 }
 
 export function ProjectDetailsPricingSidebar({
@@ -69,9 +66,6 @@ export function ProjectDetailsPricingSidebar({
   favorited,
   onFavoriteChange,
   onApplyToJoin,
-  reportButtonEnabled,
-  helpButtonEnabled,
-  shareButtonEnabled,
 }: ProjectDetailsPricingSidebarProps) {
   const displayMembers =
     teamMembers.length > 0
@@ -312,32 +306,26 @@ export function ProjectDetailsPricingSidebar({
       </div>
 
       <div className="h-[50px] rounded-b-lg bg-gray-50 flex items-center justify-evenly border-t border-gray-100">
-        {reportButtonEnabled !== false && (
-          <div className="inline-flex items-center gap-x-2">
-            <Flag className="size-[15px] text-gray-500" />
-            <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-              Report
-            </span>
-          </div>
-        )}
+        <div className="inline-flex items-center gap-x-2">
+          <Flag className="size-[15px] text-gray-500" />
+          <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+            Report
+          </span>
+        </div>
 
-        {helpButtonEnabled !== false && (
-          <div className="inline-flex items-center gap-x-2">
-            <HelpCircle className="size-[15px] text-gray-500" />
-            <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-              Help
-            </span>
-          </div>
-        )}
+        <div className="inline-flex items-center gap-x-2">
+          <HelpCircle className="size-[15px] text-gray-500" />
+          <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+            Help
+          </span>
+        </div>
 
-        {shareButtonEnabled !== false && (
-          <div className="inline-flex items-center gap-x-2">
-            <Share06 className="size-[15px] text-gray-500" />
-            <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-              Share
-            </span>
-          </div>
-        )}
+        <div className="inline-flex items-center gap-x-2">
+          <Share06 className="size-[15px] text-gray-500" />
+          <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+            Share
+          </span>
+        </div>
       </div>
     </div>
   )

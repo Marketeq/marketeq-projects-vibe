@@ -1284,22 +1284,6 @@ export const Projects: CollectionConfig = {
         description: 'Highlight this project on the homepage / category pages.',
       },
     },
-    {
-      // Per data-dictionary.csv:14 — "True only if at least one assigned
-      // team member is online." Spec says runtime-computed, but we keep
-      // it as an admin override toggle so editors can force-disable the
-      // widget for specific projects. The frontend ANDs this with the
-      // real-time presence check when messaging-service lands.
-      // Per data-dictionary.csv:25 — "Visible to logged-in users only."
-      // Spec treats this as a frontend feature, not a per-project CMS
-      // toggle. Kept for backwards compat with the sync pipeline, but
-      // the spec intent is that the report button always exists for
-      // logged-in users.
-      name: 'helpButtonEnabled',
-      type: 'checkbox',
-      defaultValue: false,
-      admin: { position: 'sidebar' },
-    },
   ],
 
   hooks: {

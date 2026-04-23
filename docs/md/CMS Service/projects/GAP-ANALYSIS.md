@@ -92,7 +92,7 @@
 | **Media** | `thumbnail` (req upload), `gallery` (array of image+caption), `videoWalkthrough` (group: upload **or** externalUrl) | ✅ |
 | **Computed** (readOnly) | `startingPriceTotal`, `priceViewAmount`, `teamMemberCount`, `projectDurationTotal`, `projectDurationLabel`, `datePublished`, `teamEmails`, `projectHistoryRatings` (ref to read-time derivation) | ✅ |
 | **Admin & Moderation** | `visibility`, `moderationStatus` (4-state enum), `ownerId` (UUID text), `isFlagged`, `forceReviewOnEdit`, `previewToken` (auto), `adminNotes` (richText), `adminTags` (array), `activityLog` (readOnly audit), `seoTitle` (70ch), `seoDescription` (160ch) | ✅ |
-| **Sidebar** | `featured`, `chatEnabled`, `reportButtonEnabled`, `shareButtonEnabled`, `helpButtonEnabled` | ✅ |
+| **Sidebar** | `featured`, `chatEnabled` | ✅ |
 
 **Access control** (collection-level): `read: readPublishedOrCmsUser`, `create/update: isEditor`, `delete: isAdmin`.
 
@@ -283,7 +283,7 @@ Enrichments (all in parallel, all fail-soft):
 | `rating`, `reviewCount` | `relatedProjectIds[]` |
 | `isTopRated` (conditional "Top Rated" badge, L770) | **`badges[]`** — derived server-side, no consumer |
 | `team` (with static-avatar fallback, L1303-1418) | **`projectHistoryRatings`** — derived server-side, no consumer |
-| `reportButtonEnabled`, `shareButtonEnabled`, `helpButtonEnabled` | `chatEnabled` |
+| `reportButtonEnabled`, `shareButtonEnabled`, `helpButtonEnabled` | REMOVED (always-on in UI) |
 
 **Consumption rate: ~55%.** The missing fields divide into two categories:
 
@@ -380,7 +380,7 @@ Things we ship that no spec doc requires — recorded here so future spec update
 | `skillsAndTools` with per-item icon upload | Spec has the concept but no icon upload |
 | `adminNotes`, `adminTags`, `seoTitle`, `seoDescription` | §16 "SEO & Admin Features" lists them; admin tab consolidates |
 | `visibility` (public/private/unlisted) | §16 L34 mentions visibility but doesn't define the enum |
-| `chatEnabled`, `reportButtonEnabled`, `shareButtonEnabled`, `helpButtonEnabled` | Admin overrides so editors can force-disable widgets per project |
+| `chatEnabled` | Admin override so editors can force-disable chat per project |
 | `previewToken` without expiry | §16 L140 says "previewToken with expiry"; we generate but don't enforce expiry yet — §14.17 half-done |
 
 ---
@@ -410,7 +410,7 @@ Things we ship that no spec doc requires — recorded here so future spec update
 - [ ] **Messaging-service presence** — provides `isOnline` for `team[].isOnline` + `chatEnabled` runtime AND logic. Today `hydrateTeam()` stubs `isOnline: false`.
 - [ ] **Workload validation (§14.6)** — needs (a) `workSchedule` + `customHours` fields per scope Task, (b) user-service exposes `schedule.maxHoursPerWeek` on `/internal/users/by-email/:email`, (c) §9.2 #1 unresolved-email decision.
 - [ ] **Roles collection** — replaces the `HOURLY_RATE_BY_LEVEL` stand-in rate card with a proper `roles` table. Single point of change at `computeProjectFields.ts:60-66`.
-- [ ] **Project entity schema mismatch** — TypeORM `Project` entity at `listings-service/projects/entities/project.entity.ts` declares only ~24 of the 35+ columns the sync INSERT writes. Columns exist in DB; queries work because `shapeProject` reads raw SQL. Clean-up: backfill entity declarations for `pricingModel`, `priceViewMode`, `priceMax`, `projectType`, `klarnaEnabled`, `payloadId`, `recentQuestions`, `skillsAndTools`, `chatEnabled`, `reportButtonEnabled`, `shareButtonEnabled`, `helpButtonEnabled`, `relatedProjectIds`, `industries`.
+- [ ] **Project entity schema mismatch** — TypeORM `Project` entity at `listings-service/projects/entities/project.entity.ts` declares only ~24 of the 35+ columns the sync INSERT writes. Columns exist in DB; queries work because `shapeProject` reads raw SQL. Clean-up: backfill entity declarations for `pricingModel`, `priceViewMode`, `priceMax`, `projectType`, `klarnaEnabled`, `payloadId`, `recentQuestions`, `skillsAndTools`, `chatEnabled`, `relatedProjectIds`, `industries`.
 - [ ] **Reverse-path sync** (spec §05 L136-141) — on moderation rejection in listings-service, surface back to Payload. Today the flow is one-way. Needed only if moderation moves out of Payload admin.
 - [ ] **category-service embeddings upgrade** — spec data-dict L17 names HuggingFace for `related_skills`; category-service uses heuristic (shared-tag → siblings → recent). Not in CMS scope; category-service `SuggestionsAdapter` already has the interface ready for the swap.
 

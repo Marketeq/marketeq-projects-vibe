@@ -72,7 +72,7 @@ Reference: `projects/details/16 - Payload Integration – Step-by-Step Developer
 | `preview_token` | `previewToken` | Yes; expiry not enforced (see GAP §14.17) |
 | `activity_log` | `activityLog` | Partial: no `old_value` / `new_value` on entries |
 
-Additional fields from the broader project design (creation flow, data dictionary) are covered in Payload as: `pricingModel`, `priceViewMode`, price range, `projectType`, `klarnaPaymentEnabled`, `categories`, `subcategories`, `tags`, `projectSkills`, `programmingLanguages`, `developmentTechnologies`, `industries`, `faqQuestions`, `recentQuestions`, and sidebar toggles (`chatEnabled`, `reportButtonEnabled`, `shareButtonEnabled`, `helpButtonEnabled`). Computed mirrors live under the **Computed** tab (`startingPriceTotal`, `priceViewAmount`, `teamMemberCount`, `projectDurationTotal`, `projectDurationLabel`, `projectHistoryRatings`, `teamEmails`, `datePublished`).
+Additional fields from the broader project design (creation flow, data dictionary) are covered in Payload as: `pricingModel`, `priceViewMode`, price range, `projectType`, `klarnaPaymentEnabled`, `categories`, `subcategories`, `tags`, `projectSkills`, `programmingLanguages`, `developmentTechnologies`, `industries`, `faqQuestions`, `recentQuestions`, and sidebar toggles (`chatEnabled`). Computed mirrors live under the **Computed** tab (`startingPriceTotal`, `priceViewAmount`, `teamMemberCount`, `projectDurationTotal`, `projectDurationLabel`, `projectHistoryRatings`, `teamEmails`, `datePublished`).
 
 ---
 

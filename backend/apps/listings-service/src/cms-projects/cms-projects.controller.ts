@@ -51,7 +51,6 @@ export class CmsProjectsController {
               budget, "priceMax", "pricingModel", "priceViewMode", "projectType", "klarnaEnabled",
               "estimatedHours", duration,
               "recentQuestions", "skillsAndTools",
-              "helpButtonEnabled",
               rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
               status, "createdAt", "updatedAt"
          FROM listings.projects
@@ -71,7 +70,6 @@ export class CmsProjectsController {
               budget, "priceMax", "pricingModel", "priceViewMode", "projectType", "klarnaEnabled",
               "estimatedHours", duration,
               "recentQuestions", "skillsAndTools",
-              "helpButtonEnabled",
               rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
               status, "createdBy", "createdAt", "updatedAt"
          FROM listings.projects
@@ -731,12 +729,6 @@ function shapeProject(row: any) {
     // Docs: chat_enabled is runtime-computed from team presence. Until
     // presence is wired, default to false.
     chatEnabled: false,
-    // Docs: report/share are not CMS-controlled:
-    // - Report is available to logged-in users (frontend decides gating)
-    // - Share is always enabled for public projects
-    reportButtonEnabled: true,
-    shareButtonEnabled: true,
-    helpButtonEnabled: row.helpButtonEnabled ?? false,
     rating: row.rating != null ? Number(row.rating) : 0,
     reviewCount: row.reviewCount ?? 0,
     completionsCount: row.completionsCount ?? 0,
