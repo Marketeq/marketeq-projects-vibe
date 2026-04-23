@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth"
 import industriesMock from "@/public/mock/industries.json"
 import jobTitlesMock from "@/public/mock/job_titles.json"
 import languagesMock from "@/public/mock/languages.json"
+import rawProjectTypeSuggestions from "@/public/mock/projectsnew.json"
 import rawSkillSuggestions from "@/public/mock/skills.json"
 import { AuthAPI } from "@/service/http/auth"
 import {
@@ -846,12 +847,132 @@ const getUniqueOptions = (values: string[]) =>
     new Set(values.map((value) => value.trim()).filter((value) => value.length))
   )
 
+const projectPreferenceStaticOptions = getUniqueOptions(
+  (Array.isArray(rawProjectTypeSuggestions) ? rawProjectTypeSuggestions : [])
+    .map((item) => (typeof item?.label === "string" ? item.label : ""))
+    .filter((item) => item.length > 0)
+)
+
 const hasCaseInsensitiveExactMatch = (values: string[], candidate: string) => {
   const normalizedCandidate = candidate.trim().toLowerCase()
   if (!normalizedCandidate) return false
   return values.some(
     (value) => value.trim().toLowerCase() === normalizedCandidate
   )
+}
+
+const COMMON_SHORT_TOKENS = new Set([
+  "ai",
+  "ml",
+  "ui",
+  "ux",
+  "qa",
+  "hr",
+  "it",
+  "bi",
+  "db",
+  "ios",
+  "api",
+  "aws",
+  "gcp",
+  "seo",
+  "sem",
+  "saas",
+  "b2b",
+  "b2c",
+  "erp",
+  "crm",
+])
+
+const normalizeWordToken = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9+#./-]/g, "")
+    .trim()
+
+const toVocabulary = (values: string[]) =>
+  new Set(
+    values
+      .flatMap((value) => value.split(/[^a-zA-Z0-9+#./-]+/))
+      .map((word) => normalizeWordToken(word))
+      .filter((word) => word.length >= 3)
+  )
+
+const getEditDistance = (a: string, b: string) => {
+  const aLen = a.length
+  const bLen = b.length
+
+  if (!aLen) return bLen
+  if (!bLen) return aLen
+
+  const matrix = Array.from({ length: aLen + 1 }, () =>
+    new Array<number>(bLen + 1).fill(0)
+  )
+
+  for (let i = 0; i <= aLen; i += 1) matrix[i][0] = i
+  for (let j = 0; j <= bLen; j += 1) matrix[0][j] = j
+
+  for (let i = 1; i <= aLen; i += 1) {
+    for (let j = 1; j <= bLen; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      )
+    }
+  }
+
+  return matrix[aLen][bLen]
+}
+
+const hasLikelyMisspelledToken = (
+  value: string,
+  vocabulary: Set<string>
+): boolean => {
+  const tokens = value
+    .split(/[^a-zA-Z0-9+#./-]+/)
+    .map((token) => normalizeWordToken(token))
+    .filter(Boolean)
+
+  return tokens.some((token) => {
+    if (token.length <= 2) return false
+    if (COMMON_SHORT_TOKENS.has(token)) return false
+    if (/[0-9+#./-]/.test(token)) return false
+    if (!/[aeiou]/.test(token) && token.length > 3) return true
+    if (/([a-z])\1\1/i.test(token)) return true
+    if (/[bcdfghjklmnpqrstvwxyz]{5,}/i.test(token)) return true
+    if (vocabulary.has(token) || token.length < 5) return false
+
+    for (const word of vocabulary) {
+      if (Math.abs(word.length - token.length) > 2) continue
+      const distance = getEditDistance(token, word)
+      if (distance <= 1) return true
+    }
+
+    return false
+  })
+}
+
+const isReasonableCustomEntry = (
+  rawValue: string,
+  {
+    maxWords,
+    maxLength,
+    vocabulary,
+  }: {
+    maxWords: number
+    maxLength: number
+    vocabulary: Set<string>
+  }
+) => {
+  const trimmed = rawValue.trim()
+  if (trimmed.length < 2 || trimmed.length > maxLength) return false
+  if (trimmed.split(/\s+/).length > maxWords) return false
+  if (!/^[a-zA-Z0-9\s\-.&+#/]+$/.test(trimmed)) return false
+  if (/^\d+$/.test(trimmed)) return false
+  if (hasLikelyMisspelledToken(trimmed, vocabulary)) return false
+  return true
 }
 
 const AUTOCOMPLETE_SUBMIT_TYPE_MAP: Record<string, string> = {
@@ -1675,78 +1796,6 @@ const PROJECT_PREFERENCE_OPTIONS = [
   "Version Control",
   "Web Security",
 ]
-const projectPreferenceOptions = [
-  "Web Application",
-  "Mobile Application",
-  "Dashboard Development",
-  "SaaS Platform",
-  "E-commerce Platform",
-  "Automation Tool",
-  "Cloud Migration",
-  "Legacy Modernization",
-  "Data Platform",
-  "AI Product",
-  "Blockchain Platform",
-  "Smart Contracts",
-  "JavaScript",
-  "TypeScript",
-  "Python",
-  "Java",
-  "C#",
-  "C++",
-  "C",
-  "Go",
-  "Rust",
-  "Ruby",
-  "PHP",
-  "Kotlin",
-  "Swift",
-  "Dart",
-  "Scala",
-  "R",
-  "MATLAB",
-  "SQL",
-  "Bash",
-  "PowerShell",
-  "React",
-  "Next.js",
-  "Vue.js",
-  "Nuxt.js",
-  "Angular",
-  "Svelte",
-  "Node.js",
-  "NestJS",
-  "Express.js",
-  "Django",
-  "FastAPI",
-  "Spring Boot",
-  "Ruby on Rails",
-  ".NET",
-  "Flutter",
-  "React Native",
-  "PyTorch",
-  "TensorFlow",
-  "AWS",
-  "Azure",
-  "GCP",
-  "Docker",
-  "Kubernetes",
-  "Terraform",
-  "CI/CD",
-  "Git",
-  "GitHub",
-  "GitLab",
-  "Postman",
-  "Figma",
-  "Jira",
-  "Notion",
-  "Webpack",
-  "Vite",
-  "Jest",
-  "Cypress",
-  "Playwright",
-]
-
 const TopSkills = ({
   onValueChange,
   value: valueProp,
@@ -1769,6 +1818,7 @@ const TopSkills = ({
     useState<string[]>(FALLBACK_TOP_SKILLS)
   const requestIdRef = useRef(0)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const skillsVocabulary = useMemo(() => toVocabulary(skillOptions), [skillOptions])
 
   const resetInputValue = () => setInputValue("")
 
@@ -1788,6 +1838,17 @@ const TopSkills = ({
       trimmedValue
     )
     if (!isKnownSuggestion) {
+      if (
+        !isReasonableCustomEntry(trimmedValue, {
+          maxWords: 6,
+          maxLength: 80,
+          vocabulary: skillsVocabulary,
+        })
+      ) {
+        resetInputValue()
+        setOpen(false)
+        return
+      }
       const accepted = await submitAutocompleteValue("skills", trimmedValue)
       if (!accepted) {
         resetInputValue()
@@ -2553,12 +2614,6 @@ const ProjectPreferences = ({
     suppressProjectPreferencesFocusOpen,
     setSuppressProjectPreferencesFocusOpen,
   ] = useState(false)
-  const [projectPreferenceOptionsState, setProjectPreferenceOptionsState] =
-    useState<string[]>(getUniqueOptions(projectPreferenceOptions))
-  const projectPreferencesRequestRef = useRef(0)
-  const projectPreferencesDebounceTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null)
   const [values, setValues] = useControllableState<string[]>({
     defaultValue: [],
     onChange: onValueChange,
@@ -2588,7 +2643,7 @@ const ProjectPreferences = ({
     setSuppressProjectPreferencesFocusOpen(true)
   }
 
-  const addValue = async (nextValue: string) => {
+  const addValue = (nextValue: string) => {
     const value = nextValue.trim()
     if (!value) return
 
@@ -2598,29 +2653,22 @@ const ProjectPreferences = ({
     if (alreadySelected) {
       resetInputValue()
       setIsProjectPreferencesOpen(false)
+      setSuppressProjectPreferencesFocusOpen(true)
       return
     }
 
-    const isKnownSuggestion = hasCaseInsensitiveExactMatch(
-      projectPreferenceOptionsState,
-      value
+    const matchedSuggestion = projectPreferenceStaticOptions.find(
+      (item) => item.trim().toLowerCase() === value.toLowerCase()
     )
-
-    if (!isKnownSuggestion) {
-      const accepted = await submitAutocompleteValue("project_types", value)
-      if (!accepted) {
-        resetInputValue()
-        setIsProjectPreferencesOpen(false)
-        setSuppressProjectPreferencesFocusOpen(true)
-        return
-      }
-      setProjectPreferenceOptionsState((prev) =>
-        getUniqueOptions([...prev, value])
-      )
+    if (!matchedSuggestion) {
+      resetInputValue()
+      setIsProjectPreferencesOpen(false)
+      setSuppressProjectPreferencesFocusOpen(true)
+      return
     }
 
     onAcceptedValue?.()
-    setValues((prev) => [...prev, value])
+    setValues((prev) => [...prev, matchedSuggestion])
     resetInputValue()
     setIsProjectPreferencesOpen(false)
     setSuppressProjectPreferencesFocusOpen(true)
@@ -2647,8 +2695,9 @@ const ProjectPreferences = ({
 
     const hasSuggestions = isProjectPreferencesOpen && filteredRoles.length > 0
 
+    event.preventDefault()
+
     if (hasSuggestions) {
-      event.preventDefault()
       const activeOption = document.querySelector(
         '[role="option"][data-headlessui-state~="active"]'
       ) as HTMLElement | null
@@ -2662,13 +2711,12 @@ const ProjectPreferences = ({
       }
     }
 
-    event.preventDefault()
     void addValue(inputValue)
   }
 
   const filteredRoles = useMemo(() => {
     const query = inputValue.trim().toLowerCase()
-    return projectPreferenceOptionsState.filter((projectType) => {
+    return projectPreferenceStaticOptions.filter((projectType) => {
       if (
         values.some(
           (value) =>
@@ -2681,54 +2729,7 @@ const ProjectPreferences = ({
       if (!query) return true
       return projectType.toLowerCase().startsWith(query)
     })
-  }, [inputValue, projectPreferenceOptionsState, values])
-
-  useEffect(() => {
-    if (projectPreferencesDebounceTimerRef.current) {
-      clearTimeout(projectPreferencesDebounceTimerRef.current)
-    }
-
-    const trimmedQuery = inputValue.trim()
-    if (!trimmedQuery) {
-      projectPreferencesRequestRef.current += 1
-      return
-    }
-
-    projectPreferencesDebounceTimerRef.current = setTimeout(async () => {
-      const currentRequestId = ++projectPreferencesRequestRef.current
-
-      try {
-        const response = await AutocompleteAPI.getByType(
-          "project_types",
-          trimmedQuery
-        )
-        if (currentRequestId !== projectPreferencesRequestRef.current) return
-
-        const nextOptions = getUniqueOptions(
-          (response?.data as AutocompleteTypeSuggestion[] | undefined)?.map(
-            normalizeAutocompleteLabel
-          ) ?? []
-        )
-
-        if (nextOptions.length > 0) {
-          setProjectPreferenceOptionsState(nextOptions)
-          return
-        }
-      } catch {
-        // keep fallback options when autocomplete API is unavailable
-      }
-
-      setProjectPreferenceOptionsState(
-        getUniqueOptions(projectPreferenceOptions)
-      )
-    }, 250)
-
-    return () => {
-      if (projectPreferencesDebounceTimerRef.current) {
-        clearTimeout(projectPreferencesDebounceTimerRef.current)
-      }
-    }
-  }, [inputValue])
+  }, [inputValue, values])
 
   return (
     <div className="flex flex-col gap-y-1.5">
