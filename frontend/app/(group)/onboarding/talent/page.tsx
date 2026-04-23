@@ -2006,17 +2006,14 @@ const ShowcaseYourTalent = ({
   const [jobTitleOptions, setJobTitleOptions] = useState<string[]>(
     getUniqueOptions(jobTitlesMock.map((item) => item.label))
   )
-  const [industriesOptions, setIndustriesOptions] = useState<string[]>(
-    getUniqueOptions(industriesMock.map((item) => item.label))
+  const industriesOptions = useMemo(
+    () => getUniqueOptions(industriesMock.map((item) => item.label)),
+    []
   )
   const jobTitleRequestRef = useRef(0)
-  const industriesRequestRef = useRef(0)
   const jobTitleDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   )
-  const industriesDebounceTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null)
 
   const filteredJobTitles = useMemo(() => {
     const query = jobTitleQuery.trim().toLowerCase()
@@ -2040,24 +2037,19 @@ const ShowcaseYourTalent = ({
     const value = nextValue.trim()
     if (!value) return
 
-    const isKnownSuggestion = hasCaseInsensitiveExactMatch(
-      industriesOptions,
-      value
+    const matchedValue = industriesOptions.find(
+      (option) => option.trim().toLowerCase() === value.toLowerCase()
     )
-    if (!isKnownSuggestion) {
-      const accepted = await submitAutocompleteValue("industries", value)
-      if (!accepted) {
-        setIndustriesQuery("")
-        setIsIndustriesOpen(false)
-        setSuppressIndustryFocusOpen(true)
-        return
-      }
+    if (!matchedValue) {
+      setIndustriesQuery("")
+      setIsIndustriesOpen(false)
+      setSuppressIndustryFocusOpen(true)
+      return
     }
 
     clearErrors("industriesWorkedWith")
-    setIndustriesOptions((prev) => getUniqueOptions([...prev, value]))
-    if (!selectedIndustries.includes(value)) {
-      const next = [...selectedIndustries, value]
+    if (!selectedIndustries.includes(matchedValue)) {
+      const next = [...selectedIndustries, matchedValue]
       setSelectedIndustries(next)
       setValue("industriesWorkedWith", next, { shouldValidate: true })
     }
@@ -2111,50 +2103,9 @@ const ShowcaseYourTalent = ({
   }, [jobTitleQuery])
 
   useEffect(() => {
-    if (industriesDebounceTimerRef.current) {
-      clearTimeout(industriesDebounceTimerRef.current)
-    }
-
-    const trimmedQuery = industriesQuery.trim()
-    if (!trimmedQuery) {
-      industriesRequestRef.current += 1
-      return
-    }
-
-    industriesDebounceTimerRef.current = setTimeout(async () => {
-      const currentRequestId = ++industriesRequestRef.current
-      try {
-        const response = await AutocompleteAPI.getByType(
-          "industries",
-          trimmedQuery
-        )
-        if (currentRequestId !== industriesRequestRef.current) return
-
-        const values: AutocompleteTypeSuggestion[] = Array.isArray(
-          response?.data
-        )
-          ? response.data
-          : []
-        const normalizedOptions = getUniqueOptions(
-          values.map((item) => normalizeAutocompleteLabel(item))
-        )
-        if (!getIsNotEmpty(normalizedOptions)) return
-        setIndustriesOptions((prev) =>
-          getUniqueOptions([...prev, ...normalizedOptions])
-        )
-      } catch {
-        // Keep current/fallback options when endpoint is unavailable.
-      }
-    }, 250)
-  }, [industriesQuery])
-
-  useEffect(() => {
     return () => {
       if (jobTitleDebounceTimerRef.current) {
         clearTimeout(jobTitleDebounceTimerRef.current)
-      }
-      if (industriesDebounceTimerRef.current) {
-        clearTimeout(industriesDebounceTimerRef.current)
       }
     }
   }, [])
@@ -2451,8 +2402,11 @@ const ShowcaseYourTalent = ({
                                 const activeLabel =
                                   activeOption?.textContent?.trim() ?? ""
 
-                                if (activeLabel) {
-                                  void addIndustryValue(activeLabel)
+                                const selectedLabel =
+                                  activeLabel || filteredIndustries[0]
+
+                                if (selectedLabel) {
+                                  void addIndustryValue(selectedLabel)
                                   return
                                 }
                               }
