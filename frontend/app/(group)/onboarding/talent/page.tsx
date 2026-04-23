@@ -25,6 +25,11 @@ import {
   noop,
 } from "@/utils/functions"
 import { useControllableState, useStepper } from "@/utils/hooks"
+import {
+  nonsenseKeywordCheck,
+  profanityCheck,
+  spellCheck,
+} from "@/utils/jobTitleValidation"
 import { generateUsernameSuggestions } from "@/utils/username"
 import {
   AlertCircle,
@@ -884,6 +889,25 @@ const COMMON_SHORT_TOKENS = new Set([
   "crm",
 ])
 
+const SKILL_ROLE_WORDS = new Set([
+  "developer",
+  "engineer",
+  "engineering",
+  "manager",
+  "managerial",
+  "specialist",
+  "consultant",
+  "architect",
+  "architectural",
+  "analyst",
+  "administrator",
+  "admin",
+  "lead",
+  "leader",
+  "intern",
+  "trainee",
+])
+
 const normalizeWordToken = (value: string) =>
   value
     .toLowerCase()
@@ -897,6 +921,12 @@ const toVocabulary = (values: string[]) =>
       .map((word) => normalizeWordToken(word))
       .filter((word) => word.length >= 3)
   )
+
+const normalizeSkillInputForChecks = (value: string) =>
+  value
+    .replace(/[^a-zA-Z0-9\s-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
 
 const getEditDistance = (a: string, b: string) => {
   const aLen = a.length
@@ -954,7 +984,7 @@ const hasLikelyMisspelledToken = (
   })
 }
 
-const isReasonableCustomEntry = (
+const isReasonableCustomEntry = async (
   rawValue: string,
   {
     maxWords,
@@ -972,6 +1002,23 @@ const isReasonableCustomEntry = (
   if (!/^[a-zA-Z0-9\s\-.&+#/]+$/.test(trimmed)) return false
   if (/^\d+$/.test(trimmed)) return false
   if (hasLikelyMisspelledToken(trimmed, vocabulary)) return false
+  if (
+    trimmed
+      .split(/\s+/)
+      .some((token) => SKILL_ROLE_WORDS.has(token.toLowerCase()))
+  ) {
+    return false
+  }
+
+  const normalizedForChecks = normalizeSkillInputForChecks(trimmed)
+  if (!normalizedForChecks) return false
+  try {
+    if (!(await spellCheck(normalizedForChecks))) return false
+  } catch {
+    // If the remote spell-check service is unavailable, keep the local checks.
+  }
+  if (!profanityCheck(normalizedForChecks)) return false
+  if (!nonsenseKeywordCheck(normalizedForChecks)) return false
   return true
 }
 
