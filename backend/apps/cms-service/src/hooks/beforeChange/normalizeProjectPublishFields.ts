@@ -7,8 +7,10 @@ import { CollectionBeforeChangeHook } from "payload/types";
  * `/publish-project` (category selections), while still emitting the legacy
  * `{value}` arrays that the listings-service `ProjectSyncDto` currently expects.
  */
-export const normalizeProjectPublishFields: CollectionBeforeChangeHook = async ({
+export const normalizeProjectPublishFields = async ({
   data,
+}: {
+  data?: any;
 }) => {
   if (!data || typeof data !== "object") return data;
 
@@ -116,7 +118,7 @@ export const normalizeProjectPublishFields: CollectionBeforeChangeHook = async (
 
             const estimatedHours = explicitHours ?? derivedHours;
 
-            if (!title || !roleName || !Number.isFinite(estimatedHours) || estimatedHours <= 0) {
+            if (!title || !roleName) {
               return null;
             }
 

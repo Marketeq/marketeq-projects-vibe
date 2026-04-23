@@ -232,7 +232,7 @@ export const Projects: CollectionConfig = {
                             ? Math.round(durVal * 40)
                             : 0
                     const estimatedHours = explicitHours ?? derivedHours
-                    if (!title || !roleName || estimatedHours <= 0) return null
+                    if (!title || !roleName) return null
                     return { title, roleName, location, experienceLevel, estimatedHours }
                   })
                   .filter(Boolean)
@@ -243,7 +243,12 @@ export const Projects: CollectionConfig = {
           }
 
           let scope = (project as any)?.scope
-          if (!Array.isArray(scope) || scope.length === 0) {
+          const bodyPublishScope = req.body?.publishScope
+          console.log('Generate Deliverables - received bodyPublishScope:', JSON.stringify(bodyPublishScope, null, 2))
+          if (Array.isArray(bodyPublishScope) && bodyPublishScope.length > 0) {
+            scope = deriveLegacyScope(bodyPublishScope)
+            console.log('Generate Deliverables - derived scope from body:', JSON.stringify(scope, null, 2))
+          } else if (!Array.isArray(scope) || scope.length === 0) {
             const publishScope = (project as any)?.publishScope
             if (Array.isArray(publishScope) && publishScope.length > 0) {
               scope = deriveLegacyScope(publishScope)
@@ -277,17 +282,16 @@ export const Projects: CollectionConfig = {
             return res.status(502).json({ error: 'derive response missing deliverablesLexical' })
           }
 
-          const updated = await req.payload.update({
-            collection: 'projects' as any,
-            id: id as any,
-            overrideAccess: true,
+          await req.payload.update({
+            collection: 'projects',
+            id: project.id,
             data: {
               deliverables: deliverablesLexical,
-              deliverablesGenerated: true,
-            } as any,
+            },
+            req,
           })
 
-          return res.json({ ok: true, id, deliverablesGenerated: true, updatedAt: (updated as any)?.updatedAt })
+          return res.status(200).json({ ok: true, deliverablesLexical })
         } catch (e) {
           return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal error' })
         }
