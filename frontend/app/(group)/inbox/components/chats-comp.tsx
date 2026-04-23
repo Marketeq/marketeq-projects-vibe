@@ -89,6 +89,11 @@ import {
 } from "@/components/ui"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { useFileUpload } from "../hooks/use-file-upload"
+import {
+  openDropboxChooser,
+  openGoogleDrivePicker,
+} from "../hooks/use-cloud-picker"
+import { OneDrivePickerDialog } from "./onedrive-picker-dialog"
 import { addParticipantToGroup } from "../hooks/use-group-encryption"
 import { useEditMessage } from "../hooks/use-edit-message"
 import { useMessages } from "../hooks/use-messages"
@@ -101,6 +106,7 @@ interface ChatsProps {
   jwtToken: string
   privateKey: CryptoKey | null
   currentUserProfile?: any
+  onToggleRightSidebar?: () => void
 }
 
 export function Chats({
@@ -108,12 +114,13 @@ export function Chats({
   jwtToken,
   privateKey,
   currentUserProfile,
+  onToggleRightSidebar,
 }: ChatsProps) {
   const [textareaValue, setTextareaValue] = useState("")
   const composerRef = useRef<HTMLTextAreaElement>(null)
-  const [uploadState, setUploadState] =
-    useState<CircularProgressDropzoneState>()
-  const [open, setOpen] = useState(false)
+  const [uploadModalMode, setUploadModalMode] = useState<
+    "image" | "file" | null
+  >(null)
   const [receiverUser, setReceiverUser] = useState<User | null>(null)
   const [starredMap, setStarredMap] = useState<Record<string, boolean>>({})
   const [selectedTab, setSelectedTab] = useState<"Messages" | "Pinned">(
@@ -171,6 +178,8 @@ export function Chats({
     setReplyingTo(null)
     setEditingMessage(null)
     setTextareaValue("")
+    setSelectedFiles([])
+    setUploadModalMode(null)
   }, [selectedConversation?.id])
 
   // Auto mark-read when opening a conversation
@@ -246,6 +255,38 @@ export function Chats({
   const removeSelectedFile = (index: number) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
   }
+
+  const [cloudFetching, setCloudFetching] = useState<{
+    provider: "google-drive" | "dropbox" | "onedrive"
+    count: number
+  } | null>(null)
+  const [onedriveDialogOpen, setOnedriveDialogOpen] = useState(false)
+
+  const handleCloudPick = async (
+    provider: "google-drive" | "dropbox" | "onedrive"
+  ) => {
+    // OneDrive uses a custom Dialog component instead of a popup picker —
+    // Microsoft's consumer picker can't be embedded reliably.
+    if (provider === "onedrive") {
+      setOnedriveDialogOpen(true)
+      return
+    }
+    try {
+      const picker =
+        provider === "google-drive" ? openGoogleDrivePicker : openDropboxChooser
+      const files = await picker((count) => setCloudFetching({ provider, count }))
+      if (files.length > 0) {
+        setSelectedFiles((prev) => [...prev, ...files])
+      }
+    } catch (err) {
+      console.error(`Cloud picker (${provider}) failed:`, err)
+    } finally {
+      setCloudFetching(null)
+    }
+  }
+
+  const providerLabel = (p: "google-drive" | "dropbox" | "onedrive") =>
+    p === "google-drive" ? "Google Drive" : p === "dropbox" ? "Dropbox" : "OneDrive"
 
   // Format file size helper
   const formatFileSize = (bytes: number): string => {
@@ -422,8 +463,11 @@ export function Chats({
     selectedConversation?.isGroup
   )
   const editMsg = useEditMessage(jwtToken)
-  //  useFileUpload call
-  //const uploadFile = useFileUpload(jwtToken, privateKey, selectedConversation?.isGroup)
+  const uploadFile = useFileUpload(
+    jwtToken,
+    privateKey,
+    selectedConversation?.isGroup
+  )
 
   // 4) scroll to bottom on new messages
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -454,11 +498,30 @@ export function Chats({
 
   // 6) send handler
   const handleSendMessage = async () => {
-    if (!selectedConversation || !textareaValue.trim()) return
+    if (!selectedConversation) return
     if (isSending) return
+    const hasFiles = selectedFiles.length > 0
+    const hasText = textareaValue.trim().length > 0
+    if (!hasText && !hasFiles) return
 
     setIsSending(true)
     try {
+      if (hasFiles) {
+        const caption = textareaValue.trim()
+        for (let i = 0; i < selectedFiles.length; i++) {
+          const file = selectedFiles[i]
+          await uploadFile(
+            selectedConversation.id,
+            file,
+            i === 0 ? caption : undefined,
+          )
+        }
+        setSelectedFiles([])
+        setTextareaValue("")
+        setReplyingTo(null)
+        return
+      }
+
       const saved = await send(selectedConversation.id, textareaValue.trim(), replyingTo?.id)
 
       // Backend returns message directly or wrapped in { data }
@@ -750,12 +813,10 @@ export function Chats({
     )
   }
 
-  // Compute full name
+  // First-name-only display (per design)
   const fullName = selectedConversation?.isGroup
     ? selectedConversation.group?.name ?? "Unnamed Group"
-    : [receiverUser.firstName?.trim(), receiverUser.lastName?.trim()]
-        .filter(Boolean)
-        .join(" ") ||
+    : receiverUser.firstName?.trim() ||
       receiverUser.username ||
       "Unknown User"
 
@@ -836,7 +897,13 @@ export function Chats({
           </ToggleGroupRoot>
 
           <div className="flex items-center gap-x-1">
-            <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
+            <IconButton
+              visual="gray"
+              variant="ghost"
+              size="lg"
+              className="rounded-full"
+              onClick={onToggleRightSidebar}
+            >
               <Info className="size-[22px]" />
             </IconButton>
             <FavoriteRoot
@@ -872,7 +939,7 @@ export function Chats({
                 </IconButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" side="bottom">
-                <DropdownMenuItem>
+                <DropdownMenuItem onSelect={onToggleRightSidebar}>
                   <Info className="size-4" /> Profile Info
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -1096,6 +1163,197 @@ export function Chats({
           </div>
         )}
 
+        <Dialog
+          open={uploadModalMode !== null}
+          onOpenChange={(o) => setUploadModalMode(o ? uploadModalMode : null)}
+        >
+          <DialogContent className="max-w-[467px] p-4">
+            <h3 className="text-xs font-semibold text-gray-900">
+              {uploadModalMode === "image" ? "Upload Image" : "Upload Files"}
+            </h3>
+            <DialogClose asChild>
+              <IconButton
+                visual="gray"
+                variant="ghost"
+                size="sm"
+                className="absolute top-2 right-2 rounded-full"
+              >
+                <X className="size-4" />
+              </IconButton>
+            </DialogClose>
+            <div
+              className="mt-4 flex flex-col items-center justify-center gap-y-1 rounded-md border-2 border-dashed border-gray-200 bg-gray-50 py-6 text-center text-xs text-gray-500"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault()
+                const files = Array.from(e.dataTransfer.files || [])
+                if (files.length > 0) {
+                  setSelectedFiles((prev) => [...prev, ...files])
+                }
+              }}
+            >
+              <UploadCloud className="size-6 text-gray-400" />
+              <p>
+                Drag and drop or{" "}
+                <button
+                  type="button"
+                  className="font-semibold text-primary-600 hover:underline"
+                  onClick={() =>
+                    document
+                      .getElementById(
+                        uploadModalMode === "image"
+                          ? "image-file-input"
+                          : "desktop-file-input",
+                      )
+                      ?.click()
+                  }
+                >
+                  Choose a File
+                </button>
+              </p>
+            </div>
+
+            <div className="mt-3 flex flex-col gap-y-2 max-h-[260px] overflow-y-auto">
+              {selectedFiles.map((f, i) => {
+                const sizeLabel =
+                  f.size < 1024
+                    ? `${f.size} B`
+                    : f.size < 1024 * 1024
+                      ? `${(f.size / 1024).toFixed(1)} KB`
+                      : `${(f.size / (1024 * 1024)).toFixed(1)} MB`
+                return (
+                  <div
+                    key={`modal-${f.name}-${i}`}
+                    className="flex items-center gap-x-3 rounded-md border border-gray-200 bg-white px-3 py-2"
+                  >
+                    <div className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                      <File className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-auto">
+                      <p className="truncate text-xs font-semibold text-gray-900">
+                        {f.name}
+                      </p>
+                      <p className="text-[11px] text-gray-500">
+                        {sizeLabel}
+                        {isUploading ? " • uploading…" : ""}
+                      </p>
+                    </div>
+                    {!isUploading && (
+                      <button
+                        type="button"
+                        className="shrink-0 text-xs font-semibold text-gray-500 hover:text-gray-700"
+                        onClick={() => removeSelectedFile(i)}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <p className="mt-2 text-[11px] text-gray-500">
+              {uploadModalMode === "image"
+                ? "Supported formats: PNG, JPG, GIF, SVG. Max 50 MB per file."
+                : "Supported formats: PDF, DOC, JPG, PNG, MP4. Max 50 MB per file."}
+            </p>
+            <div className="mt-8 grid grid-cols-2 gap-x-3">
+              <Button
+                visual="gray"
+                variant="outlined"
+                onClick={() => setUploadModalMode(null)}
+                disabled={isUploading}
+              >
+                Cancel
+              </Button>
+              <Button
+                visual="primary"
+                variant="filled"
+                disabled={
+                  !selectedFiles.length || !selectedConversation || isUploading
+                }
+                onClick={async () => {
+                  if (!selectedConversation || !selectedFiles.length) return
+                  setIsUploading(true)
+                  try {
+                    for (const file of selectedFiles) {
+                      await uploadFile(selectedConversation.id, file)
+                    }
+                    setSelectedFiles([])
+                    setUploadModalMode(null)
+                  } catch (err) {
+                    console.error("Attachment upload failed:", err)
+                  } finally {
+                    setIsUploading(false)
+                  }
+                }}
+              >
+                {isUploading ? <Spinner size={16} strokeWidth={3} /> : "Send"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {cloudFetching && (
+          <div className="px-3 pt-2 flex flex-col gap-y-2">
+            {Array.from({ length: cloudFetching.count }).map((_, i) => (
+              <div
+                key={`cloud-pending-${i}`}
+                className="flex items-center gap-x-3 rounded-md border border-gray-200 bg-white px-3 py-2"
+              >
+                <div className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                  <Spinner size={16} strokeWidth={3} />
+                </div>
+                <div className="min-w-0 flex-auto">
+                  <p className="truncate text-xs font-semibold text-gray-900">
+                    Fetching from {providerLabel(cloudFetching.provider)}…
+                  </p>
+                  <p className="text-[11px] text-gray-500">
+                    {cloudFetching.count > 1
+                      ? `File ${i + 1} of ${cloudFetching.count}`
+                      : "Downloading file"}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {selectedFiles.length > 0 && (
+          <div className="px-3 pt-2 flex flex-col gap-y-2">
+            {selectedFiles.map((f, i) => {
+              const sizeLabel =
+                f.size < 1024
+                  ? `${f.size} B`
+                  : f.size < 1024 * 1024
+                    ? `${(f.size / 1024).toFixed(1)} KB`
+                    : `${(f.size / (1024 * 1024)).toFixed(1)} MB`
+              return (
+                <div
+                  key={`${f.name}-${i}`}
+                  className="flex items-center gap-x-3 rounded-md border border-gray-200 bg-white px-3 py-2"
+                >
+                  <div className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                    <File className="size-4" />
+                  </div>
+                  <div className="min-w-0 flex-auto">
+                    <p className="truncate text-xs font-semibold text-gray-900">
+                      {f.name}
+                    </p>
+                    <p className="text-[11px] text-gray-500">{sizeLabel}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="shrink-0 text-xs font-semibold text-gray-500 hover:text-gray-700"
+                    onClick={() => removeSelectedFile(i)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
         <div className="p-3 flex min-h-[68px] items-end gap-x-3">
         {/* Emoji + File + Upload */}
         <div className="flex items-center gap-x-1">
@@ -1105,56 +1363,15 @@ export function Chats({
             </IconButton>
           </EmojiPicker>
 
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
-                <Image03 className="size-[22px]" />
-              </IconButton>
-            </DialogTrigger>
-            <DialogContent className="max-w-[467px] p-4">
-              <h3 className="text-xs font-semibold text-gray-900">
-                Upload Files
-              </h3>
-              <DialogClose asChild>
-                <IconButton
-                  visual="gray"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute top-2 right-2 rounded-full"
-                >
-                  <X className="size-4" />
-                </IconButton>
-              </DialogClose>
-              <div className="mt-4">
-                <CircularProgressDropzone
-                  icon
-                  value={uploadState}
-                  onChange={setUploadState}
-                />
-              </div>
-              <div className="mt-8 grid grid-cols-2 gap-x-3">
-                <DialogClose asChild>
-                  <Button visual="gray" variant="outlined">
-                    Cancel
-                  </Button>
-                </DialogClose>
-                <Button
-                  visual="primary"
-                  variant="filled"
-                  disabled={!uploadState?.length}
-                  //   onClick={toggle}
-                  // >
-                  //   Send
-                  onClick={() => {
-                    // TODO: actually upload here…
-                    setOpen(false)
-                  }}
-                >
-                  Send
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <IconButton
+            visual="gray"
+            variant="ghost"
+            size="lg"
+            className="rounded-full"
+            onClick={() => setUploadModalMode("image")}
+          >
+            <Image03 className="size-[22px]" />
+          </IconButton>
           {/* // Updated attachment dropdown with file input */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1163,85 +1380,40 @@ export function Chats({
               </IconButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-[212px]">
-              <DropdownMenuItem
-                onClick={() =>
-                  document.getElementById("desktop-file-input")?.click()
-                }
-              >
+              <DropdownMenuItem onClick={() => setUploadModalMode("file")}>
                 <UploadCloud className="size-6" /> Upload from Desktop
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleCloudPick("dropbox")}>
                 <DropboxBrand className="size-6" /> Upload via Dropbox
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleCloudPick("google-drive")}>
                 <GoogleDrive1Brand className="size-6" /> Upload via Google Drive
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleCloudPick("onedrive")}>
                 <MsOnedriveBrand className="size-6" /> Upload via OneDrive
               </DropdownMenuItem>
               <DropdownMenuArrow className="fill-white" />
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Hidden file input */}
+          {/* Hidden file inputs */}
           <input
             id="desktop-file-input"
             type="file"
             className="hidden"
             onChange={handleFileSelect}
-            accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif,.zip,.mp4,.mov"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.webp,.svg,.zip,.mp4,.mov"
+            multiple
+          />
+          <input
+            id="image-file-input"
+            type="file"
+            className="hidden"
+            onChange={handleFileSelect}
+            accept="image/*"
             multiple
           />
         </div>
-
-        {/* Updated message input area with file previews */}
-        {/* Selected Files Preview */}
-        {selectedFiles.length > 0 && (
-          <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">
-                {selectedFiles.length} file{selectedFiles.length > 1 ? "s" : ""}{" "}
-                selected
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedFiles([])}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                Clear all
-              </Button>
-            </div>
-            <div className="space-y-2 max-h-32 overflow-y-auto">
-              {selectedFiles.map((file, index) => (
-                <div
-                  key={`${file.name}-${index}`}
-                  className="flex items-center justify-between p-2 bg-white rounded border"
-                >
-                  <div className="flex items-center space-x-3">
-                    <File className="size-4 text-gray-500" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 truncate max-w-48">
-                        {file.name}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {formatFileSize(file.size)}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeSelectedFile(index)}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    <X className="size-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Text area + send - Updated */}
         <InputGroup className="flex-auto w-[calc(100%-164px)]">
@@ -1348,6 +1520,18 @@ export function Chats({
         currentUserProfile={currentUserProfile}
         receiverUser={receiverUser}
         privateKey={privateKey}
+      />
+
+      <OneDrivePickerDialog
+        open={onedriveDialogOpen}
+        onOpenChange={setOnedriveDialogOpen}
+        onPicked={(count) => setCloudFetching({ provider: "onedrive", count })}
+        onConfirm={(files) => {
+          setCloudFetching(null)
+          if (files.length > 0) {
+            setSelectedFiles((prev) => [...prev, ...files])
+          }
+        }}
       />
     </div>
   )

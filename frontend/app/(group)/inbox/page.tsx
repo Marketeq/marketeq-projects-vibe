@@ -113,6 +113,7 @@ export default function InboxRoot() {
   const [selectedConversation, setSelectedConversation] =
     useState<Conversation | null>(null)
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null)
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
   const [messagesByConversation, setMessagesByConversation] = useState<
     Record<string, Message[]>
   >({})
@@ -181,9 +182,12 @@ export default function InboxRoot() {
           jwtToken={token}
           privateKey={privateKey}
           currentUserProfile={currentUserProfile}
+          onToggleRightSidebar={() => setRightSidebarOpen((v) => !v)}
         />
 
-        <RightSidebar selectedConversation={selectedConversation} jwtToken={token} />
+        {rightSidebarOpen && (
+          <RightSidebar selectedConversation={selectedConversation} jwtToken={token} />
+        )}
       </div>
     </Inbox>
   )

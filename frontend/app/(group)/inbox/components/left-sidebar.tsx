@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useCallback, useMemo, useState } from "react"
+import React, { useCallback, useMemo, useRef, useState } from "react"
 import { useEffect } from "react"
 import {
   ensureEncryptionKeysExist,
@@ -202,10 +202,7 @@ const LeftSidebar = ({
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },
         })
-        const displayName =
-          [user.firstName?.trim(), user.lastName?.trim()]
-            .filter(Boolean)
-            .join(" ") || user.username
+        const displayName = user.firstName?.trim() || user.username
         patchConv(conv.id, {
           participantUsername: displayName,
           participantAvatarUrl: user.avatarUrl,
@@ -341,14 +338,45 @@ const LeftSidebar = ({
   }, [currentUserId, token, initialThreadId])
 
   // Handle ?participantId= independently of the thread-list fetch so it works
-  // even when GET /v1/threads is unavailable. POST /v1/threads is idempotent —
-  // it returns the existing 1:1 thread if one already exists.
+  // even when GET /v1/threads is unavailable.
+  // Fast path: if the thread-list load has populated a 1:1 thread with the
+  // target participant, select it immediately — skips the POST round-trip.
+  // Slow path: no local match → POST /v1/threads to create; backend is
+  // idempotent and the DB unique index on 1:1 pairs prevents duplicates.
+  // Ref guard covers React 18 StrictMode double-invoke and rapid clicks.
+  const createdForParticipantRef = useRef<string | null>(null)
   useEffect(() => {
     if (!initialParticipantId || !currentUserId || !token) return
     if (initialParticipantId === currentUserId) {
       router.replace("/inbox", { scroll: false })
       return
     }
+    if (createdForParticipantRef.current === initialParticipantId) return
+    // Wait for the thread-list fetch before deciding local-vs-POST.
+    if (isLoading) return
+    createdForParticipantRef.current = initialParticipantId
+
+    const local = conversations.find(
+      (c) =>
+        !c.isGroup &&
+        c.participantIds?.length === 2 &&
+        c.participantIds.includes(initialParticipantId)
+    )
+    if (local) {
+      if (local.isTrashed) {
+        threadActions.untrash(local.id).catch(() => {})
+        const restored = { ...local, isTrashed: false }
+        setConversations((prev) =>
+          prev.map((c) => (c.id === restored.id ? restored : c))
+        )
+        setSelectedConversation(restored)
+      } else {
+        setSelectedConversation(local)
+      }
+      router.replace("/inbox", { scroll: false })
+      return
+    }
+
     let cancelled = false
     ;(async () => {
       try {
@@ -385,7 +413,7 @@ const LeftSidebar = ({
       }
     })()
     return () => { cancelled = true }
-  }, [currentUserId, token, initialParticipantId])
+  }, [currentUserId, token, initialParticipantId, isLoading, conversations])
 
   // Live-sync: apply server state-change broadcasts (pin/star/archive/...)
   useUserChannel({

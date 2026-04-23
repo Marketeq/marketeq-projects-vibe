@@ -20,6 +20,15 @@ export interface Message {
   forwardedFromId?: string
   quotedCiphertext?: string | null
   quotedContent?: string | null
+  attachments?: MessageAttachment[]
+}
+
+export interface MessageAttachment {
+  id: string
+  fileUrl: string
+  fileType: string
+  fileName?: string | null
+  fileSize?: number | null
 }
 
 // Extended Message type to include file attachments

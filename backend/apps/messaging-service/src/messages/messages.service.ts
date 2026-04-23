@@ -1,16 +1,21 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Message } from './entities/message.entity';
+import { Attachment } from './entities/attachment.entity';
 import { Thread } from '../threads/entities/thread.entity';
 import { AblyService } from '../ably/ably.service';
+import { R2Service } from '../storage/r2.service';
 
 @Injectable()
 export class MessagesService {
   constructor(
     @InjectRepository(Message) private readonly messageRepo: Repository<Message>,
+    @InjectRepository(Attachment) private readonly attachmentRepo: Repository<Attachment>,
     @InjectRepository(Thread) private readonly threadRepo: Repository<Thread>,
     private readonly ablyService: AblyService,
+    private readonly r2Service: R2Service,
+    private readonly dataSource: DataSource,
   ) {}
 
   async getThreadMessages(threadId: string, userId: string) {
@@ -49,6 +54,59 @@ export class MessagesService {
       await this.ablyService.publishMessageNew(dto.threadId, saved);
     }
     return saved;
+  }
+
+  async uploadAttachment(params: {
+    threadId: string;
+    senderId: string;
+    file: Express.Multer.File;
+    ciphertext?: string;
+  }) {
+    const { threadId, senderId, file, ciphertext } = params;
+    if (!file) throw new BadRequestException('file is required');
+    await this.assertParticipant(threadId, senderId);
+
+    const { url } = await this.r2Service.uploadMessageAttachment(threadId, file);
+    const fileUrl = url;
+    if (!fileUrl) {
+      throw new BadRequestException(
+        'R2 public base URL not configured; cannot expose attachment',
+      );
+    }
+
+    const result = await this.dataSource.transaction(async (em) => {
+      const msg = em.getRepository(Message).create({
+        threadId,
+        senderId,
+        ciphertext: ciphertext ?? undefined,
+        messageType: 'file',
+        status: 'sent',
+      });
+      const savedMsg = await em.getRepository(Message).save(msg);
+
+      const att = em.getRepository(Attachment).create({
+        messageId: savedMsg.id,
+        fileUrl,
+        fileType: file.mimetype,
+        fileName: file.originalname,
+        fileSize: file.size,
+      });
+      const savedAtt = await em.getRepository(Attachment).save(att);
+
+      return { message: savedMsg, attachment: savedAtt };
+    });
+
+    const payload = {
+      ...result.message,
+      attachments: [result.attachment],
+    } as any;
+    if (result.message.ciphertext) {
+      const { content: _plaintext, ...ciphertextOnly } = payload;
+      await this.ablyService.publishMessageNew(threadId, ciphertextOnly);
+    } else {
+      await this.ablyService.publishMessageNew(threadId, payload);
+    }
+    return result;
   }
 
   async edit(id: string, content: string, userId: string, ciphertext?: string) {

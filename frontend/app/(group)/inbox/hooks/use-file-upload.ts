@@ -30,7 +30,10 @@ interface FileUploadResponse {
   }
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3007"
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:3002/api"
 
 export function useFileUpload(
   token: string,
@@ -66,7 +69,7 @@ export function useFileUpload(
       }
 
       const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-        `${API_BASE_URL}/api/messaging/conversations/${conversationId}/key?isGroup=${isGroup}`,
+        `/messaging/conversations/${conversationId}/key?isGroup=${isGroup}`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
 
@@ -115,7 +118,7 @@ export function useFileUpload(
     // }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/messaging/upload`, {
+      const response = await fetch(`${API_BASE_URL}/messaging/upload`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

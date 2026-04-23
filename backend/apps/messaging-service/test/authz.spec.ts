@@ -3,13 +3,16 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { MessagesService } from '../src/messages/messages.service';
 import { ThreadsService } from '../src/threads/threads.service';
+import { DataSource } from 'typeorm';
 import { Message } from '../src/messages/entities/message.entity';
+import { Attachment } from '../src/messages/entities/attachment.entity';
 import { Thread } from '../src/threads/entities/thread.entity';
 import { ThreadUserState } from '../src/threads/entities/thread-user-state.entity';
 import { ThreadList } from '../src/threads/entities/thread-list.entity';
 import { ThreadListAssignment } from '../src/threads/entities/thread-list-assignment.entity';
 import { ConversationKey } from '../src/encryption/entities/conversation-key.entity';
 import { AblyService } from '../src/ably/ably.service';
+import { R2Service } from '../src/storage/r2.service';
 
 const USER_A = 'user-a';
 const USER_B = 'user-b';
@@ -64,8 +67,11 @@ describe('MessagesService authz (PR-B1)', () => {
       providers: [
         MessagesService,
         { provide: getRepositoryToken(Message), useValue: messageRepo },
+        { provide: getRepositoryToken(Attachment), useValue: { create: jest.fn(), save: jest.fn() } },
         { provide: getRepositoryToken(Thread), useValue: threadRepo },
-        { provide: AblyService, useValue: { publishMessageNew: jest.fn(), publishMessageEdit: jest.fn(), publishMessageDelete: jest.fn(), publishMessageRead: jest.fn() } },
+        { provide: AblyService, useValue: { publishMessageNew: jest.fn(), publishMessageEdit: jest.fn(), publishMessageDelete: jest.fn(), publishMessageRestore: jest.fn(), publishMessageRead: jest.fn() } },
+        { provide: R2Service, useValue: { uploadMessageAttachment: jest.fn() } },
+        { provide: DataSource, useValue: { transaction: jest.fn() } },
       ],
     }).compile();
 

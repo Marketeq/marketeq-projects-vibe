@@ -18,6 +18,7 @@ import {
   Smile,
   Tag,
   Trash2,
+  X,
 } from "@blend-metrics/icons"
 import { GoogleDrive1Brand } from "@blend-metrics/icons/brands"
 import { Meta } from "@storybook/react"
@@ -30,6 +31,9 @@ import {
   Avatar,
   AvatarFallbackIcon,
   AvatarImage,
+  Dialog,
+  DialogClose,
+  DialogContent,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -83,6 +87,101 @@ const handlePinMessage = async (messageId: string) => {
   }
 }
 
+const formatAttachmentSize = (bytes?: number | null) => {
+  if (!bytes && bytes !== 0) return ""
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} kb`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const MessageAttachmentView = ({
+  attachment,
+}: {
+  attachment: {
+    id: string
+    fileUrl: string
+    fileType: string
+    fileName?: string | null
+    fileSize?: number | null
+  }
+}) => {
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const isImage = attachment.fileType?.startsWith("image/")
+  if (isImage) {
+    return (
+      <div className="flex flex-col gap-y-1">
+        <button
+          type="button"
+          onClick={() => setLightboxOpen(true)}
+          className="focus-visible:outline-none"
+        >
+          <img
+            src={attachment.fileUrl}
+            alt={attachment.fileName || "image"}
+            className="max-w-[300px] max-h-[300px] rounded-md object-cover cursor-zoom-in transition hover:opacity-95"
+          />
+        </button>
+        {attachment.fileName && (
+          <p className="text-[11px] text-gray-500">
+            {attachment.fileName}
+            {attachment.fileSize
+              ? ` (${formatAttachmentSize(attachment.fileSize)})`
+              : ""}
+          </p>
+        )}
+        <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+          <DialogContent
+            className="max-w-none w-auto rounded-none bg-transparent p-0 shadow-none"
+            accessibilityTitle={attachment.fileName || "Image preview"}
+          >
+            <div className="relative flex items-center justify-center">
+              <img
+                src={attachment.fileUrl}
+                alt={attachment.fileName || "image"}
+                className="max-h-[92vh] max-w-[92vw] rounded-md object-contain"
+              />
+              <div className="absolute right-3 top-3 flex items-center gap-x-2">
+                <a
+                  href={attachment.fileUrl}
+                  download={attachment.fileName || true}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Download image"
+                  className="inline-flex size-9 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
+                >
+                  <Download02 className="size-4" />
+                </a>
+                <DialogClose
+                  aria-label="Close"
+                  className="inline-flex size-9 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
+                >
+                  <X className="size-4" />
+                </DialogClose>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
+  }
+  return (
+    <a
+      href={attachment.fileUrl}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-x-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 hover:border-gray-300 max-w-[300px]"
+    >
+      <Download02 className="size-4 shrink-0 text-gray-500" />
+      <span className="truncate">{attachment.fileName || "Attachment"}</span>
+      {attachment.fileSize ? (
+        <span className="text-gray-400">
+          {formatAttachmentSize(attachment.fileSize)}
+        </span>
+      ) : null}
+    </a>
+  )
+}
+
 export const Bubble = ({
   message,
   currentUser,
@@ -112,6 +211,7 @@ export const Bubble = ({
   const [isDeleted, setIsDeleted] = useState(!!message.isDeleted)
   const [deletedAt, setDeletedAt] = useState<number | null>(null)
   const [showUndo, setShowUndo] = useState(false)
+  const [actionMenuOpen, setActionMenuOpen] = useState(false)
 
   // Determine sender name
   const isMe = message.senderId === currentUser.id
@@ -228,7 +328,11 @@ export const Bubble = ({
           </h3>
 
           {!isDeleted && (
-            <div className="inline-flex transition duration-300 opacity-0 group-hover:opacity-100 items-center gap-x-0.5">
+            <div
+              className={`inline-flex transition duration-300 items-center gap-x-0.5 ${
+                actionMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              }`}
+            >
               <button
                 className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0"
                 onClick={() => onReply?.(message)}
@@ -239,14 +343,14 @@ export const Bubble = ({
                 <Smile className="size-4" />
               </button>
 
-              <DropdownMenu>
+              <DropdownMenu open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
                 <DropdownMenuTrigger className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
                   <DotsHorizontal className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   side="bottom"
-                  align="start"
-                  className="min-w-[142px]"
+                  align="end"
+                  className="min-w-0 w-auto"
                 >
                   <DropdownMenuItem onSelect={() => onEdit?.(message)}>
                     <Edit03 className="h-4 w-4" /> Edit
@@ -296,6 +400,10 @@ export const Bubble = ({
               {replyToMessage.content || "Encrypted message"}
             </p>
           </div>
+        )}
+
+        {!isDeleted && message.attachments?.[0] && (
+          <MessageAttachmentView attachment={message.attachments[0]} />
         )}
 
         {isDeleted ? (
@@ -363,6 +471,7 @@ export const YourBubble = ({
   const [isPinned, setIsPinned] = useState(!!message.isPinned)
   const [isDeleted, setIsDeleted] = useState(!!message.isDeleted)
   const [value, setValue] = useState(message.content)
+  const [actionMenuOpen, setActionMenuOpen] = useState(false)
 
   useEffect(() => {
     setIsDeleted(!!message.isDeleted)
@@ -432,7 +541,11 @@ export const YourBubble = ({
               </span>
             </h3>
 
-            <div className="inline-flex transition duration-300 opacity-0 group-hover:opacity-100 items-center gap-x-0.5">
+            <div
+              className={`inline-flex transition duration-300 items-center gap-x-0.5 ${
+                actionMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              }`}
+            >
               <button
                 className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0"
                 onClick={() => onReply?.(message)}
@@ -443,14 +556,14 @@ export const YourBubble = ({
                 <Smile className="size-4" />
               </button>
 
-              <DropdownMenu>
+              <DropdownMenu open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
                 <DropdownMenuTrigger className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
                   <DotsHorizontal className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   side="bottom"
-                  align="start"
-                  className="min-w-[142px]"
+                  align="end"
+                  className="min-w-0 w-auto"
                 >
                   <DropdownMenuItem onSelect={handlePinMessage}>
                     <Edit03 className="h-4 w-4" /> {isPinned ? "Unpin" : "Pin"}
@@ -485,6 +598,10 @@ export const YourBubble = ({
                 {replyToMessage.content || "Encrypted message"}
               </p>
             </div>
+          )}
+
+          {!isDeleted && message.attachments?.[0] && (
+            <MessageAttachmentView attachment={message.attachments[0]} />
           )}
 
           {isDeleted ? (
