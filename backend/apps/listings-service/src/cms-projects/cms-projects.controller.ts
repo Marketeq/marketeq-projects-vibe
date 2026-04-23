@@ -8,12 +8,6 @@ import {
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 
-import { mapCmsProjectStaticDocToDto } from "./map-cms-project-static-doc";
-import type { ProjectStaticContent } from "./project-static-content.dto";
-
-const PROJECT_STATIC_CONTENT_CACHE_TTL_MS = 60_000;
-const PROJECT_STATIC_CONTENT_TIMEOUT_MS = 3_000;
-
 /**
  * Read-only adapter over the `public.projects` table.
  *
@@ -35,10 +29,6 @@ const PROJECT_STATIC_CONTENT_TIMEOUT_MS = 3_000;
 @Controller("v1/projects")
 export class CmsProjectsController {
   private readonly logger = new Logger(CmsProjectsController.name);
-  private projectStaticCache: {
-    value: ProjectStaticContent;
-    expiresAt: number;
-  } | null = null;
 
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
@@ -89,13 +79,8 @@ export class CmsProjectsController {
     // ratings (§14.14). All best-effort: errors return sensible defaults
     // so the primary project response is never blocked by a secondary
     // query/service failure.
-    const [
-      similarProjects,
-      categorySuggestions,
-      team,
-      projectHistoryRatings,
-      projectStaticContent,
-    ] = await Promise.all([
+    const [similarProjects, categorySuggestions, team, projectHistoryRatings] =
+      await Promise.all([
       this.getSimilarProjects(rows[0]).catch((err) => {
         this.logger.warn(`similarProjects failed for ${slug}: ${err}`);
         return [];
@@ -114,12 +99,6 @@ export class CmsProjectsController {
           return null;
         },
       ),
-      this.getProjectStaticContent().catch((err) => {
-        this.logger.warn(
-          `projectStaticContent fetch failed for ${slug}: ${err}`,
-        );
-        return null;
-      }),
     ]);
 
     return {
@@ -129,7 +108,6 @@ export class CmsProjectsController {
       relatedSkills: categorySuggestions.relatedSkills,
       team,
       projectHistoryRatings,
-      projectStaticContent,
     };
   }
 
@@ -433,84 +411,6 @@ export class CmsProjectsController {
     } catch {
       return empty;
     }
-  }
-
-  /**
-   * Static copy for project details (sidebar guarantee + steps block DTO).
-   *
-   * Reads Payload `project-static-contents` (slug `default`) server-side and
-   * maps with {@link mapCmsProjectStaticDocToDto}. The UI never talks to CMS;
-   * it only sees `projectStaticContent` on this API. Returns null if missing
-   * or invalid so the client can fall back to built-in defaults.
-   */
-  private async getProjectStaticContent(): Promise<ProjectStaticContent | null> {
-    if (
-      this.projectStaticCache &&
-      this.projectStaticCache.expiresAt > Date.now()
-    ) {
-      return this.projectStaticCache.value;
-    }
-
-    const baseUrl = (
-      process.env.CMS_PUBLIC_URL ||
-      process.env.CMS_SERVICE_URL ||
-      "http://localhost:3020"
-    ).replace(/\/+$/, "");
-
-    const query = new URLSearchParams({
-      limit: "1",
-      depth: "1",
-      draft: "false",
-      "where[slug][equals]": "default",
-    });
-
-    const headers: Record<string, string> = { Accept: "application/json" };
-    const cmsApiKey = process.env.CMS_API_KEY;
-    if (cmsApiKey) {
-      headers.Authorization = `API-Key ${cmsApiKey}`;
-    }
-
-    const url = `${baseUrl}/api/project-static-contents?${query.toString()}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      PROJECT_STATIC_CONTENT_TIMEOUT_MS,
-    );
-    let res: Response;
-    try {
-      res = await fetch(url, { headers, signal: controller.signal });
-    } catch (err) {
-      this.logger.warn(
-        `project-static-contents fetch error (${baseUrl}): ${err}`,
-      );
-      return null;
-    } finally {
-      clearTimeout(timeout);
-    }
-    if (!res.ok) {
-      this.logger.warn(
-        `project-static-contents HTTP ${res.status} from ${baseUrl}`,
-      );
-      return null;
-    }
-
-    const body = await res.json();
-    const doc = body?.docs?.[0];
-    if (!doc) {
-      this.logger.warn(
-        `project-static-contents: no published doc with slug "default" at ${baseUrl}`,
-      );
-      return null;
-    }
-
-    const mapped = mapCmsProjectStaticDocToDto(doc);
-    if (mapped) {
-      this.projectStaticCache = {
-        value: mapped,
-        expiresAt: Date.now() + PROJECT_STATIC_CONTENT_CACHE_TTL_MS,
-      };
-    }
-    return mapped;
   }
 }
 
