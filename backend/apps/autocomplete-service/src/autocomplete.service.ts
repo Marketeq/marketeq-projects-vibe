@@ -246,17 +246,41 @@ export class AutocompleteService {
    * Query autocomplete data from a local JSON file using Fuse.js fuzzy search.
    * Falls back gracefully if the file does not exist.
    */
-  queryFromJson(type: string, q?: string, limit = 10): { id: string; label: string }[] {
+  async queryFromJson(type: string, q?: string, limit = 10): Promise<{ id: string; label: string }[]> {
     const filepath = resolveAutocompleteDataPath(type);
-    if (!filepath) {
-      return [];
+    const approvedDbEntries = await this.entryRepo.find({
+      where: { type: type as EntryType, status: EntryStatus.APPROVED },
+      order: { frequency: 'DESC', createdAt: 'ASC' },
+      take: 500,
+    });
+
+    const approvedSuggestions = approvedDbEntries.map((entry) => ({
+      id: entry.id,
+      label: entry.value,
+    }));
+
+    let jsonSuggestions: { id: string; label: string }[] = [];
+    if (filepath) {
+      try {
+        const raw = fs.readFileSync(filepath, 'utf-8');
+        jsonSuggestions = JSON.parse(raw);
+      } catch {
+        jsonSuggestions = [];
+      }
     }
-    const raw = fs.readFileSync(filepath, 'utf-8');
-    const data: { id: string; label: string }[] = JSON.parse(raw);
+
+    const merged = Array.from(
+      new Map(
+        [...approvedSuggestions, ...jsonSuggestions]
+          .map((item) => [this.filter.normalize(item.label), item] as const),
+      ).values(),
+    );
+
     if (!q || q.trim() === '') {
-      return data.slice(0, limit);
+      return merged.slice(0, limit);
     }
-    const fuse = new FuseLib(data, { keys: ['label'], threshold: 0.3 });
+
+    const fuse = new FuseLib(merged, { keys: ['label'], threshold: 0.3 });
     return fuse.search(q, { limit }).map((r: { item: { id: string; label: string } }) => r.item);
   }
 
