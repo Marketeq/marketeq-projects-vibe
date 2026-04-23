@@ -1522,7 +1522,7 @@ const ShareYourLocation = ({
                     const selectedLanguages = Array.isArray(value) ? value : []
 
                     return (
-                      <div className="space-y-3">
+                      <div className="flex flex-col gap-y-1.5">
                         <Combobox
                           className="w-full"
                           value={selectedLanguages}
@@ -1939,7 +1939,7 @@ const TopSkills = ({
     : []
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-y-1.5">
       <Combobox
         className="w-full"
         value={values}
@@ -2304,7 +2304,7 @@ const ShowcaseYourTalent = ({
                   control={control}
                   name="recentJobTitle"
                   render={({ field: { value, onChange } }) => (
-                    <div className="space-y-3">
+                    <div className="flex flex-col gap-y-1.5">
                       <Combobox
                         className="w-full"
                         value={value}
@@ -2827,7 +2827,7 @@ const ProjectPreferences = ({
   }, [inputValue])
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-y-1.5">
       <Combobox
         className="w-full"
         value={values}
