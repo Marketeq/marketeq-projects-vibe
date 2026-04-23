@@ -139,6 +139,28 @@ function richFullDescription(p: ProjectSeed) {
   ]);
 }
 
+function plainFullDescription(p: ProjectSeed): string {
+  const primary = p.categories?.[0] ?? 'software'
+  let text = [
+    `${p.description || p.shortDescription || ''}`.trim(),
+    '',
+    'What you get:',
+    `- End-to-end ${primary} delivery from discovery through launch`,
+    '- Weekly async demos plus one live check-in per sprint',
+    '- Production-ready handover with docs and runbook',
+    '',
+    'How we work:',
+    'We ship in small, reviewable increments so you can course-correct early.',
+  ]
+    .join('\n')
+    .trim()
+  // Ensure it clears the publish-project min length (100 chars).
+  if (text.length < 120) {
+    text = `${text}\n\nNotes:\n- This is a seeded fixture. Replace with real project details before publishing.`
+  }
+  return text.slice(0, 2000)
+}
+
 /** Short Lexical answer for FAQ entries. Uses inline bold to exercise
  *  the lexicalToHtml converter the frontend relies on. */
 function faqAnswer(prefix: string, bold: string, suffix: string) {
@@ -461,12 +483,40 @@ function buildProjectData(
   galleryMediaIds: number[],
 ): Record<string, unknown> {
   const safeTitle = sanitizeTitle(p.title);
-  const short = p.shortDescription ?? p.description;
+  const rawShort = (p.shortDescription ?? p.description ?? '').trim()
+  // publish-project requires 50–300 chars; pad seeded fixtures when needed.
+  const short =
+    rawShort.length >= 50
+      ? rawShort.slice(0, 300)
+      : `${rawShort}${rawShort ? ' ' : ''}Seeded fixture summary — edit this description to match the real scope and outcomes.`
+          .trim()
+          .slice(0, 300)
   const stack = stackFor(p);
+  const ensure3 = (arr: string[]) => {
+    const out = [...arr].filter(Boolean)
+    const fallbacks = ['Design', 'Development', 'Data Science']
+    for (const f of fallbacks) {
+      if (out.length >= 3) break
+      if (!out.includes(f)) out.push(f)
+    }
+    return out.slice(0, 3)
+  }
+  const cats3 = ensure3(p.categories ?? [])
+  const subs = stack.subcategories.filter(Boolean)
+  const categorySelections = cats3.map((category, idx) => {
+    const start = idx * 5
+    const slice = subs.slice(start, start + 5)
+    const subCats = (slice.length ? slice : ['General']).slice(0, 5)
+    return {
+      category,
+      subCategories: subCats.map((value) => ({ value })),
+    }
+  })
   return {
     title: safeTitle,
     slug: slugify(safeTitle),
     shortDescription: short,
+    // /publish-project is source of truth: fullDescription is rich text.
     fullDescription: richFullDescription(p),
     thumbnail: thumbnailMediaId,
     gallery: galleryMediaIds.map((id, i) => ({
@@ -476,10 +526,11 @@ function buildProjectData(
     videoWalkthrough: {
       externalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     },
-    categories: (p.categories ?? []).slice(0, 3).map((value) => ({ value })),
-    subcategories: stack.subcategories.slice(0, 5).map((value) => ({ value })),
+    // Canonical categorization matches /publish-project.
+    categorySelections,
     tags: stack.tags.slice(0, 10).map((value) => ({ value })),
-    projectSkills: (p.skills ?? []).slice(0, 25).map((value) => ({ value })),
+    industries: [{ value: 'Technology' }],
+    projectSkills: (p.skills ?? []).slice(0, 10).map((value) => ({ value })),
     programmingLanguages: stack.programmingLanguages
       .slice(0, 10)
       .map((value) => ({ value })),
@@ -487,7 +538,32 @@ function buildProjectData(
       .slice(0, 10)
       .map((value) => ({ value })),
     skillsAndTools: stack.skillsAndTools.slice(0, 10).map((title) => ({ title })),
-    deliverables: buildDeliverables(p),
+    // Canonical scope matches /publish-project.
+    publishScope: [
+      {
+        name: 'Discovery & Planning',
+        stageName: 'Stage 1',
+        startDay: 1,
+        endDay: 8,
+        order: 1,
+        tasks: [
+          {
+            taskName: 'Kickoff + requirements alignment',
+            role: 'Project Manager',
+            location: [{ value: 'Remote' }],
+            experienceLevel: 'Senior',
+            duration: { value: 1, type: 'weeks' },
+          },
+          {
+            taskName: 'Implementation plan + milestones',
+            role: 'Tech Lead',
+            location: [{ value: 'Remote' }],
+            experienceLevel: 'Senior',
+            duration: { value: 1, type: 'weeks' },
+          },
+        ],
+      },
+    ],
     faqQuestions: buildFaqs(p),
     recentQuestions: [
       { question: 'Can you onboard additional team members mid-project?' },

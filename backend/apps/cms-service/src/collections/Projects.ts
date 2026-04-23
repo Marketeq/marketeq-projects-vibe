@@ -12,16 +12,106 @@ import {
   deleteProjectFromListings,
 } from '../hooks/afterChange/syncProjects';
 import { computeProjectFields } from '../hooks/beforeChange/computeProjectFields';
+import { normalizeProjectPublishFields } from '../hooks/beforeChange/normalizeProjectPublishFields';
 
-function validateNoSpecialCharsInTitle(value: unknown): true | string {
+function validateTitleLikePublishProject(value: unknown): true | string {
   if (typeof value !== 'string') return 'Title must be a string.'
-  const trimmed = value.trim();
+  const trimmed = value.trim()
   if (!trimmed) return 'Title is required.'
-  // Allow letters (Unicode), numbers, and spaces only.
-  if (!/^[\p{L}\p{N} ]+$/u.test(trimmed)) {
-    return 'Title can only contain letters, numbers, and spaces (no special characters).'
+  if (trimmed.length < 10) return 'Please enter at least 10 character(s)'
+  if (trimmed.length > 120) return 'Please do not enter more than 120 character(s)'
+  return true
+}
+
+function lexicalToPlainText(value: unknown): string {
+  // Lexical richText stores a document like `{ root: { children: [...] } }`.
+  // If legacy Slate JSON sneaks in (array of nodes), return empty string so
+  // validation fails with a helpful message.
+  if (Array.isArray(value)) return ''
+  if (!value || typeof value !== 'object') return ''
+
+  const root = (value as any).root ?? value
+  const visit = (node: any): string => {
+    if (!node) return ''
+    if (typeof node.text === 'string') return node.text
+    if (Array.isArray(node.children)) return node.children.map(visit).join('')
+    return ''
   }
-  return true;
+
+  return visit(root).replace(/\s+/g, ' ').trim()
+}
+
+function validateTextareaLengthLikePublishProject(
+  value: unknown,
+  { min, max, minMessage, maxMessage }: { min: number; max: number; minMessage: string; maxMessage: string },
+): true | string {
+  if (typeof value !== 'string') return 'Value must be a string.'
+  const trimmed = value.trim()
+  if (trimmed.length < min) return minMessage
+  if (trimmed.length > max) return maxMessage
+  return true
+}
+
+function validateLexicalLengthLikePublishProject(
+  value: unknown,
+  { min, max, minMessage, maxMessage }: { min: number; max: number; minMessage: string; maxMessage: string },
+): true | string {
+  const text = lexicalToPlainText(value)
+  // If this is empty but the field is required, let the "required" validation
+  // handle truly missing values; this handles legacy Slate / too-short content.
+  if (!text) return minMessage
+  if (text.length < min) return minMessage
+  if (text.length > max) return maxMessage
+  return true
+}
+
+function validateCategorySelectionsLikePublishProject(value: unknown): true | string {
+  // publish-project requires 3 category selections, each with 1–5 subcategories.
+  if (!Array.isArray(value)) {
+    return 'Please enter/select all the categories and sub-categories'
+  }
+  if (value.length !== 3) {
+    return 'Please enter/select all the categories and sub-categories'
+  }
+  for (const row of value) {
+    const category = typeof (row as any)?.category === 'string' ? (row as any).category.trim() : ''
+    if (!category) return 'Please enter/select all the categories and sub-categories'
+    const subs = (row as any)?.subCategories
+    const subArr = Array.isArray(subs) ? subs : []
+    const values = subArr
+      .map((s: any) => (typeof s?.value === 'string' ? s.value.trim() : ''))
+      .filter(Boolean)
+    if (values.length < 1 || values.length > 5) {
+      return 'Please enter/select all the categories and sub-categories'
+    }
+  }
+  return true
+}
+
+function validatePublishScopeLikePublishProject(value: unknown): true | string {
+  if (!Array.isArray(value) || value.length < 1) return 'Please add at least 1 phase(s)'
+  for (const phase of value) {
+    const name = typeof (phase as any)?.name === 'string' ? (phase as any).name.trim() : ''
+    if (!name) return 'Please add at least 1 phase(s)'
+    const tasks = (phase as any)?.tasks
+    if (!Array.isArray(tasks) || tasks.length < 1) return 'Please add at least 1 task(s)'
+    for (const t of tasks) {
+      const taskName = typeof (t as any)?.taskName === 'string' ? (t as any).taskName.trim() : ''
+      const role = typeof (t as any)?.role === 'string' ? (t as any).role.trim() : ''
+      const loc = (t as any)?.location
+      const locArr = Array.isArray(loc) ? loc : []
+      const locValues = locArr
+        .map((l: any) => (typeof l?.value === 'string' ? l.value.trim() : ''))
+        .filter(Boolean)
+      const exp = typeof (t as any)?.experienceLevel === 'string' ? String((t as any).experienceLevel) : ''
+      const durVal = (t as any)?.duration?.value
+      const durType = (t as any)?.duration?.type
+      if (!taskName || !role || locValues.length < 1 || !exp) return 'Please add at least 1 task(s)'
+      if (!(typeof durVal === 'number' && durVal > 0)) return 'Please add at least 1 task(s)'
+      if (!['hours', 'days', 'weeks'].includes(String(durType))) return 'Please add at least 1 task(s)'
+    }
+  }
+  return true
 }
 
 /**
@@ -98,7 +188,68 @@ export const Projects: CollectionConfig = {
             id: id as any,
             depth: 0,
           })
-          const scope = (project as any)?.scope
+          // Derive deliverables from the legacy scope shape that the
+          // listings-service expects. `scope` is derived from `publishScope`
+          // in a beforeChange hook, but this endpoint runs without saving,
+          // so fall back to deriving on-the-fly if needed.
+          const deriveLegacyScope = (publishScope: any[]) => {
+            return publishScope
+              .map((p, idx) => {
+                const phaseName = typeof p?.name === 'string' ? p.name.trim() : ''
+                const order = typeof p?.order === 'number' && p.order > 0 ? p.order : idx + 1
+                const tasks = (Array.isArray(p?.tasks) ? p.tasks : [])
+                  .map((t: any) => {
+                    const title = typeof t?.taskName === 'string' ? t.taskName.trim() : ''
+                    const roleName = typeof t?.role === 'string' ? t.role.trim() : ''
+                    const locArr = Array.isArray(t?.location) ? t.location : []
+                    const location =
+                      locArr
+                        .map((l: any) =>
+                          typeof l === 'string'
+                            ? l.trim()
+                            : typeof l?.value === 'string'
+                              ? l.value.trim()
+                              : '',
+                        )
+                        .filter(Boolean)[0] || undefined
+                    const experienceLevel =
+                      typeof t?.experienceLevel === 'string' ? t.experienceLevel : 'Medior'
+                    const explicitHours =
+                      typeof t?.estimatedHours === 'number' && t.estimatedHours > 0
+                        ? Math.round(t.estimatedHours)
+                        : null
+                    const durVal =
+                      typeof t?.duration?.value === 'number' && t.duration.value > 0
+                        ? t.duration.value
+                        : null
+                    const durType = typeof t?.duration?.type === 'string' ? t.duration.type : null
+                    const derivedHours =
+                      durVal && durType === 'hours'
+                        ? Math.round(durVal)
+                        : durVal && durType === 'days'
+                          ? Math.round(durVal * 8)
+                          : durVal && durType === 'weeks'
+                            ? Math.round(durVal * 40)
+                            : 0
+                    const estimatedHours = explicitHours ?? derivedHours
+                    if (!title || !roleName || estimatedHours <= 0) return null
+                    return { title, roleName, location, experienceLevel, estimatedHours }
+                  })
+                  .filter(Boolean)
+                if (!phaseName || tasks.length === 0) return null
+                return { phaseName, order, tasks }
+              })
+              .filter(Boolean)
+          }
+
+          let scope = (project as any)?.scope
+          if (!Array.isArray(scope) || scope.length === 0) {
+            const publishScope = (project as any)?.publishScope
+            if (Array.isArray(publishScope) && publishScope.length > 0) {
+              scope = deriveLegacyScope(publishScope)
+            }
+          }
+
           if (!Array.isArray(scope) || scope.length === 0) {
             return res.status(400).json({ error: 'Scope is empty' })
           }
@@ -167,8 +318,8 @@ export const Projects: CollectionConfig = {
       name: 'title',
       type: 'text',
       required: true,
-      maxLength: 140,
-      validate: validateNoSpecialCharsInTitle,
+      maxLength: 120,
+      validate: validateTitleLikePublishProject,
       admin: { description: 'Used as the main heading on the project card and details page.' },
     },
     {
@@ -198,7 +349,14 @@ export const Projects: CollectionConfig = {
               name: 'shortDescription',
               type: 'textarea',
               required: true,
-              maxLength: 320,
+              maxLength: 300,
+              validate: (value) =>
+                validateTextareaLengthLikePublishProject(value, {
+                  min: 50,
+                  max: 300,
+                  minMessage: 'Please enter at least 50 character(s)',
+                  maxMessage: 'Please do not enter more than 300 character(s)',
+                }),
               admin: { description: 'Summary used on cards and meta tags.' },
             },
             {
@@ -207,17 +365,144 @@ export const Projects: CollectionConfig = {
               required: true,
               admin: {
                 description:
-                  'Rich-text overview shown on the project details page. No external links or custom fonts; must pass content moderation.',
+                  'Long description shown on the project details page.',
               },
             },
             // ── Scope Builder (drives deliverables generation) ────────────────
             {
+              name: 'publishScope',
+              type: 'array',
+              required: true,
+              minRows: 1,
+              labels: { singular: 'Phase', plural: 'Project Scope (publish-project)' },
+              admin: {
+                description:
+                  'Source of truth. Mirrors /publish-project schema: phases with tasks that include role, location(s), experience level, and duration.',
+              },
+              validate: validatePublishScopeLikePublishProject,
+              fields: [
+                {
+                  name: 'name',
+                  type: 'text',
+                  required: true,
+                  admin: { description: 'Phase name (e.g. "Research", "Design", "Build").' },
+                },
+                {
+                  name: 'stageName',
+                  type: 'text',
+                  required: true,
+                  admin: { description: 'Stage label (e.g. "Stage 1").' },
+                },
+                {
+                  type: 'row',
+                  fields: [
+                    {
+                      name: 'startDay',
+                      type: 'number',
+                      required: true,
+                      min: 1,
+                      admin: { width: '33%', description: 'Start day (publish-project payload).' },
+                    },
+                    {
+                      name: 'endDay',
+                      type: 'number',
+                      required: true,
+                      min: 1,
+                      admin: { width: '33%', description: 'End day (publish-project payload).' },
+                    },
+                    {
+                      name: 'order',
+                      type: 'number',
+                      required: true,
+                      min: 1,
+                      admin: { width: '33%', description: 'Phase order (1-indexed).' },
+                    },
+                  ],
+                },
+                {
+                  name: 'tasks',
+                  type: 'array',
+                  required: true,
+                  minRows: 1,
+                  labels: { singular: 'Task', plural: 'Tasks' },
+                  fields: [
+                    { name: 'taskName', type: 'text', required: true },
+                    { name: 'role', type: 'text', required: true },
+                    {
+                      name: 'location',
+                      type: 'array',
+                      required: true,
+                      minRows: 1,
+                      labels: { singular: 'Location', plural: 'Locations' },
+                      fields: [{ name: 'value', type: 'text', required: true }],
+                      admin: {
+                        description: 'Matches publish-project: location is an array (usually 1 item).',
+                      },
+                    },
+                    {
+                      name: 'experienceLevel',
+                      type: 'select',
+                      required: true,
+                      defaultValue: 'Medior',
+                      options: [
+                        { label: 'Student', value: 'Student' },
+                        { label: 'Junior', value: 'Junior' },
+                        { label: 'Medior', value: 'Medior' },
+                        { label: 'Senior', value: 'Senior' },
+                        { label: 'Guru', value: 'Guru' },
+                      ],
+                    },
+                    {
+                      name: 'duration',
+                      type: 'group',
+                      admin: { description: 'Matches publish-project form: numeric value + unit.' },
+                      fields: [
+                        {
+                          name: 'value',
+                          type: 'number',
+                          required: true,
+                          min: 1,
+                          admin: { width: '50%' },
+                        },
+                        {
+                          name: 'type',
+                          type: 'select',
+                          required: true,
+                          defaultValue: 'weeks',
+                          options: [
+                            { label: 'Hours', value: 'hours' },
+                            { label: 'Days', value: 'days' },
+                            { label: 'Weeks', value: 'weeks' },
+                          ],
+                          admin: { width: '50%' },
+                        },
+                      ],
+                    },
+                    // Optional: publish-service accepts it, but publish-project UI does not currently compute it.
+                    {
+                      name: 'estimatedHours',
+                      type: 'number',
+                      required: false,
+                      min: 1,
+                      admin: {
+                        description:
+                          'Optional override. If empty, cms-service derives estimated hours from duration (hours/day/week heuristics) for computed fields.',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+            {
               name: 'scope',
               type: 'array',
+              required: false,
               labels: { singular: 'Phase', plural: 'Scope (phases)' },
               admin: {
                 description:
-                  'Ordered list of phases. Each phase contains tasks with role, experience, and estimated hours. Deliverables are auto-generated from this scope (admins can override deliverables below).',
+                  'Derived from publishScope (hidden). Kept for internal computed fields + sync compatibility.',
+                hidden: true,
+                readOnly: true,
               },
               fields: [
                 {
@@ -253,7 +538,7 @@ export const Projects: CollectionConfig = {
                     {
                       name: 'location',
                       type: 'text',
-                      admin: { description: 'Country preference (optional).' },
+                      admin: { description: 'Location / country preference.' },
                     },
                     {
                       name: 'experienceLevel',
@@ -494,26 +779,68 @@ export const Projects: CollectionConfig = {
           label: 'Categorization',
           fields: [
             {
+              name: 'categorySelections',
+              type: 'array',
+              minRows: 3,
+              maxRows: 3,
+              required: true,
+              labels: { singular: 'Category Group', plural: 'Category Groups' },
+              admin: {
+                description:
+                  'Matches /publish-project: exactly 3 categories, each with 1–5 subcategories.',
+              },
+              validate: validateCategorySelectionsLikePublishProject,
+              fields: [
+                {
+                  name: 'category',
+                  type: 'text',
+                  required: true,
+                },
+                {
+                  name: 'subCategories',
+                  type: 'array',
+                  minRows: 1,
+                  maxRows: 5,
+                  required: true,
+                  labels: { singular: 'Subcategory', plural: 'Subcategories' },
+                  fields: [{ name: 'value', type: 'text', required: true }],
+                },
+              ],
+            },
+            {
               name: 'categories',
               type: 'array',
               maxRows: 3,
-              required: true,
+              required: false,
               labels: { singular: 'Category', plural: 'Categories' },
-              admin: { description: 'Top-level categories used for discovery (max 3).' },
+              admin: {
+                description:
+                  'Derived from Category Groups above. Kept for sync compatibility with listings-service.',
+                hidden: true,
+                readOnly: true,
+              },
               fields: [{ name: 'value', type: 'text', required: true }],
             },
             {
               name: 'subcategories',
               type: 'array',
-              maxRows: 5,
+              maxRows: 15,
+              required: false,
               labels: { singular: 'Subcategory', plural: 'Subcategories' },
-              admin: { description: 'Secondary classifications selected during creation (max 5).' },
+              admin: {
+                description:
+                  'Derived (flattened) from Category Groups above. Kept for sync compatibility with listings-service. Max 15 (= 3 categories × 5 subcategories).',
+                hidden: true,
+                readOnly: true,
+              },
               fields: [{ name: 'value', type: 'text', required: true }],
             },
             {
               name: 'tags',
               type: 'array',
               maxRows: 10,
+              minRows: 1,
+              required: true,
               admin: { description: 'Custom tags added by the project creator (max 10).' },
               fields: [{ name: 'value', type: 'text', required: true }],
             },
@@ -525,7 +852,9 @@ export const Projects: CollectionConfig = {
               // Once that's wired, flip to `admin: { readOnly: true }`.
               name: 'projectSkills',
               type: 'array',
-              maxRows: 25,
+              maxRows: 10,
+              minRows: 1,
+              required: true,
               labels: { singular: 'Skill', plural: 'Skills' },
               admin: {
                 description:
@@ -572,6 +901,8 @@ export const Projects: CollectionConfig = {
               name: 'industries',
               type: 'array',
               maxRows: 5,
+              minRows: 1,
+              required: true,
               labels: { singular: 'Industry', plural: 'Industries' },
               admin: {
                 description:
@@ -936,7 +1267,8 @@ export const Projects: CollectionConfig = {
   hooks: {
     // Derive Computed-tab fields from the authored doc before persistence.
     // See docs/md/CMS Service/projects/GAP-ANALYSIS.md §2 + §7 Tier 1.
-    beforeChange: [computeProjectFields],
+    beforeValidate: [normalizeProjectPublishFields],
+    beforeChange: [normalizeProjectPublishFields, computeProjectFields],
     afterChange: [syncProjectToListings],
     afterDelete: [deleteProjectFromListings],
   },
