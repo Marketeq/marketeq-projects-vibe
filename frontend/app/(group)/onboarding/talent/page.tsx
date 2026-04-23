@@ -1180,8 +1180,9 @@ const ShareYourLocation = ({
   const [isHomeCountry, setIsHomeCountry] = useState(true)
   const [suppressLanguageFocusOpen, setSuppressLanguageFocusOpen] =
     useState(false)
-  const [languageOptions, setLanguageOptions] = useState<string[]>(
-    getUniqueOptions(languagesMock.map((item) => item.label))
+  const languageOptions = useMemo(
+    () => getUniqueOptions(languagesMock.map((item) => item.label)),
+    []
   )
   const watchedLanguages = useWatch({
     control,
@@ -1190,10 +1191,6 @@ const ShareYourLocation = ({
   const selectedLanguageValues = Array.isArray(watchedLanguages)
     ? watchedLanguages
     : []
-  const languagesRequestRef = useRef(0)
-  const languagesDebounceTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null)
   const filteredLanguages = useMemo(() => {
     const query = languagesQuery.trim().toLowerCase()
     const searchableLanguages = languageOptions.filter(
@@ -1214,30 +1211,26 @@ const ShareYourLocation = ({
     if (!value) return
 
     const normalizedCurrentValues = getUniqueOptions(currentValues)
-    if (normalizedCurrentValues.includes(value)) {
+    const matchedValue = languageOptions.find(
+      (option) => option.trim().toLowerCase() === value.toLowerCase()
+    )
+
+    if (!matchedValue) {
       setLanguagesQuery("")
       setIsLanguagesOpen(false)
       setSuppressLanguageFocusOpen(true)
       return
     }
 
-    const isKnownSuggestion = hasCaseInsensitiveExactMatch(
-      languageOptions,
-      value
-    )
-    if (!isKnownSuggestion) {
-      const accepted = await submitAutocompleteValue("languages", value)
-      if (!accepted) {
-        setLanguagesQuery("")
-        setIsLanguagesOpen(false)
-        setSuppressLanguageFocusOpen(true)
-        return
-      }
+    if (normalizedCurrentValues.includes(matchedValue)) {
+      setLanguagesQuery("")
+      setIsLanguagesOpen(false)
+      setSuppressLanguageFocusOpen(true)
+      return
     }
 
     clearErrors("languages")
-    setLanguageOptions((prev) => getUniqueOptions([...prev, value]))
-    const next = getUniqueOptions([...normalizedCurrentValues, value])
+    const next = getUniqueOptions([...normalizedCurrentValues, matchedValue])
     onChange(next)
     setLanguagesQuery("")
     setIsLanguagesOpen(false)
@@ -1274,52 +1267,6 @@ const ShareYourLocation = ({
       isCancelled = true
     }
   }, [detectedCoordinates, detectedLocation])
-
-  useEffect(() => {
-    if (languagesDebounceTimerRef.current) {
-      clearTimeout(languagesDebounceTimerRef.current)
-    }
-
-    const trimmedQuery = languagesQuery.trim()
-    if (!trimmedQuery) {
-      languagesRequestRef.current += 1
-      return
-    }
-
-    languagesDebounceTimerRef.current = setTimeout(async () => {
-      const currentRequestId = ++languagesRequestRef.current
-      try {
-        const response = await AutocompleteAPI.getByType(
-          "languages",
-          trimmedQuery
-        )
-        if (currentRequestId !== languagesRequestRef.current) return
-
-        const values: AutocompleteTypeSuggestion[] = Array.isArray(
-          response?.data
-        )
-          ? response.data
-          : []
-        const normalizedOptions = getUniqueOptions(
-          values.map((item) => normalizeAutocompleteLabel(item))
-        )
-        if (!getIsNotEmpty(normalizedOptions)) return
-        setLanguageOptions((prev) =>
-          getUniqueOptions([...prev, ...normalizedOptions])
-        )
-      } catch {
-        // Keep current/fallback options when endpoint is unavailable.
-      }
-    }, 250)
-  }, [languagesQuery])
-
-  useEffect(() => {
-    return () => {
-      if (languagesDebounceTimerRef.current) {
-        clearTimeout(languagesDebounceTimerRef.current)
-      }
-    }
-  }, [])
 
   useEffect(() => {
     if (stepData?.location?.trim()) return
@@ -1573,9 +1520,12 @@ const ShareYourLocation = ({
                                     const activeLabel =
                                       activeOption?.textContent?.trim() ?? ""
 
-                                    if (activeLabel) {
+                                    const selectedLabel =
+                                      activeLabel || filteredLanguages[0]
+
+                                    if (selectedLabel) {
                                       void addLanguageValue(
-                                        activeLabel,
+                                        selectedLabel,
                                         onChange,
                                         selectedLanguages
                                       )
