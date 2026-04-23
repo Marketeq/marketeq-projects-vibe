@@ -285,8 +285,11 @@ export const Projects: CollectionConfig = {
           await req.payload.update({
             collection: 'projects',
             id: project.id,
+            draft: true, // Bypass strict validation so it saves even if thumbnail is missing
+            overrideAccess: true,
             data: {
               deliverables: deliverablesLexical,
+              deliverablesGenerated: true,
             },
             req,
           })
@@ -372,6 +375,12 @@ export const Projects: CollectionConfig = {
                   'Long description shown on the project details page.',
               },
             },
+          ],
+        },
+        // ── 2. Scope ───────────────────────────────────────────────────────
+        {
+          label: 'Scope',
+          fields: [
             // ── Scope Builder (drives deliverables generation) ────────────────
             {
               name: 'publishScope',
@@ -576,46 +585,11 @@ export const Projects: CollectionConfig = {
                 },
               ],
             },
-            {
-              name: 'generateDeliverables',
-              type: 'ui',
-              admin: {
-                components: {
-                  Field: GenerateDeliverablesButton as any,
-                },
-              },
-            },
-            {
-              name: 'deliverables',
-              type: 'richText',
-              required: false,
-              access: {
-                // Not editable at first. After listings-service generates deliverables
-                // and cms-service backfills them, we flip `deliverablesGenerated=true`
-                // so admins can override the generated rich text.
-                create: () => false,
-                update: ({ req, data, doc }) => {
-                  if (!isAdminField({ req })) return false;
-                  return (
-                    (doc as any)?.deliverablesGenerated === true ||
-                    (data as any)?.deliverablesGenerated === true
-                  );
-                },
-              },
-              admin: {
-                description:
-                  'Flow: Save Scope → click “Generate deliverables from scope” above → Deliverables will be backfilled as rich text. After generation, admins can edit/override.',
-              },
-            },
-            {
-              name: 'deliverablesGenerated',
-              type: 'checkbox',
-              defaultValue: false,
-              admin: {
-                hidden: true,
-                readOnly: true,
-              },
-            },
+          ],
+        },        // ── 4. FAQs & Questions ────────────────────────────────────────────
+        {
+          label: 'FAQs & Questions',
+          fields: [
             {
               name: 'faqQuestions',
               type: 'array',
@@ -650,9 +624,9 @@ export const Projects: CollectionConfig = {
           ],
         },
 
-        // ── 2. Pricing & scope ─────────────────────────────────────────────
+        // ── 5. Pricing & Setup ─────────────────────────────────────────────
         {
-          label: 'Pricing & Scope',
+          label: 'Pricing & Setup',
           fields: [
             {
               name: 'totalEstimatedHours',
@@ -929,6 +903,53 @@ export const Projects: CollectionConfig = {
             },
           ],
         },
+        // ── 3. Deliverables ────────────────────────────────────────────────
+        {
+          label: 'Deliverables',
+          fields: [
+            {
+              name: 'generateDeliverables',
+              type: 'ui',
+              admin: {
+                components: {
+                  Field: GenerateDeliverablesButton as any,
+                },
+              },
+            },
+            {
+              name: 'deliverables',
+              type: 'richText',
+              required: false,
+              access: {
+                // Not editable at first. After listings-service generates deliverables
+                // and cms-service backfills them, we flip `deliverablesGenerated=true`
+                // so admins can override the generated rich text.
+                create: () => false,
+                update: ({ req, data, doc }) => {
+                  if (!isAdminField({ req })) return false;
+                  return (
+                    (doc as any)?.deliverablesGenerated === true ||
+                    (data as any)?.deliverablesGenerated === true
+                  );
+                },
+              },
+              admin: {
+                description:
+                  'Flow: Save Scope → click “Generate deliverables from scope” above → Deliverables will be backfilled as rich text. After generation, admins can edit/override.',
+              },
+            },
+            {
+              name: 'deliverablesGenerated',
+              type: 'checkbox',
+              defaultValue: false,
+              admin: {
+                hidden: true,
+                readOnly: true,
+              },
+            },
+          ],
+        },
+
 
         // ── 4. Media ───────────────────────────────────────────────────────
         {

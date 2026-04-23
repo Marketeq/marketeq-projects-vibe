@@ -78,7 +78,13 @@ export function GenerateDeliverablesButton(): React.ReactElement | null {
         },
       )
       if (!res.ok) {
-        const text = await res.text().catch(() => '')
+        let text = await res.text().catch(() => '')
+        try {
+          const parsed = JSON.parse(text)
+          text = parsed.error || parsed.message || text
+        } catch (err) {
+          // ignore parsing error
+        }
         throw new Error(text || `Request failed (${res.status})`)
       }
       

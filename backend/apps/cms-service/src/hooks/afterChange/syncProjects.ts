@@ -418,75 +418,7 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       `[syncProjectToListings] Synced "${doc.slug}" (${operation}) → listings-service`,
     );
 
-    // Backfill read-only Deliverables in the CMS admin UI.
-    // Editors cannot author deliverables; they are derived in listings-service.
-    // If this doc has no deliverables yet, fetch the generated deliverables and
-    // write them back into the CMS document so admins can view them.
-    // Do not block the CMS request on this read-back.
-    void (async () => {
-      try {
-        const isDraftRequest =
-          (req as any)?.query?.draft === "true" ||
-          (req as any)?.query?.draft === true;
-        const isAutosave =
-          (req as any)?.query?.autosave === "true" ||
-          (req as any)?.query?.autosave === true;
 
-        const authored = (doc as any).deliverables;
-        const hasAuthored =
-          authored &&
-          typeof authored === "object" &&
-          Array.isArray((authored as any).root?.children) &&
-          (authored as any).root.children.length > 0;
-        const alreadyGenerated = (doc as any).deliverablesGenerated === true;
-        const scope = (doc as any).scope;
-        const hasScope = Array.isArray(scope) && scope.length > 0;
-        // Do not overwrite authored content, and avoid spamming autosaves.
-        if (hasAuthored || alreadyGenerated || isAutosave || !hasScope) return;
-
-        // If the doc is draft, it may not exist in `public.projects` yet.
-        // Instead of reading from the public API, derive deliverables directly
-        // from scope via an internal endpoint.
-        const deriveUrl = `${listingsUrl.replace(/\/$/, "")}/internal/project-sync/derive-deliverables`;
-        const deriveRes = await fetch(deriveUrl, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ scope }),
-        });
-        if (!deriveRes.ok) return;
-        const derived = (await deriveRes.json()) as { deliverables?: unknown };
-        const groups = Array.isArray((derived as any).deliverables)
-          ? ((derived as any).deliverables as DeliverableGroup[])
-          : [];
-        if (groups.length === 0) return;
-
-        const deliverablesLexical =
-          (derived as any).deliverablesLexical &&
-          typeof (derived as any).deliverablesLexical === "object"
-            ? ((derived as any).deliverablesLexical as any)
-            : lexicalFromDeliverables(groups);
-
-        await req.payload.update({
-          collection: "projects" as any,
-          id: doc.id as any,
-          overrideAccess: true,
-          data: {
-            deliverables: deliverablesLexical,
-            deliverablesGenerated: true,
-          } as any,
-        });
-        req.payload.logger.info(
-          `[syncProjectToListings] Backfilled deliverables into CMS for "${doc.slug}"`,
-        );
-      } catch (e) {
-        req.payload.logger.warn(
-          `[syncProjectToListings] Failed to backfill deliverables for "${doc.slug}": ${(e as Error).message}`,
-        );
-      }
-    })();
 
     // Per docs/md/Home Page/08-HP — Cache Strategy & Invalidation:
     // publish a `project.saved` event onto the cms.events topic exchange so
