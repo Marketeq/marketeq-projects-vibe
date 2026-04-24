@@ -1,5 +1,4 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import axios from 'axios';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Service } from './entities/service.entity';
@@ -41,91 +40,26 @@ export class ServicesService {
     });
     const saved = await this.repo.save(item);
     this.logger.log(`Created service ${saved.id} by user ${userId}`);
-
-    // CMS sync logic
-    try {
-      await axios.post(
-        process.env.CMS_SYNC_URL || 'http://localhost:3001/api/categories/push',
-        { service: saved },
-        {
-          headers: {
-            'Authorization': `API-Key ${process.env.CMS_API_KEY}`
-          }
-        }
-      );
-      this.logger.log(`Pushed service ${saved.id} to CMS`);
-    } catch (err) {
-      this.logger.error(`Failed to push service ${saved.id} to CMS: ${err.message}`);
-    }
-
     return saved;
   }
 
   async update(id: string, dto: UpdateServiceDto) {
     await this.findOne(id);
     await this.repo.update(id, dto);
-    const updated = await this.findOne(id);
-    // CMS sync logic
-    try {
-      await axios.post(
-        process.env.CMS_SYNC_URL || 'http://localhost:3001/api/categories/push',
-        { service: updated },
-        {
-          headers: {
-            'Authorization': `API-Key ${process.env.CMS_API_KEY}`
-          }
-        }
-      );
-      this.logger.log(`Pushed updated service ${updated.id} to CMS`);
-    } catch (err) {
-      this.logger.error(`Failed to push updated service ${id} to CMS: ${err.message}`);
-    }
-    return updated;
+    return this.findOne(id);
   }
 
   async publish(id: string) {
     await this.findOne(id);
     await this.repo.update(id, { status: ListingStatus.Published });
     this.logger.log(`Published service ${id}`);
-    const published = await this.findOne(id);
-    // CMS sync logic
-    try {
-      await axios.post(
-        process.env.CMS_SYNC_URL || 'http://localhost:3001/api/categories/push',
-        { service: published },
-        {
-          headers: {
-            'Authorization': `API-Key ${process.env.CMS_API_KEY}`
-          }
-        }
-      );
-      this.logger.log(`Pushed published service ${published.id} to CMS`);
-    } catch (err) {
-      this.logger.error(`Failed to push published service ${id} to CMS: ${err.message}`);
-    }
-    return published;
+    return this.findOne(id);
   }
 
   async archive(id: string) {
     await this.findOne(id);
     await this.repo.update(id, { status: ListingStatus.Archived });
-    const archived = await this.findOne(id);
-    // CMS sync logic
-    try {
-      await axios.post(
-        process.env.CMS_SYNC_URL || 'http://localhost:3001/api/categories/push',
-        { service: archived },
-        {
-          headers: {
-            'Authorization': `API-Key ${process.env.CMS_API_KEY}`
-          }
-        }
-      );
-      this.logger.log(`Pushed archived service ${archived.id} to CMS`);
-    } catch (err) {
-      this.logger.error(`Failed to push archived service ${id} to CMS: ${err.message}`);
-    }
-    return archived;
+    return this.findOne(id);
   }
 
   async remove(id: string) {
