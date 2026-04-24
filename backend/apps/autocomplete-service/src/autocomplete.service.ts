@@ -22,6 +22,7 @@ const JSON_DATA_TYPES = new Set([
   'certifications',
   'industries',
   'languages',
+  'project_types',
   'search_keywords',
 ]);
 
