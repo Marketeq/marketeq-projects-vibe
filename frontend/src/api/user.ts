@@ -15,7 +15,7 @@ export async function getRecipientPublicKey(
   console.log("Fetching public key for userId:", userId)
 
   const data = await apiFetch<{ publicKey: string }>(
-    `/api/messaging/get-public-key?userId=${userId}`,
+    `/messaging/get-public-key?userId=${userId}`,
     {
       method: "GET",
       headers: {

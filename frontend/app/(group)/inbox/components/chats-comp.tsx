@@ -48,6 +48,7 @@ import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
 import { User } from "@/types/user"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
 import { EmojiPicker } from "@/components/emoji-picker"
@@ -87,10 +88,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
-import { Spinner } from "@/components/ui/spinner/spinner"
+import { useEditMessage } from "../hooks/use-edit-message"
 import { useFileUpload } from "../hooks/use-file-upload"
 import { addParticipantToGroup } from "../hooks/use-group-encryption"
-import { useEditMessage } from "../hooks/use-edit-message"
 import { useMessages } from "../hooks/use-messages"
 import { useSendMessage } from "../hooks/use-send-message"
 import { useThreadActions } from "../hooks/use-thread-actions"
@@ -138,7 +138,8 @@ export function Chats({
   const threadSpam = !!(selectedConversation as any)?.isSpam
   const threadUnread = !!(selectedConversation as any)?.markedUnread
   const [starredOverride, setStarredOverride] = useState<boolean | null>(null)
-  const threadStarred = starredOverride ?? !!(selectedConversation as any)?.isStarred
+  const threadStarred =
+    starredOverride ?? !!(selectedConversation as any)?.isStarred
   const threadActions = useThreadActions(jwtToken)
 
   const handleOpenForward = useCallback((msg: Message) => {
@@ -146,7 +147,8 @@ export function Chats({
     setForwardOpen(true)
   }, [])
 
-  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getCurrentUser>>(null)
+  const [currentUser, setCurrentUser] =
+    useState<ReturnType<typeof getCurrentUser>>(null)
   useEffect(() => {
     const base = getCurrentUser()
     if (base && currentUserProfile?.username) {
@@ -189,7 +191,7 @@ export function Chats({
     ;(async () => {
       try {
         const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-          `/api/messaging/conversations/${convId}/key?isGroup=${selectedConversation.isGroup}`,
+          `/messaging/conversations/${convId}/key?isGroup=${selectedConversation.isGroup}`,
           {
             headers: { Authorization: `Bearer ${jwtToken}` },
             signal: ac.signal,
@@ -217,7 +219,12 @@ export function Chats({
       }
     })()
     return () => ac.abort()
-  }, [selectedConversation?.id, selectedConversation?.isGroup, privateKey, jwtToken])
+  }, [
+    selectedConversation?.id,
+    selectedConversation?.isGroup,
+    privateKey,
+    jwtToken,
+  ])
 
   //below logic to add new user to a group chat //need to add button for it once user-service can be called to add users
   const handleAddUser = async (userId: string) => {
@@ -368,7 +375,10 @@ export function Chats({
 
   const handleLocalDelete = useCallback(
     (messageId: string) => {
-      updateMessage(messageId, { isDeleted: true, deletedAt: Date.now() } as any)
+      updateMessage(messageId, {
+        isDeleted: true,
+        deletedAt: Date.now(),
+      } as any)
       setTimeout(() => {
         setLocalMsgs((prev) => prev.map((m) => m))
       }, 30000)
@@ -378,14 +388,23 @@ export function Chats({
 
   const handleLocalRestore = useCallback(
     (messageId: string) => {
-      updateMessage(messageId, { isDeleted: false, deletedAt: undefined } as any)
+      updateMessage(messageId, {
+        isDeleted: false,
+        deletedAt: undefined,
+      } as any)
     },
     [updateMessage]
   )
 
   // Ably incoming edit: decrypt + patch local state
   const handleIncomingEdit = useCallback(
-    async (incoming: { id: string; ciphertext?: string; senderId: string; threadId: string; edited?: boolean }) => {
+    async (incoming: {
+      id: string
+      ciphertext?: string
+      senderId: string
+      threadId: string
+      edited?: boolean
+    }) => {
       let plain = ""
       try {
         const key = loadKey(incoming.threadId)
@@ -459,7 +478,11 @@ export function Chats({
 
     setIsSending(true)
     try {
-      const saved = await send(selectedConversation.id, textareaValue.trim(), replyingTo?.id)
+      const saved = await send(
+        selectedConversation.id,
+        textareaValue.trim(),
+        replyingTo?.id
+      )
 
       // Backend returns message directly or wrapped in { data }
       const msg = (saved as any).data ?? saved
@@ -649,7 +672,11 @@ export function Chats({
         const pinned = allMsgs.filter((m) => m.pinned || m.isPinned)
 
         let key: Uint8Array | null = null
-        try { key = loadKey(convId) } catch { /* no key */ }
+        try {
+          key = loadKey(convId)
+        } catch {
+          /* no key */
+        }
         const decrypted = await Promise.all(
           pinned.map(async (m) => {
             if (!m.ciphertext) return m
@@ -736,7 +763,9 @@ export function Chats({
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
         <Mail05 className="size-10 stroke-[1.5]" />
-        <p className="text-sm font-medium">Select a conversation to start messaging</p>
+        <p className="text-sm font-medium">
+          Select a conversation to start messaging
+        </p>
       </div>
     )
   }
@@ -752,12 +781,22 @@ export function Chats({
 
   // Compute full name
   const fullName = selectedConversation?.isGroup
-    ? selectedConversation.group?.name ?? "Unnamed Group"
+    ? (selectedConversation.group?.name ?? "Unnamed Group")
     : [receiverUser.firstName?.trim(), receiverUser.lastName?.trim()]
         .filter(Boolean)
         .join(" ") ||
       receiverUser.username ||
       "Unknown User"
+  const recentRole =
+    (receiverUser as any).recentJobTitle ||
+    (receiverUser as any).jobTitles?.find((job: any) => job?.saveAsDefault)
+      ?.jobTitle ||
+    (receiverUser as any).jobTitles?.find((job: any) => job?.isDefault)
+      ?.jobTitle ||
+    (typeof (receiverUser as any).jobTitles?.[0] === "string"
+      ? (receiverUser as any).jobTitles?.[0]
+      : (receiverUser as any).jobTitles?.[0]?.jobTitle) ||
+    null
 
   return (
     <div className="flex-auto relative">
@@ -778,13 +817,13 @@ export function Chats({
               alt={
                 selectedConversation?.isGroup
                   ? selectedConversation?.group?.name || "Group"
-                  : receiverUser.username ?? ""
+                  : (receiverUser.username ?? "")
               }
             />
             <AvatarFallback>
               {selectedConversation?.isGroup
-                ? selectedConversation?.group?.name?.[0] ?? "G"
-                : receiverUser.username?.[0] ?? ""}
+                ? (selectedConversation?.group?.name?.[0] ?? "G")
+                : (receiverUser.username?.[0] ?? "")}
             </AvatarFallback>
           </Avatar>
 
@@ -796,15 +835,10 @@ export function Chats({
             </div>
             <div className="inline-flex items-center gap-x-2">
               <span className="text-sm text-dark-blue-400">Active now</span>
-              {(receiverUser as any).recentJobTitle ||
-              ((receiverUser as any).jobTitles &&
-                (receiverUser as any).jobTitles[0]) ? (
+              {recentRole ? (
                 <>
                   <span className="inline-block h-4 w-px bg-gray-300" />
-                  <span className="text-sm text-dark-blue-400">
-                    {(receiverUser as any).recentJobTitle ||
-                      (receiverUser as any).jobTitles[0]}
-                  </span>
+                  <span className="text-sm text-dark-blue-400">{recentRole}</span>
                 </>
               ) : null}
             </div>
@@ -825,7 +859,9 @@ export function Chats({
             <ToggleGroupItem value="Pinned">
               Pinned
               {(() => {
-                const count = localMsgs.filter((m) => m.pinned || m.isPinned).length
+                const count = localMsgs.filter(
+                  (m) => m.pinned || m.isPinned
+                ).length
                 return count > 0 ? (
                   <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] font-semibold bg-gray-300 text-gray-800 rounded-full">
                     {count}
@@ -836,7 +872,12 @@ export function Chats({
           </ToggleGroupRoot>
 
           <div className="flex items-center gap-x-1">
-            <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
+            <IconButton
+              visual="gray"
+              variant="ghost"
+              size="lg"
+              className="rounded-full"
+            >
               <Info className="size-[22px]" />
             </IconButton>
             <FavoriteRoot
@@ -900,10 +941,13 @@ export function Chats({
                     ;(threadUnread
                       ? threadActions.markRead(selectedConversation.id)
                       : threadActions.markUnread(selectedConversation.id)
-                    ).catch((err) => console.error("mark unread/read failed", err))
+                    ).catch((err) =>
+                      console.error("mark unread/read failed", err)
+                    )
                   }}
                 >
-                  <Mail05 className="size-4" /> {threadUnread ? "Mark as Read" : "Mark Unread"}
+                  <Mail05 className="size-4" />{" "}
+                  {threadUnread ? "Mark as Read" : "Mark Unread"}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={(e) => {
@@ -926,10 +970,13 @@ export function Chats({
                     ;(threadArchived
                       ? threadActions.unarchive(selectedConversation.id)
                       : threadActions.archive(selectedConversation.id)
-                    ).catch((err) => console.error("archive toggle failed", err))
+                    ).catch((err) =>
+                      console.error("archive toggle failed", err)
+                    )
                   }}
                 >
-                  <Archive className="size-4" /> {threadArchived ? "Unarchive" : "Archive"}
+                  <Archive className="size-4" />{" "}
+                  {threadArchived ? "Unarchive" : "Archive"}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -942,7 +989,8 @@ export function Chats({
                     ).catch((err) => console.error("spam toggle failed", err))
                   }}
                 >
-                  <AlertTriangle className="size-4" /> {threadSpam ? "Move to Inbox" : "Move to Spam"}
+                  <AlertTriangle className="size-4" />{" "}
+                  {threadSpam ? "Move to Inbox" : "Move to Spam"}
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-error-500">
                   <AlertTriangle className="size-4" /> Block / Report
@@ -959,11 +1007,15 @@ export function Chats({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+            <Dialog
+              open={showDeleteConfirm}
+              onOpenChange={setShowDeleteConfirm}
+            >
               <DialogContent className="max-w-[348px] p-7 rounded-xl">
                 <DialogTitle>Delete this chat?</DialogTitle>
                 <DialogDescription className="mt-2">
-                  This chat will be moved to Trash. You can restore it later from the Trash filter.
+                  This chat will be moved to Trash. You can restore it later
+                  from the Trash filter.
                 </DialogDescription>
                 <div className="mt-8 grid grid-cols-2 gap-x-3">
                   <DialogClose asChild>
@@ -971,13 +1023,15 @@ export function Chats({
                       Cancel
                     </Button>
                   </DialogClose>
-                  <Button onClick={() => {
-                    if (!selectedConversation) return
-                    threadActions
-                      .trash(selectedConversation.id)
-                      .catch((err) => console.error("trash failed", err))
-                    setShowDeleteConfirm(false)
-                  }}>
+                  <Button
+                    onClick={() => {
+                      if (!selectedConversation) return
+                      threadActions
+                        .trash(selectedConversation.id)
+                        .catch((err) => console.error("trash failed", err))
+                      setShowDeleteConfirm(false)
+                    }}
+                  >
                     Yes, Delete
                   </Button>
                 </div>
@@ -1011,57 +1065,72 @@ export function Chats({
                 <p className="text-sm">No messages yet. Say hello!</p>
               </div>
             )}
-            {!isSwitching && displayedMessages.map((m, i) => (
-              <div
-                key={i}
-                className={`flex ${
-                  m.senderId === currentUser.id
-                    ? "justify-end"
-                    : "justify-start"
-                }`}
-              >
-                {m.senderId === currentUser.id ? (
-                  <Bubble
-                    message={m}
-                    currentUser={currentUser}
-                    participantUsername={receiverUser.username ?? ""}
-                    participantName={fullName}
-                    onForward={handleOpenForward}
-                    onReply={setReplyingTo}
-                    onEdit={handleStartEdit}
-                    onLocalDelete={handleLocalDelete}
-                    onLocalRestore={handleLocalRestore}
-                    replyToMessage={m.replyToMessageId ? localMsgs.find((r) => r.id === m.replyToMessageId) ?? null : null}
-                  />
-                ) : (
-                  <YourBubble
-                    message={m}
-                    currentUser={currentUser}
-                    onForward={handleOpenForward}
-                    onReply={setReplyingTo}
-                    replyToMessage={m.replyToMessageId ? localMsgs.find((r) => r.id === m.replyToMessageId) ?? null : null}
-                    participantName={fullName}
-                    participantUsername={receiverUser.username ?? ""}
-                    participantAvatarUrl={receiverUser.avatarUrl ?? undefined}
-                  />
-                )}
-              </div>
-            ))}
+            {!isSwitching &&
+              displayedMessages.map((m, i) => (
+                <div
+                  key={i}
+                  className={`flex ${
+                    m.senderId === currentUser.id
+                      ? "justify-end"
+                      : "justify-start"
+                  }`}
+                >
+                  {m.senderId === currentUser.id ? (
+                    <Bubble
+                      message={m}
+                      currentUser={currentUser}
+                      participantUsername={receiverUser.username ?? ""}
+                      participantName={fullName}
+                      onForward={handleOpenForward}
+                      onReply={setReplyingTo}
+                      onEdit={handleStartEdit}
+                      onLocalDelete={handleLocalDelete}
+                      onLocalRestore={handleLocalRestore}
+                      replyToMessage={
+                        m.replyToMessageId
+                          ? (localMsgs.find(
+                              (r) => r.id === m.replyToMessageId
+                            ) ?? null)
+                          : null
+                      }
+                    />
+                  ) : (
+                    <YourBubble
+                      message={m}
+                      currentUser={currentUser}
+                      onForward={handleOpenForward}
+                      onReply={setReplyingTo}
+                      replyToMessage={
+                        m.replyToMessageId
+                          ? (localMsgs.find(
+                              (r) => r.id === m.replyToMessageId
+                            ) ?? null)
+                          : null
+                      }
+                      participantName={fullName}
+                      participantUsername={receiverUser.username ?? ""}
+                      participantAvatarUrl={receiverUser.avatarUrl ?? undefined}
+                    />
+                  )}
+                </div>
+              ))}
             <div ref={scrollRef} />
           </div>
         </ScrollArea>
       </div>
 
       {/* Composer */}
-      <div
-        className="bg-white absolute bottom-0 inset-x-0"
-        ref={bottomRef}
-      >
+      <div className="bg-white absolute bottom-0 inset-x-0" ref={bottomRef}>
         {replyingTo && !editingMessage && (
           <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-primary-600">
-                Replying to {replyingTo.senderId === currentUser?.id ? "yourself" : (receiverUser?.firstName || receiverUser?.username || "Unknown")}
+                Replying to{" "}
+                {replyingTo.senderId === currentUser?.id
+                  ? "yourself"
+                  : receiverUser?.firstName ||
+                    receiverUser?.username ||
+                    "Unknown"}
               </p>
               <p className="text-xs text-gray-500 truncate">
                 {replyingTo.content || "Encrypted message"}
@@ -1097,246 +1166,265 @@ export function Chats({
         )}
 
         <div className="p-3 flex min-h-[68px] items-end gap-x-3">
-        {/* Emoji + File + Upload */}
-        <div className="flex items-center gap-x-1">
-          <EmojiPicker onEmojiSelect={handleEmojiSelect}>
-            <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
-              <Smile className="size-[22px]" />
-            </IconButton>
-          </EmojiPicker>
-
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
-                <Image03 className="size-[22px]" />
+          {/* Emoji + File + Upload */}
+          <div className="flex items-center gap-x-1">
+            <EmojiPicker onEmojiSelect={handleEmojiSelect}>
+              <IconButton
+                visual="gray"
+                variant="ghost"
+                size="lg"
+                className="rounded-full"
+              >
+                <Smile className="size-[22px]" />
               </IconButton>
-            </DialogTrigger>
-            <DialogContent className="max-w-[467px] p-4">
-              <h3 className="text-xs font-semibold text-gray-900">
-                Upload Files
-              </h3>
-              <DialogClose asChild>
+            </EmojiPicker>
+
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
                 <IconButton
                   visual="gray"
                   variant="ghost"
-                  size="sm"
-                  className="absolute top-2 right-2 rounded-full"
+                  size="lg"
+                  className="rounded-full"
                 >
-                  <X className="size-4" />
+                  <Image03 className="size-[22px]" />
                 </IconButton>
-              </DialogClose>
-              <div className="mt-4">
-                <CircularProgressDropzone
-                  icon
-                  value={uploadState}
-                  onChange={setUploadState}
-                />
-              </div>
-              <div className="mt-8 grid grid-cols-2 gap-x-3">
+              </DialogTrigger>
+              <DialogContent className="max-w-[467px] p-4">
+                <h3 className="text-xs font-semibold text-gray-900">
+                  Upload Files
+                </h3>
                 <DialogClose asChild>
-                  <Button visual="gray" variant="outlined">
-                    Cancel
-                  </Button>
-                </DialogClose>
-                <Button
-                  visual="primary"
-                  variant="filled"
-                  disabled={!uploadState?.length}
-                  //   onClick={toggle}
-                  // >
-                  //   Send
-                  onClick={() => {
-                    // TODO: actually upload here…
-                    setOpen(false)
-                  }}
-                >
-                  Send
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-          {/* // Updated attachment dropdown with file input */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
-                <Attachment01 className="size-[22px]" />
-              </IconButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-[212px]">
-              <DropdownMenuItem
-                onClick={() =>
-                  document.getElementById("desktop-file-input")?.click()
-                }
-              >
-                <UploadCloud className="size-6" /> Upload from Desktop
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <DropboxBrand className="size-6" /> Upload via Dropbox
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <GoogleDrive1Brand className="size-6" /> Upload via Google Drive
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <MsOnedriveBrand className="size-6" /> Upload via OneDrive
-              </DropdownMenuItem>
-              <DropdownMenuArrow className="fill-white" />
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Hidden file input */}
-          <input
-            id="desktop-file-input"
-            type="file"
-            className="hidden"
-            onChange={handleFileSelect}
-            accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif,.zip,.mp4,.mov"
-            multiple
-          />
-        </div>
-
-        {/* Updated message input area with file previews */}
-        {/* Selected Files Preview */}
-        {selectedFiles.length > 0 && (
-          <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">
-                {selectedFiles.length} file{selectedFiles.length > 1 ? "s" : ""}{" "}
-                selected
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedFiles([])}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                Clear all
-              </Button>
-            </div>
-            <div className="space-y-2 max-h-32 overflow-y-auto">
-              {selectedFiles.map((file, index) => (
-                <div
-                  key={`${file.name}-${index}`}
-                  className="flex items-center justify-between p-2 bg-white rounded border"
-                >
-                  <div className="flex items-center space-x-3">
-                    <File className="size-4 text-gray-500" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 truncate max-w-48">
-                        {file.name}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {formatFileSize(file.size)}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
+                  <IconButton
+                    visual="gray"
                     variant="ghost"
                     size="sm"
-                    onClick={() => removeSelectedFile(index)}
-                    className="text-red-500 hover:text-red-700"
+                    className="absolute top-2 right-2 rounded-full"
                   >
                     <X className="size-4" />
+                  </IconButton>
+                </DialogClose>
+                <div className="mt-4">
+                  <CircularProgressDropzone
+                    icon
+                    value={uploadState}
+                    onChange={setUploadState}
+                  />
+                </div>
+                <div className="mt-8 grid grid-cols-2 gap-x-3">
+                  <DialogClose asChild>
+                    <Button visual="gray" variant="outlined">
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                  <Button
+                    visual="primary"
+                    variant="filled"
+                    disabled={!uploadState?.length}
+                    //   onClick={toggle}
+                    // >
+                    //   Send
+                    onClick={() => {
+                      // TODO: actually upload here…
+                      setOpen(false)
+                    }}
+                  >
+                    Send
                   </Button>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Text area + send - Updated */}
-        <InputGroup className="flex-auto w-[calc(100%-164px)]">
-          <Textarea
-            ref={composerRef}
-            placeholder={
-              editingMessage
-                ? "Edit message..."
-                : selectedFiles.length > 0
-                  ? "Add a message (optional)..."
-                  : "Send message..."
-            }
-            className={`w-full resize-none py-1.5 leading-5 min-h-0 h-9 overflow-hidden ${
-              editingMessage
-                ? "pr-[120px] ring-1 ring-primary-500 border-primary-500 focus:ring-primary-500 focus:border-primary-500"
-                : "pr-11"
-            }`}
-            rows={1}
-            value={textareaValue}
-            onChange={(e) => setTextareaValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (editingMessage) {
-                if (e.key === "Escape") {
-                  e.preventDefault()
-                  handleCancelEdit()
-                } else if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSaveEdit()
-                }
-              }
-            }}
-          />
-          <InputRightElement
-            className={editingMessage ? "!w-[120px] justify-end" : "items-center"}
-          >
-            {editingMessage ? (
-              <div className="flex items-center gap-x-3 pr-3">
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="text-xs font-medium text-gray-500 hover:text-gray-700"
+              </DialogContent>
+            </Dialog>
+            {/* // Updated attachment dropdown with file input */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <IconButton
+                  visual="gray"
+                  variant="ghost"
+                  size="lg"
+                  className="rounded-full"
                 >
-                  Cancel
-                </button>
-                <span className="h-3 w-px bg-gray-300" aria-hidden />
-                <button
-                  type="button"
-                  onClick={handleSaveEdit}
-                  disabled={
-                    !textareaValue.trim() ||
-                    !keyReady ||
-                    !!keyError ||
-                    textareaValue.trim() === (editingMessage.content || "").trim()
+                  <Attachment01 className="size-[22px]" />
+                </IconButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[212px]">
+                <DropdownMenuItem
+                  onClick={() =>
+                    document.getElementById("desktop-file-input")?.click()
                   }
-                  className="text-xs font-semibold text-primary-500 hover:text-primary-600 disabled:text-gray-400 disabled:cursor-not-allowed"
                 >
-                  Save
-                </button>
+                  <UploadCloud className="size-6" /> Upload from Desktop
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <DropboxBrand className="size-6" /> Upload via Dropbox
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <GoogleDrive1Brand className="size-6" /> Upload via Google
+                  Drive
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <MsOnedriveBrand className="size-6" /> Upload via OneDrive
+                </DropdownMenuItem>
+                <DropdownMenuArrow className="fill-white" />
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Hidden file input */}
+            <input
+              id="desktop-file-input"
+              type="file"
+              className="hidden"
+              onChange={handleFileSelect}
+              accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif,.zip,.mp4,.mov"
+              multiple
+            />
+          </div>
+
+          {/* Updated message input area with file previews */}
+          {/* Selected Files Preview */}
+          {selectedFiles.length > 0 && (
+            <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">
+                  {selectedFiles.length} file
+                  {selectedFiles.length > 1 ? "s" : ""} selected
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedFiles([])}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  Clear all
+                </Button>
               </div>
-            ) : (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger
-                    className={`text-gray-500 hover:text-primary-500 disabled:text-gray-400 ${
-                      isUploading || isSending ? "animate-pulse" : ""
-                    }`}
-                    onClick={handleSendMessage}
-                    disabled={
-                      (!textareaValue.trim() && selectedFiles.length === 0) ||
-                      isUploading ||
-                      isSending ||
-                      !keyReady ||
-                      !!keyError
-                    }
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {selectedFiles.map((file, index) => (
+                  <div
+                    key={`${file.name}-${index}`}
+                    className="flex items-center justify-between p-2 bg-white rounded border"
                   >
-                    {isUploading || isSending ? (
-                      <Spinner size={18} strokeWidth={3} />
-                    ) : (
-                      <Send className="size-[18px]" />
-                    )}
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {isUploading
-                      ? "Uploading..."
-                      : selectedFiles.length > 0
-                        ? "Send files"
-                        : textareaValue
-                          ? "Send message"
-                          : "Type a message or select files"}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-          </InputRightElement>
-        </InputGroup>
+                    <div className="flex items-center space-x-3">
+                      <File className="size-4 text-gray-500" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 truncate max-w-48">
+                          {file.name}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {formatFileSize(file.size)}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeSelectedFile(index)}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Text area + send - Updated */}
+          <InputGroup className="flex-auto w-[calc(100%-164px)]">
+            <Textarea
+              ref={composerRef}
+              placeholder={
+                editingMessage
+                  ? "Edit message..."
+                  : selectedFiles.length > 0
+                    ? "Add a message (optional)..."
+                    : "Send message..."
+              }
+              className={`w-full resize-none py-1.5 leading-5 min-h-0 h-9 overflow-hidden ${
+                editingMessage
+                  ? "pr-[120px] ring-1 ring-primary-500 border-primary-500 focus:ring-primary-500 focus:border-primary-500"
+                  : "pr-11"
+              }`}
+              rows={1}
+              value={textareaValue}
+              onChange={(e) => setTextareaValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (editingMessage) {
+                  if (e.key === "Escape") {
+                    e.preventDefault()
+                    handleCancelEdit()
+                  } else if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSaveEdit()
+                  }
+                }
+              }}
+            />
+            <InputRightElement
+              className={
+                editingMessage ? "!w-[120px] justify-end" : "items-center"
+              }
+            >
+              {editingMessage ? (
+                <div className="flex items-center gap-x-3 pr-3">
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <span className="h-3 w-px bg-gray-300" aria-hidden />
+                  <button
+                    type="button"
+                    onClick={handleSaveEdit}
+                    disabled={
+                      !textareaValue.trim() ||
+                      !keyReady ||
+                      !!keyError ||
+                      textareaValue.trim() ===
+                        (editingMessage.content || "").trim()
+                    }
+                    className="text-xs font-semibold text-primary-500 hover:text-primary-600 disabled:text-gray-400 disabled:cursor-not-allowed"
+                  >
+                    Save
+                  </button>
+                </div>
+              ) : (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger
+                      className={`text-gray-500 hover:text-primary-500 disabled:text-gray-400 ${
+                        isUploading || isSending ? "animate-pulse" : ""
+                      }`}
+                      onClick={handleSendMessage}
+                      disabled={
+                        (!textareaValue.trim() && selectedFiles.length === 0) ||
+                        isUploading ||
+                        isSending ||
+                        !keyReady ||
+                        !!keyError
+                      }
+                    >
+                      {isUploading || isSending ? (
+                        <Spinner size={18} strokeWidth={3} />
+                      ) : (
+                        <Send className="size-[18px]" />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {isUploading
+                        ? "Uploading..."
+                        : selectedFiles.length > 0
+                          ? "Send files"
+                          : textareaValue
+                            ? "Send message"
+                            : "Type a message or select files"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </InputRightElement>
+          </InputGroup>
         </div>
       </div>
 

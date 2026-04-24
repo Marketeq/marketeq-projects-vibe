@@ -1,54 +1,76 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
-import { Thread } from './entities/thread.entity';
-import { ThreadUserState } from './entities/thread-user-state.entity';
-import { ThreadList } from './entities/thread-list.entity';
-import { ThreadListAssignment } from './entities/thread-list-assignment.entity';
-import { ConversationKey } from '../encryption/entities/conversation-key.entity';
-import { AblyService } from '../ably/ably.service';
-import { BulkAction } from './dtos/thread-list.dto';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  ConflictException,
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { In, Repository } from "typeorm";
+import { Thread } from "./entities/thread.entity";
+import { ThreadUserState } from "./entities/thread-user-state.entity";
+import { ThreadList } from "./entities/thread-list.entity";
+import { ThreadListAssignment } from "./entities/thread-list-assignment.entity";
+import { ConversationKey } from "../encryption/entities/conversation-key.entity";
+import { Message } from "../messages/entities/message.entity";
+import { AblyService } from "../ably/ably.service";
+import { BulkAction } from "./dtos/thread-list.dto";
 
 type StateFlag =
-  | 'isPinned'
-  | 'isStarred'
-  | 'isArchived'
-  | 'isSpam'
-  | 'isMuted'
-  | 'isTrashed'
-  | 'markedUnread';
+  | "isPinned"
+  | "isStarred"
+  | "isArchived"
+  | "isSpam"
+  | "isMuted"
+  | "isTrashed"
+  | "markedUnread";
 
 @Injectable()
 export class ThreadsService {
   constructor(
     @InjectRepository(Thread) private readonly repo: Repository<Thread>,
-    @InjectRepository(ConversationKey) private readonly convKeyRepo: Repository<ConversationKey>,
-    @InjectRepository(ThreadUserState) private readonly stateRepo: Repository<ThreadUserState>,
-    @InjectRepository(ThreadList) private readonly listRepo: Repository<ThreadList>,
-    @InjectRepository(ThreadListAssignment) private readonly assignRepo: Repository<ThreadListAssignment>,
+    @InjectRepository(ConversationKey)
+    private readonly convKeyRepo: Repository<ConversationKey>,
+    @InjectRepository(ThreadUserState)
+    private readonly stateRepo: Repository<ThreadUserState>,
+    @InjectRepository(ThreadList)
+    private readonly listRepo: Repository<ThreadList>,
+    @InjectRepository(ThreadListAssignment)
+    private readonly assignRepo: Repository<ThreadListAssignment>,
     private readonly ably: AblyService,
   ) {}
 
   async getUserThreads(userId: string) {
     const threads = await this.repo
-      .createQueryBuilder('t')
-      .where(':userId = ANY(t.participantIds)', { userId })
-      .orderBy('t.updatedAt', 'DESC')
+      .createQueryBuilder("t")
+      .where(":userId = ANY(t.participantIds)", { userId })
+      .orderBy("t.updatedAt", "DESC")
       .getMany();
 
     const threadIds = threads.map((t) => t.id);
     const states = threadIds.length
-      ? await this.stateRepo.find({ where: { userId, threadId: In(threadIds) } })
+      ? await this.stateRepo.find({
+          where: { userId, threadId: In(threadIds) },
+        })
       : [];
     const stateByThread = new Map(states.map((s) => [s.threadId, s]));
 
     const enriched = await Promise.all(
       threads.map(async (t) => {
         const lastMessage = await this.repo.manager
-          .createQueryBuilder('messaging.messages', 'm')
+          .getRepository(Message)
+          .createQueryBuilder("m")
+          .select([
+            'm.id AS "m_id"',
+            'm."threadId" AS "m_threadId"',
+            'm."senderId" AS "m_senderId"',
+            'm.content AS "m_content"',
+            'm.ciphertext AS "m_ciphertext"',
+            'm."createdAt" AS "m_createdAt"',
+          ])
           .where('m."threadId" = :tid', { tid: t.id })
-          .andWhere('m.deleted = false')
-          .orderBy('m."createdAt"', 'DESC')
+          .andWhere("m.deleted = false")
+          .orderBy('m."createdAt"', "DESC")
           .limit(1)
           .getRawOne();
         const s = stateByThread.get(t.id);
@@ -77,36 +99,45 @@ export class ThreadsService {
 
   async findOne(id: string, userId: string) {
     const thread = await this.repo.findOne({ where: { id } });
-    if (!thread) throw new NotFoundException('Thread not found');
+    if (!thread) throw new NotFoundException("Thread not found");
     if (!thread.participantIds.includes(userId)) {
-      throw new ForbiddenException('Not a participant of this thread');
+      throw new ForbiddenException("Not a participant of this thread");
     }
     return thread;
   }
 
   async assertUserIsParticipant(threadId: string, userId: string) {
     const thread = await this.repo.findOne({ where: { id: threadId } });
-    if (!thread) throw new NotFoundException('Thread not found');
+    if (!thread) throw new NotFoundException("Thread not found");
     if (!thread.participantIds.includes(userId)) {
-      throw new ForbiddenException('Not a participant of this thread');
+      throw new ForbiddenException("Not a participant of this thread");
     }
   }
 
-  async create(participantIds: string[], isGroup = false, groupName?: string, requesterId?: string) {
+  async create(
+    participantIds: string[],
+    isGroup = false,
+    groupName?: string,
+    requesterId?: string,
+  ) {
     if (!participantIds || participantIds.length < 2) {
-      throw new BadRequestException('A thread must have at least 2 participants');
+      throw new BadRequestException(
+        "A thread must have at least 2 participants",
+      );
     }
     if (requesterId && !participantIds.includes(requesterId)) {
-      throw new ForbiddenException('Cannot create a thread you are not a participant of');
+      throw new ForbiddenException(
+        "Cannot create a thread you are not a participant of",
+      );
     }
 
     // For 1:1 threads, find existing thread between the same participants
     if (!isGroup && participantIds.length === 2) {
       const existing = await this.repo
-        .createQueryBuilder('t')
-        .where('t.isGroup = false')
-        .andWhere(':a = ANY(t.participantIds)', { a: participantIds[0] })
-        .andWhere(':b = ANY(t.participantIds)', { b: participantIds[1] })
+        .createQueryBuilder("t")
+        .where("t.isGroup = false")
+        .andWhere(":a = ANY(t.participantIds)", { a: participantIds[0] })
+        .andWhere(":b = ANY(t.participantIds)", { b: participantIds[1] })
         .getOne();
       if (existing) return existing;
     }
@@ -115,15 +146,23 @@ export class ThreadsService {
     return this.repo.save(thread);
   }
 
-  async addParticipant(threadId: string, requesterId: string, newUserId: string, encryptedGroupKey: string) {
+  async addParticipant(
+    threadId: string,
+    requesterId: string,
+    newUserId: string,
+    encryptedGroupKey: string,
+  ) {
     const thread = await this.repo.findOne({ where: { id: threadId } });
-    if (!thread) throw new NotFoundException('Thread not found');
-    if (!thread.isGroup) throw new BadRequestException('Cannot add participants to a non-group thread');
+    if (!thread) throw new NotFoundException("Thread not found");
+    if (!thread.isGroup)
+      throw new BadRequestException(
+        "Cannot add participants to a non-group thread",
+      );
     if (!thread.participantIds.includes(requesterId)) {
-      throw new ForbiddenException('Not a participant of this thread');
+      throw new ForbiddenException("Not a participant of this thread");
     }
     if (thread.participantIds.includes(newUserId)) {
-      throw new BadRequestException('User is already a participant');
+      throw new BadRequestException("User is already a participant");
     }
 
     // Add user to thread participants
@@ -132,7 +171,11 @@ export class ThreadsService {
 
     // Store the pre-wrapped conversation key for the new participant
     await this.convKeyRepo.save(
-      this.convKeyRepo.create({ threadId, userId: newUserId, encryptedKey: encryptedGroupKey }),
+      this.convKeyRepo.create({
+        threadId,
+        userId: newUserId,
+        encryptedKey: encryptedGroupKey,
+      }),
     );
 
     return thread;
@@ -142,11 +185,14 @@ export class ThreadsService {
     return ablyService.createTokenRequest(userId);
   }
 
-  private async assertParticipant(threadId: string, userId: string): Promise<Thread> {
+  private async assertParticipant(
+    threadId: string,
+    userId: string,
+  ): Promise<Thread> {
     const thread = await this.repo.findOne({ where: { id: threadId } });
-    if (!thread) throw new NotFoundException('Thread not found');
+    if (!thread) throw new NotFoundException("Thread not found");
     if (!thread.participantIds.includes(userId)) {
-      throw new ForbiddenException('Not a participant of this thread');
+      throw new ForbiddenException("Not a participant of this thread");
     }
     return thread;
   }
@@ -161,19 +207,30 @@ export class ThreadsService {
     if (!state) {
       state = this.stateRepo.create({ threadId, userId, ...patch });
       const saved = await this.stateRepo.save(state);
-      this.ably.publishThreadStateChanged(userId, threadId, patch).catch(() => undefined);
+      this.ably
+        .publishThreadStateChanged(userId, threadId, patch)
+        .catch(() => undefined);
       return saved;
     }
     // Partial UPDATE only — avoids race where concurrent save() overwrites
     // fields it didn't intend to change (e.g. markRead resetting isTrashed).
     await this.stateRepo.update({ id: state.id }, patch);
     const updated = await this.stateRepo.findOne({ where: { id: state.id } });
-    this.ably.publishThreadStateChanged(userId, threadId, patch).catch(() => undefined);
+    this.ably
+      .publishThreadStateChanged(userId, threadId, patch)
+      .catch(() => undefined);
     return updated!;
   }
 
-  async setFlag(threadId: string, userId: string, flag: StateFlag, value: boolean) {
-    return this.upsertState(threadId, userId, { [flag]: value } as Partial<ThreadUserState>);
+  async setFlag(
+    threadId: string,
+    userId: string,
+    flag: StateFlag,
+    value: boolean,
+  ) {
+    return this.upsertState(threadId, userId, {
+      [flag]: value,
+    } as Partial<ThreadUserState>);
   }
 
   async markRead(threadId: string, userId: string) {
@@ -187,19 +244,27 @@ export class ThreadsService {
     return this.upsertState(threadId, userId, { markedUnread: true });
   }
 
-  async removeParticipant(threadId: string, requesterId: string, targetUserId: string) {
+  async removeParticipant(
+    threadId: string,
+    requesterId: string,
+    targetUserId: string,
+  ) {
     const thread = await this.assertParticipant(threadId, requesterId);
     if (!thread.isGroup) {
-      throw new BadRequestException('Cannot remove participants from a non-group thread');
+      throw new BadRequestException(
+        "Cannot remove participants from a non-group thread",
+      );
     }
     if (!thread.participantIds.includes(targetUserId)) {
-      throw new NotFoundException('User is not a participant');
+      throw new NotFoundException("User is not a participant");
     }
     if (targetUserId !== requesterId) {
       // For now allow any participant to remove self; group admin rules are a later concern.
-      throw new ForbiddenException('Only self-removal is supported');
+      throw new ForbiddenException("Only self-removal is supported");
     }
-    thread.participantIds = thread.participantIds.filter((id) => id !== targetUserId);
+    thread.participantIds = thread.participantIds.filter(
+      (id) => id !== targetUserId,
+    );
     await this.repo.save(thread);
     await this.convKeyRepo.delete({ threadId, userId: targetUserId });
     this.ably
@@ -212,25 +277,35 @@ export class ThreadsService {
 
   async createList(userId: string, name: string) {
     const trimmed = name.trim();
-    if (!trimmed) throw new BadRequestException('Name required');
-    const existing = await this.listRepo.findOne({ where: { userId, name: trimmed } });
-    if (existing) throw new ConflictException('List name already exists');
-    const saved = await this.listRepo.save(this.listRepo.create({ userId, name: trimmed }));
+    if (!trimmed) throw new BadRequestException("Name required");
+    const existing = await this.listRepo.findOne({
+      where: { userId, name: trimmed },
+    });
+    if (existing) throw new ConflictException("List name already exists");
+    const saved = await this.listRepo.save(
+      this.listRepo.create({ userId, name: trimmed }),
+    );
     this.ably.publishThreadListsChanged(userId).catch(() => undefined);
     return saved;
   }
 
   async getLists(userId: string) {
-    return this.listRepo.find({ where: { userId }, order: { createdAt: 'ASC' } });
+    return this.listRepo.find({
+      where: { userId },
+      order: { createdAt: "ASC" },
+    });
   }
 
   async renameList(userId: string, listId: string, name: string) {
     const list = await this.listRepo.findOne({ where: { id: listId, userId } });
-    if (!list) throw new NotFoundException('List not found');
+    if (!list) throw new NotFoundException("List not found");
     const trimmed = name.trim();
-    if (!trimmed) throw new BadRequestException('Name required');
-    const clash = await this.listRepo.findOne({ where: { userId, name: trimmed } });
-    if (clash && clash.id !== listId) throw new ConflictException('List name already exists');
+    if (!trimmed) throw new BadRequestException("Name required");
+    const clash = await this.listRepo.findOne({
+      where: { userId, name: trimmed },
+    });
+    if (clash && clash.id !== listId)
+      throw new ConflictException("List name already exists");
     list.name = trimmed;
     const saved = await this.listRepo.save(list);
     this.ably.publishThreadListsChanged(userId).catch(() => undefined);
@@ -239,27 +314,44 @@ export class ThreadsService {
 
   async deleteList(userId: string, listId: string) {
     const list = await this.listRepo.findOne({ where: { id: listId, userId } });
-    if (!list) throw new NotFoundException('List not found');
+    if (!list) throw new NotFoundException("List not found");
     await this.assignRepo.delete({ listId, userId });
     await this.listRepo.delete({ id: listId });
     this.ably.publishThreadListsChanged(userId).catch(() => undefined);
     return { ok: true };
   }
 
-  async assignThreadToLists(threadId: string, userId: string, listIds: string[]) {
+  async assignThreadToLists(
+    threadId: string,
+    userId: string,
+    listIds: string[],
+  ) {
     await this.assertParticipant(threadId, userId);
-    const owned = await this.listRepo.find({ where: { userId, id: In(listIds.length ? listIds : ['00000000-0000-0000-0000-000000000000']) } });
+    const owned = await this.listRepo.find({
+      where: {
+        userId,
+        id: In(
+          listIds.length ? listIds : ["00000000-0000-0000-0000-000000000000"],
+        ),
+      },
+    });
     if (owned.length !== listIds.length) {
-      throw new BadRequestException('One or more lists do not belong to user');
+      throw new BadRequestException("One or more lists do not belong to user");
     }
     await this.assignRepo.delete({ threadId, userId });
     if (listIds.length) {
       await this.assignRepo.save(
-        listIds.map((listId) => this.assignRepo.create({ threadId, userId, listId })),
+        listIds.map((listId) =>
+          this.assignRepo.create({ threadId, userId, listId }),
+        ),
       );
     }
-    const assignments = await this.assignRepo.find({ where: { threadId, userId } });
-    this.ably.publishThreadListAssignments(userId, threadId, listIds).catch(() => undefined);
+    const assignments = await this.assignRepo.find({
+      where: { threadId, userId },
+    });
+    this.ably
+      .publishThreadListAssignments(userId, threadId, listIds)
+      .catch(() => undefined);
     return assignments;
   }
 
@@ -275,10 +367,13 @@ export class ThreadsService {
       }
     }
     if (threads.length !== ids.length) {
-      throw new NotFoundException('One or more threads not found');
+      throw new NotFoundException("One or more threads not found");
     }
 
-    const map: Record<BulkAction, Partial<ThreadUserState> | 'read' | 'unread'> = {
+    const map: Record<
+      BulkAction,
+      Partial<ThreadUserState> | "read" | "unread"
+    > = {
       star: { isStarred: true },
       unstar: { isStarred: false },
       pin: { isPinned: true },
@@ -291,13 +386,13 @@ export class ThreadsService {
       unmute: { isMuted: false },
       trash: { isTrashed: true },
       untrash: { isTrashed: false },
-      'mark-unread': 'unread',
-      'mark-read': 'read',
+      "mark-unread": "unread",
+      "mark-read": "read",
     };
     const op = map[action];
     for (const id of ids) {
-      if (op === 'read') await this.markRead(id, userId);
-      else if (op === 'unread') await this.markUnread(id, userId);
+      if (op === "read") await this.markRead(id, userId);
+      else if (op === "unread") await this.markUnread(id, userId);
       else await this.upsertState(id, userId, op);
     }
     return { updated: ids.length };
