@@ -19,11 +19,14 @@ export type User = {
   firstName?: string | null
   lastName?: string | null
   avatarUrl?: string | null
+  phone?: string | null
   role: ROLE
   userType?: string | null
   accountType?: ROLE
   provider: AUTH_PROVIDERS
   hasPassword?: boolean
+  twoFactorEnabled?: boolean
+  twoFactorMethod?: 'totp' | 'sms' | null
   socialId?: string | null
   emailVerified: boolean
   onboardingDismissed: boolean
