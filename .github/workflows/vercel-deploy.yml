@@ -90,7 +90,6 @@ jobs:
           set -euo pipefail
 
           PROJECT="${{ steps.map.outputs.project }}"
-          PROJECT_ID="${{ steps.map.outputs.project_id }}"
           BRANCH="${{ steps.map.outputs.branch }}"
           SHA="${{ steps.commit.outputs.sha }}"
 
@@ -98,32 +97,20 @@ jobs:
 
           PAYLOAD=$(jq -n \
             --arg project "$PROJECT" \
+            --arg owner "${{ github.repository_owner }}" \
+            --arg repo "${{ github.event.repository.name }}" \
             --arg branch "$BRANCH" \
             --arg sha "$SHA" \
-            --arg remote_url "https://github.com/${{ github.repository }}" \
-            --arg actor "${{ github.actor }}" \
-            --arg repo_visibility "public" \
-            --arg repo_id "${{ github.event.repository.id }}" \
             '{
               project: $project,
               target: "production",
               source: "api-trigger-git-deploy",
               gitSource: {
                 type: "github",
-                repoId: $repo_id,
+                org: $owner,
+                repo: $repo,
                 ref: $branch,
                 sha: $sha
-              },
-              gitMetadata: {
-                remoteUrl: $remote_url,
-                commitRef: $branch,
-                commitSha: $sha,
-                commitAuthorName: $actor,
-                commitMessage: ("Deploy " + $branch + " @ " + $sha),
-                ci: true,
-                ciType: "github-actions",
-                ciGitProviderUsername: $actor,
-                ciGitRepoVisibility: $repo_visibility
               },
               meta: {
                 githubCommitSha: $sha,
@@ -132,11 +119,23 @@ jobs:
               }
             }')
 
-          RESPONSE=$(curl -sf -X POST \
+          HTTP_RESPONSE=$(curl -sS -X POST \
             -H "Authorization: Bearer $VERCEL_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
+            -w '\n%{http_code}' \
             "https://api.vercel.com/v13/deployments?slug=$VERCEL_TEAM_SLUG")
+
+          HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -n1)
+          RESPONSE=$(echo "$HTTP_RESPONSE" | sed '$d')
+
+          echo "Vercel create deployment HTTP status: $HTTP_STATUS"
+
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "Vercel deployment creation failed:"
+            echo "$RESPONSE"
+            exit 1
+          fi
 
           DEPLOYMENT_ID=$(echo "$RESPONSE" | jq -r '.id')
           DEPLOYMENT_URL=$(echo "$RESPONSE" | jq -r '.url')
@@ -151,7 +150,6 @@ jobs:
 
           echo "deployment_id=$DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
           echo "deployment_url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
-          echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
 
           echo "Created deployment $DEPLOYMENT_ID ($DEPLOYMENT_URL) source=$SOURCE state=$READY_STATE"
 
