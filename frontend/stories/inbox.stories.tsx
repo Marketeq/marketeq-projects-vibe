@@ -2,7 +2,12 @@ import { useEffect, useState } from "react"
 import Image from "next/image"
 import { apiFetch } from "@/src/lib/api"
 import { CurrentUser } from "@/utils/auth"
-import { isNotUndefined } from "@/utils/functions"
+import {
+  DataEmoji,
+  EmojiProperties,
+  isNotUndefined,
+} from "@/utils/functions"
+import { EmojiPicker } from "@/components/emoji-picker"
 import { useUncontrolledState } from "@/utils/hooks"
 import { createContext } from "@/utils/react-utils"
 import {
@@ -51,6 +56,64 @@ const getJwtToken = () => {
   if (typeof window === "undefined") return null
   const Cookies = require("js-cookie")
   return Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("token") || null
+}
+
+const dataEmojiToChar = (emoji: DataEmoji): string =>
+  String.fromCodePoint(
+    ...emoji[EmojiProperties.unified]
+      .split("-")
+      .map((hex) => parseInt(hex, 16))
+  )
+
+// Groups a message's reactions by emoji and returns [{ emoji, count, reactedByMe }].
+const groupReactions = (
+  reactions: Message["reactions"] | undefined,
+  myId: string | undefined
+) => {
+  if (!reactions || reactions.length === 0) return []
+  const by = new Map<string, { count: number; reactedByMe: boolean }>()
+  for (const r of reactions) {
+    const entry = by.get(r.emoji) ?? { count: 0, reactedByMe: false }
+    entry.count += 1
+    if (r.userId === myId) entry.reactedByMe = true
+    by.set(r.emoji, entry)
+  }
+  return Array.from(by.entries()).map(([emoji, v]) => ({ emoji, ...v }))
+}
+
+const ReactionChips = ({
+  reactions,
+  myId,
+  onToggle,
+}: {
+  reactions: Message["reactions"] | undefined
+  myId: string | undefined
+  onToggle?: (emoji: string) => void
+}) => {
+  const groups = groupReactions(reactions, myId)
+  if (groups.length === 0) return null
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {groups.map((g) => (
+        <button
+          key={g.emoji}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggle?.(g.emoji)
+          }}
+          className={`inline-flex items-center gap-x-1 px-2 py-0.5 rounded-full border text-[12px] leading-4 transition-colors ${
+            g.reactedByMe
+              ? "bg-primary-50 border-primary-300 text-primary-700"
+              : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          <span>{g.emoji}</span>
+          <span className="text-[11px] font-medium">{g.count}</span>
+        </button>
+      ))}
+    </div>
+  )
 }
 
 const formatConversationDate = (isoDateStr: string) => {
@@ -193,6 +256,7 @@ export const Bubble = ({
   replyToMessage,
   onLocalDelete,
   onLocalRestore,
+  onToggleReaction,
 }: {
   message: Message
   currentUser: CurrentUser
@@ -204,6 +268,7 @@ export const Bubble = ({
   replyToMessage?: Message | null
   onLocalDelete?: (messageId: string) => void
   onLocalRestore?: (messageId: string) => void
+  onToggleReaction?: (messageId: string, emoji: string) => void
 }) => {
   const [value, setValue] = useState(message.content)
   const { onChatChange, chat, isSaved, onUnsave } = useEditContext()
@@ -317,8 +382,8 @@ export const Bubble = ({
   }
 
   return (
-    <article className="group inline-flex flex-col items-start gap-y-2">
-      <div className="p-5 pt-2.5 flex-auto rounded-xl flex flex-col gap-y-2 bg-primary-500/[.04]">
+    <article className="group flex flex-col items-start gap-y-2 min-w-0 max-w-[calc(100%-60px)] md:max-w-[640px]">
+      <div className="p-5 pt-2.5 min-w-0 w-full rounded-xl flex flex-col gap-y-2 bg-primary-500/[.04]">
         <div className="flex items-end justify-between">
           <h3 className="text-sm leading-[16.8px] font-bold text-dark-blue-400">
             {senderName}{" "}
@@ -339,9 +404,17 @@ export const Bubble = ({
               >
                 <CornerUpLeft className="size-4" />
               </button>
-              <button className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
-                <Smile className="size-4" />
-              </button>
+              <EmojiPicker
+                side="top"
+                align="end"
+                onEmojiSelect={(emoji) =>
+                  onToggleReaction?.(message.id, dataEmojiToChar(emoji))
+                }
+              >
+                <button className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
+                  <Smile className="size-4" />
+                </button>
+              </EmojiPicker>
 
               <DropdownMenu open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
                 <DropdownMenuTrigger className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
@@ -419,9 +492,16 @@ export const Bubble = ({
             )}
           </div>
         ) : (
-          <span className="text-sm leading-[16.94px] text-dark-blue-400">
+          <span className="text-sm leading-[16.94px] text-dark-blue-400 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
             {value}
           </span>
+        )}
+        {!isDeleted && (
+          <ReactionChips
+            reactions={message.reactions}
+            myId={currentUser.id}
+            onToggle={(emoji) => onToggleReaction?.(message.id, emoji)}
+          />
         )}
       </div>
 
@@ -430,7 +510,12 @@ export const Bubble = ({
       )}
 
       <span className="inline-flex self-end text-[11px] leading-[15.47px] text-gray-500 items-center gap-x-1">
-        Sent <span className="font-bold">{formattedTime}</span>
+        {message.status === "read" && !isDeleted ? (
+          <span className="font-semibold text-primary-500">Seen</span>
+        ) : (
+          <>Sent</>
+        )}{" "}
+        <span className="font-bold">{formattedTime}</span>
         {message.edited && !isDeleted && (
           <span className="text-gray-400 italic">(edited)</span>
         )}
@@ -458,6 +543,7 @@ export const YourBubble = ({
   onForward,
   onReply,
   replyToMessage,
+  onToggleReaction,
 }: {
   message: Message
   currentUser: CurrentUser
@@ -467,6 +553,7 @@ export const YourBubble = ({
   onForward?: (message: Message) => void
   onReply?: (message: Message) => void
   replyToMessage?: Message | null
+  onToggleReaction?: (messageId: string, emoji: string) => void
 }) => {
   const [isPinned, setIsPinned] = useState(!!message.isPinned)
   const [isDeleted, setIsDeleted] = useState(!!message.isDeleted)
@@ -518,10 +605,10 @@ export const YourBubble = ({
   const formattedTime = formatConversationDate(message.createdAt)
 
   return (
-    <article className="inline-flex items-end gap-x-2">
+    <article className="flex items-end gap-x-2 min-w-0 max-w-[calc(100%-60px)] md:max-w-[680px]">
       <Avatar
         size="md"
-        className="hover:ring-0 active:ring-primary-100"
+        className="hover:ring-0 active:ring-primary-100 shrink-0"
         isOnline
       >
         <AvatarImage
@@ -531,8 +618,8 @@ export const YourBubble = ({
         <AvatarFallbackIcon />
       </Avatar>
 
-      <div className="group inline-flex flex-col items-start gap-y-2">
-        <div className="p-5 pt-2.5 flex-auto rounded-xl flex flex-col gap-y-2 bg-primary-500/[.04]">
+      <div className="group flex flex-col items-start gap-y-2 min-w-0 flex-1">
+        <div className="p-5 pt-2.5 min-w-0 w-full rounded-xl flex flex-col gap-y-2 bg-primary-500/[.04]">
           <div className="flex items-end justify-between">
             <h3 className="text-sm leading-[16.8px] font-bold text-dark-blue-400">
               {senderName}{" "}
@@ -552,9 +639,17 @@ export const YourBubble = ({
               >
                 <CornerUpLeft className="size-4" />
               </button>
-              <button className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
-                <Smile className="size-4" />
-              </button>
+              <EmojiPicker
+                side="top"
+                align="start"
+                onEmojiSelect={(emoji) =>
+                  onToggleReaction?.(message.id, dataEmojiToChar(emoji))
+                }
+              >
+                <button className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
+                  <Smile className="size-4" />
+                </button>
+              </EmojiPicker>
 
               <DropdownMenu open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
                 <DropdownMenuTrigger className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
@@ -609,9 +704,16 @@ export const YourBubble = ({
               This message was deleted
             </div>
           ) : (
-            <span className="text-sm leading-[16.94px] text-dark-blue-400">
+            <span className="text-sm leading-[16.94px] text-dark-blue-400 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
               {value}
             </span>
+          )}
+          {!isDeleted && (
+            <ReactionChips
+              reactions={message.reactions}
+              myId={currentUser.id}
+              onToggle={(emoji) => onToggleReaction?.(message.id, emoji)}
+            />
           )}
         </div>
 

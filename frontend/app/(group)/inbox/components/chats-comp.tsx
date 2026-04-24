@@ -17,6 +17,8 @@ import {
 } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
 import { useAblyChannel } from "@/utils/useAblyChannel"
+import { useAblyPresence } from "@/utils/useAblyPresence"
+import { useUserChannel } from "@/utils/useUserChannel"
 import {
   AlertTriangle,
   Archive,
@@ -44,6 +46,7 @@ import {
   MsOnedriveBrand,
 } from "@blend-metrics/icons/brands"
 import { DropdownMenuArrow } from "@radix-ui/react-dropdown-menu"
+import { format, isSameDay, isToday, isYesterday, parseISO } from "date-fns"
 import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
@@ -107,7 +110,30 @@ interface ChatsProps {
   privateKey: CryptoKey | null
   currentUserProfile?: any
   onToggleRightSidebar?: () => void
+  onMessagesLoaded?: (convId: string, msgs: Message[]) => void
+  /** When set, the matching message is scrolled into view and briefly flashed. */
+  highlightMessageId?: string | null
+  /** Called after the highlight has been consumed (scrolled to). */
+  onHighlightConsumed?: () => void
 }
+
+const formatDateSeparator = (iso: string): string => {
+  const d = parseISO(iso)
+  if (isToday(d)) return "Today"
+  if (isYesterday(d)) return "Yesterday"
+  const now = new Date()
+  return d.getFullYear() === now.getFullYear()
+    ? format(d, "MMM d")
+    : format(d, "MMM d, yyyy")
+}
+
+const DateSeparator = ({ label }: { label: string }) => (
+  <div className="flex items-center gap-x-3 py-1" role="separator" aria-label={label}>
+    <div className="h-px flex-1 bg-gray-200" />
+    <span className="text-[11px] font-medium text-gray-500 shrink-0">{label}</span>
+    <div className="h-px flex-1 bg-gray-200" />
+  </div>
+)
 
 export function Chats({
   selectedConversation,
@@ -115,6 +141,9 @@ export function Chats({
   privateKey,
   currentUserProfile,
   onToggleRightSidebar,
+  onMessagesLoaded,
+  highlightMessageId,
+  onHighlightConsumed,
 }: ChatsProps) {
   const [textareaValue, setTextareaValue] = useState("")
   const composerRef = useRef<HTMLTextAreaElement>(null)
@@ -308,6 +337,10 @@ export function Chats({
   )
   const isSwitching = !keyError && (messagesLoading || !keyReady)
 
+  // 2.2) Ably presence for this thread (online status + typing)
+  const { members: presentMembers, isOnline, sendTyping, typingUserIds } =
+    useAblyPresence(selectedConversation?.id ?? "")
+
   // 2.1) local messages state for optimistic updates
   const [localMsgs, setLocalMsgs] = useState<Message[]>([])
   useEffect(() => {
@@ -315,6 +348,79 @@ export function Chats({
       setLocalMsgs(fetchedMsgs)
     }
   }, [fetchedMsgs])
+
+  // Hoist decrypted messages up so the sidebar can search over them
+  // client-side. Required because backend search only matches plaintext
+  // `content`, which is always null under E2EE.
+  useEffect(() => {
+    if (!selectedConversation) return
+    onMessagesLoaded?.(selectedConversation.id, localMsgs)
+  }, [localMsgs, selectedConversation?.id, onMessagesLoaded])
+
+  // Scroll-to-and-flash a specific message when the sidebar opens a
+  // search result. Waits until that message is actually in the rendered
+  // list (it may arrive after a thread-switch's history fetch).
+  useEffect(() => {
+    if (!highlightMessageId) return
+    if (!localMsgs.some((m) => m.id === highlightMessageId)) return
+
+    // Give the bubble one paint to mount, then scroll + flash.
+    const id = requestAnimationFrame(() => {
+      const el = document.querySelector(
+        `[data-message-id="${highlightMessageId}"]`
+      ) as HTMLElement | null
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" })
+        el.classList.add("inbox-highlight-flash")
+        window.setTimeout(() => {
+          el.classList.remove("inbox-highlight-flash")
+        }, 2200)
+      }
+      onHighlightConsumed?.()
+    })
+    return () => cancelAnimationFrame(id)
+  }, [highlightMessageId, localMsgs, onHighlightConsumed])
+
+  // 2.3) Read-receipts: react to message:read broadcasts on user:{me}.
+  // Backend publishes when any reader PATCHes /v1/messages/:id/read, so the
+  // sender learns their own message has been seen. Patches local state only.
+  useUserChannel({
+    onMessageRead: ({ messageId }) => {
+      setLocalMsgs((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, status: "read" } : m))
+      )
+    },
+  })
+
+  // 2.4) Mark incoming messages as read when the thread is open.
+  // Fires for each unread inbound message; backend's markRead is idempotent
+  // and publishes message:read on the sender's user channel on success.
+  const readSentRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!selectedConversation || !currentUser || !jwtToken) return
+    const unread = localMsgs.filter(
+      (m) =>
+        m.senderId !== currentUser.id &&
+        m.status !== "read" &&
+        !readSentRef.current.has(m.id)
+    )
+    if (unread.length === 0) return
+    for (const m of unread) {
+      readSentRef.current.add(m.id)
+      apiFetch(`/v1/messages/${m.id}/read`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${jwtToken}` },
+      }).catch((err) => {
+        console.error("markRead failed", err)
+        readSentRef.current.delete(m.id)
+      })
+    }
+  }, [localMsgs, selectedConversation?.id, currentUser?.id, jwtToken])
+
+  // Reset the read-sent guard when switching threads.
+  useEffect(() => {
+    readSentRef.current = new Set()
+  }, [selectedConversation?.id])
 
   const displayedMessages = (
     selectedTab === "Messages" ? localMsgs : pinnedMsgs
@@ -452,7 +558,50 @@ export function Chats({
     ({ messageId, isPinned }) => updateMessage(messageId, { isPinned }),
     (messageId) => updateMessage(messageId, { isDeleted: true }),
     (messageId) => updateMessage(messageId, { isDeleted: false }),
-    handleIncomingEdit
+    handleIncomingEdit,
+    ({ messageId, reactions }) =>
+      setLocalMsgs((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, reactions: reactions as any } : m
+        )
+      )
+  )
+
+  const handleToggleReaction = useCallback(
+    async (messageId: string, emoji: string) => {
+      if (!jwtToken) return
+      // Optimistic toggle — Ably broadcast will reconcile.
+      const me = currentUser?.id
+      if (me) {
+        setLocalMsgs((prev) =>
+          prev.map((m) => {
+            if (m.id !== messageId) return m
+            const current = m.reactions ?? []
+            const idx = current.findIndex(
+              (r) => r.userId === me && r.emoji === emoji
+            )
+            const next =
+              idx >= 0
+                ? current.filter((_, i) => i !== idx)
+                : [
+                    ...current,
+                    { userId: me, emoji, createdAt: new Date().toISOString() },
+                  ]
+            return { ...m, reactions: next }
+          })
+        )
+      }
+      try {
+        await apiFetch(`/v1/messages/${messageId}/reactions`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${jwtToken}` },
+          body: { emoji },
+        })
+      } catch (err) {
+        console.error("toggleReaction failed", err)
+      }
+    },
+    [jwtToken, currentUser?.id]
   )
 
   // 3) send message hook
@@ -518,6 +667,7 @@ export function Chats({
         }
         setSelectedFiles([])
         setTextareaValue("")
+        sendTyping(false)
         setReplyingTo(null)
         return
       }
@@ -549,6 +699,7 @@ export function Chats({
       })
 
       setTextareaValue("")
+      sendTyping(false)
       setReplyingTo(null)
     } catch (err) {
       console.error("Send failed", err)
@@ -821,15 +972,23 @@ export function Chats({
       "Unknown User"
 
   return (
-    <div className="flex-auto relative">
+    <div className="flex-auto relative min-w-0 h-full flex flex-col">
       {/* Header */}
-      <div className="px-8 sticky top-0 border-b flex items-center justify-between border-gray-200 py-6 bg-white z-10">
+      <div className="px-8 shrink-0 border-b flex items-center justify-between border-gray-200 py-6 bg-white z-10">
         <div className="inline-flex items-center gap-x-3">
           {/* <Avatar className="size-[43px]" size="md" isOnline>
                         <AvatarImage src={receiverUser.avatarUrl || '/default.png'} alt={receiverUser.username ?? ''} />
                         <AvatarFallback>{receiverUser.username?.[0] ?? ''}</AvatarFallback>
                     </Avatar> */}
-          <Avatar className="size-[43px]" size="md" isOnline>
+          <Avatar
+            className="size-[43px]"
+            size="md"
+            isOnline={
+              selectedConversation?.isGroup
+                ? presentMembers.some((m) => m.clientId !== currentUser?.id)
+                : isOnline(receiverUser.id)
+            }
+          >
             <AvatarImage
               src={
                 selectedConversation?.isGroup
@@ -856,7 +1015,18 @@ export function Chats({
               </span>
             </div>
             <div className="inline-flex items-center gap-x-2">
-              <span className="text-sm text-dark-blue-400">Active now</span>
+              <span className="text-sm text-dark-blue-400">
+                {selectedConversation?.isGroup
+                  ? (() => {
+                      const others = presentMembers.filter(
+                        (m) => m.clientId !== currentUser?.id
+                      ).length
+                      return others > 0 ? `${others} active now` : "No one active"
+                    })()
+                  : isOnline(receiverUser.id)
+                    ? "Active now"
+                    : "Offline"}
+              </span>
               {(receiverUser as any).recentJobTitle ||
               ((receiverUser as any).jobTitles &&
                 (receiverUser as any).jobTitles[0]) ? (
@@ -1055,12 +1225,16 @@ export function Chats({
       </div>
 
       {/* Message list */}
-      <div style={{ ...({ "--h": toPxIfNumber(height) } as any) }}>
+      <div
+        className="flex-1 min-h-0 min-w-0"
+        style={{ ...({ "--h": toPxIfNumber(height) } as any) }}
+      >
         <ScrollArea
-          viewportClassName="max-h-[calc(theme(height.screen)-158px)]"
+          className="h-full"
+          viewportClassName="h-full"
           scrollBar={<ScrollBar className="w-4 p-1" />}
         >
-          <div className="p-8 pb-[100px] grid gap-y-6">
+          <div className="p-8 grid gap-y-6">
             {isSwitching && (
               <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
                 <Spinner size={24} strokeWidth={3} />
@@ -1078,42 +1252,55 @@ export function Chats({
                 <p className="text-sm">No messages yet. Say hello!</p>
               </div>
             )}
-            {!isSwitching && displayedMessages.map((m, i) => (
-              <div
-                key={i}
-                className={`flex ${
-                  m.senderId === currentUser.id
-                    ? "justify-end"
-                    : "justify-start"
-                }`}
-              >
-                {m.senderId === currentUser.id ? (
-                  <Bubble
-                    message={m}
-                    currentUser={currentUser}
-                    participantUsername={receiverUser.username ?? ""}
-                    participantName={fullName}
-                    onForward={handleOpenForward}
-                    onReply={setReplyingTo}
-                    onEdit={handleStartEdit}
-                    onLocalDelete={handleLocalDelete}
-                    onLocalRestore={handleLocalRestore}
-                    replyToMessage={m.replyToMessageId ? localMsgs.find((r) => r.id === m.replyToMessageId) ?? null : null}
-                  />
-                ) : (
-                  <YourBubble
-                    message={m}
-                    currentUser={currentUser}
-                    onForward={handleOpenForward}
-                    onReply={setReplyingTo}
-                    replyToMessage={m.replyToMessageId ? localMsgs.find((r) => r.id === m.replyToMessageId) ?? null : null}
-                    participantName={fullName}
-                    participantUsername={receiverUser.username ?? ""}
-                    participantAvatarUrl={receiverUser.avatarUrl ?? undefined}
-                  />
-                )}
-              </div>
-            ))}
+            {!isSwitching && displayedMessages.map((m, i) => {
+              const prev = i > 0 ? displayedMessages[i - 1] : null
+              const showDate =
+                !prev ||
+                !isSameDay(parseISO(m.createdAt), parseISO(prev.createdAt))
+              return (
+                <React.Fragment key={m.id ?? i}>
+                  {showDate && (
+                    <DateSeparator label={formatDateSeparator(m.createdAt)} />
+                  )}
+                  <div
+                    data-message-id={m.id}
+                    className={`flex rounded-lg ${
+                      m.senderId === currentUser.id
+                        ? "justify-end"
+                        : "justify-start"
+                    }`}
+                  >
+                    {m.senderId === currentUser.id ? (
+                      <Bubble
+                        message={m}
+                        currentUser={currentUser}
+                        participantUsername={receiverUser.username ?? ""}
+                        participantName={fullName}
+                        onForward={handleOpenForward}
+                        onReply={setReplyingTo}
+                        onEdit={handleStartEdit}
+                        onLocalDelete={handleLocalDelete}
+                        onLocalRestore={handleLocalRestore}
+                        onToggleReaction={handleToggleReaction}
+                        replyToMessage={m.replyToMessageId ? localMsgs.find((r) => r.id === m.replyToMessageId) ?? null : null}
+                      />
+                    ) : (
+                      <YourBubble
+                        message={m}
+                        currentUser={currentUser}
+                        onForward={handleOpenForward}
+                        onReply={setReplyingTo}
+                        onToggleReaction={handleToggleReaction}
+                        replyToMessage={m.replyToMessageId ? localMsgs.find((r) => r.id === m.replyToMessageId) ?? null : null}
+                        participantName={fullName}
+                        participantUsername={receiverUser.username ?? ""}
+                        participantAvatarUrl={receiverUser.avatarUrl ?? undefined}
+                      />
+                    )}
+                  </div>
+                </React.Fragment>
+              )
+            })}
             <div ref={scrollRef} />
           </div>
         </ScrollArea>
@@ -1121,9 +1308,36 @@ export function Chats({
 
       {/* Composer */}
       <div
-        className="bg-white absolute bottom-0 inset-x-0"
+        className="bg-white shrink-0 border-t border-gray-200"
         ref={bottomRef}
       >
+        {typingUserIds.length > 0 && (
+          <div className="px-4 pt-2 pb-1 flex items-center gap-x-2">
+            <span
+              className="inline-flex items-center gap-x-0.5"
+              aria-hidden="true"
+            >
+              <span className="size-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:-0.3s]" />
+              <span className="size-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:-0.15s]" />
+              <span className="size-1.5 rounded-full bg-gray-400 animate-bounce" />
+            </span>
+            <span className="text-xs italic text-gray-500">
+              {(() => {
+                const displayName =
+                  typingUserIds.length === 1 &&
+                  receiverUser &&
+                  typingUserIds[0] === receiverUser.id
+                    ? receiverUser.firstName?.trim() ||
+                      receiverUser.username ||
+                      "Someone"
+                    : typingUserIds.length === 1
+                      ? "Someone"
+                      : `${typingUserIds.length} people`
+                return `${displayName} ${typingUserIds.length === 1 ? "is" : "are"} typing…`
+              })()}
+            </span>
+          </div>
+        )}
         {replyingTo && !editingMessage && (
           <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
             <div className="flex-1 min-w-0">
@@ -1433,7 +1647,12 @@ export function Chats({
             }`}
             rows={1}
             value={textareaValue}
-            onChange={(e) => setTextareaValue(e.target.value)}
+            onChange={(e) => {
+              setTextareaValue(e.target.value)
+              if (e.target.value.length > 0) sendTyping(true)
+              else sendTyping(false)
+            }}
+            onBlur={() => sendTyping(false)}
             onKeyDown={(e) => {
               if (editingMessage) {
                 if (e.key === "Escape") {

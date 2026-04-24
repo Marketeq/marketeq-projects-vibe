@@ -21,6 +21,13 @@ export interface Message {
   quotedCiphertext?: string | null
   quotedContent?: string | null
   attachments?: MessageAttachment[]
+  reactions?: MessageReaction[]
+}
+
+export interface MessageReaction {
+  userId: string
+  emoji: string
+  createdAt: string
 }
 
 export interface MessageAttachment {

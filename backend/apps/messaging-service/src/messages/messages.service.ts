@@ -155,6 +155,38 @@ export class MessagesService {
     await this.ablyService.publishMessageRead(message.senderId, messageId);
   }
 
+  async toggleReaction(messageId: string, emoji: string, userId: string) {
+    const trimmed = (emoji ?? '').trim();
+    if (!trimmed || trimmed.length > 32) {
+      throw new ForbiddenException('Invalid emoji');
+    }
+
+    const message = await this.messageRepo.findOne({ where: { id: messageId } });
+    if (!message) throw new NotFoundException('Message not found');
+    await this.assertParticipant(message.threadId, userId);
+
+    const current = Array.isArray(message.reactions) ? [...message.reactions] : [];
+    const idx = current.findIndex(
+      (r) => r.userId === userId && r.emoji === trimmed,
+    );
+    if (idx >= 0) {
+      current.splice(idx, 1);
+    } else {
+      current.push({
+        userId,
+        emoji: trimmed,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    await this.messageRepo.update(messageId, { reactions: current });
+    await this.ablyService.publishMessageReaction(message.threadId, {
+      messageId,
+      reactions: current,
+    });
+    return current;
+  }
+
   async forward(messageId: string, toUserIds: string[], senderId: string) {
     if (toUserIds.length > 5) throw new ForbiddenException('Cannot forward to more than 5 users');
     const original = await this.messageRepo.findOne({ where: { id: messageId } });

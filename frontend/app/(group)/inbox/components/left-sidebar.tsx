@@ -98,6 +98,20 @@ interface LeftSidebarProps {
   messagesByConversation: Record<string, Message[]>
   initialThreadId?: string | null
   initialParticipantId?: string | null
+  searchIndex?: {
+    search: (q: string) => Array<{
+      id: string
+      threadId: string
+      senderId: string
+      content: string
+      createdAt: string
+    }>
+    isIndexing: boolean
+    progress: number
+    ready: boolean
+    docCount: number
+  }
+  onHighlightMessage?: (messageId: string) => void
 }
 
 const LeftSidebar = ({
@@ -106,6 +120,8 @@ const LeftSidebar = ({
   messagesByConversation,
   initialThreadId,
   initialParticipantId,
+  searchIndex,
+  onHighlightMessage,
 }: LeftSidebarProps) => {
   const { pinnedChats, setPinnedChats, toggleShowPinnedIcon, showPinnedIcon, checkedChats, resetCheckedChats } =
     useChatsContext()
@@ -119,6 +135,11 @@ const LeftSidebar = ({
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [activeFilter, setActiveFilter] = useState<string>("all")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<
+    Array<{ id: string; threadId: string; senderId: string; content: string; createdAt: string }>
+  >([])
+  const [searchLoading, setSearchLoading] = useState(false)
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
   const [bulkActionPending, setBulkActionPending] = useState(false)
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
@@ -445,9 +466,67 @@ const LeftSidebar = ({
     setPinnedChats?.(conversations.filter((c) => c.isPinned).length)
   }, [conversations, setPinnedChats])
 
+  // Search uses the persisted client-side index when available (covers the
+  // full history). Falls back to in-memory messagesByConversation (only
+  // opened threads) when the index hook isn't plumbed in yet.
+  useEffect(() => {
+    const q = searchQuery.trim()
+    if (!q) {
+      setSearchResults([])
+      setSearchLoading(false)
+      return
+    }
+    setSearchLoading(true)
+    const handle = setTimeout(() => {
+      if (searchIndex?.ready) {
+        setSearchResults(searchIndex.search(q))
+      } else {
+        const ql = q.toLowerCase()
+        const hits: Array<{
+          id: string
+          threadId: string
+          senderId: string
+          content: string
+          createdAt: string
+        }> = []
+        for (const [threadId, msgs] of Object.entries(messagesByConversation ?? {})) {
+          for (const m of msgs as Message[]) {
+            if ((m as any).isDeleted || (m as any).deleted) continue
+            const content = m.content || ""
+            if (content.toLowerCase().includes(ql)) {
+              hits.push({
+                id: m.id,
+                threadId,
+                senderId: m.senderId,
+                content,
+                createdAt: m.createdAt,
+              })
+            }
+          }
+        }
+        hits.sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )
+        setSearchResults(hits.slice(0, 50))
+      }
+      setSearchLoading(false)
+    }, 150)
+    return () => clearTimeout(handle)
+  }, [searchQuery, messagesByConversation, searchIndex])
+
+  const searching = searchQuery.trim().length > 0
+
+  const openSearchResult = (threadId: string, messageId: string) => {
+    const conv = conversations.find((c) => c.id === threadId)
+    if (conv) setSelectedConversation(conv)
+    onHighlightMessage?.(messageId)
+    setSearchQuery("")
+  }
+
   return (
-    <div className="w-[322px] shrink-0 border-r bg-white border-gray-200">
-      <div className="pt-1 p-3 border-b border-gray-200">
+    <div className="w-[322px] shrink-0 border-r bg-white border-gray-200 h-full flex flex-col min-h-0">
+      <div className="pt-1 p-3 border-b border-gray-200 shrink-0">
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <button className="focus-visible:outline-none w-[157px] h-11 inline-flex items-center justify-center shrink-0 text-base leading-6 font-semibold gap-x-[6px]">
@@ -629,12 +708,26 @@ const LeftSidebar = ({
               <Input
                 id="search-bar"
                 type="text"
-                className="h-8 pl-[34px] py-2.5 pr-3 text-xs leading-5"
+                className="h-8 pl-[34px] py-2.5 pr-8 text-xs leading-5"
                 placeholder="Search inbox"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
               <InputLeftElement>
                 <SearchMd className="text-gray-400 size-4" />
               </InputLeftElement>
+              {searchQuery && (
+                <InputRightElement>
+                  <button
+                    type="button"
+                    className="text-gray-400 hover:text-gray-600"
+                    onClick={() => setSearchQuery("")}
+                    aria-label="Clear search"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </InputRightElement>
+              )}
             </InputGroup>
 
             <IconButton className="size-8 rounded-full" visual="gray" variant="ghost">
@@ -644,7 +737,7 @@ const LeftSidebar = ({
         )}
       </div>
       {pinnedChats > 0 && (
-        <div className="py-1 flex h-7 items-center justify-between pr-2 pl-4 bg-gray-25 border-b border-gray-200">
+        <div className="py-1 flex h-7 items-center justify-between pr-2 pl-4 bg-gray-25 border-b border-gray-200 shrink-0">
           <div className="flex items-center gap-x-1.5">
             <Pin02 className="text-gray-500 fill-gray-500 size-4" />
             <span className="text-[11px] leading-5 font-semibold text-gray-500">
@@ -674,9 +767,65 @@ const LeftSidebar = ({
         </div>
       )}
 
-      <ScrollArea>
+      <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col">
-          {isLoading ? (
+          {searching ? (
+            <div className="py-2">
+              <div className="px-4 py-1.5 flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                  Messages
+                </span>
+                {searchIndex?.isIndexing && (
+                  <span className="inline-flex items-center gap-x-1 text-[10px] text-gray-400">
+                    <Spinner size={10} strokeWidth={3} />
+                    Indexing {Math.round((searchIndex.progress ?? 0) * 100)}%
+                  </span>
+                )}
+              </div>
+              {searchLoading ? (
+                <div className="flex items-center justify-center py-8 text-gray-400">
+                  <Spinner size={20} strokeWidth={3} />
+                </div>
+              ) : searchResults.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-2 text-gray-400 px-6 text-center">
+                  <SearchMd className="size-6 stroke-[1.5]" />
+                  <p className="text-xs">No messages matching "{searchQuery}"</p>
+                  {searchIndex?.isIndexing && (
+                    <p className="text-[11px] leading-4 text-gray-500">
+                      Still indexing older messages — try again in a moment.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                searchResults.map((r) => {
+                  const conv = conversations.find((c) => c.id === r.threadId)
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => openSearchResult(r.threadId, r.id)}
+                      className="flex flex-col items-start gap-y-1 px-4 py-3 text-left hover:bg-gray-100 border-b border-gray-100"
+                    >
+                      <div className="flex items-center justify-between w-full gap-x-2">
+                        <span className="text-[13px] font-semibold text-dark-blue-400 truncate">
+                          {conv?.participantUsername || "Conversation"}
+                        </span>
+                        <span className="text-[11px] text-gray-500 shrink-0">
+                          {new Date(r.createdAt).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-gray-600 line-clamp-2 break-words [overflow-wrap:anywhere]">
+                        {r.content || "Encrypted message"}
+                      </span>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          ) : isLoading ? (
             <div className="flex items-center justify-center py-12 text-gray-400">
               <Spinner size={24} strokeWidth={3} />
             </div>

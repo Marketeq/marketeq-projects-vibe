@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation"
 import { ensureEncryptionKeysExist, loadPrivateKey } from "@/src/crypto/keys"
 import { apiFetch } from "@/src/lib/api"
 import { getAccessToken, getCurrentUser } from "@/utils/auth"
+import { useMessageSearchIndex } from "@/utils/useMessageSearchIndex"
 import { useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
@@ -114,6 +115,9 @@ export default function InboxRoot() {
     useState<Conversation | null>(null)
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
+  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(
+    null
+  )
   const [messagesByConversation, setMessagesByConversation] = useState<
     Record<string, Message[]>
   >({})
@@ -156,17 +160,34 @@ export default function InboxRoot() {
     })()
   }, [token])
 
-  // Callback to let Chats tell us when history is loaded:
-  const handleMessagesLoaded = (convId: string, msgs: Message[]) => {
-    setMessagesByConversation((prev) => ({
-      ...prev,
-      [convId]: msgs,
-    }))
-  }
+  // Callback to let Chats tell us when history is loaded. Stable ref so
+  // chats-comp's effect dep array doesn't fire every render → infinite loop.
+  const handleMessagesLoaded = useCallback(
+    (convId: string, msgs: Message[]) => {
+      setMessagesByConversation((prev) => {
+        if (prev[convId] === msgs) return prev
+        return { ...prev, [convId]: msgs }
+      })
+    },
+    []
+  )
+
+  // Persisted client-side search index. Loads cached docs from IndexedDB
+  // immediately, then rebuilds in the background as soon as we have a
+  // private key (E2EE makes server-side search impossible).
+  const currentUserId = getCurrentUser()?.id ?? null
+  const searchIndex = useMessageSearchIndex({
+    userId: currentUserId,
+    token,
+    privateKey,
+  })
 
   return (
     <Inbox>
-      <div className="flex bg-white" style={{ minHeight: "calc(100vh - 65px)" }}>
+      <div
+        className="flex w-full bg-white overflow-hidden"
+        style={{ height: "calc(100vh - 65px)" }}
+      >
         <LeftSidebar
           selectedConversation={selectedConversation}
           setSelectedConversation={setSelectedConversation}
@@ -174,6 +195,8 @@ export default function InboxRoot() {
           messagesByConversation={messagesByConversation}
           initialThreadId={initialThreadId}
           initialParticipantId={initialParticipantId}
+          searchIndex={searchIndex}
+          onHighlightMessage={setHighlightMessageId}
         />
 
         {/* pass only the conversation and token into Chats */}
@@ -183,6 +206,9 @@ export default function InboxRoot() {
           privateKey={privateKey}
           currentUserProfile={currentUserProfile}
           onToggleRightSidebar={() => setRightSidebarOpen((v) => !v)}
+          onMessagesLoaded={handleMessagesLoaded}
+          highlightMessageId={highlightMessageId}
+          onHighlightConsumed={() => setHighlightMessageId(null)}
         />
 
         {rightSidebarOpen && (
