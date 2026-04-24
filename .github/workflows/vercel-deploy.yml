@@ -100,16 +100,18 @@ jobs:
             --arg branch "$BRANCH" \
             --arg sha "$SHA" \
             --arg remote_url "https://github.com/${{ github.repository }}" \
+            --arg repo_name "${{ github.event.repository.name }}" \
+            --arg repo_org "${{ github.event.repository.owner.login }}" \
             --arg actor "${{ github.actor }}" \
-            --arg repo_visibility "private" \
-            --argjson repo_id '${{ github.event.repository.id }}' \
+            --arg repo_visibility "public" \
             '{
               project: $project,
               target: "production",
               source: "api-trigger-git-deploy",
               gitSource: {
                 type: "github",
-                projectId: $repo_id,
+                org: $repo_org,
+                repo: $repo_name,
                 ref: $branch,
                 sha: $sha
               },
