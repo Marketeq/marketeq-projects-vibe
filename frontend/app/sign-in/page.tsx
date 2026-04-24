@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { resolveDashboardRoute, useAuth } from "@/contexts/auth"
+import {
+  mergeDashboardUserFields,
+  resolveDashboardRoute,
+  useAuth,
+} from "@/contexts/auth"
 import UnauthenticatedRoute from "@/hoc/UnauthenticatedRoute"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
@@ -60,6 +64,7 @@ export default function SignIn() {
   const [isVerifying2FA, setIsVerifying2FA] = useState(false)
   const [useBackupCode, setUseBackupCode] = useState(false)
   const [resendCooldown, setResendCooldown] = useState(0)
+  const [loginError, setLoginError] = useState<string | null>(null)
   useEffect(() => {
     if (resendCooldown <= 0) return
     const timer = setInterval(() => {
@@ -67,7 +72,6 @@ export default function SignIn() {
     }, 1000)
     return () => clearInterval(timer)
   }, [resendCooldown])
-
   const redirectTarget = searchParams.get("redirect")
   const nextRoute =
     redirectTarget && redirectTarget.startsWith("/") && !redirectTarget.startsWith("//")
@@ -112,7 +116,7 @@ export default function SignIn() {
               meResponse?.data
 
             if (profileUser && typeof profileUser === "object") {
-              nextUser = { ...nextUser, ...profileUser }
+              nextUser = mergeDashboardUserFields(nextUser, profileUser)
             }
           }
         } catch {
@@ -153,6 +157,7 @@ export default function SignIn() {
   const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password }) => {
     setIsLoading(true)
 
+    setLoginError(null)
     AuthAPI.LoginWithEmail({ email, password })
       .then(async (response) => {
         if (response?.status === 200 && response?.data?.requiresTwoFactor) {
@@ -185,7 +190,7 @@ export default function SignIn() {
                 meResponse?.data
 
               if (profileUser && typeof profileUser === "object") {
-                nextUser = { ...nextUser, ...profileUser }
+                nextUser = mergeDashboardUserFields(nextUser, profileUser)
               }
             }
           } catch {
@@ -202,12 +207,12 @@ export default function SignIn() {
         }
       })
       .catch((error) => {
-        if (error?.response?.data?.errors?.message) {
-          toast({
-            title: error?.response?.data?.errors?.message,
-            variant: "destructive",
-          })
-        }
+        const msg =
+          error?.response?.data?.message ??
+          error?.response?.data?.errors?.message ??
+          error?.message ??
+          "Login failed"
+        setLoginError(msg)
       })
       .finally(() => {
         setIsLoading(false)
@@ -474,6 +479,10 @@ export default function SignIn() {
                 />
               </div>
 
+              {loginError && (
+                <p className="mt-2 text-sm text-red-500">{loginError}</p>
+              )}
+
               <div className="mt-2 flex items-center justify-between">
                 <div className="flex items-center gap-x-2">
                   <Controller
@@ -559,7 +568,7 @@ export default function SignIn() {
                           if (meResponse?.status === 200) {
                             const profileUser = meResponse?.data?.user ?? meResponse?.data?.data?.user ?? meResponse?.data
                             if (profileUser && typeof profileUser === "object") {
-                              nextUser = { ...nextUser, ...profileUser }
+                              nextUser = mergeDashboardUserFields(nextUser, profileUser)
                             }
                           }
                         } catch {}

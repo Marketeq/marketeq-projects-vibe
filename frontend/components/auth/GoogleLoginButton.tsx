@@ -2,7 +2,11 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/contexts/auth"
+import {
+  mergeDashboardUserFields,
+  resolveDashboardRoute,
+  useAuth,
+} from "@/contexts/auth"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
 import { GoogleDefault } from "@blend-metrics/icons/social"
@@ -43,26 +47,34 @@ const GoogleLoginButtonInner = () => {
               Cookies.set("session_id", response.data.sessionId, { path: "/" })
             }
 
-            UserAPI.me().then((me) => {
+            let nextUser = response.data.user
+            try {
+              const me = await UserAPI.me()
               if (me?.status === 200) {
-                const user = me.data?.user ?? me.data
-                if (user?.role) {
-                  setUser(user)
-                  router.push("/")
-                } else {
-                  console.warn("User missing role", me.data)
+                const profileUser = me.data?.user ?? me.data?.data?.user ?? me.data
+                if (profileUser && typeof profileUser === "object") {
+                  nextUser = mergeDashboardUserFields(nextUser, profileUser)
                 }
               }
-            })
+            } catch {
+              // fall back to auth payload
+            }
+            if (nextUser && typeof nextUser === "object") {
+              setUser(nextUser)
+            }
+            router.push(resolveDashboardRoute(nextUser as any))
           }
         })
         .catch((error) => {
-          if (error?.response?.data?.errors?.message) {
-            toast({
-              title: error.response.data.errors.message,
-              variant: "destructive",
-            })
-          }
+          const msg =
+            error?.response?.data?.message ??
+            error?.response?.data?.errors?.message ??
+            error?.message ??
+            "Login failed"
+          toast({
+            title: msg,
+            variant: "destructive",
+          })
         })
         .finally(() => setIsLoading(false))
     },
@@ -95,6 +107,21 @@ const GoogleLoginButtonInner = () => {
 }
 
 const GoogleLoginButton = () => {
+  if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
+    return (
+      <Button
+        className="xs:max-md:text-sm xs:max-md:py-2 xs:max-md:px-[14px] xs:max-md:h-9"
+        variant="outlined"
+        visual="gray"
+        size="lg"
+        disabled
+        title="Google sign-in is not configured"
+      >
+        <GoogleDefault className="size-5 md:size-6" /> Sign in with Google
+      </Button>
+    )
+  }
+
   return <GoogleLoginButtonInner />
 }
 

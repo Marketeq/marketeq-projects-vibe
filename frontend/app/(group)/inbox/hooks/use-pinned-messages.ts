@@ -29,10 +29,14 @@ export function usePinnedMessages(convId: string, token: string) {
 
         const decrypted = await Promise.all(
           pinned.map(async (m) => {
-            if (key && (m as any).ciphertext) {
-              try { return { ...m, content: await decryptAES((m as any).ciphertext, key) } } catch { return m }
+            const ct = (m as any).ciphertext
+            if (!ct) return m // legacy plaintext row
+            if (!key) return { ...m, content: "🔒 Encrypted message" }
+            try {
+              return { ...m, content: await decryptAES(ct, key) }
+            } catch {
+              return { ...m, content: "🔒 Encrypted message" }
             }
-            return m
           })
         )
 

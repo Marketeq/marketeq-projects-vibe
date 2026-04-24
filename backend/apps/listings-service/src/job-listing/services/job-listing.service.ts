@@ -1,4 +1,11 @@
-import { Injectable, Logger, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -10,13 +17,16 @@ import { v4 as uuidv4 } from 'uuid';
 import sanitizeHtml from 'sanitize-html';
 import { JobListing } from '../entities/job-listing.entity';
 import { TeamMemberRow } from '../entities/job-listing-role-row.entity';
+import { BasicInformation } from '../entities/job-listing-basic-info.entity';
 import { JobListingStatus } from '../enums/job-listing-status.enum';
 import { ContractType } from '../enums/contract-type.enum';
 import { PresignBriefUploadDto } from '../dto/presign-brief-upload.dto';
 import { CreateJobListingDto } from '../dto/create-job-listing.dto';
 import { UpdateJobListingDto } from '../dto/update-job-listing.dto';
+import { UpdateBasicInformationDto } from '../dto/update-basic-info.dto';
 import { SendInvitesDto } from '../dto/send-invites.dto';
 import { ListJobListingsQueryDto } from '../dto/list-job-listings-query.dto';
+import { CreateRoleRowDto } from '../dto/create-role-row.dto';
 import { JobListingInviteService } from './job-listing-invite.service';
 import { createR2Client } from '../config/r2.config';
 
@@ -48,6 +58,8 @@ export class JobListingService {
     private readonly repo: Repository<JobListing>,
     @InjectRepository(TeamMemberRow)
     private readonly roleRowRepo: Repository<TeamMemberRow>,
+    @InjectRepository(BasicInformation)
+    private readonly basicInfoRepo: Repository<BasicInformation>,
     private readonly config: ConfigService,
     private readonly http: HttpService,
     private readonly inviteService: JobListingInviteService,
@@ -234,6 +246,50 @@ export class JobListingService {
     }))!;
   }
 
+  async updateBasicInformation(
+    listingId: string,
+    dto: UpdateBasicInformationDto,
+  ): Promise<BasicInformation> {
+    const normalizedTitle =
+      typeof dto.title === 'string' ? dto.title.trim() : undefined;
+    const normalizedJobType =
+      dto.jobType === null
+        ? null
+        : typeof dto.jobType === 'string'
+          ? dto.jobType.trim()
+          : undefined;
+
+    const listing = await this.repo.findOne({
+      where: { id: listingId },
+      select: ['id'],
+    });
+
+    if (!listing) {
+      throw new NotFoundException({ code: 'JL_NOT_FOUND', message: 'Job listing not found.' });
+    }
+
+    let basicInfo = await this.basicInfoRepo.findOne({
+      where: { jobListingId: listingId },
+    });
+
+    if (!basicInfo) {
+      basicInfo = this.basicInfoRepo.create({
+        jobListingId: listingId,
+        title: normalizedTitle ?? '',
+        jobType: normalizedJobType ?? null,
+        industries: dto.industries ?? [],
+        languages: dto.languages ?? [],
+      });
+    } else {
+      if (normalizedTitle !== undefined) basicInfo.title = normalizedTitle;
+      if (normalizedJobType !== undefined) basicInfo.jobType = normalizedJobType;
+      if (dto.industries !== undefined) basicInfo.industries = dto.industries;
+      if (dto.languages !== undefined) basicInfo.languages = dto.languages;
+    }
+
+    return this.basicInfoRepo.save(basicInfo);
+  }
+
   async softDelete(listingId: string): Promise<void> {
     await this.repo.update(listingId, {
       status:   JobListingStatus.CLOSED,
@@ -261,6 +317,48 @@ export class JobListingService {
     });
 
     await this.roleRowRepo.save(duplicate);
+  }
+
+  async createRoleRow(
+    listingId: string,
+    dto: CreateRoleRowDto,
+  ): Promise<TeamMemberRow> {
+    const roleTitle = dto.role?.trim();
+    if (!roleTitle) {
+      throw new BadRequestException({
+        code: 'JL_ROLE_TITLE_REQUIRED',
+        message: 'Role title is required.',
+      });
+    }
+
+    let positionOrder = dto.positionOrder;
+    if (positionOrder === undefined) {
+      const maxResult = await this.roleRowRepo
+        .createQueryBuilder('row')
+        .select('COALESCE(MAX(row.positionOrder), -1)', 'maxOrder')
+        .where('row.jobListingId = :listingId', { listingId })
+        .getRawOne<{ maxOrder: string | number }>();
+
+      positionOrder = Number(maxResult?.maxOrder ?? -1) + 1;
+    }
+
+    const roleRow = this.roleRowRepo.create({
+      jobListingId: listingId,
+      roleTitle,
+      positionOrder,
+      assignedUserId: dto.assignedUserId ?? null,
+      assignedUsername: null,
+      assignedUserDeactivated: false,
+      location: null,
+      experienceLevel: null,
+      customHours: null,
+      customFrequency: null,
+      contractLengthMonths: null,
+      hourlyRateLowUsdCents: null,
+      hourlyRateHighUsdCents: null,
+    });
+
+    return this.roleRowRepo.save(roleRow);
   }
 
   async sendInvites(listingId: string, dto: SendInvitesDto): Promise<void> {

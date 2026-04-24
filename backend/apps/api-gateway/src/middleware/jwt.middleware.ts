@@ -1,36 +1,64 @@
-import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/common'
+import { Injectable, Logger, NestMiddleware, UnauthorizedException } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
 import { JwtService } from '@nestjs/jwt'
 
-const PUBLIC_ROUTES = [
-  '/health', '/ready',
-  '/auth/login', '/auth/signup', '/auth/register', '/auth/register-email',
-  '/auth/refresh', '/auth/check-username',
-  '/auth/google', '/auth/linkedin', '/auth/magic-link', '/auth/verify', '/auth/dev-login',
-  '/auth/forgot-password', '/auth/reset-password',
-  '/auth/2fa/verify',   // 2FA verification during login (uses partialToken, not full auth)
-  '/auth/2fa/resend',   // 2FA SMS resend during login (uses partialToken)
-  '/search', '/autocomplete', '/suggestions',
-  '/talent/users',     // public talent profiles
+const PUBLIC_EXACT_ROUTES = new Set([
+  '/health',
+  '/ready',
+  '/auth/login',
+  '/auth/signup',
+  '/auth/register',
+  '/auth/register-email',
+  '/auth/refresh',
+  '/auth/check-username',
+  '/auth/google',
+  '/auth/linkedin',
+  '/auth/magic-link',
+  '/auth/verify',
+  '/auth/dev-login',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/auth/2fa/verify',
+  '/auth/2fa/resend',
+  '/homepage',
+  '/homepage/health',
+  '/search',
+  '/autocomplete',
+  '/suggestions',
+  '/categories',
+  '/tags',
+  '/category-pages',
+  '/talent/users',
   '/v1/users/username',
   '/v1/users/health',
   '/v1/projects',
   '/v1/services',
-  '/v1/users',
-]
+])
 
-// Routes that need special pattern matching (e.g. /v1/users/:uuid for public profiles)
+// Only explicitly allowed dynamic routes are public.
 const PUBLIC_PATTERNS = [
+  /^\/search(?:\/.*)?$/,
+  /^\/autocomplete(?:\/.*)?$/,
+  /^\/suggestions(?:\/.*)?$/,
+  /^\/categories(?:\/.*)?$/,
+  /^\/tags(?:\/.*)?$/,
+  /^\/category-pages(?:\/.*)?$/,
+  /^\/talent\/users\/[^/]+$/,
+  /^\/v1\/users\/username\/[^/]+$/,
+  /^\/v1\/projects(?:\/.*)?$/,
+  /^\/v1\/services(?:\/.*)?$/,
   /^\/v1\/users\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
 ]
 
 function isPublic(path: string): boolean {
-  if (PUBLIC_ROUTES.some((r) => path === r || path.startsWith(r + '/') || path.startsWith(r + '?'))) return true
+  if (PUBLIC_EXACT_ROUTES.has(path)) return true
   return PUBLIC_PATTERNS.some((re) => re.test(path))
 }
 
 @Injectable()
 export class JwtMiddleware implements NestMiddleware {
+  private readonly logger = new Logger(JwtMiddleware.name)
+
   constructor(private readonly jwt: JwtService) {}
 
   use(req: Request, _res: Response, next: NextFunction) {
@@ -47,6 +75,11 @@ export class JwtMiddleware implements NestMiddleware {
     if (!token) {
       // Public routes can proceed without auth
       if (pub) return next()
+
+      this.logger.warn(
+        `401 missing-token method=${req.method} path=${reqPath} source=${authHeader ? 'malformed_auth_header' : cookieToken ? 'malformed_cookie_token' : 'none'}`,
+      )
+
       throw new UnauthorizedException({
         code: 'UNAUTHORIZED',
         message: 'Your session has expired. Please log in again to continue.',
@@ -57,9 +90,15 @@ export class JwtMiddleware implements NestMiddleware {
       const payload = this.jwt.verify<{ sub: string; email: string; role?: string }>(token)
       ;(req as any).user = { userId: payload.sub, email: payload.email, role: payload.role }
       next()
-    } catch {
+    } catch (err: any) {
       // Public routes can proceed even with an invalid token
       if (pub) return next()
+
+      const reason = err?.name || 'TokenVerificationFailed'
+      this.logger.warn(
+        `401 invalid-token method=${req.method} path=${reqPath} reason=${reason}`,
+      )
+
       throw new UnauthorizedException({
         code: 'UNAUTHORIZED',
         message: 'Your session has expired. Please log in again to continue.',

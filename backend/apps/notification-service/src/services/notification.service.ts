@@ -10,7 +10,6 @@ import {
   UserPreference,
 } from '../entities/user-preference.entity';
 import { AblyNotificationsService } from '../ably/ably-notifications.service';
-import { SendgridService } from '../sendgrid/sendgrid.service';
 import {
   DEFAULT_GLOBAL_CHANNELS,
   NOTIFICATION_CATALOG,
@@ -21,6 +20,7 @@ import {
   getAllNotificationIds,
 } from '../constants/notification-catalog';
 import { UpdatePreferencesDto } from '../dtos/update-preferences.dto';
+import { BrevoService } from '../brevo/brevo.service';
 
 export interface NotificationPayload {
   recipientId: string;
@@ -49,7 +49,8 @@ export class NotificationService {
     @InjectRepository(Notification) private readonly notifRepo: Repository<Notification>,
     @InjectRepository(UserPreference) private readonly prefRepo: Repository<UserPreference>,
     private readonly ablyService: AblyNotificationsService,
-    private readonly sendgridService: SendgridService,
+    // private readonly sendgridService: SendgridService,
+    private readonly brevoService: BrevoService,
   ) {}
 
   async dispatch(payload: NotificationPayload) {
@@ -128,11 +129,18 @@ export class NotificationService {
       (emailAllowed || fallbackToSmtp) && !!recipientAddress;
 
     if (shouldSendEmail && recipientAddress) {
-      await this.sendgridService.sendNotificationEmail(
+      this.logger.log(
+        `Dispatching email via Brevo: to=${recipientAddress} event=${payload.event} category=${payload.category} subject="${payload.title}"`,
+      );
+      await this.brevoService.sendNotificationEmail(
         recipientAddress,
         payload.title,
         payload.body,
         payload.link,
+      );
+    } else {
+      this.logger.log(
+        `Email skipped: shouldSendEmail=${shouldSendEmail} recipientEmail=${recipientAddress ?? 'none'} event=${payload.event}`,
       );
     }
 
@@ -340,5 +348,44 @@ export class NotificationService {
       email: { ...DEFAULT_GLOBAL_CHANNELS.email },
       sms: { ...DEFAULT_GLOBAL_CHANNELS.sms },
     };
+  }
+
+  async sendTeamInvitationEmail(payload: {
+    to: string;
+    teamName: string;
+    role: string;
+    acceptUrl: string;
+    inviterEmail?: string;
+    note?: string;
+  }) {
+    this.logger.log(
+      `sendTeamInvitationEmail: to=${payload.to} teamName=${payload.teamName} role=${payload.role} inviter=${payload.inviterEmail ?? 'n/a'} acceptUrl=${payload.acceptUrl}`,
+    );
+
+    const title = `You're invited to join ${payload.teamName}`;
+    const inviterLine = payload.inviterEmail ? ` by ${payload.inviterEmail}` : '';
+    const note = payload.note?.trim();
+    const noteLine = note ? `\n\nNote from inviter: ${note}` : '';
+    const body = `You were invited${inviterLine} as ${payload.role}.${noteLine}`;
+
+    // --- SendGrid logic (commented out) ---
+    // await this.sendgridService.sendNotificationEmail(
+    //   payload.to,
+    //   title,
+    //   body,
+    //   payload.acceptUrl,
+    // );
+
+    // --- Brevo logic ---
+    this.logger.log(`Sending team invitation via Brevo: to=${payload.to} subject="${title}"`);
+    await this.brevoService.sendNotificationEmail(
+      payload.to,
+      title,
+      body,
+      payload.acceptUrl,
+    );
+
+    this.logger.log(`Team invitation email sent successfully: to=${payload.to}`);
+    return { sent: true };
   }
 }

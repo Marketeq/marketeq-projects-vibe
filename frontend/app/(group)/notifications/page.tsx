@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import { Bell, Check, Mail01, Trash } from "@blend-metrics/icons"
 import {
   Avatar,
@@ -87,8 +88,10 @@ export default function NotificationsPage() {
 
   return (
     <AuthenticatedRoute>
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-4xl mx-auto px-6 py-8">
+      <div className="flex bg-gray-50 min-h-screen">
+        <LeftSidebar />
+
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-semibold text-dark-blue-400">Notifications</h1>

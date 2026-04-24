@@ -1,12 +1,13 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BrevoService } from '../../../notification-service/src/brevo/brevo.service';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Inject, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { ClientProxy } from '@nestjs/microservices';
 import { randomBytes } from 'crypto';
 import { Invitation, InvitationStatus, InvitationRole } from '../entities/invitation.entity';
 import { CreateInvitationsDto, CreateInviteLinkDto, ListInvitationsDto, AcceptInvitationDto } from '../dto/invitation.dto';
 import { generateInviteLinkToken, verifyInviteLinkToken } from '../auth/token.util';
-import { NotificationsClient } from './notifications.client';
 import { InternalUserSummary, UserServiceClient } from './user-service.client';
 
 type AcceptInvitationResult = {
@@ -15,6 +16,7 @@ type AcceptInvitationResult = {
   teamName?: string;
   invitedEmail: string;
   role: string;
+  note?: string | null;
   status: string;
   token: string;
   expiresAt: Date;
@@ -42,6 +44,7 @@ type AcceptInvitationResult = {
 
 @Injectable()
 export class InvitationsService {
+  private readonly logger = new Logger(InvitationsService.name);
   private readonly expDays: number;
   private readonly appBaseUrl: string;
 
@@ -51,8 +54,11 @@ export class InvitationsService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
-    private readonly notifications: NotificationsClient,
     private readonly userService: UserServiceClient,
+    @Inject('RABBITMQ_CLIENT')
+    private readonly rabbitmq: ClientProxy,
+    // Add BrevoService for direct email sending
+    private readonly brevoService: BrevoService,
   ) {
     this.expDays = parseInt(config.get('INVITE_EXP_DAYS') ?? '7', 10);
     this.appBaseUrl = config.get('APP_BASE_URL') ?? 'http://localhost:3000';
@@ -65,6 +71,7 @@ export class InvitationsService {
       teamName?: string;
       invitedEmail: string;
       role: string;
+      note?: string | null;
       status: string;
       token: string;
       expiresAt: Date;
@@ -75,6 +82,8 @@ export class InvitationsService {
     },
     userSummary: InternalUserSummary,
   ): AcceptInvitationResult {
+    const hasCompleted = userSummary.onboardingDismissed;
+
     return {
       ...invitation,
       canceledAt: invitation.canceledAt ?? null,
@@ -83,16 +92,24 @@ export class InvitationsService {
         email: userSummary.email,
         role: userSummary.role,
         onboardingDismissed: userSummary.onboardingDismissed,
-        hasCompletedOnboarding: true,
+        hasCompletedOnboarding: hasCompleted,
         accountState: 'existing_account',
       },
       postAccept: {
-        nextStep: 'go_to_team',
-        reason: 'existing_user_completed_onboarding',
-        suggestedPath: '/teams',
+        nextStep: hasCompleted ? 'go_to_team' : 'continue_onboarding',
+        reason: hasCompleted
+          ? 'existing_user_completed_onboarding'
+          : 'existing_user_needs_onboarding',
+        suggestedPath: hasCompleted ? '/teams' : '/onboarding',
         teamId: invitation.teamId,
       },
     };
+  }
+
+  private normalizeInvitationNote(note?: string): string | null {
+    if (typeof note !== 'string') return null;
+    const trimmed = note.trim();
+    return trimmed.length > 0 ? trimmed : null;
   }
 
   createInviteLink(
@@ -122,8 +139,59 @@ export class InvitationsService {
     };
   }
 
+  private async getSafeDismissedUserSummary(invitee: { id: string; email: string; role?: string }): Promise<InternalUserSummary> {
+    try {
+      return await this.userService.dismissOnboarding(invitee.id);
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const message = err?.response?.data?.message ?? err?.message ?? 'unknown error';
+
+      if (status === 404) {
+        this.logger.warn(
+          `User ${invitee.id} not found in user-service during onboarding dismiss. Attempting internal sync + retry.`,
+        );
+
+        try {
+          await this.userService.syncUserProfile({
+            id: invitee.id,
+            email: invitee.email,
+          });
+
+          return await this.userService.dismissOnboarding(invitee.id);
+        } catch (syncErr: any) {
+          const syncStatus = syncErr?.response?.status;
+          const syncMessage = syncErr?.response?.data?.message ?? syncErr?.message ?? 'unknown error';
+
+          if (syncStatus === 409) {
+            this.logger.warn(
+              `Identity conflict while syncing user ${invitee.id} (${invitee.email}). user-service has same email under a different id. message=${syncMessage}`,
+            );
+          } else {
+            this.logger.warn(
+              `Failed sync+retry recovery for user ${invitee.id}. status=${syncStatus ?? 'n/a'} message=${syncMessage}`,
+            );
+          }
+        }
+      }
+
+      this.logger.warn(
+        `Failed to dismiss onboarding via user-service for ${invitee.id}; continuing with fallback summary. status=${status ?? 'n/a'} message=${message}`,
+      );
+
+      return {
+        id: invitee.id,
+        email: invitee.email,
+        role: invitee.role ?? 'member',
+        onboardingDismissed: false,
+        hasCompletedOnboarding: false,
+        isActive: true,
+      };
+    }
+  }
+
   async createInvites(dto: CreateInvitationsDto, inviter: { id: string; email: string }) {
     const results = [];
+    const normalizedNote = this.normalizeInvitationNote(dto.note);
     for (const email of dto.emails) {
       const existing = await this.repo.findOne({
         where: { teamId: dto.teamId, invitedEmail: email, status: InvitationStatus.PENDING },
@@ -143,20 +211,52 @@ export class InvitationsService {
           teamId: dto.teamId,
           invitedEmail: email,
           role: dto.role,
+          note: normalizedNote ?? undefined,
           token,
           expiresAt,
           createdByUserId: inviter.id,
-          note: dto.note ?? null,
         }),
       );
 
-      await this.notifications.sendInvitationEmail({
+
+      // --- Send invitation via RabbitMQ (existing logic) ---
+      this.rabbitmq.emit('notification.email.team_invitation', {
         to: email,
         teamName: dto.teamId,
         role: dto.role,
-        acceptUrl: `${this.appBaseUrl}/invitations/accept?token=${token}`,
+        acceptUrl: `${this.appBaseUrl}/invite/accept?token=${token}`,
         inviterEmail: inviter.email,
-        note: dto.note,
+        note: normalizedNote ?? undefined,
+      });
+
+      // --- Direct Brevo email for testing (comment out when switching back to SendGrid) ---
+      this.logger.log(
+        `[DirectBrevo] Sending invitation email: to=${email} teamId=${dto.teamId} role=${dto.role} inviter=${inviter.email} token=${token.substring(0, 8)}...`,
+      );
+      try {
+        await this.brevoService.sendNotificationEmail(
+          email,
+          `You're invited to join team ${dto.teamId}`,
+          `You have been invited as ${dto.role}.`,
+          `${this.appBaseUrl}/invite/accept?token=${token}`
+        );
+        this.logger.log(`[DirectBrevo] Invitation email sent successfully: to=${email}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(`[DirectBrevo] Failed to send invitation email: to=${email} error=${message}`);
+      }
+
+      // Publish notification event to RabbitMQ
+      this.rabbitmq.emit('notification.send', {
+        recipientId: inviter.id,
+        recipientEmail: inviter.email,
+        category: 'teams',
+        event: 'invitation.sent',
+        title: `Invitation sent to ${email}`,
+        body: `You've invited ${email} to join your team as ${dto.role}`,
+        link: `${this.appBaseUrl}/my-team`,
+        metadata: { invitedEmail: email, teamId: dto.teamId, role: dto.role },
+        delivery: { inApp: true, email: false },
       });
 
       results.push({ ...inv, alreadyInvited: false });
@@ -169,6 +269,11 @@ export class InvitationsService {
 
     if (dto.teamId) qb.andWhere('i.teamId = :teamId', { teamId: dto.teamId });
     if (dto.status) qb.andWhere('i.status = :status', { status: dto.status });
+    if (dto.invitedEmail) {
+      qb.andWhere('LOWER(i.invitedEmail) = LOWER(:invitedEmail)', {
+        invitedEmail: dto.invitedEmail.trim(),
+      });
+    }
     if (dto.cursor) qb.andWhere('i.createdAt < :cursor', { cursor: new Date(dto.cursor) });
 
     qb.take((dto.limit ?? 20) + 1);
@@ -177,8 +282,30 @@ export class InvitationsService {
     const hasMore = rows.length > limit;
     const data = hasMore ? rows.slice(0, limit) : rows;
 
+    // Enrich accepted invitations with the invitee's profile (name + avatar)
+    const enriched = await Promise.all(
+      data.map(async (inv) => {
+        if (inv.status === 'accepted') {
+          try {
+            // Prefer id-based lookup for newer rows; fallback to email for older accepted invites.
+            const summary = inv.inviteeUserId
+              ? await this.userService.getUserSummary(inv.inviteeUserId)
+              : await this.userService.getUserSummaryByEmail(inv.invitedEmail);
+            return {
+              ...inv,
+              inviteeName: [summary.firstName, summary.lastName].filter(Boolean).join(' ') || summary.email,
+              avatarUrl: summary.avatarUrl ?? null,
+            };
+          } catch {
+            // Fallback: return without enrichment
+          }
+        }
+        return inv;
+      }),
+    );
+
     return {
-      data,
+      data: enriched,
       nextCursor: hasMore ? data[data.length - 1].createdAt.toISOString() : null,
     };
   }
@@ -197,12 +324,13 @@ export class InvitationsService {
     inv.resentCount += 1;
     await this.repo.save(inv);
 
-    await this.notifications.sendInvitationEmail({
+    this.rabbitmq.emit('notification.email.team_invitation', {
       to: inv.invitedEmail,
-      teamName: inv.teamId,
+      teamName: inv.teamName ?? inv.teamId,
       role: inv.role,
-      acceptUrl: `${this.appBaseUrl}/invitations/accept?token=${inv.token}`,
+      acceptUrl: `${this.appBaseUrl}/invite/accept?token=${inv.token}`,
       inviterEmail: '',
+      note: inv.note,
     });
 
     return inv;
@@ -235,7 +363,7 @@ export class InvitationsService {
         [linkPayload.teamId, invitee.id, linkPayload.role],
       ).catch(() => null);
 
-      const updatedUserSummary = await this.userService.dismissOnboarding(invitee.id);
+      const updatedUserSummary = await this.getSafeDismissedUserSummary(invitee);
 
       return this.buildAcceptResponse({
         id: null,
@@ -243,6 +371,7 @@ export class InvitationsService {
         teamName: linkPayload.teamName,
         invitedEmail: invitee.email,
         role: linkPayload.role,
+        note: null,
         status: 'accepted',
         token: dto.token,
         expiresAt: new Date(linkPayload.exp),
@@ -272,13 +401,40 @@ export class InvitationsService {
 
     inv.status = InvitationStatus.ACCEPTED;
     inv.acceptedAt = new Date();
+    inv.inviteeUserId = invitee.id;
     const updated = await this.repo.save(inv);
 
     if (!updated) {
       throw new NotFoundException('Invitation not found');
     }
 
-    const updatedUserSummary = await this.userService.dismissOnboarding(invitee.id);
+     const updatedUserSummary = await this.getSafeDismissedUserSummary(invitee);
+
+    // Publish notification to invitee: they've accepted and joined the team
+    this.rabbitmq.emit('notification.send', {
+      recipientId: invitee.id,
+      recipientEmail: invitee.email,
+      category: 'teams',
+      event: 'invitation.accepted',
+      title: `You've joined ${updated.teamId}`,
+      body: `You successfully accepted the invitation to join the team`,
+      link: `/my-team`,
+      metadata: { teamId: updated.teamId, invitationId: updated.id },
+      delivery: { inApp: true, email: false },
+    });
+
+    // Publish notification to inviter: invitee has accepted
+    this.rabbitmq.emit('notification.send', {
+      recipientId: updated.createdByUserId,
+      category: 'teams',
+      event: 'invitation.accepted_by_invitee',
+      title: `${invitee.email} accepted your invitation`,
+      body: `${invitee.email} has joined your team as ${updated.role}`,
+      link: `/my-team`,
+      metadata: { teamId: updated.teamId, acceptedByEmail: invitee.email, invitationId: updated.id },
+      delivery: { inApp: true, email: false },
+    });
+
 
     return this.buildAcceptResponse(
       {

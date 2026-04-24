@@ -7,7 +7,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <Suspense fallback={null}>
         <TopMostHeader />
       </Suspense>
-      {children}
+      {/* Reserve space for the fixed primary header so page content starts
+          below it instead of sliding underneath the pinned nav. */}
+      <div className="pt-[62px] lg:pt-[65px]">{children}</div>
     </>
   )
 }

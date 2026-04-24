@@ -64,8 +64,28 @@ export function verifyInviteLinkToken(token: string): InviteLinkTokenPayload | n
   }
 }
 
+let hasLoggedInviteSecretFallback = false;
+
 function getInviteTokenSecret(): string {
   const secret = process.env.INVITE_TOKEN_SECRET;
+
+  if (secret) {
+    return secret;
+  }
+
+  // Local/dev fallback to avoid hard crash when dedicated invite secret isn't configured.
+  if (process.env.NODE_ENV !== 'production') {
+    const fallback = process.env.JWT_SECRET || process.env.AUTH_REFRESH_SECRET;
+    if (fallback) {
+      if (!hasLoggedInviteSecretFallback) {
+        console.warn(
+          '[invitations] INVITE_TOKEN_SECRET is missing; using JWT fallback for local development.',
+        );
+        hasLoggedInviteSecretFallback = true;
+      }
+      return fallback;
+    }
+  }
 
   if (!secret) {
     throw new Error('INVITE_TOKEN_SECRET is not configured');

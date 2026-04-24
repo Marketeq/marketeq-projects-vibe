@@ -12,6 +12,7 @@ import { CreateTalentDto } from './dto/create-talent.dto';
 import { R2Service } from '../storage/r2.service';
 import { Skill } from '../skills/skills.entity';
 import { Experience } from '../experience/experience.entity';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class TalentService {
@@ -25,17 +26,41 @@ export class TalentService {
     @InjectRepository(Experience)
     private readonly experienceRepository: Repository<Experience>,
     private readonly r2Service: R2Service,
+    private readonly userService: UserService,
   ) {}
 
   async createTalent(
-    userId: string,
+    userClaims: { id: string; email?: string },
     dto: CreateTalentDto,
     avatar?: Express.Multer.File,
   ) {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
+    // Resolve the user row using the same fallback strategy as ClientService:
+    // first by id, then by email (handles legacy rows where the auth-service
+    // user id was regenerated), and finally by syncing from auth-service for
+    // brand-new users who have authenticated but never hit a user-service
+    // endpoint yet. This prevents a spurious NotFoundException for users who
+    // exist in auth-service but not here.
+    let user = await this.userRepository.findOne({
+      where: { id: userClaims.id },
+    });
+    if (!user && userClaims.email) {
+      user = await this.userRepository.findOne({
+        where: { email: userClaims.email },
+      });
+    }
+    if (!user && userClaims.id && userClaims.email) {
+      await this.userService.syncFromAuth({
+        id: userClaims.id,
+        email: userClaims.email,
+      });
+      user = await this.userRepository.findOne({
+        where: { id: userClaims.id },
+      });
+    }
     if (!user) {
       throw new NotFoundException('User not found');
     }
+    const userId = user.id;
 
     const existingUsername = dto.username
       ? await this.userRepository.findOne({

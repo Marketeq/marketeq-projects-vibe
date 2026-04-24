@@ -1,0 +1,15 @@
+{
+  "name": "@marketeq/scheduling-service",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "patch:compat": "node ./scripts/patch-install-compat.mjs",
+    "install:app": "npx corepack yarn@4.12.0 --cwd app install && npm run patch:compat",
+    "copy-static": "npx corepack yarn@4.12.0 --cwd app workspace @calcom/web copy-app-store-static && npx corepack yarn@4.12.0 --cwd app workspace @calcom/embed-core build-preview",
+    "build": "npx corepack yarn@4.12.0 --cwd app build",
+    "start": "sh -c 'cd app/apps/web && PORT=${PORT:-3024} ../../node_modules/.bin/next start --port ${PORT:-3024}'",
+    "start:dev": "npm run copy-static && sh -c 'cd app/apps/web && PORT=${PORT:-3024} ../../node_modules/.bin/next dev --turbopack --port ${PORT:-3024}'",
+    "lint": "npx corepack yarn@4.12.0 --cwd app lint",
+    "type-check": "npx corepack yarn@4.12.0 --cwd app type-check"
+  }
+}

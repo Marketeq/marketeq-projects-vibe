@@ -11,6 +11,7 @@ import { TagsController } from './tags.controller';
 import { CronSyncService } from './cron-sync-service';
 import { ContentModule } from '../content/content.module';
 import { TaxGroupsController } from './tax-groups.controller';
+import { CategoryConsumer } from '../consumers/category.consumer';
 
 @Module({
   imports: [
@@ -19,7 +20,7 @@ import { TaxGroupsController } from './tax-groups.controller';
     ContentModule,
   ],
   providers: [CategoryService, TagService, CronSyncService],
-  controllers: [CategoryController, TagsController, TaxGroupsController],
+  controllers: [CategoryController, TagsController, TaxGroupsController, CategoryConsumer],
   exports: [CategoryService, TagService],
 })
 export class CategoryModule {}

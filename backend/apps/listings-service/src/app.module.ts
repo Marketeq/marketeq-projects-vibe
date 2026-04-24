@@ -9,7 +9,9 @@ import { RelationalProjectPersistenceModule } from './publish/infrastructure/per
 import { PublishModule } from './publish/publish.module';
 import { OwnerTargetGrpcModule } from './owner-target/owner-target.module';
 import { JobListingModule } from './job-listing/job-listing.module';
-import { StrapiProjectsController } from './strapi-projects/strapi-projects.controller';
+import { ProjectsModule } from './projects/projects.module';
+import { TeamsModule } from './teams/team.module';
+import { ServicesModule } from './services/service.module';
 
 @Module({
   imports: [
@@ -22,18 +24,20 @@ import { StrapiProjectsController } from './strapi-projects/strapi-projects.cont
       url: process.env.DATABASE_URL,
       ssl: false,
       autoLoadEntities: true,
-      // TODO: set back to false before merging — local dev only.
-      synchronize: true,
+      synchronize: process.env.LISTINGS_DATABASE_SYNCHRONIZE === 'true',
     }),
     RelationalProjectPersistenceModule,
     PublishModule,
     ProjectSyncModule,
     OwnerTargetGrpcModule,
+    ProjectsModule,
     // Job listing feature module — registers all entities, services, and controllers.
     // ClientsModule (RABBITMQ_CLIENT) is registered inside JobListingModule.
     JobListingModule,
+    TeamsModule,
+    ServicesModule,
   ],
-  controllers: [AppController, ListingsController, StrapiProjectsController],
+  controllers: [AppController, ListingsController],
   providers: [ProjectService],
 })
 export class AppModule {}

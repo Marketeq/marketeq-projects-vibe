@@ -14,7 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -24,6 +24,7 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateMediaDto } from './dto/create-media.dto';
 import { CreateProjectPhaseDto } from './dto/create-phase.dto';
 import { CreateProjectTaskDto } from './dto/create-task.dto';
+import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategory.dto';
 import { UpdatePhaseDto } from './dto/update-phase.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { Request } from 'express';
@@ -53,6 +54,13 @@ export class PublishController {
       console.log('err', error);
       throw error;
     }
+  }
+
+  @Post('category/subcategory')
+  async createModeratedSubcategory(
+    @Body() dto: CreateModeratedSubcategoryDto,
+  ) {
+    return this.publishService.createModeratedSubcategory(dto);
   }
 
   @Post('project/:projectId/publish')

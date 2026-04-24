@@ -965,7 +965,7 @@ const TopSkills = ({
           <ComboboxInput
             size="lg"
             className="pl-3.5"
-            placeholder="Enter job titles related to your project"
+            placeholder="e.g., react.js, css"
             onChange={onChange}
             onKeyDown={onKeyDown}
             value={inputValue}
@@ -1919,7 +1919,7 @@ const MultiJobTitles = ({
           <ComboboxInput
             size="lg"
             className="pl-3.5"
-            placeholder="Enter job titles related to your project"
+            placeholder="e.g., react.js, css"
             value={inputValue}
             onFocus={() => setOpen(true)}
             onChange={(e) => {

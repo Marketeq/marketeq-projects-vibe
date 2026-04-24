@@ -15,18 +15,19 @@ import React from "react"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { useAutocomplete } from "@/libs/autocomplete"
 import options from "@/public/mock/options.json"
 import {
   AutocompleteAPI,
   type AutocompleteCategorySuggestion,
   type AutocompleteTypeSuggestion,
 } from "@/service/http/autocomplete"
+import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
-import { HTTPS, ONE_SECOND } from "@/utils/constants"
+import { HTTPS } from "@/utils/constants"
 import {
   cn,
-  debounce,
   getId,
   getIsNotEmpty,
   hookFormHasError,
@@ -216,7 +217,6 @@ declare module "@tanstack/react-table" {
   interface TableMeta<TData extends PhaseRow> {
     updateData: (rowIndex: number, columnId: string, value: unknown) => void
     openDurationDialog: (index: number) => void
-    roles: string[]
   }
 }
 
@@ -405,6 +405,161 @@ const meta = {
 } as const
 
 const DURATION_TYPE = ["days", "weeks", "hours"] as const
+const WORK_SCHEDULE_TYPE = ["full-time", "part-time", "custom"] as const
+const CUSTOM_SCHEDULE_PERIOD = ["day", "week", "month", "quarter"] as const
+
+const formatDurationUnit = (
+  value: number,
+  type: (typeof DURATION_TYPE)[number]
+) => {
+  if (value === 1) {
+    if (type === "days") return "day"
+    if (type === "weeks") return "week"
+    return "hour"
+  }
+
+  return type
+}
+
+const durationToDays = (
+  value: number,
+  type: (typeof DURATION_TYPE)[number]
+) => {
+  if (type === "weeks") return value * 7
+  if (type === "hours") return Math.max(1, Math.ceil(value / 24))
+  return value
+}
+
+const formatWorkScheduleLabel = (
+  value: (typeof WORK_SCHEDULE_TYPE)[number]
+) => {
+  if (value === "full-time") return "Full-time"
+  if (value === "part-time") return "Part-time"
+  return "Custom"
+}
+
+const formatCustomSchedulePeriodLabel = (
+  value: (typeof CUSTOM_SCHEDULE_PERIOD)[number]
+) => {
+  if (value === "day") return "per day"
+  if (value === "week") return "per week"
+  if (value === "month") return "per month"
+  return "per quarter"
+}
+
+const getHoursPerDayFromSchedule = (schedule: {
+  type: (typeof WORK_SCHEDULE_TYPE)[number]
+  custom?: {
+    hours?: number
+    period?: (typeof CUSTOM_SCHEDULE_PERIOD)[number]
+  }
+}) => {
+  if (schedule.type === "full-time") return 8
+  if (schedule.type === "part-time") return 4
+
+  const customHours = Number(schedule.custom?.hours)
+  const period = schedule.custom?.period
+
+  if (!Number.isFinite(customHours) || customHours <= 0 || !period) return 0
+
+  if (period === "day") return customHours
+  if (period === "week") return customHours / 5
+  if (period === "month") return customHours / 20
+  return customHours / 65
+}
+
+const getHoursPerWeekFromSchedule = (schedule: {
+  type: (typeof WORK_SCHEDULE_TYPE)[number]
+  custom?: {
+    hours?: number
+    period?: (typeof CUSTOM_SCHEDULE_PERIOD)[number]
+  }
+}) => {
+  if (schedule.type === "full-time") return 40
+  if (schedule.type === "part-time") return 20
+
+  const customHours = Number(schedule.custom?.hours)
+  const period = schedule.custom?.period
+
+  if (!Number.isFinite(customHours) || customHours <= 0 || !period) return 0
+
+  if (period === "day") return customHours * 5
+  if (period === "week") return customHours
+  if (period === "month") return customHours / 4
+  return customHours / 13
+}
+
+const getEstimatedHoursFromTask = (
+  task: {
+    duration: {
+      value: number
+      type: (typeof DURATION_TYPE)[number]
+    }
+    workSchedule: {
+      type: (typeof WORK_SCHEDULE_TYPE)[number]
+      custom?: {
+        hours?: number
+        period?: (typeof CUSTOM_SCHEDULE_PERIOD)[number]
+      }
+    }
+  },
+  options?: {
+    roundForPayload?: boolean
+  }
+) => {
+  const durationValue = Number(task.duration.value)
+
+  if (!Number.isFinite(durationValue) || durationValue <= 0) return undefined
+
+  let estimatedHours: number | undefined
+
+  if (task.duration.type === "hours") {
+    estimatedHours = durationValue
+  } else if (task.duration.type === "days") {
+    const hoursPerDay = getHoursPerDayFromSchedule(task.workSchedule)
+    estimatedHours = hoursPerDay > 0 ? durationValue * hoursPerDay : undefined
+  } else {
+    const hoursPerWeek = getHoursPerWeekFromSchedule(task.workSchedule)
+    estimatedHours = hoursPerWeek > 0 ? durationValue * hoursPerWeek : undefined
+  }
+
+  if (estimatedHours === undefined) return undefined
+
+  if (options?.roundForPayload) {
+    return Math.max(1, Math.round(estimatedHours))
+  }
+
+  return Math.round(estimatedHours * 10) / 10
+}
+
+const formatEstimatedHoursLabel = (value?: number) => {
+  if (value === undefined) return "TBD"
+
+  if (value > 0 && value < 1) return "< 1 hour"
+
+  const roundedValue = Math.max(1, Math.round(value))
+  const unit = roundedValue === 1 ? "hour" : "hours"
+
+  return `${roundedValue} ${unit}`
+}
+
+const getTaskEffortLabel = (task: {
+  duration: {
+    value: number
+    type: (typeof DURATION_TYPE)[number]
+  }
+  workSchedule: {
+    type: (typeof WORK_SCHEDULE_TYPE)[number]
+    custom?: {
+      hours?: number
+      period?: (typeof CUSTOM_SCHEDULE_PERIOD)[number]
+    }
+  }
+}) => {
+  const estimatedHours = getEstimatedHoursFromTask(task)
+
+  return formatEstimatedHoursLabel(estimatedHours)
+}
 const EXPERIENCE_LEVELS = [
   "Student",
   "Junior",
@@ -431,6 +586,45 @@ const taskFormSchema = z.object({
       required_error: "Please select an option",
     }),
   }),
+  workSchedule: z
+    .object({
+      type: z.enum(WORK_SCHEDULE_TYPE, {
+        invalid_type_error: "Please select an option",
+        required_error: "Please select an option",
+      }),
+      custom: z
+        .object({
+          hours: z.coerce
+            .number({
+              invalid_type_error: "Please enter a valid number",
+            })
+            .optional(),
+          period: z.enum(CUSTOM_SCHEDULE_PERIOD).optional(),
+        })
+        .optional(),
+    })
+    .superRefine((value, context) => {
+      if (value.type !== "custom") return
+
+      if (
+        !Number.isFinite(value.custom?.hours) ||
+        Number(value.custom?.hours) <= 0
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Please enter valid custom hours",
+          path: ["custom", "hours"],
+        })
+      }
+
+      if (!value.custom?.period) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Please select an option",
+          path: ["custom", "period"],
+        })
+      }
+    }),
 })
 
 const rowSchema = taskFormSchema.merge(
@@ -646,7 +840,22 @@ const Sidebar = () => {
   )
 }
 
-const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
+const Header = ({
+  onSaveExit,
+  onPreview,
+}: {
+  onSaveExit?: () => void
+  onPreview?: () => void
+}) => {
+  const { currentStep } = useStepRootContext()
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
+  const helpLabel =
+    currentStep === 0
+      ? "Project info help"
+      : currentStep === 1
+        ? "Media help"
+        : "Project scope help"
+
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200">
       <h3 className="text-sm leading-[16.94px] text-gray-900 font-semibold">
@@ -661,15 +870,25 @@ const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
                 className="text-gray-500"
                 variant="outlined"
                 visual="gray"
+                onClick={() => setIsHelpOpen(true)}
               >
                 <HelpCircle className="size-4" />
               </IconButton>
             </TooltipTrigger>
-            <TooltipContent>Help</TooltipContent>
+            <TooltipContent>{helpLabel}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
 
-        <Button className="bg-primary-500/15 text-primary-500 hover:bg-primary-500 hover:text-white">
+        <Dialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
+          <DialogContent className="max-w-[420px] bg-transparent p-0 shadow-none border-0">
+            <CurrentStepHelpContent currentStep={currentStep} />
+          </DialogContent>
+        </Dialog>
+
+        <Button
+          className="bg-primary-500/15 text-primary-500 hover:bg-primary-500 hover:text-white"
+          onClick={onPreview}
+        >
           <Eye className="size-[15px]" /> Preview
         </Button>
         <Button
@@ -719,10 +938,56 @@ const BottomBar = ({
         await new Promise((resolve) => setTimeout(resolve, remainingMs))
       }
     }
+    const ensureCustomSubcategories = async () => {
+      try {
+        const response = await CategoryAPI.getTree()
+        const nodes: CategoryTreeNode[] = Array.isArray(response?.data)
+          ? response.data
+          : []
+        const categoryNodesByName = indexCategoryTreeByName(nodes)
+        const creations = new Map<string, { name: string; parentUuid?: string }>()
+
+        ;(projectInfo.category ?? []).forEach((entry) => {
+          const categoryName = entry?.category?.trim()
+          if (!categoryName) return
+
+          const categoryNode = categoryNodesByName.get(categoryName)
+          if (!categoryNode) return
+
+          const knownSubcategories = new Set(
+            collectCategoryDescendants(categoryNode).map((node) =>
+              node.name.trim().toLowerCase()
+            )
+          )
+
+          ;(entry.subCategories ?? []).forEach((subCategory) => {
+            const trimmedSubCategory = subCategory.trim()
+            if (!trimmedSubCategory) return
+
+            if (knownSubcategories.has(trimmedSubCategory.toLowerCase())) {
+              return
+            }
+
+            creations.set(`${categoryNode.uuid}:${trimmedSubCategory.toLowerCase()}`, {
+              name: trimmedSubCategory,
+              parentUuid: categoryNode.uuid,
+            })
+          })
+        })
+
+        for (const creation of creations.values()) {
+          await ProjectAPI.CreateModeratedSubcategory(creation)
+        }
+      } catch (error) {
+        // Keep project publishing functional even when category sync is unavailable.
+      }
+    }
 
     // Show "submitted for review" state immediately while validation/publish APIs run.
     setSubmissionOutcome({ status: "in_review" })
     setIsProjectSubmitted(true)
+
+    await ensureCustomSubcategories()
 
     const categories = Array.from(
       new Set(
@@ -744,6 +1009,12 @@ const BottomBar = ({
       title: projectInfo.title,
       categories,
       subCategories,
+      categorySelections: (projectInfo.category ?? []).map((value) => ({
+        category: value?.category?.trim() ?? "",
+        subCategories: (value?.subCategories ?? [])
+          .map((subCategory) => subCategory.trim())
+          .filter(Boolean),
+      })),
       industries: projectInfo.industry,
       tags: projectInfo.tags,
       skills: projectInfo.skills,
@@ -870,13 +1141,33 @@ const BottomBar = ({
                   return null
                 }
 
+                const estimatedHours = getEstimatedHoursFromTask(
+                  {
+                    duration: {
+                      value: Number(durationValue),
+                      type: durationType,
+                    },
+                    workSchedule: {
+                      type: row?.workSchedule?.type ?? "full-time",
+                      custom: row?.workSchedule?.custom,
+                    },
+                  },
+                  {
+                    roundForPayload: true,
+                  }
+                )
+
                 return {
                   taskName,
                   role,
                   location: [locationValue],
                   experience: [experienceLevel],
                   experienceLevel,
-                  duration: `${durationValue} ${durationType}`,
+                  duration: `${durationValue} ${formatDurationUnit(
+                    durationValue,
+                    durationType
+                  )}`,
+                  estimatedHours,
                   phaseId: "temporary-required-string",
                 }
               })
@@ -886,11 +1177,13 @@ const BottomBar = ({
               return null
             }
 
+            const { startDay, endDay } = getPhaseDayRange(phases ?? [], phaseIndex)
+
             return {
               name: phaseName,
               stageName: `Stage ${phaseIndex + 1}`,
-              startDay: 1,
-              endDay: 8,
+              startDay,
+              endDay,
               order: phaseIndex + 1,
               projectId: String(projectId),
               tasks: rows,
@@ -1083,14 +1376,13 @@ const ProjectInfoTip = ({
         <div className="flex items-center gap-x-3">
           <CheckCircle className="size-5 shrink-0 text-primary-500" />{" "}
           <span className="text-sm leading-5 font-semibold text-gray-700">
-            Focus on the purpose
+            Keep it short and sweet
           </span>
         </div>
 
         <div className="mt-3">
           <span className="text-sm leading-[16.94px] text-gray-500">
-            Use impactful keywords that communicate value and make it easy to
-            identify in a list of projects.
+            Try to trim your project title to be less than 6 words.
           </span>
         </div>
       </div>
@@ -1101,24 +1393,44 @@ const ProjectInfoTip = ({
 const projectInfoSchema = z.object({
   title: z
     .string()
+    .trim()
+    .min(1, "Please enter a project title")
     .min(10, "Please enter at least 10 character(s)")
     .max(120, "Please do not enter more than 120 character(s)"),
   category: z
     .array(
-      z.object({
-        category: z
-          .string({
-            required_error: "Please enter/select a category",
-          })
-          .min(1, "Please select at least 1 character(s)"),
-        subCategories: z
-          .array(z.string(), {
-            required_error: "Please enter/select at least 1 sub-category(s)",
-          })
-          .min(1, "Please enter/select at least 1 category(s)"),
-      })
+      z
+        .object({
+          category: z.string().default(""),
+          subCategories: z
+            .array(z.string())
+            .max(5, "You can add a maximum of five (5) sub categories"),
+        })
+        .superRefine((value, ctx) => {
+          const selectedCategory = value.category.trim()
+          const selectedSubCategories = value.subCategories.filter((subCategory) =>
+            subCategory.trim()
+          )
+
+          if (!selectedCategory) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["category"],
+              message: "Please select a category",
+            })
+            return
+          }
+
+          if (!selectedSubCategories.length) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["subCategories"],
+              message: "Please select at least 1 sub-category for this category",
+            })
+          }
+        })
     )
-    .length(3, "Please enter/select all the categories and sub-categories"),
+    .length(3, "Please select all required categories"),
   industry: z
     .array(z.string(), {
       required_error: "Please enter/select at least 1 industry(s)",
@@ -1149,6 +1461,25 @@ const projectInfoSchema = z.object({
 
 type ProjectInfoFormValues = z.infer<typeof projectInfoSchema>
 
+const PROJECT_INFO_PROGRESS_FIELDS: Array<keyof ProjectInfoFormValues> = [
+  "title",
+  "category",
+  "industry",
+  "shortDescription",
+  "fullDescription",
+  "tags",
+  "skills",
+]
+
+const TITLE_MAX_LENGTH = 120
+const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const FULL_DESCRIPTION_MAX_LENGTH = 2000
+const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
+const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
+  "Please do not enter more than 300 character(s)"
+const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
+  "Please do not enter more than 2,000 character(s)"
+
 const FALLBACK_CATEGORY_OPTIONS = [
   "Web Development",
   "Mobile Development",
@@ -1163,6 +1494,10 @@ const FALLBACK_CATEGORY_OPTIONS = [
   "Cloud Computing",
   "Cybersecurity",
 ]
+
+const MAX_SUBCATEGORIES_PER_CATEGORY = 5
+const SUBCATEGORY_LIMIT_ERROR =
+  "You can add a maximum of five (5) sub categories"
 
 const FALLBACK_SUBCATEGORY_OPTIONS = options.value
 const FALLBACK_INDUSTRY_OPTIONS = [
@@ -1202,9 +1537,7 @@ const FALLBACK_SKILL_OPTIONS = [
   "API Integration",
 ]
 
-const normalizeAutocompleteLabel = (
-  item: AutocompleteCategorySuggestion | AutocompleteTypeSuggestion
-) => {
+const normalizeAutocompleteLabel = (item: AutocompleteTypeSuggestion) => {
   if ("value" in item && typeof item.value === "string") return item.value
   if ("label" in item && typeof item.label === "string") return item.label
   return ""
@@ -1214,6 +1547,61 @@ const getUniqueOptions = (values: string[]) =>
   Array.from(
     new Set(values.map((value) => value.trim()).filter((value) => value.length))
   )
+
+type SuggestedCategoryOption = {
+  category: string
+  subCategory: string
+}
+
+const DEFAULT_SUGGESTED_CATEGORIES: SuggestedCategoryOption[] = [
+  { category: "Design", subCategory: "UI/UX Design" },
+  { category: "Development", subCategory: "Mobile App" },
+  { category: "Data Science", subCategory: "Machine Learning" },
+]
+
+const isActiveCategoryNode = (node: CategoryTreeNode) => node.approved
+
+const collectCategoryDescendants = (node?: CategoryTreeNode): CategoryTreeNode[] => {
+  if (!node?.children?.length) return []
+
+  return node.children.flatMap((child) => {
+    const descendants = collectCategoryDescendants(child)
+    return isActiveCategoryNode(child) ? [child, ...descendants] : descendants
+  })
+}
+
+const collectSelectableCategories = (nodes: CategoryTreeNode[]) => {
+  const secondLevelNodes = nodes.flatMap((node) =>
+    (node.children ?? []).filter(isActiveCategoryNode)
+  )
+
+  return getIsNotEmpty(secondLevelNodes)
+    ? secondLevelNodes
+    : nodes.filter(isActiveCategoryNode)
+}
+
+const findSuggestedSubCategory = (node?: CategoryTreeNode): string | null => {
+  const [firstDescendant] = collectCategoryDescendants(node)
+  return firstDescendant?.name ?? null
+}
+
+const indexCategoryTreeByName = (nodes: CategoryTreeNode[]) => {
+  const index = new Map<string, CategoryTreeNode>()
+
+  const visit = (entries: CategoryTreeNode[]) => {
+    entries.forEach((entry) => {
+      if (isActiveCategoryNode(entry)) {
+        index.set(entry.name, entry)
+      }
+      if (entry.children?.length) {
+        visit(entry.children)
+      }
+    })
+  }
+
+  visit(nodes)
+  return index
+}
 type ProjectInfoProps = {
   setProgress?: (val: number) => void
 }
@@ -1231,30 +1619,28 @@ const ProjectInfo = ({
     trigger,
   } = methods
 
-  const [suggested, setSuggested] = useState([
-    { category: "Design", subCategory: "UI/UX Design" },
-    { category: "Development", subCategory: "Mobile App" },
-    { category: "Data Science", subCategory: "Machine Learning" },
-  ])
+  const [suggested, setSuggested] = useState<SuggestedCategoryOption[]>(
+    DEFAULT_SUGGESTED_CATEGORIES
+  )
 
   const [showSuggestions] = useState(true)
   const [activeCategoryIndex, setActiveCategoryIndex] = useState(0)
+  const [categoryTree, setCategoryTree] = useState<CategoryTreeNode[]>([])
   const [categoryOptions, setCategoryOptions] = useState<string[]>(
     FALLBACK_CATEGORY_OPTIONS
   )
-  const [subCategoryOptions, setSubCategoryOptions] = useState<string[]>(
-    (FALLBACK_SUBCATEGORY_OPTIONS as string[]) ?? []
-  )
+  const [subCategoryOptions, setSubCategoryOptions] = useState<string[]>([])
   const [industryOptions, setIndustryOptions] = useState<string[]>(
     FALLBACK_INDUSTRY_OPTIONS
   )
   const [tagOptions, setTagOptions] = useState<string[]>(FALLBACK_TAG_OPTIONS)
   const [skills, setSkills] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
+  const [suggestedSkillOptions] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
   const categoryRequestRef = useRef(0)
-  const typeRequestRef = useRef(0)
   const categoryDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   )
+  const typeRequestRef = useRef(0)
   const typeDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   )
@@ -1269,55 +1655,222 @@ const ProjectInfo = ({
     control: methods.control,
     name: "category",
   })
+  const categoryNodesByName = useMemo(() => {
+    return indexCategoryTreeByName(categoryTree)
+  }, [categoryTree])
+  const getSubCategoryOptionsForCategory = useCallback(
+    (categoryName?: string, query = "") => {
+      if (!categoryName) return []
 
-  const { error } = projectInfoSchema.safeParse(projectInfoValues)
-  const totalFields = keys(methods.control._fields).length
-  const totalFieldErrors = error ? keys(error.flatten().fieldErrors).length : 0
-  const progressValue = parseInt(
-    `${((totalFields - totalFieldErrors) / totalFields) * 33}`
+      const normalizedQuery = query.trim().toLowerCase()
+      const activeNode = categoryNodesByName.get(categoryName)
+      const sourceNodes = activeNode ? collectCategoryDescendants(activeNode) : []
+
+      return getUniqueOptions(
+        sourceNodes
+          .map((node) => node.name)
+          .filter((name) =>
+            normalizedQuery ? name.toLowerCase().includes(normalizedQuery) : true
+          )
+      )
+    },
+    [categoryNodesByName, categoryTree]
+  )
+  const handleSubCategoryChange = useCallback(
+    (fieldName: `category.${0 | 1 | 2}.subCategories`, onChange: (value: string[]) => void) =>
+      (details: { value: string[] }) => {
+        if (details.value.length > MAX_SUBCATEGORIES_PER_CATEGORY) {
+          methods.setError(fieldName, {
+            type: "manual",
+            message: SUBCATEGORY_LIMIT_ERROR,
+          })
+          return
+        }
+
+        methods.clearErrors(fieldName)
+        onChange(details.value)
+        void methods.trigger(fieldName)
+      },
+    [methods]
+  )
+  const handleCategorySelection = useCallback(
+    (
+      index: 0 | 1 | 2,
+      categoryName: string,
+      onChange: (value: string) => void
+    ) => {
+      onChange(categoryName)
+      setActiveCategoryIndex(index)
+
+      const availableSubCategories = getSubCategoryOptionsForCategory(categoryName)
+      setSubCategoryOptions(availableSubCategories)
+
+      const fieldName = `category.${index}.subCategories` as const
+      const currentSubCategories = methods.getValues(fieldName) ?? []
+      const nextSubCategories = currentSubCategories.filter((value) =>
+        availableSubCategories.includes(value)
+      )
+
+      if (nextSubCategories.length !== currentSubCategories.length) {
+        methods.setValue(fieldName, nextSubCategories, {
+          shouldDirty: true,
+          shouldTouch: true,
+          shouldValidate: false,
+        })
+      }
+
+      methods.clearErrors(`category.${index}.category`)
+      methods.clearErrors(`category.${index}.subCategories`)
+    },
+    [getSubCategoryOptionsForCategory, methods]
   )
 
-  const fetchCategoriesAutocomplete = useCallback((query: string) => {
-    const trimmedQuery = query.trim()
-    if (!trimmedQuery) return
-    if (categoryDebounceTimerRef.current) {
-      clearTimeout(categoryDebounceTimerRef.current)
-    }
+  const completedProjectInfoFields = PROJECT_INFO_PROGRESS_FIELDS.filter(
+    (fieldName) =>
+      projectInfoSchema.shape[fieldName]
+        .safeParse(projectInfoValues?.[fieldName]).success
+  ).length
+  const progressValue = Math.max(
+    0,
+    Math.min(
+      33,
+      Math.round(
+        (completedProjectInfoFields / PROJECT_INFO_PROGRESS_FIELDS.length) * 33
+      )
+    )
+  )
+  const titleCharacterCount = projectInfoValues.title?.length || 0
+  const titleHasError = hookFormHasError({
+    errors,
+    name: "title",
+  })
+  const shortDescriptionHasError = hookFormHasError({
+    errors,
+    name: "shortDescription",
+  })
+  const fullDescriptionHasError = hookFormHasError({
+    errors,
+    name: "fullDescription",
+  })
+  const shortDescriptionField = methods.register("shortDescription", {
+    onBlur: () => trigger("shortDescription"),
+  })
+  const fullDescriptionField = methods.register("fullDescription", {
+    onBlur: () => trigger("fullDescription"),
+  })
 
-    categoryDebounceTimerRef.current = setTimeout(async () => {
-      const currentRequestId = ++categoryRequestRef.current
-      try {
-        const response = await AutocompleteAPI.getCategories(trimmedQuery)
-        if (currentRequestId !== categoryRequestRef.current) return
+  const triggerMaxLengthError = useCallback(
+    (
+      fieldName: "title" | "shortDescription" | "fullDescription",
+      message: string
+    ) => {
+      methods.setError(fieldName, {
+        type: "manual",
+        message,
+      })
+    },
+    [methods]
+  )
 
-        const values: AutocompleteCategorySuggestion[] = Array.isArray(
-          response?.data
-        )
-          ? response.data
-          : []
-        const categories = getUniqueOptions(
-          values
-            .filter((item) => item.type === "category")
-            .map((item) => normalizeAutocompleteLabel(item))
-        )
-        const subCategories = getUniqueOptions(
-          values
-            .filter((item) => item.type === "subcategory")
-            .map((item) => normalizeAutocompleteLabel(item))
-        )
+  const shouldBlockMaxLengthInput = useCallback(
+    (
+      event:
+        | React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>
+        | React.ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+      currentLength: number,
+      maxLength: number
+    ) => {
+      const selectionLength =
+        event.currentTarget.selectionEnd !== null &&
+        event.currentTarget.selectionStart !== null
+          ? event.currentTarget.selectionEnd - event.currentTarget.selectionStart
+          : 0
 
-        if (getIsNotEmpty(categories)) {
-          setCategoryOptions(categories)
-          setIndustryOptions(categories)
+      if ("key" in event) {
+        if (
+          event.ctrlKey ||
+          event.metaKey ||
+          event.altKey ||
+          event.key.length !== 1
+        ) {
+          return false
         }
-        if (getIsNotEmpty(subCategories)) {
-          setSubCategoryOptions(subCategories)
-        }
-      } catch (error) {
-        // Keep fallback options when autocomplete is unavailable.
+
+        return currentLength - selectionLength >= maxLength
       }
-    }, 250)
-  }, [])
+
+      const pastedText = event.clipboardData.getData("text")
+      return currentLength - selectionLength + pastedText.length > maxLength
+    },
+    []
+  )
+
+  const fetchCategoriesAutocomplete = useCallback(
+    (index: 0 | 1 | 2, query: string) => {
+      const trimmedQuery = query.trim()
+      setActiveCategoryIndex(index)
+      const activeCategoryName = Array.isArray(categoryValues)
+        ? categoryValues[index]?.category
+        : undefined
+      const fallbackOptions = getSubCategoryOptionsForCategory(activeCategoryName)
+
+      if (!activeCategoryName) {
+        setSubCategoryOptions([])
+        return
+      }
+
+      if (!trimmedQuery) {
+        setSubCategoryOptions(fallbackOptions)
+        return
+      }
+      if (categoryDebounceTimerRef.current) {
+        clearTimeout(categoryDebounceTimerRef.current)
+      }
+
+      categoryDebounceTimerRef.current = setTimeout(async () => {
+        const currentRequestId = ++categoryRequestRef.current
+
+        try {
+          const response = await AutocompleteAPI.getCategories(trimmedQuery)
+          if (currentRequestId !== categoryRequestRef.current) return
+
+          const values: AutocompleteCategorySuggestion[] = Array.isArray(
+            response?.data
+          )
+            ? response.data
+            : []
+
+          const scopedSubCategoryOptions =
+            getSubCategoryOptionsForCategory(activeCategoryName)
+          const allowedSubCategories = new Set(
+            scopedSubCategoryOptions.map((value) => value.toLowerCase())
+          )
+          const hasScopedSubCategories = allowedSubCategories.size > 0
+          const matchingSubCategories = getUniqueOptions(
+            values
+              .filter((item) => item.type === "subcategory")
+              .map((item) => item.value.trim())
+              .filter((value) =>
+                activeCategoryName && hasScopedSubCategories
+                  ? allowedSubCategories.has(value.toLowerCase())
+                  : true
+              )
+          )
+
+          setSubCategoryOptions(
+            getIsNotEmpty(matchingSubCategories)
+              ? matchingSubCategories
+              : getSubCategoryOptionsForCategory(activeCategoryName, trimmedQuery)
+          )
+        } catch (error) {
+          setSubCategoryOptions(
+            getSubCategoryOptionsForCategory(activeCategoryName, trimmedQuery)
+          )
+        }
+      }, 250)
+    },
+    [categoryValues, getSubCategoryOptionsForCategory]
+  )
 
   const fetchTypeAutocomplete = useCallback(
     (type: string, query: string, onSuccess: (options: string[]) => void) => {
@@ -1351,8 +1904,40 @@ const ProjectInfo = ({
     },
     []
   )
-
   useEffect(() => {
+    const loadCategoryTree = async () => {
+      try {
+        const response = await CategoryAPI.getTree()
+        const nodes: CategoryTreeNode[] = Array.isArray(response?.data)
+          ? response.data
+          : []
+        const selectableCategories = collectSelectableCategories(nodes)
+        const nextCategoryOptions = getUniqueOptions(
+          selectableCategories.map((node) => node.name)
+        )
+        const nextSuggested = selectableCategories
+          .map((node) => {
+            const subCategory = findSuggestedSubCategory(node)
+            return subCategory
+              ? { category: node.name, subCategory }
+              : null
+          })
+          .filter((value): value is SuggestedCategoryOption => value !== null)
+
+        setCategoryTree(nodes)
+        if (getIsNotEmpty(nextCategoryOptions)) {
+          setCategoryOptions(nextCategoryOptions)
+        }
+        if (getIsNotEmpty(nextSuggested)) {
+          setSuggested(nextSuggested)
+        }
+      } catch (error) {
+        // Keep fallback options when category-service is unavailable.
+      }
+    }
+
+    void loadCategoryTree()
+
     return () => {
       if (categoryDebounceTimerRef.current) {
         clearTimeout(categoryDebounceTimerRef.current)
@@ -1362,24 +1947,79 @@ const ProjectInfo = ({
       }
     }
   }, [])
+  useEffect(() => {
+    const activeCategoryName = Array.isArray(categoryValues)
+      ? categoryValues[activeCategoryIndex]?.category
+      : undefined
+
+    setSubCategoryOptions(getSubCategoryOptionsForCategory(activeCategoryName))
+  }, [activeCategoryIndex, categoryValues, getSubCategoryOptionsForCategory])
   // NEW: Report progress to parent whenever it changes
   useEffect(() => {
     setProgress?.(progressValue) //calls the prop passed from PublishProject
   }, [progressValue, setProgress])
 
-  const suggestedSkills = skills.filter(
+  const suggestedSkills = suggestedSkillOptions.filter(
     (value) => !projectInfoValues.skills?.includes(value)
   )
+  const suggestedSkillsForDisplay = suggestedSkills.slice(0, 3)
   const activeCategory = Array.isArray(categoryValues)
     ? categoryValues[activeCategoryIndex]
     : null
-  const suggestedForActiveCategory = suggested.filter(
-    ({ category, subCategory }) =>
-      !(
-        activeCategory?.category === category &&
-        Array.isArray(activeCategory?.subCategories) &&
-        activeCategory.subCategories.includes(subCategory)
+  const getAvailableCategoriesForIndex = useCallback(
+    (index: number, currentValue?: string) => {
+      const selectedCategories = Array.isArray(categoryValues)
+        ? categoryValues
+            .map((item, itemIndex) =>
+              itemIndex === index ? null : item?.category?.trim()
+            )
+            .filter(
+              (item): item is string => typeof item === "string" && item.length > 0
+            )
+        : []
+
+      return categoryOptions.filter(
+        (category) => category === currentValue || !selectedCategories.includes(category)
       )
+    },
+    [categoryOptions, categoryValues]
+  )
+  const selectedSuggestedPairs = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(categoryValues) ? categoryValues : [])
+          .flatMap((item) =>
+            item?.category && Array.isArray(item.subCategories)
+              ? item.subCategories.map(
+                  (subCategory) => `${item.category}::${subCategory}`
+                )
+              : []
+          )
+      ),
+    [categoryValues]
+  )
+  const selectedCategoryNames = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(categoryValues) ? categoryValues : [])
+          .map((item) => item?.category?.trim())
+          .filter(
+            (category): category is string =>
+              typeof category === "string" && category.length > 0
+          )
+      ),
+    [categoryValues]
+  )
+  const suggestedForDisplay = useMemo(
+    () =>
+      suggested
+        .filter(
+          ({ category, subCategory }) =>
+            !selectedCategoryNames.has(category) &&
+            !selectedSuggestedPairs.has(`${category}::${subCategory}`)
+        )
+        .slice(0, 3),
+    [selectedCategoryNames, selectedSuggestedPairs, suggested]
   )
 
   return (
@@ -1453,7 +2093,7 @@ const ProjectInfo = ({
                   </HelperText>
 
                   <span className="text-xs leading-[14.52px] text-gray-500">
-                    {projectInfoValues.title?.length || 0}/120
+                    {titleCharacterCount}/{TITLE_MAX_LENGTH}
                   </span>
                 </div>
               </div>
@@ -1462,12 +2102,51 @@ const ProjectInfo = ({
                 id="title"
                 type="text"
                 placeholder="Enter Title"
-                {...methods.register("title")}
-                onBlur={() => methods.trigger("title")}
-                isInvalid={hookFormHasError({
-                  errors,
-                  name: "title",
-                })}
+                value={projectInfoValues.title ?? ""}
+                maxLength={TITLE_MAX_LENGTH}
+                onChange={(event) => {
+                  methods.setValue(
+                    "title",
+                    event.target.value.slice(0, TITLE_MAX_LENGTH),
+                    {
+                      shouldDirty: true,
+                      shouldTouch: true,
+                      shouldValidate: false,
+                    }
+                  )
+                  if (
+                    titleHasError &&
+                    get(errors, "title.type") === "manual"
+                  ) {
+                    methods.clearErrors("title")
+                  }
+                }}
+                onBlur={() => void methods.trigger("title")}
+                onKeyDown={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      projectInfoValues.title?.length || 0,
+                      TITLE_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                  }
+                }}
+                onPaste={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      projectInfoValues.title?.length || 0,
+                      TITLE_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                  }
+                }}
+                isInvalid={titleHasError}
               />
 
               <HookFormErrorMessage
@@ -1507,7 +2186,12 @@ const ProjectInfo = ({
                       control={methods.control}
                       name="category.0.category"
                       render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox value={value} onChange={onChange}>
+                        <Listbox
+                          value={value}
+                          onChange={(nextValue) =>
+                            handleCategorySelection(0, nextValue, onChange)
+                          }
+                        >
                           <ListboxButton
                             placeholder="Add Category"
                             className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
@@ -1521,7 +2205,7 @@ const ProjectInfo = ({
                             )}
                           </ListboxButton>
                           <ListboxOptions>
-                            {categoryOptions.map((category) => (
+                            {getAvailableCategoriesForIndex(0, value).map((category) => (
                               <ListboxOption key={category} value={category}>
                                 {category}
                               </ListboxOption>
@@ -1537,7 +2221,10 @@ const ProjectInfo = ({
                     control={methods.control}
                     render={({ field: { onChange, ...field } }) => (
                       <TagsInputRoot
-                        onValueChange={(details) => onChange(details.value)}
+                        onValueChange={handleSubCategoryChange(
+                          "category.0.subCategories",
+                          onChange
+                        )}
                         {...field}
                         className="space-y-1.5"
                       >
@@ -1554,7 +2241,7 @@ const ProjectInfo = ({
                                     <TagsInputItemPreview
                                       visual="primary"
                                       size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50"
+                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
                                     >
                                       <TagsInputItemText>
                                         {value}
@@ -1567,14 +2254,25 @@ const ProjectInfo = ({
                                   </TagsInputItem>
                                 ))}
                                 <TagsInputInput
-                                  placeholder="Add Sub-Category(s)"
+                                  placeholder={
+                                    tagsInput.value.length
+                                      ? ""
+                                      : "Add Sub-Category(s)"
+                                  }
                                   options={subCategoryOptions}
                                   allowCreateOption
                                   className="flex-1 min-w-[100px] "
                                   onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(value)
+                                    fetchCategoriesAutocomplete(0, value)
                                   }}
-                                  onFocus={() => setActiveCategoryIndex(0)}
+                                  onFocus={() => {
+                                    setActiveCategoryIndex(0)
+                                    setSubCategoryOptions(
+                                      getSubCategoryOptionsForCategory(
+                                        categoryValues?.[0]?.category
+                                      )
+                                    )
+                                  }}
                                 />
                                 <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
                               </TagsInputControl>
@@ -1610,7 +2308,12 @@ const ProjectInfo = ({
                       control={methods.control}
                       name="category.1.category"
                       render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox value={value} onChange={onChange}>
+                        <Listbox
+                          value={value}
+                          onChange={(nextValue) =>
+                            handleCategorySelection(1, nextValue, onChange)
+                          }
+                        >
                           <ListboxButton
                             placeholder="Add Category"
                             className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
@@ -1624,7 +2327,7 @@ const ProjectInfo = ({
                             )}
                           </ListboxButton>
                           <ListboxOptions>
-                            {categoryOptions.map((category) => (
+                            {getAvailableCategoriesForIndex(1, value).map((category) => (
                               <ListboxOption key={category} value={category}>
                                 {category}
                               </ListboxOption>
@@ -1640,7 +2343,10 @@ const ProjectInfo = ({
                     control={methods.control}
                     render={({ field: { onChange, ...field } }) => (
                       <TagsInputRoot
-                        onValueChange={(details) => onChange(details.value)}
+                        onValueChange={handleSubCategoryChange(
+                          "category.1.subCategories",
+                          onChange
+                        )}
                         {...field}
                         className="space-y-1.5"
                       >
@@ -1661,7 +2367,7 @@ const ProjectInfo = ({
                                     <TagsInputItemPreview
                                       visual="primary"
                                       size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50"
+                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
                                     >
                                       <TagsInputItemText>
                                         {value}
@@ -1675,13 +2381,24 @@ const ProjectInfo = ({
                                 ))}
                                 <TagsInputInput
                                   options={subCategoryOptions}
-                                  placeholder="Add Sub-Category(s)"
+                                  placeholder={
+                                    tagsInput.value.length
+                                      ? ""
+                                      : "Add Sub-Category(s)"
+                                  }
                                   allowCreateOption
                                   className="flex-1 min-w-[100px]"
                                   onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(value)
+                                    fetchCategoriesAutocomplete(1, value)
                                   }}
-                                  onFocus={() => setActiveCategoryIndex(1)}
+                                  onFocus={() => {
+                                    setActiveCategoryIndex(1)
+                                    setSubCategoryOptions(
+                                      getSubCategoryOptionsForCategory(
+                                        categoryValues?.[1]?.category
+                                      )
+                                    )
+                                  }}
                                 />
 
                                 <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
@@ -1718,7 +2435,12 @@ const ProjectInfo = ({
                       control={methods.control}
                       name="category.2.category"
                       render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox value={value} onChange={onChange}>
+                        <Listbox
+                          value={value}
+                          onChange={(nextValue) =>
+                            handleCategorySelection(2, nextValue, onChange)
+                          }
+                        >
                           <ListboxButton
                             placeholder="Add Category"
                             className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
@@ -1732,7 +2454,7 @@ const ProjectInfo = ({
                             )}
                           </ListboxButton>
                           <ListboxOptions>
-                            {categoryOptions.map((category) => (
+                            {getAvailableCategoriesForIndex(2, value).map((category) => (
                               <ListboxOption key={category} value={category}>
                                 {category}
                               </ListboxOption>
@@ -1748,7 +2470,10 @@ const ProjectInfo = ({
                     control={methods.control}
                     render={({ field: { onChange, ...field } }) => (
                       <TagsInputRoot
-                        onValueChange={(details) => onChange(details.value)}
+                        onValueChange={handleSubCategoryChange(
+                          "category.2.subCategories",
+                          onChange
+                        )}
                         {...field}
                         className="space-y-1.5"
                       >
@@ -1769,7 +2494,7 @@ const ProjectInfo = ({
                                     <TagsInputItemPreview
                                       visual="primary"
                                       size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50"
+                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
                                     >
                                       <TagsInputItemText>
                                         {value}
@@ -1783,13 +2508,24 @@ const ProjectInfo = ({
                                 ))}
                                 <TagsInputInput
                                   options={subCategoryOptions}
-                                  placeholder="Add Sub-Category(s)"
+                                  placeholder={
+                                    tagsInput.value.length
+                                      ? ""
+                                      : "Add Sub-Category(s)"
+                                  }
                                   allowCreateOption
                                   className="flex-1 min-w-[100px]"
                                   onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(value)
+                                    fetchCategoriesAutocomplete(2, value)
                                   }}
-                                  onFocus={() => setActiveCategoryIndex(2)}
+                                  onFocus={() => {
+                                    setActiveCategoryIndex(2)
+                                    setSubCategoryOptions(
+                                      getSubCategoryOptionsForCategory(
+                                        categoryValues?.[2]?.category
+                                      )
+                                    )
+                                  }}
                                 />
 
                                 <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
@@ -1823,7 +2559,7 @@ const ProjectInfo = ({
                 </span>
 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
-                  {suggestedForActiveCategory.map(
+                  {suggestedForDisplay.map(
                     ({ category, subCategory }) => (
                       <Badge
                         size="md"
@@ -1936,7 +2672,11 @@ const ProjectInfo = ({
                               placeholder="Add Industries"
                               allowCreateOption
                               onInputValueChange={(value) => {
-                                fetchCategoriesAutocomplete(value)
+                                fetchTypeAutocomplete(
+                                  "industries",
+                                  value,
+                                  setIndustryOptions
+                                )
                               }}
                             />
 
@@ -1974,7 +2714,8 @@ const ProjectInfo = ({
                   </HelperText>
 
                   <span className="text-xs leading-[14.52px] text-gray-500">
-                    {projectInfoValues.shortDescription?.length || 0}/300
+                    {projectInfoValues.shortDescription?.length || 0}/
+                    {SHORT_DESCRIPTION_MAX_LENGTH}
                   </span>
                 </div>
               </div>
@@ -1982,13 +2723,48 @@ const ProjectInfo = ({
               <Textarea
                 id="short-description"
                 placeholder="Enter a short Description"
-                {...methods.register("shortDescription", {
-                  onBlur: () => trigger("shortDescription"),
-                })}
-                isInvalid={hookFormHasError({
-                  errors,
-                  name: "shortDescription",
-                })}
+                maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
+                {...shortDescriptionField}
+                onChange={(event) => {
+                  shortDescriptionField.onChange(event)
+                  if (
+                    shortDescriptionHasError &&
+                    get(errors, "shortDescription.type") === "manual"
+                  ) {
+                    methods.clearErrors("shortDescription")
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      event.currentTarget.value.length,
+                      SHORT_DESCRIPTION_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError(
+                      "shortDescription",
+                      SHORT_DESCRIPTION_MAX_LENGTH_ERROR
+                    )
+                  }
+                }}
+                onPaste={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      event.currentTarget.value.length,
+                      SHORT_DESCRIPTION_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError(
+                      "shortDescription",
+                      SHORT_DESCRIPTION_MAX_LENGTH_ERROR
+                    )
+                  }
+                }}
+                isInvalid={shortDescriptionHasError}
               />
 
               <HookFormErrorMessage
@@ -2016,21 +2792,57 @@ const ProjectInfo = ({
                   </HelperText>
 
                   <span className="text-xs leading-[14.52px] text-gray-500">
-                    {projectInfoValues.fullDescription?.length || 0}/2,000
+                    {projectInfoValues.fullDescription?.length || 0}/
+                    {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
                   </span>
                 </div>
               </div>
 
               <Textarea
                 id="full-description"
-                placeholder="Enter a short Description"
-                {...methods.register("fullDescription", {
-                  onBlur: () => trigger("fullDescription"),
-                })}
-                isInvalid={hookFormHasError({
-                  errors,
-                  name: "fullDescription",
-                })}
+                placeholder="Enter a full Description"
+                maxLength={FULL_DESCRIPTION_MAX_LENGTH}
+                {...fullDescriptionField}
+                onChange={(event) => {
+                  fullDescriptionField.onChange(event)
+                  if (
+                    fullDescriptionHasError &&
+                    get(errors, "fullDescription.type") === "manual"
+                  ) {
+                    methods.clearErrors("fullDescription")
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      event.currentTarget.value.length,
+                      FULL_DESCRIPTION_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError(
+                      "fullDescription",
+                      FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                    )
+                  }
+                }}
+                onPaste={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      event.currentTarget.value.length,
+                      FULL_DESCRIPTION_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError(
+                      "fullDescription",
+                      FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                    )
+                  }
+                }}
+                isInvalid={fullDescriptionHasError}
               />
 
               <HookFormErrorMessage
@@ -2110,7 +2922,7 @@ const ProjectInfo = ({
                               allowCreateOption
                               onInputValueChange={(value) => {
                                 fetchTypeAutocomplete(
-                                  "skills",
+                                  "search_keywords",
                                   value,
                                   setTagOptions
                                 )
@@ -2229,14 +3041,14 @@ const ProjectInfo = ({
               />
             </div>
 
-            {getIsNotEmpty(suggestedSkills) ? (
+            {getIsNotEmpty(suggestedSkillsForDisplay) ? (
               <div className="mt-6 space-y-1.5">
                 <span className="block text-xs leading-5 text-dark-blue-400">
                   Suggested Skills
                 </span>
 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
-                  {suggestedSkills.map((suggestedSkill, index) => (
+                  {suggestedSkillsForDisplay.map((suggestedSkill, index) => (
                     <Badge
                       size="md"
                       className="pr-2 bg-primary-50 focus-visible:outline-none text-primary-500"
@@ -2439,8 +3251,20 @@ type MediaFormValues = {
   }[][]
   featuredVideo: string
 }
+
+const serializeDraftMedia = (mediaVals: MediaFormValues) => ({
+  // Strip non-serializable File objects from media until preview/persistence
+  // is moved to a backend-backed draft model.
+  featuredVideo: mediaVals?.featuredVideo ?? "",
+})
 type MediaProps = {
   setProgress?: (val: number) => void
+}
+
+type MediaUploadItem = {
+  progress: number
+  hasError: boolean
+  meta: File
 }
 
 const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
@@ -2532,11 +3356,89 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
     }
   }, [currentStep, setProgress])
 
-  const ref = React.useRef(new Set<() => void>())
+  const uploadTrackersRef = React.useRef(new Map<string, () => void>())
+
+  const stopTrackingUpload = useCallback((fieldKey: string) => {
+    const cancel = uploadTrackersRef.current.get(fieldKey)
+    cancel?.()
+    uploadTrackersRef.current.delete(fieldKey)
+  }, [])
+
+  const beginTrackingUpload = useCallback(
+    (
+      fieldKey: string,
+      files: MediaUploadItem[] | undefined,
+      onChange: (value: MediaUploadItem[] | undefined) => void
+    ) => {
+      stopTrackingUpload(fieldKey)
+
+      if (!Array.isArray(files) || files.length === 0) {
+        return
+      }
+
+      let isCancelled = false
+      let currentBatch = files.map((item) => ({
+        ...item,
+        progress: item.progress ?? 0,
+        hasError: item.hasError ?? false,
+      }))
+
+      const readers = currentBatch.map((item) => {
+        const reader = new FileReader()
+
+        const applyPatch = (patch: Partial<MediaUploadItem>) => {
+          if (isCancelled) return
+          currentBatch = currentBatch.map((currentItem) =>
+            currentItem.meta === item.meta
+              ? { ...currentItem, ...patch }
+              : currentItem
+          )
+          onChange(currentBatch)
+        }
+
+        reader.onprogress = (event) => {
+          if (!event.lengthComputable) return
+
+          applyPatch({
+            hasError: false,
+            progress: Math.max(
+              1,
+              Math.min(99, Math.round((event.loaded / event.total) * 100))
+            ),
+          })
+        }
+
+        reader.onloadstart = () => {
+          applyPatch({ hasError: false, progress: 1 })
+        }
+
+        reader.onloadend = () => {
+          applyPatch({ hasError: false, progress: 100 })
+        }
+
+        reader.onerror = () => {
+          applyPatch({ hasError: true, progress: 0 })
+        }
+
+        reader.readAsArrayBuffer(item.meta)
+        return reader
+      })
+
+      uploadTrackersRef.current.set(fieldKey, () => {
+        isCancelled = true
+        readers.forEach((reader) => {
+          if (reader.readyState === FileReader.LOADING) {
+            reader.abort()
+          }
+        })
+      })
+    },
+    [stopTrackingUpload]
+  )
 
   useUnmountEffect(() => {
-    ref.current.forEach((cb) => cb())
-    ref.current.clear()
+    uploadTrackersRef.current.forEach((cancel) => cancel())
+    uploadTrackersRef.current.clear()
   })
   //Report progress to parent whenever it changes
   useEffect(() => {
@@ -2621,35 +3523,12 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                     size="lg"
                     icon
                     value={value}
-                    onValueChange={(value) => {
-                      ref.current.forEach((cb) => cb())
-                      ref.current.clear()
-
-                      onChange(value)
-
-                      ref.current.add(
-                        debounce(
-                          () =>
-                            onChange(
-                              value?.map((item) => ({
-                                ...item,
-                                progress: 50,
-                              }))
-                            ),
-                          ONE_SECOND * 3
-                        ).cancel
-                      )
-                      ref.current.add(
-                        debounce(
-                          () =>
-                            onChange(
-                              value?.map((item) => ({
-                                ...item,
-                                progress: 100,
-                              }))
-                            ),
-                          ONE_SECOND * 6
-                        ).cancel
+                    onValueChange={(nextValue) => {
+                      onChange(nextValue)
+                      beginTrackingUpload(
+                        "featuredImages",
+                        nextValue as MediaUploadItem[] | undefined,
+                        onChange as (value: MediaUploadItem[] | undefined) => void
                       )
                     }}
                     onError={(message) =>
@@ -2694,15 +3573,13 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                       <SquareShapeDropzone
                         className="transition-colors duration-300"
                         value={value}
-                        onValueChange={(value) => {
-                          onChange(
-                            value?.map((item) => ({ ...item, progress: 50 }))
+                        onValueChange={(nextValue) => {
+                          onChange(nextValue)
+                          beginTrackingUpload(
+                            `additionalImages.${index}`,
+                            nextValue as MediaUploadItem[] | undefined,
+                            onChange as (value: MediaUploadItem[] | undefined) => void
                           )
-                          window.setTimeout(() => {
-                            onChange(
-                              value?.map((item) => ({ ...item, progress: 100 }))
-                            )
-                          }, ONE_SECOND * 2)
                           isSubmitted ? trigger("additionalImages") : noop
                         }}
                         onError={(message) =>
@@ -3067,6 +3944,9 @@ const TaskDialog = ({
     defaultValues: {
       task: "",
       role: "",
+      workSchedule: {
+        type: "full-time",
+      },
       location: "",
       experience: undefined,
       duration: {
@@ -3074,6 +3954,21 @@ const TaskDialog = ({
         value: 1,
       },
     },
+  })
+  const taskDurationValue = useWatch({
+    control,
+    name: "duration.value",
+    defaultValue: 1,
+  })
+  const selectedWorkSchedule = useWatch({
+    control,
+    name: "workSchedule.type",
+    defaultValue: "full-time",
+  })
+  const customScheduleHours = useWatch({
+    control,
+    name: "workSchedule.custom.hours",
+    defaultValue: 1,
   })
   const onSubmit: SubmitHandler<TaskFormValues> = (values) => {
     onAddTask(values)
@@ -3112,11 +4007,10 @@ const TaskDialog = ({
               control={control}
               name="role"
               render={({ field: { value, onChange } }) => (
-                <OwnCombobox
+                <RoleCombobox
                   value={value}
                   onValueChange={onChange}
                   placeholder="Select role"
-                  options={ROLES}
                 />
               )}
             />
@@ -3125,6 +4019,110 @@ const TaskDialog = ({
               name="role"
               render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
             />
+          </div>
+
+          <div className="space-y-1.5 mt-3">
+            <Label htmlFor="work-schedule" className="text-gray-700" size="sm">
+              Work Schedule
+            </Label>
+            <Controller
+              control={control}
+              name="workSchedule.type"
+              render={({ field: { value, onChange } }) => (
+                <Listbox value={value} onChange={onChange} id="work-schedule">
+                  <ListboxButton placeholder="Select one">
+                    {({ value: selectedValue }) =>
+                      formatWorkScheduleLabel(
+                        selectedValue as (typeof WORK_SCHEDULE_TYPE)[number]
+                      )
+                    }
+                  </ListboxButton>
+                  <ListboxOptions>
+                    {WORK_SCHEDULE_TYPE.map((schedule) => (
+                      <ListboxOption key={schedule} value={schedule}>
+                        {formatWorkScheduleLabel(schedule)}
+                      </ListboxOption>
+                    ))}
+                  </ListboxOptions>
+                </Listbox>
+              )}
+            />
+
+            {selectedWorkSchedule === "custom" && (
+              <div className="space-y-1.5">
+                <Label
+                  htmlFor="work-schedule-custom-hours"
+                  className="text-gray-700"
+                  size="sm"
+                >
+                  Estimated hours
+                </Label>
+                <div className="grid grid-cols-[1.15fr_1fr] gap-x-3">
+                  <div className="grid grid-cols-[1fr_auto]">
+                    <Input
+                      id="work-schedule-custom-hours"
+                      className="rounded-r-none border-r-0 text-gray-900"
+                      type="number"
+                      min={1}
+                      {...register("workSchedule.custom.hours")}
+                      isInvalid={hookFormHasError({
+                        errors,
+                        name: "workSchedule.custom.hours",
+                      })}
+                    />
+                    <div className="inline-flex h-11 items-center rounded-r-lg border border-gray-300 bg-white px-4 text-base text-gray-500">
+                      {formatDurationUnit(
+                        Number(customScheduleHours) || 0,
+                        "hours"
+                      )}
+                    </div>
+                  </div>
+                  <Controller
+                    control={control}
+                    name="workSchedule.custom.period"
+                    render={({ field: { value, onChange } }) => (
+                      <Listbox value={value} onChange={onChange}>
+                        <ListboxButton placeholder="Select one">
+                          {({ value: selectedValue }) =>
+                            selectedValue
+                              ? formatCustomSchedulePeriodLabel(
+                                  selectedValue as (typeof CUSTOM_SCHEDULE_PERIOD)[number]
+                                )
+                              : "Select one"
+                          }
+                        </ListboxButton>
+                        <ListboxOptions>
+                          {CUSTOM_SCHEDULE_PERIOD.map((period) => (
+                            <ListboxOption key={period} value={period}>
+                              {formatCustomSchedulePeriodLabel(period)}
+                            </ListboxOption>
+                          ))}
+                        </ListboxOptions>
+                      </Listbox>
+                    )}
+                  />
+                </div>
+              </div>
+            )}
+
+            {(hookFormHasError({
+              errors,
+              name: "workSchedule.type",
+            }) ||
+              hookFormHasError({
+                errors,
+                name: "workSchedule.custom.hours",
+              }) ||
+              hookFormHasError({
+                errors,
+                name: "workSchedule.custom.period",
+              })) && (
+              <ErrorMessage size="sm">
+                {get(errors, "workSchedule.type.message") ||
+                  get(errors, "workSchedule.custom.hours.message") ||
+                  get(errors, "workSchedule.custom.period.message")}
+              </ErrorMessage>
+            )}
           </div>
 
           <div className="space-y-1.5 mt-3">
@@ -3179,7 +4177,6 @@ const TaskDialog = ({
               <Input
                 id="duration"
                 className="text-gray-900"
-                defaultValue="1"
                 {...register("duration.value")}
                 isInvalid={hookFormHasError({ errors, name: "duration.value" })}
               />
@@ -3188,11 +4185,21 @@ const TaskDialog = ({
                 name="duration.type"
                 render={({ field: { value, onChange } }) => (
                   <Listbox value={value} onChange={onChange} id="duration">
-                    <ListboxButton placeholder="Select" />
+                    <ListboxButton placeholder="Select">
+                      {({ value: selectedValue }) =>
+                        formatDurationUnit(
+                          Number(taskDurationValue) || 0,
+                          selectedValue as (typeof DURATION_TYPE)[number]
+                        ).replace(/^./, (character) => character.toUpperCase())
+                      }
+                    </ListboxButton>
                     <ListboxOptions>
                       {DURATION_TYPE.map((format) => (
                         <ListboxOption key={format} value={format}>
-                          {format.charAt(0).toUpperCase() + format.slice(1)}
+                          {formatDurationUnit(
+                            Number(taskDurationValue) || 0,
+                            format
+                          ).replace(/^./, (character) => character.toUpperCase())}
                         </ListboxOption>
                       ))}
                     </ListboxOptions>
@@ -3270,10 +4277,12 @@ const TaskSearchDialog = ({
   open,
   onOpenChange,
   phases,
+  onSelectItem,
 }: {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   phases: Phase[]
+  onSelectItem?: (item: { targetId: string }) => void
 }) => {
   const [isOpen, setIsOpen] = useControllableState({
     defaultValue: false,
@@ -3286,11 +4295,16 @@ const TaskSearchDialog = ({
     () =>
       phases.flatMap((phase, phaseIndex) => {
         const phaseLabel = `Phase ${phaseIndex + 1}: ${phase.phaseName || "Untitled"}`
+        const phaseItem = {
+          label: phaseLabel,
+          targetId: getPhaseSearchTargetId(phaseIndex),
+        }
         const rows = Array.isArray(phase.rows) ? phase.rows : []
         const tasks = rows.map((row, rowIndex) => ({
           label: `Task ${rowIndex + 1}: ${row.task}`,
+          targetId: getTaskSearchTargetId(phaseIndex, rowIndex),
         }))
-        return [{ label: phaseLabel }, ...tasks]
+        return [phaseItem, ...tasks]
       }),
     [phases]
   )
@@ -3330,12 +4344,17 @@ const TaskSearchDialog = ({
           <div className="mt-4 max-h-[240px] overflow-auto rounded-md border border-gray-200">
             {filteredItems.length ? (
               filteredItems.map((item, index) => (
-                <div
+                <button
                   key={`${item.label}-${index}`}
-                  className="px-3 py-2 text-sm text-gray-700 border-b border-gray-100 last:border-b-0"
+                  type="button"
+                  className="w-full px-3 py-2 text-left text-sm text-gray-700 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 focus-visible:outline-none focus-visible:bg-gray-50"
+                  onClick={() => {
+                    onSelectItem?.({ targetId: item.targetId })
+                    setIsOpen(false)
+                  }}
                 >
                   {item.label}
-                </div>
+                </button>
               ))
             ) : (
               <div className="px-3 py-4 text-sm text-gray-500">
@@ -3428,6 +4447,43 @@ const Dropdown = ({
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+const RoleCombobox = ({
+  value,
+  onValueChange,
+  placeholder,
+}: {
+  value?: string
+  onValueChange?: (value: string) => void
+  placeholder?: string
+}) => {
+  const [query, setQuery] = useState("")
+  const { suggestions } = useAutocomplete("job_titles", query)
+  const options = useMemo(
+    () =>
+      getUniqueOptions([
+        ...(value ? [value] : []),
+        ...(Array.isArray(suggestions)
+          ? suggestions.map((item) =>
+              normalizeAutocompleteLabel(item as AutocompleteTypeSuggestion)
+            )
+          : []),
+      ]),
+    [suggestions, value]
+  )
+
+  return (
+    <OwnCombobox
+      value={value}
+      onValueChange={onValueChange}
+      placeholder={placeholder}
+      options={options}
+      searchValue={query}
+      onSearchValueChange={setQuery}
+      emptyMessage="No roles found."
+    />
   )
 }
 
@@ -3597,11 +4653,49 @@ interface Phase {
   rows?: PhaseRow[]
 }
 
-interface PhaseTableRowProps {
-  row: Row<PhaseRow>
+const getPhaseDurationInDays = (phase?: Phase) => {
+  const rows = phase?.rows ?? []
+  const durations = rows
+    .map((row) => {
+      const value = Number(row?.duration?.value)
+      const type = row?.duration?.type
+
+      if (!Number.isFinite(value) || value <= 0 || !type) return null
+      return durationToDays(value, type)
+    })
+    .filter((value): value is number => typeof value === "number")
+
+  return durations.length ? Math.max(...durations) : 1
 }
 
-const PhaseTableRow = ({ row }: PhaseTableRowProps) => {
+const getPhaseDayRange = (phases: Phase[], phaseIndex: number) => {
+  const priorDays = phases
+    .slice(0, phaseIndex)
+    .reduce((sum, phase) => sum + getPhaseDurationInDays(phase), 0)
+  const startDay = priorDays + 1
+  const endDay = startDay + getPhaseDurationInDays(phases[phaseIndex]) - 1
+
+  return { startDay, endDay }
+}
+
+const getPhaseSearchTargetId = (phaseIndex: number) =>
+  `project-scope-phase-${phaseIndex}`
+
+const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
+  `project-scope-phase-${phaseIndex}-task-${rowIndex}`
+
+const normalizeSearchText = (value?: string) =>
+  (value ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+
+interface PhaseTableRowProps {
+  row: Row<PhaseRow>
+  id?: string
+}
+
+const PhaseTableRow = ({ row, id }: PhaseTableRowProps) => {
   const { transform, transition, setNodeRef, isDragging, isOver } = useSortable(
     {
       id: row.original.id,
@@ -3618,6 +4712,7 @@ const PhaseTableRow = ({ row }: PhaseTableRowProps) => {
 
   return (
     <TableRow
+      id={id}
       className={cn(
         "group/row hover:bg-transparent relative",
         isOver &&
@@ -3650,7 +4745,30 @@ const RowDragHandleCell = ({ rowId }: { rowId: string }) => {
   )
 }
 
+const CurrentStepHelpContent = ({
+  currentStep,
+}: {
+  currentStep: number
+}) => {
+  if (currentStep === 0) {
+    return <ProjectInfoTip className="w-full max-w-[420px]" />
+  }
+
+  if (currentStep === 1) {
+    return <MediaTip className="w-full max-w-[420px]" />
+  }
+
+  return <ProjectScopeTip className="w-full max-w-[420px]" />
+}
+
 const columnHelper = createColumnHelper<PhaseRow>()
+const PHASE_TABLE_COLUMN_WIDTHS = [
+  "w-[22%]",
+  "w-[31%]",
+  "w-[17%]",
+  "w-[15%]",
+  "w-[15%]",
+] as const
 
 const columns = [
   columnHelper.accessor("task", {
@@ -3676,11 +4794,10 @@ const columns = [
 
       return (
         <TableCell className="py-4 px-6">
-          <OwnCombobox
+          <RoleCombobox
             value={value}
             onValueChange={setValue}
             placeholder="Add Role"
-            options={table.options.meta?.roles}
           />
         </TableCell>
       )
@@ -3697,7 +4814,7 @@ const columns = [
         },
       })
       return (
-        <TableCell className="px-3 py-4">
+        <TableCell className="px-6 py-4">
           <CountriesCombobox
             placeholder="Location"
             value={value}
@@ -3731,14 +4848,19 @@ const columns = [
     header: "Experience",
   }),
   columnHelper.accessor("duration", {
-    cell: ({ getValue, table, row: { index } }) => (
+    cell: ({ getValue, table, row }) => (
       <TableCell className="py-4 px-6">
         <button
           className="focus-visible:outline-none"
           type="button"
-          onClick={() => table.options.meta?.openDurationDialog(index)}
+          onClick={() => table.options.meta?.openDurationDialog(row.index)}
         >
-          {getValue().value} {getValue().type}
+          {getTaskEffortLabel({
+            duration: getValue(),
+            workSchedule: row.original.workSchedule ?? {
+              type: "full-time",
+            },
+          })}
         </button>
       </TableCell>
     ),
@@ -3747,43 +4869,11 @@ const columns = [
 ]
 
 interface PhaseTableProps {
+  phaseIndex: number
   rows: PhaseRow[]
   onRowsChange: (rows: PhaseRow[]) => void
   openDurationDialog: (index: number) => void
 }
-
-const ROLES = [
-  "Frontend Developer",
-  "Backend Developer",
-  "Full Stack Developer",
-  "DevOps Engineer",
-  "Data Scientist",
-  "Machine Learning Engineer",
-  "Cloud Engineer",
-  "Database Administrator",
-  "Security Engineer",
-  "Mobile Developer",
-  "QA Engineer",
-  "System Architect",
-  "Network Engineer",
-  "Site Reliability Engineer (SRE)",
-  "Software Engineer",
-  "UI/UX Designer",
-  "Graphic Designer",
-  "Product Designer",
-  "Interaction Designer",
-  "Visual Designer",
-  "Motion Designer",
-  "Web Designer",
-  "Brand Designer",
-  "Illustrator",
-  "Information Architect",
-  "User Researcher",
-  "Content Strategist",
-  "Design Technologist",
-  "Experience Designer",
-  "Service Designer",
-]
 
 const useArrayNavigator = <T,>(items: T[], itemIndex: number) => {
   const [selectedIndex, setSelectedIndex] = useState(itemIndex)
@@ -3840,6 +4930,7 @@ const ArrayNavigator = ({
 }
 
 const PhaseTable = ({
+  phaseIndex,
   rows,
   onRowsChange,
   openDurationDialog,
@@ -3872,7 +4963,6 @@ const PhaseTable = ({
         )
       },
       openDurationDialog,
-      roles: ROLES,
     },
   })
 
@@ -3905,7 +4995,12 @@ const PhaseTable = ({
       onDragEnd={handleDragEnd}
       sensors={sensors}
     >
-      <Table>
+      <Table className="table-fixed">
+        <colgroup>
+          {PHASE_TABLE_COLUMN_WIDTHS.map((widthClassName, index) => (
+            <col key={index} className={widthClassName} />
+          ))}
+        </colgroup>
         <TableHeader className="bg-gray-50">
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow className="hover:bg-transparent" key={headerGroup.id}>
@@ -3923,14 +5018,18 @@ const PhaseTable = ({
           ))}
         </TableHeader>
         <TableBody>
-          <SortableContext
-            items={dataIds}
-            strategy={verticalListSortingStrategy}
-          >
-            {table.getRowModel().rows.map((row) => (
-              <PhaseTableRow key={row.id} row={row} />
-            ))}
-          </SortableContext>
+            <SortableContext
+              items={dataIds}
+              strategy={verticalListSortingStrategy}
+            >
+              {table.getRowModel().rows.map((row) => (
+                <PhaseTableRow
+                  key={row.id}
+                  id={getTaskSearchTargetId(phaseIndex, row.index)}
+                  row={row}
+                />
+              ))}
+            </SortableContext>
         </TableBody>
       </Table>
     </DndContext>
@@ -4449,6 +5548,11 @@ const ProjectScope = ({
       },
       values: durationFormValues,
     })
+    const selectedDurationValue = useWatch({
+      control,
+      name: "duration.value",
+      defaultValue: 1,
+    })
 
     React.useEffect(() => {
       if (open && durationFormValues) {
@@ -4463,49 +5567,75 @@ const ProjectScope = ({
 
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Duration</DialogTitle>
-          </DialogHeader>
-          <form
-            onSubmit={handleSubmit(onSubmit)}
-            className="flex flex-col gap-4"
-          >
-            <div className="flex items-center gap-2">
-              <Controller
-                name="duration.value"
-                control={control}
-                render={({ field }) => (
-                  <Input
-                    {...field}
-                    type="number"
-                    min={1}
-                    className="w-24"
-                    placeholder="Value"
+        <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
+          <div className="max-w-[412px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]">
+            <DialogTitle className="text-gray-900">Edit Duration</DialogTitle>
+            <form onSubmit={handleSubmit(onSubmit)} className="mt-6">
+              <div className="space-y-1.5">
+                <Label
+                  htmlFor="duration-value"
+                  className="text-gray-700"
+                  size="sm"
+                >
+                  Duration
+                </Label>
+                <div className="grid grid-cols-2 gap-x-3">
+                  <Controller
+                    name="duration.value"
+                    control={control}
+                    render={({ field }) => (
+                      <Input
+                        id="duration-value"
+                        {...field}
+                        type="number"
+                        min={1}
+                        className="text-gray-900"
+                      />
+                    )}
                   />
-                )}
-              />
-              <Controller
-                name="duration.type"
-                control={control}
-                render={({ field }) => (
-                  <select {...field} className="border rounded px-2 py-1">
-                    <option value="days">Days</option>
-                    <option value="weeks">Weeks</option>
-                    <option value="hours">Hours</option>
-                  </select>
-                )}
-              />
-            </div>
-            <DialogFooter>
-              <Button type="submit">Save</Button>
-              <DialogClose asChild>
-                <Button type="button" variant="ghost">
-                  Cancel
-                </Button>
-              </DialogClose>
-            </DialogFooter>
-          </form>
+                  <Controller
+                    name="duration.type"
+                    control={control}
+                    render={({ field: { value, onChange } }) => (
+                      <Listbox value={value} onChange={onChange}>
+                        <ListboxButton placeholder="Select one">
+                          {({ value: selectedValue }) =>
+                            formatDurationUnit(
+                              Number(selectedDurationValue) || 0,
+                              selectedValue as (typeof DURATION_TYPE)[number]
+                            ).replace(/^./, (character) =>
+                              character.toUpperCase()
+                            )
+                          }
+                        </ListboxButton>
+                        <ListboxOptions>
+                          {DURATION_TYPE.map((format) => (
+                            <ListboxOption key={format} value={format}>
+                              {formatDurationUnit(
+                                Number(selectedDurationValue) || 0,
+                                format
+                              ).replace(/^./, (character) =>
+                                character.toUpperCase()
+                              )}
+                            </ListboxOption>
+                          ))}
+                        </ListboxOptions>
+                      </Listbox>
+                    )}
+                  />
+                </div>
+              </div>
+              <DialogFooter className="mt-8 grid gap-x-3">
+                <DialogClose asChild>
+                  <Button type="button" variant="outlined" visual="gray">
+                    Cancel
+                  </Button>
+                </DialogClose>
+
+                <Button type="submit">Done</Button>
+              </DialogFooter>
+            </form>
+          </div>
         </DialogContent>
       </Dialog>
     )
@@ -4514,6 +5644,44 @@ const ProjectScope = ({
     typeof phaseDialogState.editingPhaseIndex === "number"
       ? (phases[phaseDialogState.editingPhaseIndex]?.phaseName ?? "")
       : ""
+  const [taskSearchQuery, setTaskSearchQuery] = useState("")
+  const normalizedTaskSearchQuery = normalizeSearchText(taskSearchQuery)
+  const filteredPhases = useMemo(() => {
+    if (!normalizedTaskSearchQuery) {
+      return phases.map((phase, index) => ({
+        phase,
+        originalIndex: index,
+      }))
+    }
+
+    return phases
+      .map((phase, index) => ({
+        phase,
+        originalIndex: index,
+      }))
+      .filter(({ phase, originalIndex }) => {
+        const searchableTexts = [
+          `phase ${originalIndex + 1}`,
+          `phase ${numberToWord(originalIndex)}`,
+          phase.phaseName ?? "",
+          ...(phase.rows ?? []).flatMap((row) => [
+            row.task ?? "",
+            row.role ?? "",
+            row.location ?? "",
+            row.experience ?? "",
+          ]),
+        ]
+          .map((value) => normalizeSearchText(value))
+          .filter(Boolean)
+
+        return searchableTexts.some((value) =>
+          value.includes(normalizedTaskSearchQuery)
+        )
+      })
+  }, [normalizedTaskSearchQuery, phases])
+  const visibleAccordionState = normalizedTaskSearchQuery
+    ? filteredPhases.map(({ originalIndex }) => `item-${originalIndex}`)
+    : accordionState
 
   return (
     <>
@@ -4603,23 +5771,35 @@ const ProjectScope = ({
             </div>
 
             <InputGroup>
-              <Input type="text" placeholder="Find a phase or task" />
+              <Input
+                type="text"
+                placeholder="Find a phase or task"
+                value={taskSearchQuery}
+                onChange={(event) => setTaskSearchQuery(event.target.value)}
+              />
               <InputLeftElement>
                 <SearchMd className="text-gray-500 h-5 w-5" />
               </InputLeftElement>
             </InputGroup>
 
             <Accordion
-              value={accordionState}
+              value={visibleAccordionState}
               onValueChange={setAccordionState}
               type="multiple"
               className="flex-auto space-y-3"
             >
-              {phases.map(({ phaseName, rows }, index) => (
-                <ArrayNavigator key={index} value={phases} index={index}>
+              {filteredPhases.map(({ phase: { phaseName, rows }, originalIndex }) => (
+                <ArrayNavigator
+                  key={originalIndex}
+                  value={phases}
+                  index={originalIndex}
+                >
                   {rows ? (
-                    <AccordionItem value={`item-${index}`} asChild>
-                      <div className="rounded-lg border border-gray-200 shadow-sm">
+                    <AccordionItem value={`item-${originalIndex}`} asChild>
+                      <div
+                        id={getPhaseSearchTargetId(originalIndex)}
+                        className="rounded-lg border border-gray-200 shadow-sm"
+                      >
                         <div className="mb-3 flex items-start gap-x-4 px-3 pt-3">
                           <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
                             <div className="inline-flex items-center gap-x-3.5">
@@ -4628,14 +5808,14 @@ const ProjectScope = ({
                               </AccordionTrigger>
 
                               <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                Phase {numberToWord(index)}{" "}
+                                Phase {numberToWord(originalIndex)}{" "}
                                 <button
                                   type="button"
                                   className="font-light hover:underline focus-visible:outline-none"
                                   onClick={() =>
                                     dispatch({
                                       type: "EDIT",
-                                      payload: index,
+                                      payload: originalIndex,
                                     })
                                   }
                                 >
@@ -4646,28 +5826,30 @@ const ProjectScope = ({
 
                             <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 1
+                                Day {getPhaseDayRange(phases, originalIndex).startDay}
                               </span>
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
                                 -
                               </span>
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 8
+                                Day {getPhaseDayRange(phases, originalIndex).endDay}
                               </span>
                             </div>
                           </div>
 
                           <div className="flex gap-x-4 items-center">
                             <MoreDropdown
-                              onSwapPhases={(to) => handleSwapPhases(index, to)}
+                              onSwapPhases={(to) =>
+                                handleSwapPhases(originalIndex, to)
+                              }
                               openPhaseDialog={() =>
-                                dispatch({ type: "EDIT", payload: index })
+                                dispatch({ type: "EDIT", payload: originalIndex })
                               }
                               onChangeDuration={() =>
-                                handleOpenPhaseDurationDialog(index)
+                                handleOpenPhaseDurationDialog(originalIndex)
                               }
                               openDeletePhaseDialog={() =>
-                                handleOpenDeletePhaseDialog(index)
+                                handleOpenDeletePhaseDialog(originalIndex)
                               }
                               onInsertAbove={() =>
                                 dispatch({
@@ -4676,10 +5858,10 @@ const ProjectScope = ({
                                 })
                               }
                               onInsertBelow={() => dispatch({ type: "TOGGLE" })}
-                              onDuplicatePhase={() => onDuplicatePhase(index)}
+                              onDuplicatePhase={() => onDuplicatePhase(originalIndex)}
                             />
                             <PlusDropdown
-                              addTask={() => handleOpenTaskDialog(index)}
+                              addTask={() => handleOpenTaskDialog(originalIndex)}
                               addPhase={() => dispatch({ type: "TOGGLE" })}
                             />
                           </div>
@@ -4687,13 +5869,14 @@ const ProjectScope = ({
 
                         <DisclosureContent className="overflow-auto">
                           <PhaseTable
+                            phaseIndex={originalIndex}
                             rows={rows}
                             onRowsChange={(rows) =>
-                              handleRowsChange(index, rows)
+                              handleRowsChange(originalIndex, rows)
                             }
                             openDurationDialog={(editingPhaseRowIndex) =>
                               setDurationDialogState({
-                                editingPhaseIndex: index,
+                                editingPhaseIndex: originalIndex,
                                 editingPhaseRowIndex,
                                 open: true,
                               })
@@ -4703,8 +5886,11 @@ const ProjectScope = ({
                       </div>
                     </AccordionItem>
                   ) : (
-                    <AccordionItem value={`item-${index}`} asChild>
-                      <div className="rounded-lg border border-gray-200 shadow-sm">
+                    <AccordionItem value={`item-${originalIndex}`} asChild>
+                      <div
+                        id={getPhaseSearchTargetId(originalIndex)}
+                        className="rounded-lg border border-gray-200 shadow-sm"
+                      >
                         <div className="mb-3 flex items-start gap-x-4 px-3 pt-3">
                           <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
                             <div className="inline-flex items-center gap-x-3.5">
@@ -4714,7 +5900,7 @@ const ProjectScope = ({
 
                               <div className="inline-flex md:flex-row gap-x-1.5 flex-col md:items-center gap-y-3 md:gap-x-5">
                                 <span className="text-base md:text-[18px] font-semibold md:font-light leading-7 text-gray-900">
-                                  Phase {numberToWord(index)}
+                                  Phase {numberToWord(originalIndex)}
                                 </span>{" "}
                                 {phaseName ? (
                                   <button
@@ -4723,7 +5909,7 @@ const ProjectScope = ({
                                     onClick={() =>
                                       dispatch({
                                         type: "EDIT",
-                                        payload: index,
+                                        payload: originalIndex,
                                       })
                                     }
                                   >
@@ -4736,7 +5922,7 @@ const ProjectScope = ({
                                     onClick={() =>
                                       dispatch({
                                         type: "EDIT",
-                                        payload: index,
+                                        payload: originalIndex,
                                       })
                                     }
                                   >
@@ -4748,7 +5934,8 @@ const ProjectScope = ({
                                 )}
                                 <div className="inline-block md:hidden">
                                   <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    Day 1 - Day 8
+                                    Day {getPhaseDayRange(phases, originalIndex).startDay} - Day{" "}
+                                    {getPhaseDayRange(phases, originalIndex).endDay}
                                   </span>
                                 </div>
                               </div>
@@ -4756,28 +5943,30 @@ const ProjectScope = ({
 
                             <div className="hidden md:inline-flex items-center gap-x-2 md:pl-0 pl-10">
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 1
+                                Day {getPhaseDayRange(phases, originalIndex).startDay}
                               </span>
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
                                 -
                               </span>
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 8
+                                Day {getPhaseDayRange(phases, originalIndex).endDay}
                               </span>
                             </div>
                           </div>
 
                           <div className="flex gap-x-4 items-center">
                             <MoreDropdown
-                              onSwapPhases={(to) => handleSwapPhases(index, to)}
+                              onSwapPhases={(to) =>
+                                handleSwapPhases(originalIndex, to)
+                              }
                               openPhaseDialog={() =>
-                                dispatch({ type: "EDIT", payload: index })
+                                dispatch({ type: "EDIT", payload: originalIndex })
                               }
                               onChangeDuration={() =>
-                                handleOpenPhaseDurationDialog(index)
+                                handleOpenPhaseDurationDialog(originalIndex)
                               }
                               openDeletePhaseDialog={() =>
-                                handleOpenDeletePhaseDialog(index)
+                                handleOpenDeletePhaseDialog(originalIndex)
                               }
                               onInsertAbove={() =>
                                 dispatch({
@@ -4786,10 +5975,10 @@ const ProjectScope = ({
                                 })
                               }
                               onInsertBelow={() => dispatch({ type: "TOGGLE" })}
-                              onDuplicatePhase={() => onDuplicatePhase(index)}
+                              onDuplicatePhase={() => onDuplicatePhase(originalIndex)}
                             />
                             <PlusDropdown
-                              addTask={() => handleOpenTaskDialog(index)}
+                              addTask={() => handleOpenTaskDialog(originalIndex)}
                               addPhase={() => dispatch({ type: "TOGGLE" })}
                             />
                           </div>
@@ -4798,19 +5987,19 @@ const ProjectScope = ({
                           <div className="w-full overflow-auto flex border-t border-gray-200 flex-col justify-center min-h-[208px] md:min-h-[228px]">
                             <div className="max-w-[352px] mx-auto">
                               <h1 className="text-base font-semibold text-center leading-6 text-gray-800">
-                                {index === 0
+                                {originalIndex === 0
                                   ? "Create your first task"
                                   : "Create a task"}
                               </h1>
                               <p className="text-sm mt-1 leading-5 text-center text-gray-800">
-                                {index === 0
+                                {originalIndex === 0
                                   ? "Start defining your project scope with a clear, actionable step."
                                   : "Define your project scope with a clear, actionable step."}
                               </p>
                               <div className="mt-6 flex justify-center">
                                 <Button
                                   className="bg-primary-50 text-primary-500 hover:bg-primary-500 hover:text-white"
-                                  onClick={() => handleOpenTaskDialog(index)}
+                                  onClick={() => handleOpenTaskDialog(originalIndex)}
                                 >
                                   <Plus className="size-[15px]" />
                                   Add Task
@@ -4825,6 +6014,12 @@ const ProjectScope = ({
                 </ArrayNavigator>
               ))}
             </Accordion>
+
+            {normalizedTaskSearchQuery && filteredPhases.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 bg-white px-6 py-10 text-center text-sm text-gray-500 shadow-sm">
+                No phase or task found.
+              </div>
+            ) : null}
 
             <Button
               className="mt-5"
@@ -4890,6 +6085,17 @@ const ProjectScope = ({
               open={isTaskSearchDialogOpen}
               onOpenChange={setTaskSearchDialogOpen}
               phases={phases}
+              onSelectItem={({ targetId }) => {
+                if (typeof window === "undefined") return
+
+                window.requestAnimationFrame(() => {
+                  const element = document.getElementById(targetId)
+                  element?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                  })
+                })
+              }}
             />
           </div>
 
@@ -4975,6 +6181,19 @@ function PublishProject({
   const router = useRouter()
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
     resolver: zodResolver(projectInfoSchema),
+    defaultValues: {
+      title: "",
+      category: [
+        { category: "", subCategories: [] },
+        { category: "", subCategories: [] },
+        { category: "", subCategories: [] },
+      ],
+      industry: [],
+      shortDescription: "",
+      fullDescription: "",
+      tags: [],
+      skills: [],
+    },
   })
   const mediaMethods = useForm<MediaFormValues>({
     resolver: zodResolver(mediaFormSchema),
@@ -5114,34 +6333,58 @@ function PublishProject({
     return projectInfoProgress + mediaProgress + projectScopeProgress
   }, [projectInfoProgress, mediaProgress, projectScopeProgress])
 
+  const saveDraftToLocalStorage = React.useCallback(() => {
+    if (typeof window === "undefined") return draftIdRef.current
+
+    const draftStatus: "draft" | "in_review" | "published" | "needs_update" =
+      !isProjectSubmitted
+        ? "draft"
+        : submissionOutcome?.status === "published"
+          ? "published"
+          : submissionOutcome?.status === "needs_update"
+            ? "needs_update"
+            : "in_review"
+
+    const key = "marketeq-project-drafts"
+    const raw = window.localStorage.getItem(key)
+    const drafts = raw ? JSON.parse(raw) : {}
+    drafts[draftIdRef.current] = {
+      id: draftIdRef.current,
+      projectInfo: projectInfoMethods.getValues(),
+      media: serializeDraftMedia(mediaMethods.getValues()),
+      projectScope: projectScopeMethods[0],
+      currentStep,
+      status: draftStatus,
+      savedAt: new Date().toISOString(),
+    }
+    window.localStorage.setItem(key, JSON.stringify(drafts))
+
+    return draftIdRef.current
+  }, [
+    currentStep,
+    isProjectSubmitted,
+    mediaMethods,
+    projectInfoMethods,
+    projectScopeMethods,
+    submissionOutcome,
+  ])
+
   const handleSaveExit = React.useCallback(() => {
     try {
-      const draft = {
-        projectInfo: projectInfoMethods.getValues(),
-        media: mediaMethods.getValues(),
-        projectScope: projectScopeMethods[0],
-        currentStep,
-        savedAt: new Date().toISOString(),
-      }
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          "publish-project-draft",
-          JSON.stringify(draft)
-        )
-      }
+      saveDraftToLocalStorage()
     } catch (err) {
       console.error("Failed to save draft", err)
     }
     toggleIsSaveExitDialogOpen(false)
     router.push("/my-listings")
   }, [
-    projectInfoMethods,
-    mediaMethods,
-    projectScopeMethods,
-    currentStep,
+    saveDraftToLocalStorage,
     toggleIsSaveExitDialogOpen,
     router,
   ])
+
+  const handlePreview = React.useCallback(() => {
+  }, [])
 
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">
@@ -5161,7 +6404,10 @@ function PublishProject({
               <ProjectScopeProvider value={projectScopeValue}>
                 <Sidebar />
                 <div className="flex-auto bg-white min-w-0 overflow-x-hidden">
-                  <Header onSaveExit={toggleIsSaveExitDialogOpen} />
+                  <Header
+                    onPreview={handlePreview}
+                    onSaveExit={toggleIsSaveExitDialogOpen}
+                  />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}
                     onOpenChange={toggleIsSaveExitDialogOpen}

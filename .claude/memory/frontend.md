@@ -7,8 +7,9 @@ Partially implemented
 Next.js (App Router), TypeScript, Tailwind CSS
 
 ## What's Built
+- Homepage: SSR page at `app/(group)/(group)/page.tsx` (server component) + `homepage-client.tsx` (client component). Fetches `/homepage` from api-gateway server-side, renders all sections dynamically. Supports A/B cookie forwarding, SEO from API, banner, hero, 4 card types.
 - UI component library: /frontend/components/ui/ (tabs, sidebar, dialog, input, button, etc.)
-- Type definitions: /frontend/types/ (user, talent, client, project, conversation, message, auth, core, day, react)
+- Type definitions: /frontend/types/ (user, talent, client, project, conversation, message, auth, core, day, react, homepage)
 - Inbox hooks: /frontend/app/(group)/inbox/hooks/
   - use-messages.ts
   - use-send-message.ts

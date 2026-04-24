@@ -1,0 +1,44 @@
+# Pre-commit hooks for Marketeq — optional local install.
+#
+#   pip install pre-commit
+#   pre-commit install
+#
+# These run locally before every commit. They mirror the server-side
+# SOP checks so you catch violations before pushing. CI is still the
+# source of truth — see Code Review SOP §9.
+
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.1
+    hooks:
+      - id: gitleaks
+        name: gitleaks — block committed secrets
+        args: ['--config', '.gitleaks.toml']
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-json
+      - id: no-commit-to-branch
+        args: ['--branch', 'dev-main', '--branch', 'staging', '--branch', 'live-mvp']
+
+  - repo: local
+    hooks:
+      - id: no-root-package-json
+        name: Block root-level package.json / package-lock.json
+        entry: bash -c 'for f in "$@"; do case "$f" in package.json|package-lock.json|yarn.lock|pnpm-lock.yaml) echo "🔥 Root-level $f is forbidden — see SOP §3.4"; exit 1 ;; esac; done' --
+        language: system
+        files: '^(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$'
+
+      - id: no-pem-files
+        name: Block *.pem / *.key / *.p12 / *.pfx
+        entry: bash -c 'for f in "$@"; do echo "🔒 Key material $f is forbidden — see SOP §8.2"; exit 1; done' --
+        language: system
+        files: '\.(pem|key|p12|pfx)$'

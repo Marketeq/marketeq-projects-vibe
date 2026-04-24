@@ -2,8 +2,8 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "../../dist/apps/listings-service",
-    "rootDir": "./src",
-    "incremental": false
+    "incremental": false,
+    "baseUrl": "../../"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "test", "**/*.spec.ts", "**/*.test.ts", "test/**/*.ts"]

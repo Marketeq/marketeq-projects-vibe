@@ -34,6 +34,17 @@ export function serviceDetailsUrl(slugOrId: string, id?: string): string {
 }
 
 /**
+ * Job listing/details page.
+ *
+ * Jobs currently use a dedicated details surface so the search experience can
+ * diverge from the existing project/service details flow without changing the
+ * shared project routes.
+ */
+export function jobDetailsUrl(slugOrId: string): string {
+  return `/job-details/${slugOrId}`
+}
+
+/**
  * Talent profile page. Uses username query param to match the existing
  * talent-profile page implementation.
  */
@@ -42,11 +53,12 @@ export function talentProfileUrl(username: string): string {
 }
 
 /**
- * Team detail page. The page does not yet exist in the app — this helper
- * defines the canonical route so all cards link consistently once it lands.
+ * Team profile page. Mirrors the talent-profile pattern by using a query
+ * param so all team cards in the master ListingCard component land on the
+ * same route.
  */
 export function teamDetailsUrl(id: string): string {
-  return `/team-details/${id}`
+  return `/team-profile?teamId=${encodeURIComponent(id)}`
 }
 
 /**

@@ -252,7 +252,7 @@ When("I complete the {int}-step onboarding \\(Name, Username, Location, Skills, 
     await this.page.fill("#recent-job-title", "QA Engineer");
     await this.page.fill("#industries", "Software");
     
-    const skillInput = this.page.getByPlaceholder("Enter job titles related to your project");
+    const skillInput = this.page.getByPlaceholder("e.g., react.js, css");
     await expect(skillInput).toBeVisible({ timeout: 10_000 });
     await skillInput.fill("React");
     await skillInput.press("Enter");

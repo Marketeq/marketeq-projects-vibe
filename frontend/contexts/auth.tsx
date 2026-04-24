@@ -19,6 +19,9 @@ type DashboardResolvableUser = {
   userType?: string | null
   accountType?: string | null
   role?: string | null
+  onboardingDismissed?: boolean | null
+  onboardedAt?: string | Date | null
+  hasCompletedOnboarding?: boolean | null
 }
 
 export const resolveDashboardRole = (
@@ -62,7 +65,45 @@ export const resolveDashboardRoute = (
     return "/client-dashboard"
   }
 
+  // Returning users who have already completed/dismissed onboarding must
+  // never be bounced back to /onboarding just because the /me payload is
+  // missing role/accountType/userType. Default them to client-dashboard
+  // — the account switcher can flip them to talent if needed.
+  const hasCompletedOnboarding =
+    user?.hasCompletedOnboarding === true ||
+    user?.onboardingDismissed === true ||
+    user?.onboardedAt != null
+
+  if (hasCompletedOnboarding) {
+    return "/client-dashboard"
+  }
+
   return "/onboarding"
+}
+
+export const mergeDashboardUserFields = <
+  T extends Record<string, unknown> | null | undefined,
+>(
+  authUser: T,
+  profileUser: unknown,
+): T => {
+  if (!authUser || !profileUser || typeof profileUser !== "object") {
+    return authUser
+  }
+
+  const merged: Record<string, unknown> = {
+    ...(authUser as Record<string, unknown>),
+    ...(profileUser as Record<string, unknown>),
+  }
+
+  for (const key of ["role", "accountType", "userType"] as const) {
+    const authValue = (authUser as Record<string, unknown>)[key]
+    if (merged[key] == null && authValue != null) {
+      merged[key] = authValue
+    }
+  }
+
+  return merged as T
 }
 
 interface AuthContextType {
@@ -124,6 +165,14 @@ function useProvideAuth() {
             response?.data?.user ?? response?.data?.data?.user ?? response?.data
 
           if (nextUser && typeof nextUser === "object") {
+            // Merge localStorage onboarding flag in case the API didn't persist it
+            if (
+              !nextUser.onboardingDismissed &&
+              typeof window !== "undefined" &&
+              window.localStorage.getItem("marketeq-onboarding-dismissed") === "true"
+            ) {
+              nextUser.onboardingDismissed = true
+            }
             setUser(nextUser)
           }
         }
@@ -158,8 +207,11 @@ function useProvideAuth() {
       document.cookie =
         "access_token=; Path=/; Max-Age=0; SameSite=None; Secure"
       document.cookie = "accessToken=; Path=/; Max-Age=0; SameSite=None; Secure"
+      Cookies.remove("access_token", { path: "/" })
+      Cookies.remove("accessToken", { path: "/" })
       Cookies.remove("refresh_token", { path: "/" })
       Cookies.remove("session_id", { path: "/" })
+      try { window.localStorage.removeItem("marketeq-onboarding-dismissed") } catch {}
     } catch (err: any) {
       toast({
         title:

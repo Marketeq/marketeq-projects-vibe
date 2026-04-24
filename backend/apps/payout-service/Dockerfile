@@ -3,9 +3,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/payout-service/package*.json ./apps/payout-service/
 COPY shared/ ./shared/
-RUN npm install
+RUN npm ci
 COPY . .
-RUN npm run build -w apps/payout-service
+RUN npx nest build payout-service
 
 FROM node:20-alpine
 WORKDIR /app

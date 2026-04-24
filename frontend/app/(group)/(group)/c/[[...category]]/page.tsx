@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import {
   useCategoryPageL1,
@@ -57,6 +57,7 @@ import {
   AvatarImage,
   Badge,
   Button,
+  Card,
   DisclosureContent,
   Favorite,
   FavoriteRoot,
@@ -635,6 +636,81 @@ export default function Projects() {
   const [listingsServices, setListingsServices] = useState<any[]>([])
   const [talentUsers, setTalentUsers] = useState<any[]>([])
 
+  const subcategoryScrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollPrev, setCanScrollPrev] = useState(false)
+  const [canScrollNext, setCanScrollNext] = useState(false)
+
+  const updateScrollState = useCallback(() => {
+    const el = subcategoryScrollRef.current
+    if (!el) return
+    setCanScrollPrev(el.scrollLeft > 0)
+    setCanScrollNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+  }, [])
+
+  useEffect(() => {
+    const el = subcategoryScrollRef.current
+    if (!el) return
+    updateScrollState()
+    el.addEventListener("scroll", updateScrollState, { passive: true })
+    return () => el.removeEventListener("scroll", updateScrollState)
+  }, [updateScrollState])
+
+  const scrollSubcategories = useCallback((direction: "prev" | "next") => {
+    const el = subcategoryScrollRef.current
+    if (!el) return
+    el.scrollBy({ left: direction === "next" ? el.clientWidth : -el.clientWidth, behavior: "smooth" })
+  }, [])
+
+  const browseTypeScrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollPrevBrowseType, setCanScrollPrevBrowseType] = useState(false)
+  const [canScrollNextBrowseType, setCanScrollNextBrowseType] = useState(false)
+
+  const updateScrollStateBrowseType = useCallback(() => {
+    const el = browseTypeScrollRef.current
+    if (!el) return
+    setCanScrollPrevBrowseType(el.scrollLeft > 0)
+    setCanScrollNextBrowseType(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+  }, [])
+
+  useEffect(() => {
+    const el = browseTypeScrollRef.current
+    if (!el) return
+    updateScrollStateBrowseType()
+    el.addEventListener("scroll", updateScrollStateBrowseType, { passive: true })
+    return () => el.removeEventListener("scroll", updateScrollStateBrowseType)
+  }, [updateScrollStateBrowseType])
+
+  const scrollBrowseType = useCallback((direction: "prev" | "next") => {
+    const el = browseTypeScrollRef.current
+    if (!el) return
+    el.scrollBy({ left: direction === "next" ? el.clientWidth : -el.clientWidth, behavior: "smooth" })
+  }, [])
+
+  const skillsScrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollPrevSkills, setCanScrollPrevSkills] = useState(false)
+  const [canScrollNextSkills, setCanScrollNextSkills] = useState(false)
+
+  const updateScrollStateSkills = useCallback(() => {
+    const el = skillsScrollRef.current
+    if (!el) return
+    setCanScrollPrevSkills(el.scrollLeft > 0)
+    setCanScrollNextSkills(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+  }, [])
+
+  useEffect(() => {
+    const el = skillsScrollRef.current
+    if (!el) return
+    updateScrollStateSkills()
+    el.addEventListener("scroll", updateScrollStateSkills, { passive: true })
+    return () => el.removeEventListener("scroll", updateScrollStateSkills)
+  }, [updateScrollStateSkills])
+
+  const scrollSkills = useCallback((direction: "prev" | "next") => {
+    const el = skillsScrollRef.current
+    if (!el) return
+    el.scrollBy({ left: direction === "next" ? el.clientWidth : -el.clientWidth, behavior: "smooth" })
+  }, [])
+
   // ✅ Extract l1, l2, l3
   const rawL1 = categoryPath?.l1
   // Root browse sentinel — bare `/projects`, `/services`, `/teams`, `/talent`
@@ -707,12 +783,12 @@ export default function Projects() {
     pageKind === "projects"
       ? "Projects"
       : pageKind === "services"
-      ? "Services"
-      : pageKind === "teams"
-      ? "Teams"
-      : pageKind === "talent"
-      ? "Talent"
-      : currentName
+        ? "Services"
+        : pageKind === "teams"
+          ? "Teams"
+          : pageKind === "talent"
+            ? "Talent"
+            : currentName
 
   /**
    * Canonical slug path for the currently-viewed category, excluding any
@@ -871,6 +947,7 @@ export default function Projects() {
           const fallback = users.filter((u: any) => u.username)
           setTalentUsers(rich.length > 0 ? rich : fallback)
         }
+
       } catch {
         // Services unavailable — cards will use placeholder data
       }
@@ -891,12 +968,12 @@ export default function Projects() {
               pageKind === "show-all"
                 ? currentDescription
                 : pageKind === "projects"
-                ? `Browse ${currentName.toLowerCase()} projects posted by clients worldwide.`
-                : pageKind === "services"
-                ? `Discover ${currentName.toLowerCase()} services from top-rated freelancers.`
-                : pageKind === "teams"
-                ? `Hire vetted ${currentName.toLowerCase()} teams ready to deliver.`
-                : `Find expert ${currentName.toLowerCase()} talent for your next project.`
+                  ? `Browse ${currentName.toLowerCase()} projects posted by clients worldwide.`
+                  : pageKind === "services"
+                    ? `Discover ${currentName.toLowerCase()} services from top-rated freelancers.`
+                    : pageKind === "teams"
+                      ? `Hire vetted ${currentName.toLowerCase()} teams ready to deliver.`
+                      : `Find expert ${currentName.toLowerCase()} talent for your next project.`
             }
             breadcrumbs={
               <div className="flex items-center gap-x-2">
@@ -981,354 +1058,344 @@ export default function Projects() {
               pages and also hidden on any L1/L2 that has no populated
               children (prevents an empty "No subcategories available" block). */}
           {!l3 && subcategories.length > 0 && (
-          <div className="mt-[50px]">
-            <div className="flex items-center justify-between">
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Explore {sectionLabel}
-              </h1>
+            <div className="mt-[50px]">
+              <div className="flex items-center justify-between">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  Explore {sectionLabel}
+                </h1>
 
-              <div className="flex items-center gap-x-3">
-                <IconButton
-                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                  visual="gray"
-                  variant="outlined"
-                >
-                  <ChevronLeft className="size-[18px]" />
-                </IconButton>
-                <IconButton
-                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                  visual="gray"
-                  variant="outlined"
-                  data-state="active"
-                >
-                  <ChevronRight className="size-[18px]" />
-                </IconButton>
+                <div className="flex items-center gap-x-3">
+                  <IconButton
+                    className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                    visual="gray"
+                    variant="outlined"
+                    data-state={canScrollPrev ? "active" : "inactive"}
+                    onClick={() => scrollSubcategories("prev")}
+                  >
+                    <ChevronLeft className="size-[18px]" />
+                  </IconButton>
+                  <IconButton
+                    className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                    visual="gray"
+                    variant="outlined"
+                    data-state={canScrollNext ? "active" : "inactive"}
+                    onClick={() => scrollSubcategories("next")}
+                  >
+                    <ChevronRight className="size-[18px]" />
+                  </IconButton>
+                </div>
+              </div>
+
+              <div ref={subcategoryScrollRef} className="mt-6 overflow-x-auto overflow-y-visible py-1 -my-1 px-1 -mx-1" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
+                <div className={`grid gap-[15px] ${l2 ? "grid-rows-1" : "grid-rows-2"} grid-flow-col`} style={{ gridAutoColumns: "calc((100% - 60px) / 5)" }}>
+                  {subcategories.length > 0 ? (
+                    (() => {
+                      const iconMap = resolveUniqueSubcategoryIcons(subcategories)
+                      return subcategories.map((subcat: any) => (
+                        <NextLink
+                          key={subcat.uuid ?? subcat.slug}
+                          href={
+                            rootBrowseMode
+                              ? `/${pageKind}/${subcat.slug}`
+                              : pageKind === "show-all"
+                                ? `/c/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`
+                                : `/${pageKind}/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`
+                          }
+                          className="group border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
+                        >
+                          <article>
+                            <SubcategoryIconTile slug={subcat.slug} name={subcat.name} icon={iconMap.get(subcat.slug || subcat.name || "")} />
+
+                            <div className="mt-5">
+                              <h1 className="text-base leading-none font-semibold text-dark-blue-400 transition duration-300">
+                                {subcat.name}
+                              </h1>
+                              <p className="text-[13px] leading-[1.4] font-light text-dark-blue-400 mt-1 line-clamp-2">
+                                {subcat.description || `Explore ${subcat.name} category`}
+                              </p>
+                            </div>
+                          </article>
+                        </NextLink>
+                      ))
+                    })()
+                  ) : (
+                    <div className="text-center py-8 text-gray-500 w-full">
+                      No subcategories available
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-
-            <div className="mt-6 overflow-x-auto overflow-y-visible py-1 -my-1 px-1 -mx-1" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
-              <div className={`grid gap-[15px] ${l2 ? "grid-rows-1" : "grid-rows-2"} grid-flow-col`} style={{ gridAutoColumns: "calc((100% - 60px) / 5)" }}>
-                {subcategories.length > 0 ? (
-                  (() => {
-                    const iconMap = resolveUniqueSubcategoryIcons(subcategories)
-                    return subcategories.map((subcat: any) => (
-                    <NextLink
-                      key={subcat.uuid ?? subcat.slug}
-                      href={
-                        rootBrowseMode
-                          ? `/${pageKind}/${subcat.slug}`
-                          : pageKind === "show-all"
-                          ? `/c/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`
-                          : `/${pageKind}/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`
-                      }
-                      className="group border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-                    >
-                      <article>
-                        <SubcategoryIconTile slug={subcat.slug} name={subcat.name} icon={iconMap.get(subcat.slug || subcat.name || "")} />
-
-                        <div className="mt-5">
-                          <h1 className="text-base leading-none font-semibold text-dark-blue-400 transition duration-300">
-                            {subcat.name}
-                          </h1>
-                          <p className="text-[13px] leading-[1.4] font-light text-dark-blue-400 mt-1 line-clamp-2">
-                            {subcat.description || `Explore ${subcat.name} category`}
-                          </p>
-                        </div>
-                      </article>
-                    </NextLink>
-                    ))
-                  })()
-                ) : (
-                  <div className="text-center py-8 text-gray-500 w-full">
-                    No subcategories available
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
           )}
 
           {/* Recommended in {Category} — entity-tab carousel. Show-all only,
               because kind-filtered browse pages (/projects, /teams, etc.)
               should contain a single entity kind — no tabs that switch kinds. */}
           {pageKind === "show-all" && (
-          <div className="mt-[50px]">
-            <Tabs defaultValue="Projects">
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Recommended in {currentName}
-              </h1>
-              <SwiperRoot>
-                <div className="mt-6 flex justify-between items-center">
-                  <TabsList className="flex items-center gap-x-3">
-                    {["Projects", "Services", "Teams", "Talent"].map((tab) => (
-                      <Badge
-                        key={tab}
-                        variant="circular"
-                        visual="gray"
-                        size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                        asChild
-                      >
-                        <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                      </Badge>
-                    ))}
-                  </TabsList>
+            <div className="mt-[50px]">
+              <Tabs defaultValue="Projects">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  Recommended in {currentName}
+                </h1>
+                <SwiperRoot>
+                  <div className="mt-6 flex justify-between items-center">
+                    <TabsList className="flex items-center gap-x-3">
+                      {["Projects", "Services", "Teams", "Talent"].map((tab) => (
+                        <Badge
+                          key={tab}
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          asChild
+                        >
+                          <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                        </Badge>
+                      ))}
+                    </TabsList>
 
-                  <div className="flex items-center gap-x-3">
-                    <SwiperPrevTrigger asChild>
-                      <IconButton
-                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                        visual="gray"
-                        variant="outlined"
-                      >
-                        <ChevronLeft className="size-[18px]" />
-                      </IconButton>
-                    </SwiperPrevTrigger>
-                    <SwiperNextTrigger asChild>
-                      <IconButton
-                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                        visual="gray"
-                        variant="outlined"
-                      >
-                        <ChevronRight className="size-[18px]" />
-                      </IconButton>
-                    </SwiperNextTrigger>
+                    <div className="flex items-center gap-x-3">
+                      <SwiperPrevTrigger asChild>
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
+                          <ChevronLeft className="size-[18px]" />
+                        </IconButton>
+                      </SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild>
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
+                          <ChevronRight className="size-[18px]" />
+                        </IconButton>
+                      </SwiperNextTrigger>
+                    </div>
                   </div>
-                </div>
 
-                <div className="mt-6">
-                  <TabsContent className="gap-5 flex items-center" value="Projects">
-                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {(listingsProjects.length > 0
-                        ? listingsProjects.slice(0, 8)
-                        : displayedProjects.length > 0
-                          ? displayedProjects.slice(0, 6)
-                          : fromLength(6)
-                      ).map((item: any, idx: number) => {
-                        const project = (listingsProjects.length > 0 || displayedProjects.length > 0) ? item : null
-                        const key = project?.id ?? idx
-                        return (
-                          <SwiperSlide className="w-[355px]" key={key}>
-                            <NextLink href={project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")} className="block focus-visible:outline-none">
-                            <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                              <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border cursor-pointer border-black/15">
-                                <NextImage
-                                  className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                  src={project?.mediaUrls?.[0] || project?.coverImage || project?.thumbnail || "/dashboard.png"}
-                                  alt={project?.title || "Project"}
-                                  fill
-                                  sizes="33vw"
-                                />
-                              </div>
-
-                              <div className="mt-3 flex items-start gap-x-3">
-                                <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
-                                  {project?.title || "The Ultimate Mobile App Experience"}
-                                </span>
-                                <div className="inline-flex items-center gap-x-1">
-                                  <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                  <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                    {project?.rating || "4.9"}{" "}
-                                    <span className="font-extralight">({project?.reviewCount || 5})</span>
-                                  </span>
-                                </div>
-                              </div>
-
-                              <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">
-                                {project?.summary || project?.description?.slice(0, 120) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}
-                              </p>
-
-                              <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                <div className="flex items-center gap-x-[6.4px]">
-                                  <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                  <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                    Starting from {project?.duration || "12 weeks"}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-x-[6.4px]">
-                                  <Money className="size-[18px] shrink-0 text-primary-500" />
-                                  <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                    ${project?.budget ? Number(project.budget).toLocaleString() : project?.scopeTotal?.budget || "50,000"} budget
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="mt-5 flex items-end justify-between">
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
-                                        {fromLength(6).map((k) => (
-                                          <Avatar key={k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0">
-                                            <AvatarImage src="/woman.jpg" alt="Woman" />
-                                            <AvatarFallback>W</AvatarFallback>
-                                          </Avatar>
-                                        ))}
-                                      </AvatarGroup>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="p-0 max-w-[262px]" size="md">
-                                      <ScrollArea className="h-[192px] p-3" scrollBar={<ScrollBar className="w-4 p-1" thumbClassName="bg-white/20" />}>
-                                        <div className="space-y-3 pr-5">
-                                          {fromLength(4).map((k) => (
-                                            <div key={k} className="flex items-center gap-x-[18px]">
-                                              <div className="flex items-center gap-x-2 flex-auto">
-                                                <Avatar>
-                                                  <AvatarImage src="/woman.jpg" alt="Woman" />
-                                                  <AvatarFallback>W</AvatarFallback>
-                                                </Avatar>
-                                                <div className="flex flex-col flex-auto">
-                                                  <div className="flex items-center gap-x-0.5">
-                                                    <span className="text-xs leading-5 font-semibold text-white">Sevil</span>
-                                                    <span className="text-[10px] leading-none font-light text-white">@designsuperstar23</span>
-                                                  </div>
-                                                  <span className="text-[10px] font-light text-white">Full-stack Developer</span>
-                                                </div>
-                                              </div>
-                                              <span className="text-sm font-semibold text-white leading-5">$75 <span className="text-[10px] font-light leading-5">/hr</span></span>
-                                            </div>
+                  <div className="mt-6">
+                    <TabsContent className="gap-5 flex items-center" value="Projects">
+                      <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                        {(listingsProjects.length > 0
+                          ? listingsProjects.slice(0, 8)
+                          : displayedProjects.length > 0
+                            ? displayedProjects.slice(0, 6)
+                            : fromLength(6)
+                        ).map((item: any, idx: number) => {
+                          const project = (listingsProjects.length > 0 || displayedProjects.length > 0) ? item : null
+                          const key = project?.id ?? idx
+                          return (
+                            <SwiperSlide className="w-[355px]" key={key}>
+                              <ListingCard
+                                kind="project"
+                                id={project?.id ?? `mock-${idx}`}
+                                title={project?.title || "The Ultimate Mobile App Experience"}
+                                description={project?.summary || project?.description?.slice(0, 120) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}
+                                mediaUrl={project?.mediaUrls?.[0] || project?.coverImage || project?.thumbnail || "/dashboard.png"}
+                                budget={`$${project?.budget ? Number(project.budget).toLocaleString() : project?.scopeTotal?.budget || "50,000"} budget`}
+                                rating={Number(project?.rating) || 4.9}
+                                reviewCount={project?.reviewCount || 5}
+                                href={project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")}
+                                avatarsSlot={
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
+                                          {fromLength(6).map((k) => (
+                                            <Avatar key={k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0">
+                                              <AvatarImage src="/woman.jpg" alt="Woman" />
+                                              <AvatarFallback>W</AvatarFallback>
+                                            </Avatar>
                                           ))}
-                                        </div>
-                                      </ScrollArea>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-
-                                <FavoriteRoot
-                                  value={project ? favoritedItems.has(String(project.id)) : false}
-                                  onValueChange={project ? async (pressed) => {
-                                    if (pressed) {
-                                      setFavoritedItems((prev) => { const next = new Set(prev); next.add(String(project.id)); return next })
-                                      const result = await addFavorite({ type: "project", itemId: String(project.id) })
-                                      if (!result) setFavoritedItems((prev) => { const next = new Set(prev); next.delete(String(project.id)); return next })
-                                    } else {
-                                      setFavoritedItems((prev) => { const next = new Set(prev); next.delete(String(project.id)); return next })
-                                      const fav = await findFavoriteByItemId(String(project.id))
-                                      if (fav) { const ok = await removeFavorite(fav.id); if (!ok) setFavoritedItems((prev) => { const next = new Set(prev); next.add(String(project.id)); return next }) }
-                                    }
-                                  } : undefined}
-                                >
-                                  {({ pressed }) => (
-                                    <TooltipProvider delayDuration={75}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <span className="inline-block"><Favorite /></span>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          {pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  )}
-                                </FavoriteRoot>
+                                        </AvatarGroup>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="p-0 max-w-[262px]" size="md">
+                                        <ScrollArea className="h-[192px] p-3" scrollBar={<ScrollBar className="w-4 p-1" thumbClassName="bg-white/20" />}>
+                                          <div className="space-y-3 pr-5">
+                                            {fromLength(4).map((k) => (
+                                              <div key={k} className="flex items-center gap-x-[18px]">
+                                                <div className="flex items-center gap-x-2 flex-auto">
+                                                  <Avatar>
+                                                    <AvatarImage src="/woman.jpg" alt="Woman" />
+                                                    <AvatarFallback>W</AvatarFallback>
+                                                  </Avatar>
+                                                  <div className="flex flex-col flex-auto">
+                                                    <div className="flex items-center gap-x-0.5">
+                                                      <span className="text-xs leading-5 font-semibold text-white">Sevil</span>
+                                                      <span className="text-[10px] leading-none font-light text-white">@designsuperstar23</span>
+                                                    </div>
+                                                    <span className="text-[10px] font-light text-white">Full-stack Developer</span>
+                                                  </div>
+                                                </div>
+                                                <span className="text-sm font-semibold text-white leading-5">$75 <span className="text-[10px] font-light leading-5">/hr</span></span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </ScrollArea>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                }
+                                favoriteSlot={
+                                  <FavoriteRoot
+                                    value={project ? favoritedItems.has(String(project.id)) : false}
+                                    onValueChange={project ? async (pressed) => {
+                                      if (pressed) {
+                                        setFavoritedItems((prev) => { const next = new Set(prev); next.add(String(project.id)); return next })
+                                        const result = await addFavorite({ type: "project", itemId: String(project.id) })
+                                        if (!result) setFavoritedItems((prev) => { const next = new Set(prev); next.delete(String(project.id)); return next })
+                                      } else {
+                                        setFavoritedItems((prev) => { const next = new Set(prev); next.delete(String(project.id)); return next })
+                                        const fav = await findFavoriteByItemId(String(project.id))
+                                        if (fav) { const ok = await removeFavorite(fav.id); if (!ok) setFavoritedItems((prev) => { const next = new Set(prev); next.add(String(project.id)); return next }) }
+                                      }
+                                    } : undefined}
+                                  >
+                                    {({ pressed }) => (
+                                      <TooltipProvider delayDuration={75}>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span className="inline-block"><Favorite /></span>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            {pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </FavoriteRoot>
+                                }
+                              />
+                            </SwiperSlide>
+                          )
+                        })}
+                        <SwiperSlide className="w-[355px] h-auto">
+                          <NextLink href={listingHref("projects")} className="block h-full">
+                            <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
+                              <h1 className="text-[28px] font-bold leading-[1.2] text-white">
+                                More Projects in {currentName}
+                              </h1>
+                              <div className="mt-8 size-10 rounded-full bg-white flex items-center justify-center shrink-0">
+                                <ChevronRight className="size-[18px] text-gray-700" />
                               </div>
-                            </article>
-                            </NextLink>
-                          </SwiperSlide>
-                        )
-                      })}
-                    </SwiperContent>
-                  </TabsContent>
-
-                  <TabsContent className="gap-5 flex items-center" value="Services">
-                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {(listingsServices.length > 0
-                        ? listingsServices.slice(0, 8)
-                        : fromLength(8)
-                      ).map((item: any, idx: number) => {
-                        const service = listingsServices.length > 0 ? item : null
-                        const key = service?.id ?? idx
-                        return (
-                        <SwiperSlide className="w-[355px]" key={key}>
-                          <NextLink href={service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")} className="block focus-visible:outline-none">
-                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                            <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={service?.mediaUrls?.[0] || "/dashboard.png"} alt={service?.title || "Service"} fill sizes="33vw" />
-                            </div>
-                            <div className="mt-3 flex items-start gap-x-3">
-                              <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{service?.title || `Professional ${currentName} Service`}</span>
-                              <div className="inline-flex items-center gap-x-1">
-                                <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span>
-                              </div>
-                            </div>
-                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">{service?.description?.slice(0, 120) || `Professional service offering for ${currentName}. Expert team ready to deliver results.`}</p>
-                            <div className="mt-[14.5px] flex flex-col gap-y-3">
-                              <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">{service?.deliveryTime || "Monthly"}</span></div>
-                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${service?.priceMin ? `${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month</span></div>
-                            </div>
-                            <div className="mt-5 flex items-end justify-between">
-                              <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
-                                {(talentUsers.length > 0 ? talentUsers.slice(0, 4) : fromLength(4)).map((u: any, k: number) => (<Avatar key={u?.id ?? k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src={u?.avatarUrl || "/woman.jpg"} alt={u?.firstName || "Team"} /><AvatarFallback>{u?.firstName?.[0] || "T"}</AvatarFallback></Avatar>))}
-                              </AvatarGroup>
-                              {service && <FavoriteRoot value={favoritedItems.has(String(service.id))} onValueChange={(pressed) => handleFavoriteToggle(String(service.id), "service", pressed)}>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>}
-                            </div>
-                          </article>
+                            </Card>
                           </NextLink>
                         </SwiperSlide>
-                        )
-                      })}
-                    </SwiperContent>
-                  </TabsContent>
+                      </SwiperContent>
+                    </TabsContent>
 
-                  <TabsContent className="gap-5 flex items-center" value="Teams">
-                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {fromLength(8).map((key) => (
-                        <SwiperSlide className="w-[355px]" key={key}>
-                          <article className="p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white">
-                            <div className="flex items-start justify-between">
-                              <AvatarGroup max={3} size="md" excess excessClassName="border-gray-300 text-gray-500">
-                                {fromLength(6).map((k) => (<Avatar key={k} size="md" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src="/woman.jpg" alt="Team member" /><AvatarFallback>T</AvatarFallback></Avatar>))}
-                              </AvatarGroup>
-                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
-                            </div>
-                            <div className="mt-5 flex items-center">
-                              <span className="text-sm font-bold text-dark-blue-400 leading-none">$85 - $120</span>
-                              <span className="text-[10px] text-dark-blue-400 leading-none font-light">/hr</span>
-                            </div>
-                            <div className="mt-5">
-                              <h1 className="text-base leading-none text-dark-blue-400 font-bold">Team Name <span className="font-light text-gray-500">@Tech Sentinel</span></h1>
-                              <h3 className="mt-0.5 text-xs font-medium text-dark-blue-400 leading-none">{currentName} team</h3>
-                              <p className="mt-2 text-[11px] font-light leading-none text-dark-blue-400">Average 10 years of experience</p>
-                              <div className="mt-3.5 flex items-center gap-x-1">
-                                <MarkerPin02 className="size-3 text-gray-500" />
-                                <span className="leading-4 text-[10px] font-medium text-gray-500">UK, USA, Brazil, Philippines, more...</span>
+                    <TabsContent className="gap-5 flex items-center" value="Services">
+                      <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                        {(listingsServices.length > 0
+                          ? listingsServices.slice(0, 8)
+                          : fromLength(8)
+                        ).map((item: any, idx: number) => {
+                          const service = listingsServices.length > 0 ? item : null
+                          const key = service?.id ?? idx
+                          return (
+                            <SwiperSlide className="w-[355px]" key={key}>
+                              <ListingCard
+                                kind="service"
+                                id={service?.id ?? `mock-${idx}`}
+                                title={service?.title || `Professional ${currentName} Service`}
+                                description={service?.description?.slice(0, 120) || `Professional service offering for ${currentName}. Expert team ready to deliver results.`}
+                                mediaUrl={service?.mediaUrls?.[0] || "/dashboard.png"}
+                                budget={`$${service?.priceMin ? `${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month`}
+                                rating={4.9}
+                                reviewCount={5}
+                                href={service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")}
+                                collaborators={(talentUsers.length > 0 ? talentUsers.slice(0, 4) : []).map((u: any) => u?.avatarUrl || "/woman.jpg")}
+                                favoriteSlot={service ? (
+                                  <FavoriteRoot value={favoritedItems.has(String(service.id))} onValueChange={(pressed) => handleFavoriteToggle(String(service.id), "service", pressed)}>
+                                    {({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}
+                                  </FavoriteRoot>
+                                ) : null}
+                              />
+                            </SwiperSlide>
+                          )
+                        })}
+                        <SwiperSlide className="w-[355px] h-auto">
+                          <NextLink href={listingHref("services")} className="block h-full">
+                            <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
+                              <h1 className="text-[28px] font-bold leading-[1.2] text-white">
+                                More Services in {currentName}
+                              </h1>
+                              <div className="mt-8 size-10 rounded-full bg-white flex items-center justify-center shrink-0">
+                                <ChevronRight className="size-[18px] text-gray-700" />
                               </div>
-                              <div className="mt-3.5 flex items-center gap-x-2">
-                                <div className="flex items-center gap-x-2">
-                                  <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
-                                    <div className="flex items-center gap-x-[3px]">
-                                      {fromLength(5).map((k) => (<Star key={k} className="size-3 text-primary-500 fill-primary-500 shrink-0" />))}
-                                    </div>
-                                  </div>
-                                  <span className="text-xs font-semibold leading-none text-dark-blue-400">4.7</span>
-                                </div>
-                                <span className="text-xs font-semibold leading-none text-dark-blue-400">2 Projects</span>
-                              </div>
-                              <div className="mt-5 flex gap-2 flex-wrap">
-                                <Badge className="bg-transparent" visual="gray">React</Badge>
-                                <Badge className="bg-transparent" visual="gray">Node.js</Badge>
-                                <Badge className="bg-transparent" visual="gray">AWS</Badge>
-                              </div>
-                            </div>
-                          </article>
+                            </Card>
+                          </NextLink>
                         </SwiperSlide>
-                      ))}
-                    </SwiperContent>
-                  </TabsContent>
+                      </SwiperContent>
+                    </TabsContent>
 
-                  <TabsContent className="gap-5 flex items-center" value="Talent">
-                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {talentUsers.slice(0, 8).map((u: TalentUser, idx: number) => (
-                        <SwiperSlide className="w-[355px]" key={u.id}>
-                          <ListingCard kind="talent" {...talentToCardProps(u, idx)} />
+                    <TabsContent className="gap-5 flex items-center" value="Teams">
+                      <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                        {fromLength(8).map((key) => (
+                          <SwiperSlide className="w-[355px]" key={key}>
+                            <ListingCard
+                              kind="team"
+                              id={`mock-${key}`}
+                              name="Team Name"
+                              handle="@Tech Sentinel"
+                              tagline={`${currentName} team`}
+                              experience="Average 10 years of experience"
+                              rate="$85 - $120/hr"
+                              locations="UK, USA, Brazil, Philippines, more..."
+                              rating={4.7}
+                              projectCount={2}
+                              skills={["iOS", "E-commerce", "Mobile Application", "Small Business", "Software Development"]}
+                              memberAvatars={Array.from({ length: 6 }, () => "/woman.jpg")}
+                              previousClientLogos={["/google.png", "/microsoft.png", "/aws.png", "/instagram.png", "/spotify.png"]}
+                              favoriteSlot={
+                                <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                              }
+                            />
+                          </SwiperSlide>
+                        ))}
+                        <SwiperSlide className="w-[355px] h-auto">
+                          <NextLink href={listingHref("teams")} className="block h-full">
+                            <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
+                              <h1 className="text-[28px] font-bold leading-[1.2] text-white">
+                                More Teams in {currentName}
+                              </h1>
+                              <div className="mt-8 size-10 rounded-full bg-white flex items-center justify-center shrink-0">
+                                <ChevronRight className="size-[18px] text-gray-700" />
+                              </div>
+                            </Card>
+                          </NextLink>
                         </SwiperSlide>
-                      ))}
-                    </SwiperContent>
-                  </TabsContent>
-                </div>
-              </SwiperRoot>
-            </Tabs>
-          </div>
+                      </SwiperContent>
+                    </TabsContent>
+
+                    <TabsContent className="gap-5 flex items-center" value="Talent">
+                      <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                        {talentUsers.slice(0, 8).map((u: TalentUser, idx: number) => (
+                          <SwiperSlide className="w-[355px]" key={u.id}>
+                            <ListingCard kind="talent" {...talentToCardProps(u, idx)} />
+                          </SwiperSlide>
+                        ))}
+                        <SwiperSlide className="w-[355px] h-auto">
+                          <NextLink href={listingHref("talent")} className="block h-full">
+                            <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
+                              <h1 className="text-[28px] font-bold leading-[1.2] text-white">
+                                More Talent in {currentName}
+                              </h1>
+                              <div className="mt-8 size-10 rounded-full bg-white flex items-center justify-center shrink-0">
+                                <ChevronRight className="size-[18px] text-gray-700" />
+                              </div>
+                            </Card>
+                          </NextLink>
+                        </SwiperSlide>
+                      </SwiperContent>
+                    </TabsContent>
+                  </div>
+                </SwiperRoot>
+              </Tabs>
+            </div>
           )}
 
           {/* Top-Rated {Category} Projects — projects-backed carousel.
@@ -1336,97 +1403,99 @@ export default function Projects() {
               "Top Projects" section further down, so skipping this here
               avoids two identical "Top" rows on the same page. */}
           {pageKind === "show-all" && (
-          <div className="mt-[50px]">
-            <Tabs defaultValue={subcategories[0]?.name || "All"}>
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Top-Rated {sectionLabel}
-              </h1>
-              <SwiperRoot>
-                <div className="mt-6 flex justify-between items-center">
-                  <TabsList className="flex items-center gap-x-3">
-                    {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
-                      <Badge
-                        key={sub.name}
-                        variant="circular"
-                        visual="gray"
-                        size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                        asChild
-                      >
-                        <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
-                      </Badge>
-                    ))}
-                  </TabsList>
-                  <div className="flex items-center gap-x-3">
-                    <SwiperPrevTrigger asChild>
-                      <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
-                        <ChevronLeft className="size-[18px]" />
-                      </IconButton>
-                    </SwiperPrevTrigger>
-                    <SwiperNextTrigger asChild>
-                      <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
-                        <ChevronRight className="size-[18px]" />
-                      </IconButton>
-                    </SwiperNextTrigger>
+            <div className="mt-[50px]">
+              <Tabs defaultValue={subcategories[0]?.name || "All"}>
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  Top-Rated {sectionLabel}
+                </h1>
+                <SwiperRoot>
+                  <div className="mt-6 flex justify-between items-center">
+                    <TabsList className="flex items-center gap-x-3">
+                      {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                        <Badge
+                          key={sub.name}
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          asChild
+                        >
+                          <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
+                        </Badge>
+                      ))}
+                    </TabsList>
+                    <div className="flex items-center gap-x-3">
+                      <SwiperPrevTrigger asChild>
+                        <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
+                          <ChevronLeft className="size-[18px]" />
+                        </IconButton>
+                      </SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild>
+                        <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
+                          <ChevronRight className="size-[18px]" />
+                        </IconButton>
+                      </SwiperNextTrigger>
+                    </div>
                   </div>
-                </div>
 
-                <div className="mt-6">
-                  <TabsContent value={subcategories[0]?.name || "All"}>
-                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      <SwiperSlide className="w-[355px] h-auto">
-                        <article className="py-[50px] h-full rounded-lg bg-warning-600 flex flex-col items-start justify-end px-6">
-                          <h1 className="text-[28px] font-bold leading-none text-white">
-                            {subcategories[0]?.name || currentName} Projects
-                          </h1>
-                          <p className="mt-3 text-lg font-light leading-none text-white">
-                            Discover high-quality {(subcategories[0]?.name || currentName).toLowerCase()} projects ready to launch.
-                          </p>
-                          <Button className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-warning-800 hover:bg-white text-warning-700 mt-8" size="lg">
-                            Explore More <ArrowRight className="size-[15px]" />
-                          </Button>
-                        </article>
-                      </SwiperSlide>
-                      {fromLength(8).map((idx) => {
-                        // Cycle through real listings so every card links to a real project detail page.
-                        const project = listingsProjects.length > 0 ? listingsProjects[idx % listingsProjects.length] : null
-                        const href = project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")
-                        return (
-                        <SwiperSlide key={project?.id ?? idx} className="w-[355px]">
-                          <NextLink href={href} className="block focus-visible:outline-none">
-                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                            <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={project?.mediaUrls?.[0] || "/dashboard.png"} alt={project?.title || "Dashboard"} fill sizes="33vw" />
-                            </div>
-                            <div className="mt-3 flex items-start gap-x-3">
-                              <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{project?.title || "The Ultimate Mobile App Experience"}</span>
-                              <div className="inline-flex items-center gap-x-1">
-                                <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span>
-                              </div>
-                            </div>
-                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">{project?.description?.slice(0, 140) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}</p>
-                            <div className="mt-[14.5px] flex flex-col gap-y-3">
-                              <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from {project?.duration || "12 weeks"}</span></div>
-                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${project?.budget ? Number(project.budget).toLocaleString() : "50,000"} budget</span></div>
-                            </div>
-                            <div className="mt-5 flex items-end justify-between">
-                              <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
-                                {(talentUsers.length > 0 ? talentUsers.slice(0, 6) : fromLength(6)).map((u: any, k: number) => (<Avatar key={u?.id ?? k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src={u?.avatarUrl || "/woman.jpg"} alt={u?.firstName || "Team"} /><AvatarFallback>{u?.firstName?.[0] || "T"}</AvatarFallback></Avatar>))}
-                              </AvatarGroup>
-                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
-                            </div>
-                          </article>
-                          </NextLink>
-                        </SwiperSlide>
-                        )
-                      })}
-                    </SwiperContent>
-                  </TabsContent>
-                </div>
-              </SwiperRoot>
-            </Tabs>
-          </div>
+                  <div className="mt-6">
+                    {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                      <TabsContent key={sub.name} value={sub.name}>
+                        <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                          <SwiperSlide className="w-[355px] h-auto">
+                            <article className="py-[50px] h-full rounded-lg bg-warning-600 flex flex-col items-start justify-end px-6">
+                              <h1 className="text-[28px] font-bold leading-none text-white">
+                                {sub.name} Projects
+                              </h1>
+                              <p className="mt-3 text-lg font-light leading-none text-white">
+                                Discover high-quality {sub.name.toLowerCase()} projects ready to launch.
+                              </p>
+                              <Button className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-warning-800 hover:bg-white text-warning-700 mt-8" size="lg">
+                                Explore More <ArrowRight className="size-[15px]" />
+                              </Button>
+                            </article>
+                          </SwiperSlide>
+                          {fromLength(8).map((idx) => {
+                            // Cycle through real listings so every card links to a real project detail page.
+                            const project = listingsProjects.length > 0 ? listingsProjects[idx % listingsProjects.length] : null
+                            const href = project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")
+                            return (
+                              <SwiperSlide key={project?.id ?? idx} className="w-[355px]">
+                                <NextLink href={href} className="block focus-visible:outline-none">
+                                  <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                                    <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                                      <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={project?.mediaUrls?.[0] || "/dashboard.png"} alt={project?.title || "Dashboard"} fill sizes="33vw" />
+                                    </div>
+                                    <div className="mt-3 flex items-start gap-x-3">
+                                      <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{project?.title || "The Ultimate Mobile App Experience"}</span>
+                                      <div className="inline-flex items-center gap-x-1">
+                                        <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                                        <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span>
+                                      </div>
+                                    </div>
+                                    <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">{project?.description?.slice(0, 140) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}</p>
+                                    <div className="mt-[14.5px] flex flex-col gap-y-3">
+                                      <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from {project?.duration || "12 weeks"}</span></div>
+                                      <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${project?.budget ? Number(project.budget).toLocaleString() : "50,000"} budget</span></div>
+                                    </div>
+                                    <div className="mt-5 flex items-end justify-between">
+                                      <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
+                                        {(talentUsers.length > 0 ? talentUsers.slice(0, 6) : fromLength(6)).map((u: any, k: number) => (<Avatar key={u?.id ?? k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src={u?.avatarUrl || "/woman.jpg"} alt={u?.firstName || "Team"} /><AvatarFallback>{u?.firstName?.[0] || "T"}</AvatarFallback></Avatar>))}
+                                      </AvatarGroup>
+                                      <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                                    </div>
+                                  </article>
+                                </NextLink>
+                              </SwiperSlide>
+                            )
+                          })}
+                        </SwiperContent>
+                      </TabsContent>
+                    ))}
+                  </div>
+                </SwiperRoot>
+              </Tabs>
+            </div>
           )}
 
           {/* {Category} Teams — teams-backed carousel. Visible on show-all
@@ -1434,85 +1503,80 @@ export default function Projects() {
               primary "Top Software Development Teams" section from the L1
               Teams design. */}
           {(pageKind === "show-all" || pageKind === "teams") && (
-          <div className="mt-[50px]">
-            <Tabs defaultValue="Featured">
-              <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
-                {pageKind === "show-all" ? `${currentName} Teams` : `Top ${currentName} Teams`}
-              </h1>
-              <SwiperRoot>
-                <div className="mt-6 flex justify-between items-center">
-                  <TabsList className="flex items-center gap-x-3">
-                    {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tab) => (
-                      <Badge
-                        key={tab}
-                        variant="circular"
-                        visual="gray"
-                        size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                        asChild
-                      >
-                        <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                      </Badge>
-                    ))}
-                  </TabsList>
-                  <div className="flex items-center gap-x-8">
-                    <Button variant="link" visual="gray" size="lg" className="underline">Explore More Teams</Button>
-                    <div className="flex items-center gap-x-3">
-                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
-                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+            <div className="mt-[50px]">
+              <Tabs defaultValue="Featured">
+                <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
+                  {pageKind === "show-all" ? `${currentName} Teams` : `Top ${currentName} Teams`}
+                </h1>
+                <SwiperRoot>
+                  <div className="mt-6 flex justify-between items-center">
+                    <TabsList className="flex items-center gap-x-3">
+                      {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tab) => (
+                        <Badge
+                          key={tab}
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          asChild
+                        >
+                          <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                        </Badge>
+                      ))}
+                    </TabsList>
+                    <div className="flex items-center gap-x-8">
+                      <Button variant="link" visual="gray" size="lg" className="underline">Explore More Teams</Button>
+                      <div className="flex items-center gap-x-3">
+                        <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
+                        <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="mt-6">
-                  <TabsContent value="Featured">
-                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {fromLength(8).map((key) => (
-                        <SwiperSlide className="w-[355px]" key={key}>
-                          <article className="p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white">
-                            <div className="flex items-start justify-between">
-                              <AvatarGroup max={3} size="md" excess excessClassName="border-gray-300 text-gray-500">
-                                {fromLength(6).map((k) => (<Avatar key={k} size="md" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src="/woman.jpg" alt="Woman" /><AvatarFallback>W</AvatarFallback></Avatar>))}
-                              </AvatarGroup>
-                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
-                            </div>
-                            <div className="mt-5 flex items-center">
-                              <span className="text-sm font-bold text-dark-blue-400 leading-none">$85 - $120</span>
-                              <span className="text-[10px] text-dark-blue-400 leading-none font-light">/hr</span>
-                            </div>
-                            <div className="mt-5">
-                              <h1 className="text-base leading-none text-dark-blue-400 font-bold">Team Name <span className="font-light text-gray-500">@Tech Sentinel</span></h1>
-                              <h3 className="mt-0.5 text-xs font-medium text-dark-blue-400 leading-none">{currentName} team</h3>
-                              <p className="mt-2 text-[11px] font-light leading-none text-dark-blue-400">Average 10 years of experience</p>
-                              <div className="mt-3.5 flex items-center gap-x-1">
-                                <MarkerPin02 className="size-3 text-gray-500" />
-                                <span className="leading-4 text-[10px] font-medium text-gray-500">UK, USA, Brazil, Philippines, more...</span>
-                              </div>
-                              <div className="mt-3.5 flex items-center gap-x-2">
-                                <div className="flex items-center gap-x-2">
-                                  <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
-                                    <div className="flex items-center gap-x-[3px]">
-                                      {fromLength(5).map((k) => (<Star key={k} className="size-3 text-primary-500 fill-primary-500 shrink-0" />))}
-                                    </div>
-                                  </div>
-                                  <span className="text-xs font-semibold leading-none text-dark-blue-400">4.7</span>
+                  <div className="mt-6">
+                    {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tabValue) => (
+                      <TabsContent key={tabValue} value={tabValue}>
+                        <SwiperContent slidesPerView={1} spaceBetween={20}>
+                          {(() => {
+                            const totalMockItems = fromLength(23)
+                            const chunks = []
+                            for (let i = 0; i < totalMockItems.length; i += 8) {
+                              chunks.push(totalMockItems.slice(i, i + 8))
+                            }
+                            return chunks.map((chunk, page) => (
+                              <SwiperSlide key={page}>
+                                <div className="grid grid-cols-4 gap-5">
+                                  {chunk.map((key) => (
+                                    <ListingCard
+                                      key={key}
+                                      kind="team"
+                                      id={`mock-${page}-${key}`}
+                                      name="Team Name"
+                                      handle="@Tech Sentinel"
+                                      tagline={`${currentName} team`}
+                                      experience="Average 10 years of experience"
+                                      rate="$85 - $120/hr"
+                                      locations="UK, USA, Brazil, Philippines, more..."
+                                      rating={4.7}
+                                      projectCount={2}
+                                      skills={["iOS", "E-commerce", "Mobile Application", "Small Business", "Software Development"]}
+                                      memberAvatars={Array.from({ length: 6 }, () => "/woman.jpg")}
+                                      previousClientLogos={["/google.png", "/microsoft.png", "/aws.png", "/instagram.png", "/spotify.png"]}
+                                      favoriteSlot={
+                                        <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                                      }
+                                    />
+                                  ))}
                                 </div>
-                                <span className="text-xs font-semibold leading-none text-dark-blue-400">2 Projects</span>
-                              </div>
-                              <div className="mt-5 flex gap-2 flex-wrap">
-                                <Badge className="bg-transparent" visual="gray">React</Badge>
-                                <Badge className="bg-transparent" visual="gray">Node.js</Badge>
-                                <Badge className="bg-transparent" visual="gray">AWS</Badge>
-                              </div>
-                            </div>
-                          </article>
-                        </SwiperSlide>
-                      ))}
-                    </SwiperContent>
-                  </TabsContent>
-                </div>
-              </SwiperRoot>
-            </Tabs>
-          </div>
+                              </SwiperSlide>
+                            ))
+                          })()}
+                        </SwiperContent>
+                      </TabsContent>
+                    ))}
+                  </div>
+                </SwiperRoot>
+              </Tabs>
+            </div>
           )}
 
           {/* Popular Searches */}
@@ -1529,213 +1593,6 @@ export default function Projects() {
                     {term}
                   </Badge>
                 </NextLink>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-[50px]">
-            <Tabs defaultValue="Project Type">
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Narrow Your {sectionLabel} Search
-              </h1>
-              <div className="mt-6 flex justify-between items-center">
-                <TabsList className="flex items-center gap-x-3">
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Project Type">Project Type</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Industry">Industry</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Budget">Budget</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Project Length">
-                      Project Length
-                    </TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500"
-                    asChild
-                  >
-                    <TabsTrigger value="Team Size">Team Size</TabsTrigger>
-                  </Badge>
-                </TabsList>
-
-                <Button size="lg" variant="link" visual="gray">
-                  Advanced Filters
-                  <ArrowRight className="size-[15px]" />
-                </Button>
-              </div>
-
-              <div className="mt-6">
-                {/*
-                  Each tab corresponds to an Algolia facet on the projects index.
-                  Spec: /docs/md/Search Service/ ✅ Finalized Filter Fields table for project search.md
-                        /docs/md/Search Service/📄 search-config.ts — Filters Only (projects).md
-                  - Project Type    → project_type (string facet)
-                  - Industry        → industry (string facet)
-                  - Budget          → budget_range (numberRange → budget_min/budget_max)
-                  - Project Length  → project_duration_range (enum — exact values)
-                  - Team Size       → team_size_range (enum — exact values)
-                  Each tile links to /search with the filter pre-applied and scoped to the current category.
-                */}
-                <TabsContent
-                  className="grid grid-cols-5 gap-[15px]"
-                  value="Project Type"
-                >
-                  {["Web App", "Mobile App", "Desktop App", "SaaS Platform", "API / Backend", "E-commerce Store", "Landing Page", "Chrome Extension", "CLI Tool", "Game"].map((projectType) => (
-                    <NextLink
-                      key={projectType}
-                      href={`/search?category=${l1Meta.slug}&project_type=${encodeURIComponent(projectType)}`}
-                      className="focus-visible:outline-none"
-                    >
-                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
-                        {projectType}
-                      </article>
-                    </NextLink>
-                  ))}
-                </TabsContent>
-                <TabsContent
-                  className="grid grid-cols-5 gap-[15px]"
-                  value="Industry"
-                >
-                  {["Agriculture", "Oil & Gas", "Manufacturing", "Construction", "Utilities", "Retail & Wholesale", "Transportation", "Finance & Banking", "Real Estate", "Healthcare"].map((industry) => (
-                    <NextLink
-                      key={industry}
-                      href={`/search?category=${l1Meta.slug}&industry=${encodeURIComponent(industry)}`}
-                      className="focus-visible:outline-none"
-                    >
-                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
-                        {industry}
-                      </article>
-                    </NextLink>
-                  ))}
-                </TabsContent>
-                <TabsContent
-                  className="grid grid-cols-5 gap-[15px]"
-                  value="Budget"
-                >
-                  {[
-                    { label: "Under $5k", min: 0, max: 5000 },
-                    { label: "$5k – $15k", min: 5000, max: 15000 },
-                    { label: "$15k – $50k", min: 15000, max: 50000 },
-                    { label: "$50k – $100k", min: 50000, max: 100000 },
-                    { label: "$100k – $250k", min: 100000, max: 250000 },
-                    { label: "$250k – $500k", min: 250000, max: 500000 },
-                    { label: "$500k – $1M", min: 500000, max: 1000000 },
-                    { label: "$1M+", min: 1000000, max: null as number | null },
-                  ].map((b) => (
-                    <NextLink
-                      key={b.label}
-                      href={`/search?category=${l1Meta.slug}&budget_min=${b.min}${b.max != null ? `&budget_max=${b.max}` : ""}`}
-                      className="focus-visible:outline-none"
-                    >
-                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
-                        {b.label}
-                      </article>
-                    </NextLink>
-                  ))}
-                </TabsContent>
-                <TabsContent
-                  className="grid grid-cols-5 gap-[15px]"
-                  value="Project Length"
-                >
-                  {["1 - 3 months", "3 - 6 months", "6 - 12 months", "12 - 18 months", "18 - 24 months", "24+ months"].map((duration) => (
-                    <NextLink
-                      key={duration}
-                      href={`/search?category=${l1Meta.slug}&project_duration_range=${encodeURIComponent(duration)}`}
-                      className="focus-visible:outline-none"
-                    >
-                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
-                        {duration}
-                      </article>
-                    </NextLink>
-                  ))}
-                </TabsContent>
-                <TabsContent
-                  className="grid grid-cols-5 gap-[15px]"
-                  value="Team Size"
-                >
-                  {["1 - 2 members", "2 - 5 members", "5 - 10 members", "10 - 15 members", "15 - 20 members", "20+ members"].map((size) => (
-                    <NextLink
-                      key={size}
-                      href={`/search?category=${l1Meta.slug}&team_size_range=${encodeURIComponent(size)}`}
-                      className="focus-visible:outline-none"
-                    >
-                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
-                        {size}
-                      </article>
-                    </NextLink>
-                  ))}
-                </TabsContent>
-              </div>
-            </Tabs>
-          </div>
-
-          <div className="mt-[50px]">
-            <div className="flex items-center justify-between">
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Browse by Skills
-              </h1>
-
-              <div className="flex items-center gap-x-3">
-                <IconButton
-                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                  visual="gray"
-                  variant="outlined"
-                >
-                  <ChevronLeft className="size-[18px]" />
-                </IconButton>
-                <IconButton
-                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                  visual="gray"
-                  variant="outlined"
-                  data-state="active"
-                >
-                  <ChevronRight className="size-[18px]" />
-                </IconButton>
-              </div>
-            </div>
-
-            <div className="mt-6 flex items-center flex-wrap gap-3">
-              {["JavaScript", "Python", "React", "Node.js", "TypeScript", "AWS", "Docker", "Kubernetes", "GraphQL", "PostgreSQL", "MongoDB"].map((skill) => (
-                <Badge
-                  key={skill}
-                  variant="circular"
-                  visual="gray"
-                  size="lg"
-                  className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700 hover:border-gray-400 transition duration-300 cursor-pointer"
-                >
-                  {skill}
-                </Badge>
               ))}
             </div>
           </div>
@@ -1774,47 +1631,88 @@ export default function Projects() {
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
                 Browse by Type
               </h1>
-              <div className="mt-6 flex justify-between items-center">
-                <TabsList className="flex items-center gap-x-3">
-                  {["Projects", "Services"].map((tab) => (
-                    <Badge
-                      key={tab}
-                      variant="circular"
-                      visual="gray"
-                      size="lg"
-                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                      asChild
-                    >
-                      <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                    </Badge>
-                  ))}
-                </TabsList>
-                <div className="flex items-center gap-x-3">
-                  <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton>
-                  <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 data-[state=active]:opacity-100" visual="gray" variant="outlined" data-state="active"><ChevronRight className="size-[18px]" /></IconButton>
+              <SwiperRoot>
+                <div className="mt-6 flex justify-between items-center">
+                  <TabsList className="flex items-center gap-x-3">
+                    {["Projects", "Services"].map((tab) => (
+                      <Badge
+                        key={tab}
+                        variant="circular"
+                        visual="gray"
+                        size="lg"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        asChild
+                      >
+                        <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                      </Badge>
+                    ))}
+                  </TabsList>
+                  <div className="flex items-center gap-x-3">
+                    <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
+                    <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                  </div>
                 </div>
-              </div>
-              <div className="mt-6">
-                <TabsContent className="grid grid-cols-5 gap-[15px]" value="Projects">
-                  {["Infrastructure as Code", "API Development", "Cloud Migration", "CI/CD Pipeline", "Database Design", "Microservices", "Containerization", "Serverless", "Monitoring", "Security Audit"].map((name) => (
-                    <article key={name} className="p-5 rounded-lg bg-white border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-                      <div className="size-[35px] bg-gray-200 rounded-lg" />
-                      <div className="mt-5">
-                        <span className="text-[10px] leading-none font-medium text-dark-blue-400">DevOps</span>
-                        <h1 className="mt-1 text-base leading-none font-semibold text-dark-blue-400">{name}</h1>
-                      </div>
-                      <div className="mt-3 flex flex-col gap-y-2">
-                        <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from 12 weeks</span></div>
-                        <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">$50,000 budget</span></div>
-                      </div>
-                    </article>
-                  ))}
-                </TabsContent>
-              </div>
+                <div className="mt-6">
+                  {["Projects", "Services"].map((tabValue) => {
+                    const browseTypeNames = [
+                      "Infrastructure as Code",
+                      "API Development",
+                      "Cloud Migration",
+                      "CI/CD Pipeline",
+                      "Database Design",
+                      "Microservices",
+                      "Containerization",
+                      "Serverless",
+                      "Monitoring",
+                      "Security Audit",
+                      "Load Balancing",
+                      "Data Backup",
+                    ];
+                    const iconMap = resolveUniqueSubcategoryIcons(browseTypeNames.map((name) => ({ name })));
+                    return (
+                      <TabsContent key={tabValue} value={tabValue}>
+                        <SwiperContent slidesPerView={1} spaceBetween={20}>
+                          {(() => {
+                            const chunks = [];
+                            for (let i = 0; i < browseTypeNames.length; i += 8) {
+                              chunks.push(browseTypeNames.slice(i, i + 8));
+                            }
+                            return chunks.map((chunk, page) => (
+                              <SwiperSlide key={page}>
+                                <div className="grid grid-cols-4 gap-[15px]">
+                                  {chunk.map((name) => (
+                                    <article key={name} className="group border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300">
+                                      <SubcategoryIconTile name={name} icon={iconMap.get(name)} className="!h-[35px] !w-[35px]" />
+                                      <div className="mt-5">
+                                        <span className="text-[10px] leading-none font-medium text-dark-blue-400">{tabValue === "Services" ? "Service" : "DevOps"}</span>
+                                        <h1 className="mt-1 text-base leading-none font-semibold text-dark-blue-400">{name}</h1>
+                                      </div>
+                                      <div className="mt-3 flex flex-col gap-y-2">
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <Clock className="size-[18px] shrink-0 text-primary-500" />
+                                          <span className="font-medium text-sm leading-none text-dark-blue-400">Starting from 12 weeks</span>
+                                        </div>
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <Money className="size-[18px] shrink-0 text-primary-500" />
+                                          <span className="font-medium text-sm leading-none text-dark-blue-400">$50,000 budget</span>
+                                        </div>
+                                      </div>
+                                    </article>
+                                  ))}
+                                </div>
+                              </SwiperSlide>
+                            ));
+                          })()}
+                        </SwiperContent>
+                      </TabsContent>
+                    );
+                  })}
+                </div>
+              </SwiperRoot>
             </Tabs>
           </div>
 
-          <div className="mt-[50px]">
+          {/* <div className="mt-[50px]">
             <Tabs defaultValue="Back-End Development">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
                 Recommended {pageKind === "show-all" ? `${currentName} Projects` : sectionLabel}
@@ -2204,7 +2102,7 @@ export default function Projects() {
                 </TabsContent>
               </div>
             </Tabs>
-          </div>
+          </div> */}
 
           {/* Top {Category} Projects — Swiper with filter tabs */}
           <div className="mt-[50px]">
@@ -2230,39 +2128,37 @@ export default function Projects() {
                   </div>
                 </div>
                 <div className="mt-6">
-                  <TabsContent value="Featured">
-                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {(listingsProjects.length > 0 ? listingsProjects.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
-                        const project = listingsProjects.length > 0 ? item : null
-                        return (
-                        <SwiperSlide className="w-[355px]" key={project?.id ?? idx}>
-                          <NextLink href={project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")} className="block focus-visible:outline-none">
-                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                            <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={project?.mediaUrls?.[0] || "/dashboard.png"} alt={project?.title || "Dashboard"} fill sizes="33vw" />
-                            </div>
-                            <div className="mt-3 flex items-start gap-x-3">
-                              <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{project?.title || "The Ultimate Mobile App Experience"}</span>
-                              <div className="inline-flex items-center gap-x-1"><Star className="size-[15px] text-primary-500 fill-primary-500" /><span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span></div>
-                            </div>
-                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">{project?.description?.slice(0, 120) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}</p>
-                            <div className="mt-[14.5px] flex flex-col gap-y-3">
-                              <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from {project?.duration || "12 weeks"}</span></div>
-                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${project?.budget ? Number(project.budget).toLocaleString() : "50,000"} budget</span></div>
-                            </div>
-                            <div className="mt-5 flex items-end justify-between">
-                              <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
-                                {(talentUsers.length > 0 ? talentUsers.slice(0, 6) : fromLength(6)).map((u: any, k: number) => (<Avatar key={u?.id ?? k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src={u?.avatarUrl || "/woman.jpg"} alt={u?.firstName || "Team"} /><AvatarFallback>{u?.firstName?.[0] || "T"}</AvatarFallback></Avatar>))}
-                              </AvatarGroup>
-                              {project && <FavoriteRoot value={favoritedItems.has(String(project.id))} onValueChange={(pressed) => handleFavoriteToggle(String(project.id), "project", pressed)}>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>}
-                            </div>
-                          </article>
-                          </NextLink>
-                        </SwiperSlide>
-                        )
-                      })}
-                    </SwiperContent>
-                  </TabsContent>
+                  {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tabValue) => (
+                    <TabsContent key={tabValue} value={tabValue}>
+                      <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                        {(listingsProjects.length > 0 ? listingsProjects.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
+                          const project = listingsProjects.length > 0 ? item : null
+                          return (
+                            <SwiperSlide className="w-[355px]" key={project?.id ?? idx}>
+                              <ListingCard
+                                kind="project"
+                                id={project?.id ?? `mock-${idx}`}
+                                title={project?.title || "The Ultimate Mobile App Experience"}
+                                description={project?.description?.slice(0, 120) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}
+                                mediaUrl={project?.mediaUrls?.[0] || "/dashboard.png"}
+                                budget={`$${project?.budget ? Number(project.budget).toLocaleString() : "50,000"} budget`}
+                                duration={`Starting from ${project?.duration || "12 weeks"}`}
+                                rating={4.9}
+                                reviewCount={5}
+                                href={project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")}
+                                collaborators={(talentUsers.length > 0 ? talentUsers.slice(0, 6) : Array(6).fill("/woman.jpg")).map((u: any) => (typeof u === "string" ? u : u?.avatarUrl) || "/woman.jpg")}
+                                favoriteSlot={project ? (
+                                  <FavoriteRoot value={favoritedItems.has(String(project.id))} onValueChange={(pressed) => handleFavoriteToggle(String(project.id), "project", pressed)}>
+                                    {({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}
+                                  </FavoriteRoot>
+                                ) : null}
+                              />
+                            </SwiperSlide>
+                          )
+                        })}
+                      </SwiperContent>
+                    </TabsContent>
+                  ))}
                 </div>
               </SwiperRoot>
             </Tabs>
@@ -2292,41 +2188,205 @@ export default function Projects() {
                   </div>
                 </div>
                 <div className="mt-6">
-                  <TabsContent value="Featured">
-                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {(listingsServices.length > 0 ? listingsServices.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
-                        const service = listingsServices.length > 0 ? item : null
-                        return (
-                        <SwiperSlide className="w-[355px]" key={service?.id ?? idx}>
-                          <NextLink href={service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")} className="block focus-visible:outline-none">
-                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                            <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                              <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={service?.mediaUrls?.[0] || "/dashboard.png"} alt={service?.title || "Service"} fill sizes="33vw" />
-                            </div>
-                            <div className="mt-3 flex items-start gap-x-3">
-                              <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{service?.title || `Professional ${currentName} Service`}</span>
-                              <div className="inline-flex items-center gap-x-1"><Star className="size-[15px] text-primary-500 fill-primary-500" /><span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span></div>
-                            </div>
-                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">{service?.description?.slice(0, 120) || `Professional service offering for ${currentName}. Expert team ready to deliver results.`}</p>
-                            <div className="mt-[14.5px] flex flex-col gap-y-3">
-                              <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">{service?.deliveryTime || "Monthly"}</span></div>
-                              <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${service?.priceMin ? `${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month</span></div>
-                            </div>
-                            <div className="mt-5 flex items-end justify-between">
-                              <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
-                                {(talentUsers.length > 0 ? talentUsers.slice(0, 6) : fromLength(6)).map((u: any, k: number) => (<Avatar key={u?.id ?? k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src={u?.avatarUrl || "/woman.jpg"} alt={u?.firstName || "Team"} /><AvatarFallback>{u?.firstName?.[0] || "T"}</AvatarFallback></Avatar>))}
-                              </AvatarGroup>
-                              {service && <FavoriteRoot value={favoritedItems.has(String(service.id))} onValueChange={(pressed) => handleFavoriteToggle(String(service.id), "service", pressed)}>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>}
-                            </div>
-                          </article>
-                          </NextLink>
-                        </SwiperSlide>
-                        )
-                      })}
-                    </SwiperContent>
-                  </TabsContent>
+                  {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tabValue) => (
+                    <TabsContent key={tabValue} value={tabValue}>
+                      <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                        {(listingsServices.length > 0 ? listingsServices.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
+                          const service = listingsServices.length > 0 ? item : null
+                          return (
+                            <SwiperSlide className="w-[355px]" key={service?.id ?? idx}>
+                              <ListingCard
+                                kind="service"
+                                id={service?.id ?? `mock-${idx}`}
+                                title={service?.title || `Professional ${currentName} Service`}
+                                description={service?.description?.slice(0, 120) || `Professional service offering for ${currentName}. Expert team ready to deliver results.`}
+                                mediaUrl={service?.mediaUrls?.[0] || "/dashboard.png"}
+                                budget={`$${service?.priceMin ? `${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month`}
+                                rating={4.9}
+                                reviewCount={5}
+                                href={service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")}
+                                collaborators={(talentUsers.length > 0 ? talentUsers.slice(0, 6) : Array(6).fill("/woman.jpg")).map((u: any) => (typeof u === "string" ? u : u?.avatarUrl) || "/woman.jpg")}
+                                favoriteSlot={service ? (
+                                  <FavoriteRoot value={favoritedItems.has(String(service.id))} onValueChange={(pressed) => handleFavoriteToggle(String(service.id), "service", pressed)}>
+                                    {({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}
+                                  </FavoriteRoot>
+                                ) : null}
+                              />
+                            </SwiperSlide>
+                          )
+                        })}
+                      </SwiperContent>
+                    </TabsContent>
+                  ))}
                 </div>
               </SwiperRoot>
+            </Tabs>
+          </div>
+
+          <div className="mt-[50px]">
+            <Tabs defaultValue="Project Type">
+              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                Narrow Your {sectionLabel} Search
+              </h1>
+              <div className="mt-6 flex justify-between items-center">
+                <TabsList className="flex items-center gap-x-3">
+                  <Badge
+                    variant="circular"
+                    visual="gray"
+                    size="lg"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    asChild
+                  >
+                    <TabsTrigger value="Project Type">Project Type</TabsTrigger>
+                  </Badge>
+                  {/* <Badge
+                    variant="circular"
+                    visual="gray"
+                    size="lg"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    asChild
+                  >
+                    <TabsTrigger value="Industry">Industry</TabsTrigger>
+                  </Badge> */}
+                  <Badge
+                    variant="circular"
+                    visual="gray"
+                    size="lg"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    asChild
+                  >
+                    <TabsTrigger value="Budget">Budget</TabsTrigger>
+                  </Badge>
+                  <Badge
+                    variant="circular"
+                    visual="gray"
+                    size="lg"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    asChild
+                  >
+                    <TabsTrigger value="Project Length">
+                      Project Length
+                    </TabsTrigger>
+                  </Badge>
+                  <Badge
+                    variant="circular"
+                    visual="gray"
+                    size="lg"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    asChild
+                  >
+                    <TabsTrigger value="Team Size">Team Size</TabsTrigger>
+                  </Badge>
+                </TabsList>
+
+                <Button size="lg" variant="link" visual="gray">
+                  Advanced Filters
+                  <ArrowRight className="size-[15px]" />
+                </Button>
+              </div>
+
+              <div className="mt-6">
+                {/*
+                  Each tab corresponds to an Algolia facet on the projects index.
+                  Spec: /docs/md/Search Service/ ✅ Finalized Filter Fields table for project search.md
+                        /docs/md/Search Service/📄 search-config.ts — Filters Only (projects).md
+                  - Project Type    → project_type (string facet)
+                  - Industry        → industry (string facet)
+                  - Budget          → budget_range (numberRange → budget_min/budget_max)
+                  - Project Length  → project_duration_range (enum — exact values)
+                  - Team Size       → team_size_range (enum — exact values)
+                  Each tile links to /search with the filter pre-applied and scoped to the current category.
+                */}
+                <TabsContent
+                  className="grid grid-cols-5 gap-[15px]"
+                  value="Project Type"
+                >
+                  {["Web App", "Mobile App", "Desktop App", "SaaS Platform", "API / Backend", "E-commerce Store", "Landing Page", "Chrome Extension", "CLI Tool", "Game"].map((projectType) => (
+                    <NextLink
+                      key={projectType}
+                      href={`/search?category=${l1Meta.slug}&project_type=${encodeURIComponent(projectType)}`}
+                      className="focus-visible:outline-none"
+                    >
+                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                        {projectType}
+                      </article>
+                    </NextLink>
+                  ))}
+                </TabsContent>
+                <TabsContent
+                  className="grid grid-cols-5 gap-[15px]"
+                  value="Industry"
+                >
+                  {["Agriculture", "Oil & Gas", "Manufacturing", "Construction", "Utilities", "Retail & Wholesale", "Transportation", "Finance & Banking", "Real Estate", "Healthcare"].map((industry) => (
+                    <NextLink
+                      key={industry}
+                      href={`/search?category=${l1Meta.slug}&industry=${encodeURIComponent(industry)}`}
+                      className="focus-visible:outline-none"
+                    >
+                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                        {industry}
+                      </article>
+                    </NextLink>
+                  ))}
+                </TabsContent>
+                <TabsContent
+                  className="grid grid-cols-5 gap-[15px]"
+                  value="Budget"
+                >
+                  {[
+                    { label: "Under $5k", min: 0, max: 5000 },
+                    { label: "$5k – $15k", min: 5000, max: 15000 },
+                    { label: "$15k – $50k", min: 15000, max: 50000 },
+                    { label: "$50k – $100k", min: 50000, max: 100000 },
+                    { label: "$100k – $250k", min: 100000, max: 250000 },
+                    { label: "$250k – $500k", min: 250000, max: 500000 },
+                    { label: "$500k – $1M", min: 500000, max: 1000000 },
+                    { label: "$1M+", min: 1000000, max: null as number | null },
+                  ].map((b) => (
+                    <NextLink
+                      key={b.label}
+                      href={`/search?category=${l1Meta.slug}&budget_min=${b.min}${b.max != null ? `&budget_max=${b.max}` : ""}`}
+                      className="focus-visible:outline-none"
+                    >
+                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                        {b.label}
+                      </article>
+                    </NextLink>
+                  ))}
+                </TabsContent>
+                <TabsContent
+                  className="grid grid-cols-5 gap-[15px]"
+                  value="Project Length"
+                >
+                  {["1 - 3 months", "3 - 6 months", "6 - 12 months", "12 - 18 months", "18 - 24 months", "24+ months"].map((duration) => (
+                    <NextLink
+                      key={duration}
+                      href={`/search?category=${l1Meta.slug}&project_duration_range=${encodeURIComponent(duration)}`}
+                      className="focus-visible:outline-none"
+                    >
+                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                        {duration}
+                      </article>
+                    </NextLink>
+                  ))}
+                </TabsContent>
+                <TabsContent
+                  className="grid grid-cols-5 gap-[15px]"
+                  value="Team Size"
+                >
+                  {["1 - 2 members", "2 - 5 members", "5 - 10 members", "10 - 15 members", "15 - 20 members", "20+ members"].map((size) => (
+                    <NextLink
+                      key={size}
+                      href={`/search?category=${l1Meta.slug}&team_size_range=${encodeURIComponent(size)}`}
+                      className="focus-visible:outline-none"
+                    >
+                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                        {size}
+                      </article>
+                    </NextLink>
+                  ))}
+                </TabsContent>
+              </div>
             </Tabs>
           </div>
 
@@ -2354,45 +2414,90 @@ export default function Projects() {
                   </div>
                 </div>
                 <div className="mt-6">
-                  <TabsContent value="Featured">
-                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                      {fromLength(8).map((key) => (
-                        <SwiperSlide className="w-[355px]" key={key}>
-                          <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                            <div className="flex items-center gap-x-3">
-                              <Avatar size="lg"><AvatarImage src="/woman.jpg" alt="Talent" /><AvatarFallback>T</AvatarFallback></Avatar>
-                              <div>
-                                <h3 className="text-base font-bold text-dark-blue-400">Expert Freelancer</h3>
-                                <p className="text-xs font-light text-dark-blue-400">{currentName} Specialist</p>
-                              </div>
-                            </div>
-                            <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">Experienced {currentName} professional with 8+ years of hands-on experience.</p>
-                            <div className="mt-3 flex items-center gap-x-2">
-                              <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
-                                <div className="flex items-center gap-x-[3px]">
-                                  {fromLength(5).map((k) => (<Star key={k} className="size-3 text-primary-500 fill-primary-500 shrink-0" />))}
-                                </div>
-                              </div>
-                              <span className="text-xs font-semibold text-dark-blue-400">4.9</span>
-                              <span className="text-xs font-semibold text-dark-blue-400">12 Projects</span>
-                            </div>
-                            <div className="mt-3 flex gap-2 flex-wrap">
-                              <Badge className="bg-transparent" visual="gray">React</Badge>
-                              <Badge className="bg-transparent" visual="gray">TypeScript</Badge>
-                              <Badge className="bg-transparent" visual="gray">Node.js</Badge>
-                            </div>
-                            <div className="mt-5 flex items-end justify-between">
-                              <span className="text-sm font-bold text-dark-blue-400">$75 <span className="text-[10px] font-light">/hr</span></span>
-                              <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
-                            </div>
+                  {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tabValue) => (
+                    <TabsContent key={tabValue} value={tabValue}>
+                      <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                        <SwiperSlide className="w-[355px] h-auto">
+                          <article className="py-[50px] h-full rounded-lg bg-primary-600 flex flex-col items-start justify-end px-6">
+                            <h1 className="text-[28px] font-bold leading-none text-white">
+                              {currentName} Talent
+                            </h1>
+                            <p className="mt-3 text-lg font-light leading-none text-white">
+                              Find {currentName.toLowerCase()} talent to bring your next project to life.
+                            </p>
+                            <Button asChild className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-primary-800 hover:bg-white text-primary-700 mt-8" size="lg">
+                              <NextLink href={listingHref("talent")}>
+                                Explore More <ArrowRight className="size-[15px]" />
+                              </NextLink>
+                            </Button>
                           </article>
                         </SwiperSlide>
-                      ))}
-                    </SwiperContent>
-                  </TabsContent>
+                        {(talentUsers.length > 0 ? talentUsers.slice(0, 8) : fromLength(8)).map((u: any, idx: number) => (
+                          <SwiperSlide className="w-[355px]" key={u?.id ?? idx}>
+                            {talentUsers.length > 0 ? (
+                              <ListingCard kind="talent" {...talentToCardProps(u, idx)} />
+                            ) : (
+                              <ListingCard
+                                kind="talent"
+                                id={`mock-${idx}`}
+                                username={`expert-${idx}`}
+                                name="Expert Freelancer"
+                                role={`${currentName} Specialist`}
+                                photo="/woman.jpg"
+                                rate="$75/hr"
+                                rating={4.9}
+                                projects={12}
+                                skills={["React", "TypeScript", "Node.js"]}
+                              />
+                            )}
+                          </SwiperSlide>
+                        ))}
+                      </SwiperContent>
+                    </TabsContent>
+                  ))}
                 </div>
               </SwiperRoot>
             </Tabs>
+          </div>
+
+          <div className="mt-[50px]">
+            <div className="flex items-center justify-between">
+              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                Browse by Skills
+              </h1>
+
+              <div className="flex items-center gap-x-3">
+                <IconButton
+                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                  visual="gray"
+                  variant="outlined"
+                >
+                  <ChevronLeft className="size-[18px]" />
+                </IconButton>
+                <IconButton
+                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                  visual="gray"
+                  variant="outlined"
+                  data-state="active"
+                >
+                  <ChevronRight className="size-[18px]" />
+                </IconButton>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center flex-wrap gap-3">
+              {["JavaScript", "Python", "React", "Node.js", "TypeScript", "AWS", "Docker", "Kubernetes", "GraphQL", "PostgreSQL", "MongoDB"].map((skill) => (
+                <Badge
+                  key={skill}
+                  variant="circular"
+                  visual="gray"
+                  size="lg"
+                  className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700 hover:border-gray-400 transition duration-300 cursor-pointer"
+                >
+                  {skill}
+                </Badge>
+              ))}
+            </div>
           </div>
 
           <div className="mt-[50px]">
@@ -2522,6 +2627,7 @@ export default function Projects() {
                 <NextImage
                   className="object-cover"
                   src="/artificial-hand.jpeg"
+                  alt="Guide"
                   sizes="50vw"
                   fill
                 />

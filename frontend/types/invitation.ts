@@ -41,6 +41,7 @@ export interface AcceptInvitationResponse {
   acceptedUser?: AcceptInvitationAcceptedUser
   postAccept?: AcceptInvitationPostAccept
   token?: string
+  note?: string | null
 }
 
 export interface Invitation {
@@ -48,6 +49,7 @@ export interface Invitation {
   email: string
   status: "pending" | "accepted" | "canceled" | "expired"
   role?: string
+  note?: string | null
   teamId?: string
   teamName?: string
   invitedEmail?: string
@@ -55,10 +57,17 @@ export interface Invitation {
   createdAt?: string
   alreadyInvited?: boolean
   token?: string
+  /** Set when the invitation was accepted — the invitee's user ID */
+  inviteeUserId?: string
+  /** Invitee's display name (enriched by backend from user-service) */
+  inviteeName?: string
+  /** Invitee's avatar URL (enriched by backend from user-service) */
+  avatarUrl?: string | null
 }
 
 export interface ListInvitationsParams {
   teamId?: string
+  invitedEmail?: string
   status?: "pending" | "accepted" | "canceled" | "expired"
   limit?: number
   cursor?: string
@@ -70,6 +79,7 @@ export interface CreateInvitationResult {
   status: "pending" | "accepted" | "canceled" | "expired"
   expiresAt: string
   teamName?: string
+  note?: string | null
   alreadyInvited: boolean
   token?: string
 }

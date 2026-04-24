@@ -5,7 +5,7 @@ export class ProjectMapper {
   static toDomain(raw: ProjectEntity): Project {
     const project = new Project();
     project.id = raw.id;
-    project.strapiId = raw.strapiId;
+    project.cmsId = raw.cmsId;
     project.title = raw.title;
     project.subtitle = raw.subtitle;
     project.shortDescription = raw.shortDescription;
@@ -20,6 +20,7 @@ export class ProjectMapper {
     project.skills = raw.skills;
     project.categories = raw.categories;
     project.subCategories = raw.subCategories;
+    project.categorySelections = raw.categorySelections;
     project.status = raw.status;
     project.projectDatePublished = raw.projectDatePublished;
     project.userId = raw.userId;
@@ -37,7 +38,7 @@ export class ProjectMapper {
       projectEntity.id = project.id;
     }
 
-    projectEntity.strapiId = project.strapiId ?? undefined;
+    projectEntity.cmsId = project.cmsId ?? undefined;
     projectEntity.title = project.title;
     projectEntity.subtitle = project.subtitle!;
     projectEntity.shortDescription = project.shortDescription!;
@@ -52,6 +53,7 @@ export class ProjectMapper {
     projectEntity.skills = project.skills!;
     projectEntity.categories = project.categories!;
     projectEntity.subCategories = project.subCategories!;
+    projectEntity.categorySelections = project.categorySelections ?? [];
     projectEntity.status = project.status ?? undefined;
     projectEntity.projectDatePublished = project.projectDatePublished ?? undefined;
     projectEntity.userId = project.userId;

@@ -3,14 +3,19 @@
 import * as React from "react"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
+import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import {
   addFavorite,
   findFavoriteByItemId,
-  getAllFavorites,
   removeFavorite,
 } from "@/src/lib/api/favorites"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
+import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
+import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
+import {
+  buildProjectStaticContentFromGateway,
+  type ProjectStaticContent,
+  type ProjectStaticIcon,
+} from "@/lib/project-details/project-static-content-from-api"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -456,6 +461,21 @@ const CarouselNextTrigger = () => {
   ) : null
 }
 
+const renderProjectStaticIcon = (
+  icon: ProjectStaticIcon,
+  className: string
+) => {
+  switch (icon) {
+    case "rocket":
+      return <Rocket02 className={className} />
+    case "shield-dollar":
+      return <ShieldDollar className={className} />
+    case "shield-zap":
+    default:
+      return <ShieldZap className={className} />
+  }
+}
+
 export default function ProjectDetails() {
   const params = useParams()
   const router = useRouter()
@@ -496,11 +516,13 @@ export default function ProjectDetails() {
         // Try the full URL slug first, then fall back to stripping the
         // trailing id segment.
         const parts = rawSlug.split("-")
-        const stripped = parts.length > 1 ? parts.slice(0, -1).join("-") : rawSlug
+        const stripped =
+          parts.length > 1 ? parts.slice(0, -1).join("-") : rawSlug
         const candidates = Array.from(new Set([rawSlug, stripped]))
 
         // Try fetching from listings-service via gateway
-        const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+        const apiBase =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
         let res: Response | null = null
         let slug = rawSlug
         for (const candidate of candidates) {
@@ -518,9 +540,7 @@ export default function ProjectDetails() {
         }
         if (!res.ok) {
           // Try as a service
-          const svcRes = await fetch(
-            `${apiBase}/v1/services/slug/${slug}`
-          )
+          const svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
           if (!svcRes.ok) {
             setLoading(false)
             return
@@ -529,7 +549,7 @@ export default function ProjectDetails() {
           setProject({
             ...svcData,
             role: svcData.category || "Service",
-            summary: svcData.description,
+            summary: svcData.shortDescription || svcData.description,
             rating: 4.9,
             reviewCount: 14,
             listingType: "service",
@@ -541,7 +561,7 @@ export default function ProjectDetails() {
         setProject({
           ...data,
           role: data.category || "Software Development",
-          summary: data.description,
+          summary: data.shortDescription || data.description,
           rating: 4.9,
           reviewCount: 14,
           listingType: "project",
@@ -560,6 +580,10 @@ export default function ProjectDetails() {
   React.useEffect(() => {
     window.scrollTo(0, 0)
   }, [])
+
+  const projectStaticContent = React.useMemo<ProjectStaticContent>(() => {
+    return buildProjectStaticContentFromGateway(project?.projectStaticContent)
+  }, [project?.projectStaticContent])
 
   if (loading) {
     return (
@@ -654,41 +678,71 @@ export default function ProjectDetails() {
                 </NextLink>
 
                 {(() => {
-                  const cats = project.categories || [];
-                  const l1 = cats[0] || project.category || "Software Development";
-                  const l1Slug = l1.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/&/g, "and");
-                  const l2 = cats[1];
-                  const l2Slug = l2 ? l2.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/&/g, "and") : null;
+                  const cats = project.categories || []
+                  const l1 =
+                    cats[0] || project.category || "Software Development"
+                  const l1Slug = l1
+                    .toLowerCase()
+                    .replace(/\s+/g, "-")
+                    .replace(/[^a-z0-9-]/g, "")
+                    .replace(/&/g, "and")
+                  const l2 = cats[1]
+                  const l2Slug = l2
+                    ? l2
+                        .toLowerCase()
+                        .replace(/\s+/g, "-")
+                        .replace(/[^a-z0-9-]/g, "")
+                        .replace(/&/g, "and")
+                    : null
                   return (
                     <>
                       <div className="inline-flex items-center gap-x-2">
-                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">/</span>
-                        <NextLink href={`/c/${l1Slug}`} className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300">
+                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">
+                          /
+                        </span>
+                        <NextLink
+                          href={`/c/${l1Slug}`}
+                          className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300"
+                        >
                           {l1}
                         </NextLink>
                       </div>
                       {l2 && (
                         <div className="inline-flex items-center gap-x-2">
-                          <span className="text-xs leading-6 text-gray-500/50 font-semibold">/</span>
-                          <NextLink href={`/c/${l1Slug}/${l2Slug}`} className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300">
+                          <span className="text-xs leading-6 text-gray-500/50 font-semibold">
+                            /
+                          </span>
+                          <NextLink
+                            href={`/c/${l1Slug}/${l2Slug}`}
+                            className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300"
+                          >
                             {l2}
                           </NextLink>
                         </div>
                       )}
                       <div className="inline-flex items-center gap-x-2">
-                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">/</span>
-                        <NextLink href={`/c/${l1Slug}/${l2Slug || (project.listingType === "service" ? "services" : "projects")}`} className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300">
-                          {project.listingType === "service" ? "Services" : "Projects"}
+                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">
+                          /
+                        </span>
+                        <NextLink
+                          href={`/c/${l1Slug}/${l2Slug || (project.listingType === "service" ? "services" : "projects")}`}
+                          className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300"
+                        >
+                          {project.listingType === "service"
+                            ? "Services"
+                            : "Projects"}
                         </NextLink>
                       </div>
                       <div className="inline-flex items-center gap-x-2">
-                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">/</span>
+                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">
+                          /
+                        </span>
                         <span className="text-xs leading-6 text-gray-500 font-semibold">
                           {project.title}
                         </span>
                       </div>
                     </>
-                  );
+                  )
                 })()}
               </div>
 
@@ -698,6 +752,8 @@ export default function ProjectDetails() {
                     src={project.mediaUrls?.[0] || "/dashboard.png"}
                     alt={project.title}
                     sizes="25vw"
+                    loading="eager"
+                    priority
                     fill
                   />
                 </div>
@@ -736,34 +792,56 @@ export default function ProjectDetails() {
                       </span>
                     </div>
 
-                    <span className="size-1 shrink-0 rounded-full bg-dark-blue-400" />
-
-                    <div className="inline-flex items-center gap-x-1.5">
-                      <ChartBreakoutCircle className="size-[18px] shrink-0" />
-                      <span className="text-sm leading-none font-semibold text-dark-blue-400">
-                        Top Rated
-                      </span>
-                    </div>
+                    {/* §13 L59: "Show only if isTopRated is true" */}
+                    {project.isTopRated && (
+                      <>
+                        <span className="size-1 shrink-0 rounded-full bg-dark-blue-400" />
+                        <div className="inline-flex items-center gap-x-1.5">
+                          <ChartBreakoutCircle className="size-[18px] shrink-0" />
+                          <span className="text-sm leading-none font-semibold text-dark-blue-400">
+                            Top Rated
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-x-3">
-                    {(project.categories || []).map((cat: string, idx: number) => {
-                      const catSlug = cat.toLowerCase().replace(/&/g, "and").replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
-                      const cats = project.categories || []
-                      const l1Slug = (cats[0] || "").toLowerCase().replace(/&/g, "and").replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
-                      // L1 → /c/l1, L2 → /c/l1/l2, L3 → /c/l1/l2/l3
-                      let href = `/c/${l1Slug}`
-                      if (idx === 1) href = `/c/${l1Slug}/${catSlug}`
-                      if (idx === 2) {
-                        const l2Slug = (cats[1] || "").toLowerCase().replace(/&/g, "and").replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
-                        href = `/c/${l1Slug}/${l2Slug}/${catSlug}`
+                    {(project.categories || []).map(
+                      (cat: string, idx: number) => {
+                        const catSlug = cat
+                          .toLowerCase()
+                          .replace(/&/g, "and")
+                          .replace(/\s+/g, "-")
+                          .replace(/[^a-z0-9-]/g, "")
+                        const cats = project.categories || []
+                        const l1Slug = (cats[0] || "")
+                          .toLowerCase()
+                          .replace(/&/g, "and")
+                          .replace(/\s+/g, "-")
+                          .replace(/[^a-z0-9-]/g, "")
+                        // L1 → /c/l1, L2 → /c/l1/l2, L3 → /c/l1/l2/l3
+                        let href = `/c/${l1Slug}`
+                        if (idx === 1) href = `/c/${l1Slug}/${catSlug}`
+                        if (idx === 2) {
+                          const l2Slug = (cats[1] || "")
+                            .toLowerCase()
+                            .replace(/&/g, "and")
+                            .replace(/\s+/g, "-")
+                            .replace(/[^a-z0-9-]/g, "")
+                          href = `/c/${l1Slug}/${l2Slug}/${catSlug}`
+                        }
+                        return (
+                          <NextLink
+                            key={cat}
+                            href={href}
+                            className="text-sm font-semibold text-gray-500 hover:text-dark-blue-400 hover:underline transition duration-300"
+                          >
+                            {cat}
+                          </NextLink>
+                        )
                       }
-                      return (
-                        <NextLink key={cat} href={href} className="text-sm font-semibold text-gray-500 hover:text-dark-blue-400 hover:underline transition duration-300">
-                          {cat}
-                        </NextLink>
-                      )
-                    })}
+                    )}
                   </div>
                 </div>
               </div>
@@ -813,7 +891,9 @@ export default function ProjectDetails() {
                 <Button className="group" variant="link" visual="gray">
                   {selected === "View Project Scope"
                     ? "Close Scope"
-                    : project?.listingType === "service" ? "View Service Scope" : "View Project Scope"}
+                    : project?.listingType === "service"
+                      ? "View Service Scope"
+                      : "View Project Scope"}
                   <ChevronDown className="group-data-[state=active]:-rotate-180 transition duration-300 size-[15px]" />
                 </Button>
               </DisclosureTrigger>
@@ -829,22 +909,61 @@ export default function ProjectDetails() {
               value="Details"
               style={{ willChange: "auto" }}
             >
+              {/*
+                Project gallery carousel — spec:
+                  docs/md/.../Strapi Collection Type... Project Listings:42
+                  "Gallery Images — Media (Multiple), Optional, Cloudflare R2"
+
+                Source: project.mediaUrls. The listings-service sync
+                concatenates [thumbnail, ...gallery[].image] into a single
+                `mediaUrls` text[] column, so index 0 is always the
+                thumbnail (already rendered in the project header strip
+                above) and .slice(1) is the authored gallery.
+
+                When the project has no authored gallery we keep the
+                static /waves.png placeholder carousel so the design
+                density stays intact (saved "no-empty-swap" memory rule).
+              */}
               <Carousel className="max-w-[818px] w-full">
                 <CarouselContent className="-ml-3">
-                  {Array.from({ length: 5 }).map((_, index) => (
-                    <CarouselItem key={index} className="group basis-1/3">
-                      <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
-                        <NextImage
-                          className="object-cover"
-                          src="/waves.png"
-                          alt="Waves"
-                          sizes="25vw"
-                          fill
-                        />
-                        <div className="absolute inset-0 transition duration-300" />
-                      </div>
-                    </CarouselItem>
-                  ))}
+                  {(() => {
+                    const gallery =
+                      (project.mediaUrls as string[] | undefined)?.slice(1) ??
+                      []
+                    if (gallery.length === 0) {
+                      return Array.from({ length: 5 }).map((_, index) => (
+                        <CarouselItem key={index} className="group basis-1/3">
+                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
+                            <NextImage
+                              className="object-cover"
+                              src="/waves.png"
+                              alt="Waves"
+                              sizes="25vw"
+                              fill
+                            />
+                            <div className="absolute inset-0 transition duration-300" />
+                          </div>
+                        </CarouselItem>
+                      ))
+                    }
+                    return gallery.map((url, index) => (
+                      <CarouselItem
+                        key={`${url}-${index}`}
+                        className="group basis-1/3"
+                      >
+                        <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
+                          <NextImage
+                            className="object-cover"
+                            src={url}
+                            alt={`${project.title} — gallery image ${index + 1}`}
+                            sizes="25vw"
+                            fill
+                          />
+                          <div className="absolute inset-0 transition duration-300" />
+                        </div>
+                      </CarouselItem>
+                    ))
+                  })()}
                 </CarouselContent>
 
                 <CarouselPreviousTrigger />
@@ -920,84 +1039,28 @@ export default function ProjectDetails() {
                             )}
                           >
                             <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
-                              Section H1 Title
+                              {project.title}
                             </h1>
 
                             <div className="mt-6 border-t pt-6 border-gray-200">
-                              <h2 className="text-xl leading-none text-dark-blue-400 font-semibold">
-                                H2 Title
-                              </h2>
-
-                              <h3 className="mt-6 text-base font-semibold text-dark-blue-400 leading-none">
-                                H3 Title
-                              </h3>
-
-                              <p className="mt-6 text-base font-extralight leading-none text-dark-blue-400">
-                                Lorem ipsum dolor sit amet, consectetur
-                                adipiscing elit, sed do eiusmod tempor
-                                incididunt ut labore et dolore magna aliqua. Ut
-                                enim ad minim veniam, quis nostrud exercitation
-                                ullamco laboris nisi ut aliquip ex ea commodo
-                                consequat. Duis aute irure dolor in
-                                reprehenderit in voluptate velit esse cillum
-                                dolore eu fugiat nulla pariatur.
-                              </p>
-
-                              <h1 className="mt-6 text-2xl leading-none font-semibold text-dark-blue-400">
-                                Section H1 Title
-                              </h1>
-                            </div>
-
-                            <div className="mt-6 border-t pb-6 border-gray-200">
-                              <p className="mt-6 text-base font-extralight leading-none text-dark-blue-400">
-                                Ut enim ad minim veniam, quis nostrud
-                                exercitation ullamco laboris nisi ut aliquip ex
-                                ea commodo consequat. Duis aute irure dolor in
-                                reprehenderit in voluptate velit esse cillum
-                                dolore eu fugiat nulla pariatur. Excepteur sint
-                                occaecat cupidatat non proident, sunt in culpa
-                                qui officia deserunt mollit anim id est laborum.
-                                <ul className="mt-5">
-                                  <li className="text-base font-extralight leading-none text-dark-blue-400">
-                                    <span className="font-semibold">
-                                      Main Bullet Point 1:
-                                    </span>{" "}
-                                    Sed ut perspiciatis unde omnis iste natus
-                                    Main Bullet Point 2: error sit voluptatem
-                                    accusantium doloremque laudantium, totam rem
-                                    aperiam Main Bullet Point 3: eaque ipsa quae
-                                    ab illo inventore veritatis et quasi
-                                    architecto beatae vitae dicta sunt
-                                    explicabo.
-                                  </li>
-                                </ul>
-                              </p>
-                            </div>
-
-                            <div className="mt-6 border-t pb-6 border-gray-200">
-                              <p className="mt-6 text-base font-extralight leading-none text-dark-blue-400">
-                                Ut enim ad minim veniam, quis nostrud
-                                exercitation ullamco laboris nisi ut aliquip ex
-                                ea commodo consequat. Duis aute irure dolor in
-                                reprehenderit in voluptate velit esse cillum
-                                dolore eu fugiat nulla pariatur. Excepteur sint
-                                occaecat cupidatat non proident, sunt in culpa
-                                qui officia deserunt mollit anim id est laborum.
-                                <ul className="mt-5">
-                                  <li className="text-base font-extralight leading-none text-dark-blue-400">
-                                    <span className="font-semibold">
-                                      Main Bullet Point 1:
-                                    </span>{" "}
-                                    Sed ut perspiciatis unde omnis iste natus
-                                    Main Bullet Point 2: error sit voluptatem
-                                    accusantium doloremque laudantium, totam rem
-                                    aperiam Main Bullet Point 3: eaque ipsa quae
-                                    ab illo inventore veritatis et quasi
-                                    architecto beatae vitae dicta sunt
-                                    explicabo.
-                                  </li>
-                                </ul>
-                              </p>
+                              {/*
+                                project.description is HTML generated from the
+                                Payload Lexical rich-text editor by the
+                                listings-service ProjectSyncService. Editor
+                                content is admin-authored (not user-submitted)
+                                so `dangerouslySetInnerHTML` is safe here — see
+                                the lexicalToHtml() helper on the service which
+                                escapes text content before wrapping in tags.
+                              */}
+                              <div
+                                className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
+                                dangerouslySetInnerHTML={{
+                                  __html:
+                                    project.description ||
+                                    project.summary ||
+                                    "",
+                                }}
+                              />
                             </div>
 
                             {isShowing ? (
@@ -1037,325 +1100,62 @@ export default function ProjectDetails() {
                               Deliverables
                             </h2>
 
-                            <div className="mt-6">
-                              <span className="block text-sm font-extralight text-dark-blue-400">
-                                Phase One{" "}
-                                <span className="font-semibold">Research</span>
-                              </span>
-
-                              <div className="mt-3 grid grid-cols-3 gap-y-3">
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
+                            {/*
+                              Deliverables come back from listings-service as a
+                              grouped phase array:
+                                [{ phaseLabel, phaseName, items: string[] }]
+                              rendered as a Figma-matching stack of phase blocks
+                              with a 3-column checkmark grid per phase, separated
+                              by horizontal rules. Empty state: "Deliverables coming soon".
+                            */}
+                            {Array.isArray(project.deliverables) &&
+                            project.deliverables.length > 0 ? (
+                              <div className="mt-6 flex flex-col">
+                                {(
+                                  project.deliverables as Array<{
+                                    phaseLabel: string
+                                    phaseName: string
+                                    items: string[]
+                                  }>
+                                ).map((phase, pi) => (
+                                  <div
+                                    key={`${phase.phaseLabel}-${pi}`}
+                                    className={cn(
+                                      pi > 0 &&
+                                        "mt-6 pt-6 border-t border-gray-200"
+                                    )}
+                                  >
+                                    <p className="text-sm text-dark-blue-400">
+                                      <span className="font-extralight">
+                                        {phase.phaseLabel}
+                                      </span>{" "}
+                                      <span className="font-semibold">
+                                        {phase.phaseName}
+                                      </span>
+                                    </p>
+                                    <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
+                                      {phase.items.map((item, i) => (
+                                        <div
+                                          key={`${item}-${i}`}
+                                          className="flex items-center gap-x-3"
+                                        >
+                                          <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
+                                            <Check className="size-2" />
+                                          </span>
+                                          <p className="text-sm font-extralight leading-tight text-dark-blue-400">
+                                            {item}
+                                          </p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
-                            </div>
-
-                            <div className="mt-5 border-t border-gray-200 pt-5">
-                              <span className="block text-sm font-extralight text-dark-blue-400">
-                                Phase One{" "}
-                                <span className="font-semibold">Research</span>
-                              </span>
-
-                              <div className="mt-3 grid grid-cols-3 gap-y-3">
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="mt-5 border-t border-gray-200 pt-5">
-                              <span className="block text-sm font-extralight text-dark-blue-400">
-                                Phase One{" "}
-                                <span className="font-semibold">Research</span>
-                              </span>
-
-                              <div className="mt-3 grid grid-cols-3 gap-y-3">
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="mt-5 border-t border-gray-200 pt-5">
-                              <span className="block text-sm font-extralight text-dark-blue-400">
-                                Phase One{" "}
-                                <span className="font-semibold">Research</span>
-                              </span>
-
-                              <div className="mt-3 grid grid-cols-3 gap-y-3">
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="mt-5 border-t border-gray-200 pt-5">
-                              <span className="block text-sm font-extralight text-dark-blue-400">
-                                Phase One{" "}
-                                <span className="font-semibold">Research</span>
-                              </span>
-
-                              <div className="mt-3 grid grid-cols-3 gap-y-3">
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-x-3">
-                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                    <Check className="size-2" />
-                                  </span>
-
-                                  <p className="text-sm font-extralight leading-none text-dark-blue-400">
-                                    Market Analysis Report
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
+                            ) : (
+                              <p className="mt-6 text-sm font-extralight text-gray-500">
+                                Deliverables coming soon.
+                              </p>
+                            )}
 
                             <Alert className="mt-6">
                               <AlertIcon>
@@ -1404,193 +1204,100 @@ export default function ProjectDetails() {
 
                           <div className="mt-6">
                             <div className="grid gap-x-6 grid-cols-2">
-                              <div className="space-y-3">
-                                <h3 className="text-sm leading-none font-medium text-dark-blue-400">
-                                  Programming Languages
-                                </h3>
-
-                                <div className="flex items-center flex-wrap gap-1">
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visibile:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Python,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visibile:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    React.js,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visibile:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Node.js
-                                  </NextLink>
+                              {project.programmingLanguages?.length > 0 && (
+                                <div className="space-y-3">
+                                  <h3 className="text-sm leading-none font-medium text-dark-blue-400">
+                                    Programming Languages
+                                  </h3>
+                                  <div className="flex items-center flex-wrap gap-1">
+                                    {project.programmingLanguages.map(
+                                      (lang: string, i: number) => (
+                                        <NextLink
+                                          key={lang + i}
+                                          href="#"
+                                          className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                        >
+                                          {lang}
+                                          {i <
+                                          project.programmingLanguages.length -
+                                            1
+                                            ? ","
+                                            : ""}
+                                        </NextLink>
+                                      )
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
+                              )}
 
-                              <div className="space-y-3">
-                                <h3 className="text-sm leading-none font-medium text-dark-blue-400">
-                                  Development Tech
-                                </h3>
-
-                                <div className="flex items-center flex-wrap gap-1">
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Flutter,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    React,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Native OS,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Ionic
-                                  </NextLink>
+                              {project.developmentTech?.length > 0 && (
+                                <div className="space-y-3">
+                                  <h3 className="text-sm leading-none font-medium text-dark-blue-400">
+                                    Development Tech
+                                  </h3>
+                                  <div className="flex items-center flex-wrap gap-1">
+                                    {project.developmentTech.map(
+                                      (tech: string, i: number) => (
+                                        <NextLink
+                                          key={tech + i}
+                                          href="#"
+                                          className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                        >
+                                          {tech}
+                                          {i <
+                                          project.developmentTech.length - 1
+                                            ? ","
+                                            : ""}
+                                        </NextLink>
+                                      )
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                             </div>
 
                             <div className="grid gap-x-6 grid-cols-2 mt-10">
-                              <div className="space-y-3">
-                                <h3 className="text-sm leading-none font-medium text-dark-blue-400">
-                                  Subcategories
-                                </h3>
-
-                                <ShowMoreLessRoot>
-                                  {({
-                                    isShowing,
-                                    setIsShowing,
-                                    ref,
-                                    scrollHeight,
-                                  }) => (
-                                    <div
-                                      ref={ref}
-                                      className="gap-2 flex items-center flex-wrap [interpolate-size:allow-keywords] transition-[height] duration-300"
-                                      style={{
-                                        height: isShowing
-                                          ? "auto"
-                                          : scrollHeight
-                                            ? toPxIfNumber(scrollHeight)
-                                            : "auto",
-                                      }}
-                                    >
-                                      <ShowMoreLess max={5}>
-                                        <Badge visual="gray" size="md">
-                                          iOS
-                                        </Badge>
-                                        <Badge visual="gray" size="md">
-                                          E-commerce
-                                        </Badge>
-                                        <Badge visual="gray" size="md">
-                                          Mobile Application
-                                        </Badge>
-                                        <Badge visual="gray" size="md">
-                                          Small Business
-                                        </Badge>
-                                        <Badge visual="gray" size="md">
-                                          Software Development
-                                        </Badge>
-                                        <Badge visual="gray" size="md">
-                                          Small Business
-                                        </Badge>
-                                        <Badge visual="gray" size="md">
-                                          Software Development
-                                        </Badge>
-                                      </ShowMoreLess>
-
-                                      {!isShowing ? (
-                                        <Button
-                                          onClick={() => setIsShowing(true)}
-                                          variant="link"
+                              {project.subcategories?.length > 0 && (
+                                <div className="space-y-3">
+                                  <h3 className="text-sm leading-none font-medium text-dark-blue-400">
+                                    Subcategories
+                                  </h3>
+                                  <div className="gap-2 flex items-center flex-wrap">
+                                    {project.subcategories.map(
+                                      (sc: string, i: number) => (
+                                        <Badge
+                                          key={sc + i}
                                           visual="gray"
-                                          className="text-gray-700 hover:text-gray-900 font-medium"
+                                          size="md"
                                         >
-                                          +2 more
-                                        </Button>
-                                      ) : null}
-                                    </div>
-                                  )}
-                                </ShowMoreLessRoot>
-                              </div>
-
-                              <div className="space-y-3">
-                                <h3 className="text-sm leading-none font-medium text-dark-blue-400">
-                                  Tags
-                                </h3>
-
-                                <div className="gap-2 flex items-center flex-wrap">
-                                  <ShowMoreLessRoot>
-                                    {({
-                                      isShowing,
-                                      setIsShowing,
-                                      ref,
-                                      scrollHeight,
-                                    }) => (
-                                      <div
-                                        ref={ref}
-                                        className="gap-2 flex items-center flex-wrap [interpolate-size:allow-keywords] transition-[height] duration-300"
-                                        style={{
-                                          height: isShowing
-                                            ? "auto"
-                                            : scrollHeight
-                                              ? toPxIfNumber(scrollHeight)
-                                              : "auto",
-                                        }}
-                                      >
-                                        <ShowMoreLess max={5}>
-                                          <Badge visual="gray" size="md">
-                                            B2C
-                                          </Badge>
-                                          <Badge visual="gray" size="md">
-                                            Marketplace
-                                          </Badge>
-                                          <Badge visual="gray" size="md">
-                                            Small Business
-                                          </Badge>
-                                          <Badge visual="gray" size="md">
-                                            Custom
-                                          </Badge>
-                                          <Badge visual="gray" size="md">
-                                            Native Application
-                                          </Badge>
-                                          <Badge visual="gray" size="md">
-                                            Native Application
-                                          </Badge>
-                                          <Badge visual="gray" size="md">
-                                            Native Application
-                                          </Badge>
-                                        </ShowMoreLess>
-
-                                        {!isShowing ? (
-                                          <Button
-                                            onClick={() => setIsShowing(true)}
-                                            variant="link"
-                                            visual="gray"
-                                            className="text-gray-700 hover:text-gray-900 font-medium"
-                                          >
-                                            +2 more
-                                          </Button>
-                                        ) : null}
-                                      </div>
+                                          {sc}
+                                        </Badge>
+                                      )
                                     )}
-                                  </ShowMoreLessRoot>
+                                  </div>
                                 </div>
-                              </div>
+                              )}
+
+                              {project.tags?.length > 0 && (
+                                <div className="space-y-3">
+                                  <h3 className="text-sm leading-none font-medium text-dark-blue-400">
+                                    Tags
+                                  </h3>
+                                  <div className="gap-2 flex items-center flex-wrap">
+                                    {project.tags.map(
+                                      (tag: string, i: number) => (
+                                        <Badge
+                                          key={tag + i}
+                                          visual="gray"
+                                          size="md"
+                                        >
+                                          {tag}
+                                        </Badge>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
                             <div className="mt-10">
@@ -1598,237 +1305,343 @@ export default function ProjectDetails() {
                                 Date Published
                               </h3>
                               <p className="mt-3 text-base leading-none text-gray-500">
-                                Feb 20, 2025
+                                {(() => {
+                                  const d =
+                                    project.updatedAt || project.createdAt
+                                  if (!d) return "—"
+                                  return new Date(d).toLocaleDateString(
+                                    "en-US",
+                                    {
+                                      month: "short",
+                                      day: "numeric",
+                                      year: "numeric",
+                                    }
+                                  )
+                                })()}
                               </p>
                             </div>
                           </div>
                         </div>
 
-                        <div className="p-6">
-                          <h3 className="text-base leading-none font-semibold text-dark-blue-400">
-                            About the Team
-                          </h3>
+                        {/*
+                          About the Team — hydrated from user-service via
+                          project.team[] (Step 2 of the hybrid team model).
+                          Falls back to the static design when team is empty.
+                        */}
+                        {Array.isArray(project.team) &&
+                        project.team.length > 0 ? (
+                          (() => {
+                            type TeamMember = {
+                              firstName: string
+                              username: string
+                              avatarUrl: string | null
+                              location: string | null
+                              languages: string[]
+                              skills: string[]
+                              isLead: boolean
+                              isOnline: boolean
+                            }
+                            const members = project.team as TeamMember[]
+                            const lead =
+                              members.find((m) => m.isLead) ?? members[0]
+                            const allLocations = Array.from(
+                              new Set(
+                                members
+                                  .map((m) => m.location)
+                                  .filter((l): l is string => !!l)
+                              )
+                            )
+                            const allLanguages = Array.from(
+                              new Set(members.flatMap((m) => m.languages))
+                            )
+                            const allSkills = Array.from(
+                              new Set(members.flatMap((m) => m.skills))
+                            )
+                            const visibleSkills = allSkills.slice(0, 5)
+                            const extraSkillCount =
+                              allSkills.length - visibleSkills.length
+                            const headerLabel =
+                              members.length > 1 ? "Current Team" : "Created By"
+                            return (
+                              <div className="p-6">
+                                <h3 className="text-base leading-none font-semibold text-dark-blue-400">
+                                  {headerLabel}
+                                </h3>
+                                <div className="grid grid-cols-2 gap-x-6 mt-6">
+                                  <div className="flex items-start gap-x-3">
+                                    <Avatar size="lg">
+                                      {lead.avatarUrl ? (
+                                        <AvatarImage
+                                          src={lead.avatarUrl}
+                                          alt={lead.firstName}
+                                        />
+                                      ) : null}
+                                      <AvatarFallback>
+                                        {lead.firstName.charAt(0).toUpperCase()}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="space-y-1.5">
+                                      <Badge
+                                        className="rounded-[4px] bg-primary-50"
+                                        visual="primary"
+                                      >
+                                        {lead.isLead
+                                          ? "Project Lead"
+                                          : "Team Member"}
+                                      </Badge>
+                                      <div className="flex flex-col gap-y-0.5">
+                                        <NextLink
+                                          href={`/talent/${encodeURIComponent(lead.username)}`}
+                                          className="block text-sm leading-none text-gray-500 font-extralight hover:underline"
+                                        >
+                                          <span className="text-base font-bold text-dark-blue-400">
+                                            {lead.firstName}
+                                          </span>{" "}
+                                          @{lead.username}
+                                        </NextLink>
+                                        {lead.skills[0] ? (
+                                          <span className="text-sm leading-none font-extralight text-dark-blue-400">
+                                            {lead.skills
+                                              .slice(0, 2)
+                                              .join(" · ")}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {allLocations.length > 0 && (
+                                    <div className="space-y-3">
+                                      <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                        <MapPin className="size-[18px]" />{" "}
+                                        Locations
+                                      </h3>
+                                      <div className="gap-1 flex items-center flex-wrap">
+                                        {allLocations.map((loc, i) => (
+                                          <NextLink
+                                            key={loc}
+                                            href={`/talent?location=${encodeURIComponent(loc)}`}
+                                            className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                          >
+                                            {loc}
+                                            {i < allLocations.length - 1
+                                              ? ","
+                                              : ""}
+                                          </NextLink>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                {(allLanguages.length > 0 ||
+                                  visibleSkills.length > 0) && (
+                                  <div className="mt-6 grid grid-cols-2 gap-x-6">
+                                    {allLanguages.length > 0 && (
+                                      <div className="space-y-3">
+                                        <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                          <MessageTextSquare01 className="size-[18px]" />{" "}
+                                          Languages
+                                        </h3>
+                                        <div className="gap-1 flex items-center flex-wrap">
+                                          {allLanguages.map((lang, i) => (
+                                            <NextLink
+                                              key={lang}
+                                              href={`/talent?language=${encodeURIComponent(lang)}`}
+                                              className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                            >
+                                              {lang}
+                                              {i < allLanguages.length - 1
+                                                ? ","
+                                                : ""}
+                                            </NextLink>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {visibleSkills.length > 0 && (
+                                      <div className="space-y-3">
+                                        <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                          <Stars02 className="size-[18px]" />{" "}
+                                          Skills & Expertise
+                                        </h3>
+                                        <div className="gap-1 flex items-center flex-wrap">
+                                          {visibleSkills.map((skill, i) => (
+                                            <NextLink
+                                              key={skill}
+                                              href={`/talent?skills=${encodeURIComponent(skill)}`}
+                                              className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                            >
+                                              {skill}
+                                              {i < visibleSkills.length - 1 ||
+                                              extraSkillCount > 0
+                                                ? ","
+                                                : ""}
+                                            </NextLink>
+                                          ))}
+                                          {extraSkillCount > 0 && (
+                                            <span className="text-sm leading-6 font-semibold text-dark-blue-400">
+                                              and {extraSkillCount} more...
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })()
+                        ) : (
+                          <div className="p-6">
+                            <h3 className="text-base leading-none font-semibold text-dark-blue-400">
+                              About the Team
+                            </h3>
 
-                          <div className="grid grid-cols-2 gap-x-6 mt-6">
-                            <div className="flex items-start gap-x-3">
-                              <Avatar size="lg">
-                                <AvatarImage src="/man.jpg" alt="Man" />
-                                <AvatarFallback>M</AvatarFallback>
-                              </Avatar>
+                            <div className="grid grid-cols-2 gap-x-6 mt-6">
+                              <div className="flex items-start gap-x-3">
+                                <Avatar size="lg">
+                                  <AvatarImage src="/man.jpg" alt="Man" />
+                                  <AvatarFallback>M</AvatarFallback>
+                                </Avatar>
 
-                              <div className="space-y-1.5">
-                                <Badge
-                                  className="rounded-[4px] bg-primary-50"
-                                  visual="primary"
-                                >
-                                  Project Lead
-                                </Badge>
+                                <div className="space-y-1.5">
+                                  <Badge
+                                    className="rounded-[4px] bg-primary-50"
+                                    visual="primary"
+                                  >
+                                    Project Lead
+                                  </Badge>
 
-                                <div className="flex flex-col gap-y-0.5">
-                                  <span className="block text-sm leading-none text-gray-500 font-extralight">
-                                    <span className="text-base font-bold text-dark-blue-400 ">
-                                      Chris
-                                    </span>{" "}
-                                    @ux23isee
-                                  </span>
+                                  <div className="flex flex-col gap-y-0.5">
+                                    <span className="block text-sm leading-none text-gray-500 font-extralight">
+                                      <span className="text-base font-bold text-dark-blue-400 ">
+                                        Chris
+                                      </span>{" "}
+                                      @ux23isee
+                                    </span>
 
-                                  <span className="text-sm leading-none font-extralight text-dark-blue-400">
-                                    Full Stack Designer
-                                  </span>
+                                    <span className="text-sm leading-none font-extralight text-dark-blue-400">
+                                      Full Stack Designer
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="space-y-3">
+                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                  <MapPin className="size-[18px]" /> Locations
+                                </h3>
+
+                                <div className="gap-1 flex items-center flex-wrap">
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    USA,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    UK,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Brazil,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    and 1 more...
+                                  </NextLink>
                                 </div>
                               </div>
                             </div>
 
-                            <div className="space-y-3">
-                              <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                <MapPin className="size-[18px]" /> Locations
-                              </h3>
+                            <div className="mt-6 grid grid-cols-2 gap-x-6">
+                              <div className="space-y-3">
+                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                  <MessageTextSquare01 className="size-[18px]" />{" "}
+                                  Languages
+                                </h3>
 
-                              <div className="gap-1 flex items-center flex-wrap">
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  USA,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  UK,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Brazil,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  and 1 more...
-                                </NextLink>
+                                <div className="gap-1 flex items-center flex-wrap">
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    English,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Spanish,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    French
+                                  </NextLink>
+                                </div>
+                              </div>
+
+                              <div className="space-y-3">
+                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                  <Stars02 className="size-[18px]" /> Skills &
+                                  Expertise
+                                </h3>
+
+                                <div className="gap-1 flex items-center flex-wrap">
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Performance,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Security,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Operating Systems,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Design,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    Databases,
+                                  </NextLink>
+                                  <NextLink
+                                    href="#"
+                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                  >
+                                    and 1 more...
+                                  </NextLink>
+                                </div>
                               </div>
                             </div>
                           </div>
-
-                          <div className="mt-6 grid grid-cols-2 gap-x-6">
-                            <div className="space-y-3">
-                              <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                <MessageTextSquare01 className="size-[18px]" />{" "}
-                                Languages
-                              </h3>
-
-                              <div className="gap-1 flex items-center flex-wrap">
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  English,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Spanish,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  French
-                                </NextLink>
-                              </div>
-                            </div>
-
-                            <div className="space-y-3">
-                              <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                <Stars02 className="size-[18px]" /> Skills &
-                                Expertise
-                              </h3>
-
-                              <div className="gap-1 flex items-center flex-wrap">
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Performance,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Security,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Operating Systems,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Design,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  Databases,
-                                </NextLink>
-                                <NextLink
-                                  href="#"
-                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                >
-                                  and 1 more...
-                                </NextLink>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                        )}
                       </div>
 
-                      <div className="relative border mt-6 border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                        <h3 className="text-center text-xs leading-none text-dark-blue-400 font-semibold">
-                          How It Works
-                        </h3>
-
-                        <h1 className="mt-3 text-center text-2xl leading-none text-dark-blue-400 font-semibold">
-                          Unlock your project vision, your way
-                        </h1>
-
-                        <div className="mt-8 grid grid-cols-3 gap-x-[47px] px-6">
-                          <article>
-                            <div className="size-[77px] bg-gray-100 rounded-lg" />
-
-                            <div className="flex items-center gap-x-3 mt-3">
-                              <h1 className="text-[32px] font-bold leading-none text-dark-blue-400">
-                                1
-                              </h1>
-
-                              <h3 className="text-base leading-none font-semibold text-dark-blue-400">
-                                Customize Your Scope
-                              </h3>
-                            </div>
-
-                            <div className="pl-[28px]">
-                              <p className="text-xs text-dark-blue-400 leading-none">
-                                Lorem ipsum odor amet, consectetuer adipiscing
-                                elit.
-                              </p>
-                            </div>
-                          </article>
-                          <article>
-                            <div className="size-[77px] bg-gray-100 rounded-lg" />
-
-                            <div className="flex items-center gap-x-3 mt-3">
-                              <h1 className="text-[32px] font-bold leading-none text-dark-blue-400">
-                                1
-                              </h1>
-
-                              <h3 className="text-base leading-none font-semibold text-dark-blue-400">
-                                Customize Your Scope
-                              </h3>
-                            </div>
-
-                            <div className="pl-[28px]">
-                              <p className="text-xs text-dark-blue-400 leading-none">
-                                Lorem ipsum odor amet, consectetuer adipiscing
-                                elit.
-                              </p>
-                            </div>
-                          </article>
-                          <article>
-                            <div className="size-[77px] bg-gray-100 rounded-lg" />
-
-                            <div className="flex items-center gap-x-3 mt-3">
-                              <h1 className="text-[32px] font-bold leading-none text-dark-blue-400">
-                                1
-                              </h1>
-
-                              <h3 className="text-base leading-none font-semibold text-dark-blue-400">
-                                Customize Your Scope
-                              </h3>
-                            </div>
-
-                            <div className="pl-[28px]">
-                              <p className="text-xs text-dark-blue-400 leading-none">
-                                Lorem ipsum odor amet, consectetuer adipiscing
-                                elit.
-                              </p>
-                            </div>
-                          </article>
-                        </div>
-
-                        <div className="mt-8  flex items-center justify-center">
-                          <Button visual="gray" variant="outlined">
-                            Learn More
-                          </Button>
-                        </div>
-                      </div>
+                      <ProjectDetailsStepsSection
+                        steps={projectStaticContent.howItWorks.steps}
+                      />
 
                       <div className="relative p-6 mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                         <h1 className="text-xl font-bold leading-none text-dark-blue-400">
@@ -1986,450 +1799,134 @@ export default function ProjectDetails() {
                             </RadixTabs.List>
 
                             <TabsContent value="FAQs">
-                              <ShowMoreLessRoot>
-                                {({
-                                  isShowing,
-                                  setIsShowing,
-                                  scrollHeight,
-                                  ref,
-                                }) => (
-                                  <>
-                                    <Accordion
-                                      ref={ref}
-                                      type="single"
-                                      className={cn(
-                                        "pt-6 space-y-[15px] overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-300"
-                                      )}
-                                      style={{
-                                        height: isShowing
-                                          ? "auto"
-                                          : scrollHeight
-                                            ? toPxIfNumber(scrollHeight)
-                                            : "auto",
-                                      }}
-                                      defaultValue="item-1"
-                                    >
-                                      <ShowMoreLessComp max={5}>
-                                        <AccordionItem
-                                          className="rounded-lg bg-white border border-gray-300"
-                                          value="item-1"
-                                        >
-                                          <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
-                                            <span className="flex-auto text-left inline-block">
-                                              How will you ensure we&apos;re
-                                              aligned on progress and feedback
-                                              throughout each stage?
-                                            </span>
-                                            <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                          </AccordionTrigger>
-
-                                          <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
-                                            We offer a comprehensive range of IT
-                                            consulting services, including IT
-                                            strategy development, software
-                                            development, network infrastructure
-                                            design and implementation,
-                                            cybersecurity assessment and
-                                            solutions, cloud computing
-                                            solutions, and IT project
-                                            management.
-                                          </DisclosureContent>
-                                        </AccordionItem>
-                                        <AccordionItem
-                                          className="rounded-lg bg-white border border-gray-300"
-                                          value="item-2"
-                                        >
-                                          <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
-                                            <span className="flex-auto text-left inline-block">
-                                              How will you ensure we&apos;re
-                                              aligned on progress and feedback
-                                              throughout each stage?
-                                            </span>
-                                            <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                          </AccordionTrigger>
-
-                                          <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
-                                            We offer a comprehensive range of IT
-                                            consulting services, including IT
-                                            strategy development, software
-                                            development, network infrastructure
-                                            design and implementation,
-                                            cybersecurity assessment and
-                                            solutions, cloud computing
-                                            solutions, and IT project
-                                            management.
-                                          </DisclosureContent>
-                                        </AccordionItem>
-                                        <AccordionItem
-                                          className="rounded-lg bg-white border border-gray-300"
-                                          value="item-3"
-                                        >
-                                          <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
-                                            <span className="flex-auto text-left inline-block">
-                                              How will you ensure we&apos;re
-                                              aligned on progress and feedback
-                                              throughout each stage?
-                                            </span>
-                                            <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                          </AccordionTrigger>
-
-                                          <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
-                                            We offer a comprehensive range of IT
-                                            consulting services, including IT
-                                            strategy development, software
-                                            development, network infrastructure
-                                            design and implementation,
-                                            cybersecurity assessment and
-                                            solutions, cloud computing
-                                            solutions, and IT project
-                                            management.
-                                          </DisclosureContent>
-                                        </AccordionItem>
-                                        <AccordionItem
-                                          className="rounded-lg bg-white border border-gray-300"
-                                          value="item-4"
-                                        >
-                                          <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
-                                            <span className="flex-auto text-left inline-block">
-                                              How will you ensure we&apos;re
-                                              aligned on progress and feedback
-                                              throughout each stage?
-                                            </span>
-                                            <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                          </AccordionTrigger>
-
-                                          <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
-                                            We offer a comprehensive range of IT
-                                            consulting services, including IT
-                                            strategy development, software
-                                            development, network infrastructure
-                                            design and implementation,
-                                            cybersecurity assessment and
-                                            solutions, cloud computing
-                                            solutions, and IT project
-                                            management.
-                                          </DisclosureContent>
-                                        </AccordionItem>
-                                        <AccordionItem
-                                          className="rounded-lg bg-white border border-gray-300"
-                                          value="item-5"
-                                        >
-                                          <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
-                                            <span className="flex-auto text-left inline-block">
-                                              How will you ensure we&apos;re
-                                              aligned on progress and feedback
-                                              throughout each stage?
-                                            </span>
-                                            <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                          </AccordionTrigger>
-
-                                          <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
-                                            We offer a comprehensive range of IT
-                                            consulting services, including IT
-                                            strategy development, software
-                                            development, network infrastructure
-                                            design and implementation,
-                                            cybersecurity assessment and
-                                            solutions, cloud computing
-                                            solutions, and IT project
-                                            management.
-                                          </DisclosureContent>
-                                        </AccordionItem>
-                                        <AccordionItem
-                                          className="rounded-lg bg-white border border-gray-300"
-                                          value="item-6"
-                                        >
-                                          <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
-                                            <span className="flex-auto text-left inline-block">
-                                              How will you ensure we&apos;re
-                                              aligned on progress and feedback
-                                              throughout each stage?
-                                            </span>
-                                            <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                          </AccordionTrigger>
-
-                                          <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
-                                            We offer a comprehensive range of IT
-                                            consulting services, including IT
-                                            strategy development, software
-                                            development, network infrastructure
-                                            design and implementation,
-                                            cybersecurity assessment and
-                                            solutions, cloud computing
-                                            solutions, and IT project
-                                            management.
-                                          </DisclosureContent>
-                                        </AccordionItem>
-                                        <AccordionItem
-                                          className="rounded-lg bg-white border border-gray-300"
-                                          value="item-7"
-                                        >
-                                          <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
-                                            <span className="flex-auto text-left inline-block">
-                                              How will you ensure we&apos;re
-                                              aligned on progress and feedback
-                                              throughout each stage?
-                                            </span>
-                                            <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                          </AccordionTrigger>
-
-                                          <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
-                                            We offer a comprehensive range of IT
-                                            consulting services, including IT
-                                            strategy development, software
-                                            development, network infrastructure
-                                            design and implementation,
-                                            cybersecurity assessment and
-                                            solutions, cloud computing
-                                            solutions, and IT project
-                                            management.
-                                          </DisclosureContent>
-                                        </AccordionItem>
-                                      </ShowMoreLessComp>
-                                    </Accordion>
-
-                                    <div className="flex items-center justify-end mt-6">
-                                      <Button
-                                        size="md"
-                                        visual="gray"
-                                        variant="outlined"
-                                        className="group bg-white"
-                                        onClick={() =>
-                                          setIsShowing((prev) => !prev)
-                                        }
-                                        data-state={
-                                          isShowing ? "active" : "inactive"
-                                        }
+                              {!project.faqs || project.faqs.length === 0 ? (
+                                <p className="pt-6 text-sm text-gray-500">
+                                  No FAQs yet for this project.
+                                </p>
+                              ) : (
+                                <ShowMoreLessRoot>
+                                  {({
+                                    isShowing,
+                                    setIsShowing,
+                                    scrollHeight,
+                                    ref,
+                                  }) => (
+                                    <>
+                                      <Accordion
+                                        ref={ref}
+                                        type="single"
+                                        className={cn(
+                                          "pt-6 space-y-[15px] overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-300"
+                                        )}
+                                        style={{
+                                          height: isShowing
+                                            ? "auto"
+                                            : scrollHeight
+                                              ? toPxIfNumber(scrollHeight)
+                                              : "auto",
+                                        }}
+                                        defaultValue="faq-0"
                                       >
-                                        {isShowing ? "View Less" : "View More"}
-                                        <ChevronDown className="size-[15px] transition duration-300 group-data-[state=active]:-rotate-180" />
-                                      </Button>
-                                    </div>
-                                  </>
-                                )}
-                              </ShowMoreLessRoot>
+                                        <ShowMoreLessComp max={5}>
+                                          {(
+                                            project.faqs as Array<{
+                                              question: string
+                                              answer: string
+                                            }>
+                                          ).map((faq, idx) => (
+                                            <AccordionItem
+                                              key={`faq-${idx}`}
+                                              className="rounded-lg bg-white border border-gray-300"
+                                              value={`faq-${idx}`}
+                                            >
+                                              <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
+                                                <span className="flex-auto text-left inline-block">
+                                                  {faq.question}
+                                                </span>
+                                                <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                                              </AccordionTrigger>
+                                              {/*
+                                                faq.answer is HTML pre-rendered
+                                                by listings-service (Lexical
+                                                → HTML via lexicalToHtml).
+                                                Content is admin-authored +
+                                                moderation-gated per spec, so
+                                                dangerouslySetInnerHTML is
+                                                safe here — same pattern used
+                                                for the fullDescription block.
+                                                DisclosureContent always
+                                                forwards children, so we wrap
+                                                the HTML in an inner div to
+                                                avoid the React "children vs
+                                                dangerouslySetInnerHTML" clash.
+                                              */}
+                                              <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
+                                                <div
+                                                  className="prose prose-sm max-w-none"
+                                                  dangerouslySetInnerHTML={{
+                                                    __html: faq.answer,
+                                                  }}
+                                                />
+                                              </DisclosureContent>
+                                            </AccordionItem>
+                                          ))}
+                                        </ShowMoreLessComp>
+                                      </Accordion>
+                                      <div className="flex items-center justify-end mt-6">
+                                        <Button
+                                          size="md"
+                                          visual="gray"
+                                          variant="outlined"
+                                          className="group bg-white"
+                                          onClick={() =>
+                                            setIsShowing((prev) => !prev)
+                                          }
+                                          data-state={
+                                            isShowing ? "active" : "inactive"
+                                          }
+                                        >
+                                          {isShowing
+                                            ? "View Less"
+                                            : "View More"}
+                                          <ChevronDown className="size-[15px] transition duration-300 group-data-[state=active]:-rotate-180" />
+                                        </Button>
+                                      </div>
+                                    </>
+                                  )}
+                                </ShowMoreLessRoot>
+                              )}
                             </TabsContent>
 
                             <TabsContent value="Recently Asked Questions">
-                              <Accordion
-                                type="single"
-                                className="pt-6 space-y-[15px]"
-                                defaultValue="item-1"
-                              >
-                                <AccordionItem
-                                  className="rounded-lg bg-white border border-gray-300"
-                                  value="item-1"
+                              {!project.recentQuestions ||
+                              project.recentQuestions.length === 0 ? (
+                                <p className="pt-6 text-sm text-gray-500">
+                                  No recently asked questions for this project.
+                                </p>
+                              ) : (
+                                <Accordion
+                                  type="single"
+                                  className="pt-6 space-y-[15px]"
+                                  defaultValue="rq-0"
                                 >
-                                  <AccordionTrigger className="w-full px-5 py-3 flex flex-col gap-y-1">
-                                    <span className="flex items-center justify-between gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
-                                      <span className="flex-auto text-left inline-block">
-                                        How will you ensure we&apos;re aligned
-                                        on progress and feedback throughout each
-                                        stage?
-                                      </span>
-                                      <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                    </span>
-
-                                    <span className="text-xs text-left leading-none font-medium text-dark-blue-400">
-                                      Asked by Kevin{" "}
-                                      <span className="font-extralight">
-                                        @usernamehere
-                                      </span>{" "}
-                                      on Jan 25, 2023
-                                    </span>
-                                  </AccordionTrigger>
-
-                                  <DisclosureContent className="px-5 pb-5">
-                                    <div className="flex gap-x-3 items-center">
-                                      <Avatar>
-                                        <AvatarImage src="/man.jpg" alt="Man" />
-                                        <AvatarFallback>M</AvatarFallback>
-                                      </Avatar>
-
-                                      <div className="flex items-center gap-x-1.5">
-                                        <Badge
-                                          className="rounded-[4px] bg-primary-50"
-                                          visual="primary"
-                                        >
-                                          Project Lead
-                                        </Badge>
-
-                                        <span className="text-sm leading-none font-bold text-dark-blue-400">
-                                          Chris{" "}
-                                          <span className="text-xs font-extralight text-gray-500">
-                                            @ux23isee
-                                          </span>
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    <div className="mt-2">
-                                      <span className="leading-[1.5] text-dark-blue-400 font-light text-base">
-                                        We offer a comprehensive range of IT
-                                        consulting services, including IT
-                                        strategy development, software
-                                        development, network infrastructure
-                                        design and implementation, cybersecurity
-                                        assessment and solutions, cloud
-                                        computing solutions, and IT project
-                                        management.
-                                      </span>
-                                    </div>
-
-                                    <div className="mt-5">
-                                      <Button
-                                        className="text-xs leading-5"
-                                        variant="link"
-                                        visual="gray"
+                                  {(project.recentQuestions as string[]).map(
+                                    (q, idx) => (
+                                      <AccordionItem
+                                        key={`rq-${idx}`}
+                                        className="rounded-lg bg-white border border-gray-300"
+                                        value={`rq-${idx}`}
                                       >
-                                        Report Answer
-                                      </Button>
-                                    </div>
-                                  </DisclosureContent>
-                                </AccordionItem>
-                                <AccordionItem
-                                  className="rounded-lg bg-white border border-gray-300"
-                                  value="item-2"
-                                >
-                                  <AccordionTrigger className="w-full px-5 py-3 flex flex-col gap-y-1">
-                                    <span className="flex items-center justify-between gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
-                                      <span className="flex-auto text-left inline-block">
-                                        How will you ensure we&apos;re aligned
-                                        on progress and feedback throughout each
-                                        stage?
-                                      </span>
-                                      <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                    </span>
-
-                                    <span className="text-xs text-left leading-none font-medium text-dark-blue-400">
-                                      Asked by Kevin{" "}
-                                      <span className="font-extralight">
-                                        @usernamehere
-                                      </span>{" "}
-                                      on Jan 25, 2023
-                                    </span>
-                                  </AccordionTrigger>
-
-                                  <DisclosureContent className="px-5 pb-5">
-                                    <div className="flex gap-x-3 items-center">
-                                      <Avatar>
-                                        <AvatarImage src="/man.jpg" alt="Man" />
-                                        <AvatarFallback>M</AvatarFallback>
-                                      </Avatar>
-
-                                      <div className="flex items-center gap-x-1.5">
-                                        <Badge
-                                          className="rounded-[4px] bg-primary-50"
-                                          visual="primary"
-                                        >
-                                          Project Lead
-                                        </Badge>
-
-                                        <span className="text-sm leading-none font-bold text-dark-blue-400">
-                                          Chris{" "}
-                                          <span className="text-xs font-extralight text-gray-500">
-                                            @ux23isee
+                                        <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
+                                          <span className="flex-auto text-left inline-block">
+                                            {q}
                                           </span>
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    <div className="mt-2">
-                                      <span className="leading-[1.5] text-dark-blue-400 font-light text-base">
-                                        We offer a comprehensive range of IT
-                                        consulting services, including IT
-                                        strategy development, software
-                                        development, network infrastructure
-                                        design and implementation, cybersecurity
-                                        assessment and solutions, cloud
-                                        computing solutions, and IT project
-                                        management.
-                                      </span>
-                                    </div>
-
-                                    <div className="mt-5">
-                                      <Button
-                                        className="text-xs leading-5"
-                                        variant="link"
-                                        visual="gray"
-                                      >
-                                        Report Answer
-                                      </Button>
-                                    </div>
-                                  </DisclosureContent>
-                                </AccordionItem>
-                                <AccordionItem
-                                  className="rounded-lg bg-white border border-gray-300"
-                                  value="item-3"
-                                >
-                                  <AccordionTrigger className="w-full px-5 py-3 flex flex-col gap-y-1">
-                                    <span className="flex items-center justify-between gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
-                                      <span className="flex-auto text-left inline-block">
-                                        How will you ensure we&apos;re aligned
-                                        on progress and feedback throughout each
-                                        stage?
-                                      </span>
-                                      <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                    </span>
-
-                                    <span className="text-xs text-left leading-none font-medium text-dark-blue-400">
-                                      Asked by Kevin{" "}
-                                      <span className="font-extralight">
-                                        @usernamehere
-                                      </span>{" "}
-                                      on Jan 25, 2023
-                                    </span>
-                                  </AccordionTrigger>
-
-                                  <DisclosureContent className="px-5 pb-5">
-                                    <div className="flex gap-x-3 items-center">
-                                      <Avatar>
-                                        <AvatarImage src="/man.jpg" alt="Man" />
-                                        <AvatarFallback>M</AvatarFallback>
-                                      </Avatar>
-
-                                      <div className="flex items-center gap-x-1.5">
-                                        <Badge
-                                          className="rounded-[4px] bg-primary-50"
-                                          visual="primary"
-                                        >
-                                          Project Lead
-                                        </Badge>
-
-                                        <span className="text-sm leading-none font-bold text-dark-blue-400">
-                                          Chris{" "}
-                                          <span className="text-xs font-extralight text-gray-500">
-                                            @ux23isee
-                                          </span>
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    <div className="mt-2">
-                                      <span className="leading-[1.5] text-dark-blue-400 font-light text-base">
-                                        We offer a comprehensive range of IT
-                                        consulting services, including IT
-                                        strategy development, software
-                                        development, network infrastructure
-                                        design and implementation, cybersecurity
-                                        assessment and solutions, cloud
-                                        computing solutions, and IT project
-                                        management.
-                                      </span>
-                                    </div>
-
-                                    <div className="mt-5">
-                                      <Button
-                                        className="text-xs leading-5"
-                                        variant="link"
-                                        visual="gray"
-                                      >
-                                        Report Answer
-                                      </Button>
-                                    </div>
-                                  </DisclosureContent>
-                                </AccordionItem>
-                              </Accordion>
+                                          <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                                        </AccordionTrigger>
+                                      </AccordionItem>
+                                    )
+                                  )}
+                                </Accordion>
+                              )}
                             </TabsContent>
                           </Tabs>
 
@@ -3906,575 +3403,728 @@ export default function ProjectDetails() {
             </TabsContent>
 
             <TabsContent value="View Project Scope">
-              <div className="mt-6">
-                <Accordion
-                  type="single"
-                  defaultValue="item-1"
-                  className="flex-auto space-y-3"
-                >
-                  <AccordionItem
-                    value="item-1"
-                    className="rounded-lg border border-gray-200 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                      <div className="inline-flex items-center gap-x-3.5">
-                        <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                          <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                        </AccordionTrigger>
+              {/*
+                Project Scope viewer — spec refs:
+                  docs/md/.../creation/Strapi Integration:124-149  (Scope Builder)
+                  docs/md/.../details/08 - DTO and Schema Validation:42-84 (Phase/Task DTOs)
+                  docs/md/.../details/01:209-227 (duration/pricing derivation)
 
-                        <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                          Phase One <span className="font-light">Research</span>
-                        </span>
-                      </div>
+                Data source: project.scope — an ordered array of phases,
+                each with a tasks[] array. Tasks carry title, roleName,
+                experienceLevel, estimatedHours. Duration labels ("Day 1
+                - Day 8") are derived on the fly from accumulated task
+                hours assuming an 8-hour workday, since the spec
+                explicitly forbids authoring duration fields directly
+                ("⛔ Do NOT add editable fields for duration, weeks…").
 
-                      <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          Day 1
-                        </span>
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          -
-                        </span>
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          Day 8
-                        </span>
-                      </div>
+                Empty-scope fallback keeps the original hardcoded 3-phase
+                block below (no-empty-swap memory rule).
+              */}
+              {Array.isArray(project.scope) && project.scope.length > 0 ? (
+                (() => {
+                  type ScopeTask = {
+                    title: string
+                    roleName: string
+                    location?: string | null
+                    experienceLevel: string
+                    estimatedHours: number
+                  }
+                  type ScopePhase = {
+                    phaseName: string
+                    order: number
+                    tasks: ScopeTask[]
+                  }
+                  const phases = (project.scope as ScopePhase[])
+                    .slice()
+                    .sort((a, b) => a.order - b.order)
+                  const phaseLabels = [
+                    "Phase One",
+                    "Phase Two",
+                    "Phase Three",
+                    "Phase Four",
+                    "Phase Five",
+                    "Phase Six",
+                    "Phase Seven",
+                    "Phase Eight",
+                  ]
+                  // Accumulate day ranges across phases so later phases
+                  // start on day (prev end + 1).
+                  let cursor = 1
+                  const withDays = phases.map((phase) => {
+                    const phaseHours = phase.tasks.reduce(
+                      (sum, t) => sum + (t.estimatedHours || 0),
+                      0
+                    )
+                    const days = Math.max(1, Math.ceil(phaseHours / 8))
+                    const start = cursor
+                    const end = cursor + days - 1
+                    cursor = end + 1
+                    return { phase, start, end }
+                  })
+                  return (
+                    <div className="mt-6">
+                      <Accordion
+                        type="single"
+                        defaultValue="scope-0"
+                        className="flex-auto space-y-3"
+                      >
+                        {withDays.map(({ phase, start, end }, pi) => (
+                          <AccordionItem
+                            key={`scope-${pi}`}
+                            value={`scope-${pi}`}
+                            className="rounded-lg border border-gray-200 shadow-sm"
+                          >
+                            <div className="flex items-center justify-between gap-x-4 px-3 py-3">
+                              <div className="inline-flex items-center gap-x-3.5">
+                                <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
+                                  <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                                </AccordionTrigger>
+
+                                <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
+                                  {phaseLabels[pi] ?? `Phase ${pi + 1}`}{" "}
+                                  <span className="font-light">
+                                    {phase.phaseName}
+                                  </span>
+                                </span>
+                              </div>
+
+                              <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                  Day {start}
+                                </span>
+                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                  -
+                                </span>
+                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                  Day {end}
+                                </span>
+                              </div>
+                            </div>
+
+                            <DisclosureContent>
+                              <Table>
+                                <TableHeader className="bg-gray-50">
+                                  <TableRow className="hover:bg-transparent">
+                                    <TableHead>Task</TableHead>
+                                    <TableHead>Role</TableHead>
+                                    <TableHead>Experience</TableHead>
+                                    <TableHead>Duration</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {phase.tasks.map((task, ti) => (
+                                    <TableRow key={`task-${pi}-${ti}`}>
+                                      <TableCell className="py-4 px-6">
+                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                          {task.title}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell className="py-4 px-6">
+                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                          {task.roleName}
+                                          {task.location
+                                            ? ` · ${task.location}`
+                                            : ""}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell className="py-4 px-6">
+                                        <Badge
+                                          className="rounded-[4px] bg-primary-50"
+                                          visual="primary"
+                                        >
+                                          {task.experienceLevel}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="py-4 px-6">
+                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                          {task.estimatedHours} hours
+                                        </span>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </DisclosureContent>
+                          </AccordionItem>
+                        ))}
+                      </Accordion>
                     </div>
-
-                    <DisclosureContent>
-                      <Table>
-                        <TableHeader className="bg-gray-50">
-                          <TableRow className="hover:bg-transparent">
-                            <TableHead>Task</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Assignee</TableHead>
-                            <TableHead>Duration</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
-
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
-                                  </span>
-                                </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
-
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
-                                  </span>
-                                </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
-
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
-                                  </span>
-                                </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
-
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
-                                  </span>
-                                </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </DisclosureContent>
-                  </AccordionItem>
-                  <AccordionItem
-                    value="item-2"
-                    className="rounded-lg border border-gray-200 shadow-sm"
+                  )
+                })()
+              ) : (
+                <div className="mt-6">
+                  <Accordion
+                    type="single"
+                    defaultValue="item-1"
+                    className="flex-auto space-y-3"
                   >
-                    <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                      <div className="inline-flex items-center gap-x-3.5">
-                        <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                          <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                        </AccordionTrigger>
+                    <AccordionItem
+                      value="item-1"
+                      className="rounded-lg border border-gray-200 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between gap-x-4 px-3 py-3">
+                        <div className="inline-flex items-center gap-x-3.5">
+                          <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
+                            <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                          </AccordionTrigger>
 
-                        <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                          Phase One <span className="font-light">Research</span>
-                        </span>
+                          <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
+                            Phase One{" "}
+                            <span className="font-light">Research</span>
+                          </span>
+                        </div>
+
+                        <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            Day 1
+                          </span>
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            -
+                          </span>
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            Day 8
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          Day 1
-                        </span>
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          -
-                        </span>
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          Day 8
-                        </span>
+                      <DisclosureContent>
+                        <Table>
+                          <TableHeader className="bg-gray-50">
+                            <TableRow className="hover:bg-transparent">
+                              <TableHead>Task</TableHead>
+                              <TableHead>Description</TableHead>
+                              <TableHead>Assignee</TableHead>
+                              <TableHead>Duration</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
+
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
+                                  </span>
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
+
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
+                                  </span>
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
+
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
+                                  </span>
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
+
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
+                                  </span>
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </DisclosureContent>
+                    </AccordionItem>
+                    <AccordionItem
+                      value="item-2"
+                      className="rounded-lg border border-gray-200 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between gap-x-4 px-3 py-3">
+                        <div className="inline-flex items-center gap-x-3.5">
+                          <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
+                            <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                          </AccordionTrigger>
+
+                          <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
+                            Phase One{" "}
+                            <span className="font-light">Research</span>
+                          </span>
+                        </div>
+
+                        <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            Day 1
+                          </span>
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            -
+                          </span>
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            Day 8
+                          </span>
+                        </div>
                       </div>
-                    </div>
 
-                    <DisclosureContent>
-                      <Table>
-                        <TableHeader className="bg-gray-50">
-                          <TableRow className="hover:bg-transparent">
-                            <TableHead>Task</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Assignee</TableHead>
-                            <TableHead>Duration</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                      <DisclosureContent>
+                        <Table>
+                          <TableHeader className="bg-gray-50">
+                            <TableRow className="hover:bg-transparent">
+                              <TableHead>Task</TableHead>
+                              <TableHead>Description</TableHead>
+                              <TableHead>Assignee</TableHead>
+                              <TableHead>Duration</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </DisclosureContent>
-                  </AccordionItem>
-                  <AccordionItem
-                    value="item-3"
-                    className="rounded-lg border border-gray-200 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                      <div className="inline-flex items-center gap-x-3.5">
-                        <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                          <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                        </AccordionTrigger>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </DisclosureContent>
+                    </AccordionItem>
+                    <AccordionItem
+                      value="item-3"
+                      className="rounded-lg border border-gray-200 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between gap-x-4 px-3 py-3">
+                        <div className="inline-flex items-center gap-x-3.5">
+                          <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
+                            <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                          </AccordionTrigger>
 
-                        <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                          Phase One <span className="font-light">Research</span>
-                        </span>
+                          <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
+                            Phase One{" "}
+                            <span className="font-light">Research</span>
+                          </span>
+                        </div>
+
+                        <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            Day 1
+                          </span>
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            -
+                          </span>
+                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                            Day 8
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          Day 1
-                        </span>
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          -
-                        </span>
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          Day 8
-                        </span>
-                      </div>
-                    </div>
+                      <DisclosureContent>
+                        <Table>
+                          <TableHeader className="bg-gray-50">
+                            <TableRow className="hover:bg-transparent">
+                              <TableHead>Task</TableHead>
+                              <TableHead>Description</TableHead>
+                              <TableHead>Assignee</TableHead>
+                              <TableHead>Duration</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                    <DisclosureContent>
-                      <Table>
-                        <TableHeader className="bg-gray-50">
-                          <TableRow className="hover:bg-transparent">
-                            <TableHead>Task</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Assignee</TableHead>
-                            <TableHead>Duration</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
-
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                Consumer Research
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                Conduct research to understand consumer needs,
-                                behaviors, and preferences for product
-                                optimization.
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="inline-flex items-start gap-x-2">
-                                <Avatar>
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
+                                  Consumer Research
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
+                                  Conduct research to understand consumer needs,
+                                  behaviors, and preferences for product
+                                  optimization.
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="inline-flex items-start gap-x-2">
+                                  <Avatar>
+                                    <AvatarImage src="/man.jpg" alt="Man" />
+                                    <AvatarFallback>M</AvatarFallback>
+                                  </Avatar>
 
-                                <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    Vivek
-                                  </span>
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                    @topdesigner321
+                                  <span className="inline-flex flex-col">
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                      Vivek
+                                    </span>
+                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                      @topdesigner321
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                            </TableCell>
-                            <TableCell className="py-4 px-6">
-                              <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                40 hours
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </DisclosureContent>
-                  </AccordionItem>
-                </Accordion>
-              </div>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                  40 hours
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </DisclosureContent>
+                    </AccordionItem>
+                  </Accordion>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </div>
@@ -4489,7 +4139,11 @@ export default function ProjectDetails() {
                   </Badge>
                   <div className="inline-flex items-center gap-x-1.5 ml-2">
                     <span className="text-2xl leading-none font-bold text-dark-blue-400">
-                      $5,000
+                      {project.priceMin != null
+                        ? `$${Number(project.priceMin).toLocaleString()}`
+                        : project.budget != null
+                          ? `$${Number(project.budget).toLocaleString()}`
+                          : "—"}
                     </span>
                     <span className="text-sm font-medium leading-none text-dark-blue-400">
                       per
@@ -4497,7 +4151,21 @@ export default function ProjectDetails() {
                   </div>
 
                   <div className="ml-1.5">
-                    <Listbox defaultValue="Week">
+                    <Listbox
+                      defaultValue={(() => {
+                        const m = (project.priceViewMode ||
+                          project.pricingModel ||
+                          "biweekly") as string
+                        const map: Record<string, string> = {
+                          weekly: "Week",
+                          biweekly: "2-week",
+                          monthly: "Month",
+                          quarterly: "Quarter",
+                          yearly: "Year",
+                        }
+                        return map[m] || "2-week"
+                      })()}
+                    >
                       <ListboxButton
                         className="text-sm lowercase py-[5px] px-[7px] h-max w-auto"
                         iconClassName="ml-1"
@@ -4516,7 +4184,10 @@ export default function ProjectDetails() {
                   </div>
                 </div>
 
-                <FavoriteRoot value={isFavorited} onValueChange={handleFavoriteToggle}>
+                <FavoriteRoot
+                  value={isFavorited}
+                  onValueChange={handleFavoriteToggle}
+                >
                   {({ pressed }) => (
                     <TooltipProvider delayDuration={75}>
                       <Tooltip>
@@ -4543,61 +4214,47 @@ export default function ProjectDetails() {
 
               <div className="mt-3">
                 <span className="inline-block text-sm leading-none font-medium text-dark-blue-400">
-                  with an initial payment of $833 to kickoff
+                  {project.priceMax != null
+                    ? `Up to $${Number(project.priceMax).toLocaleString()} total · ${project.pricingModel || "biweekly"} billing`
+                    : `Billing: ${project.pricingModel || "biweekly"}`}
                 </span>
               </div>
 
               <div className="flex flex-col items-start gap-y-3 mt-6">
                 <span className="inline-block text-xs font-medium text-dark-blue-400">
-                  Current Team
+                  {Array.isArray(project.team) && project.team.length > 1
+                    ? "Current Team"
+                    : "Created By"}
                 </span>
 
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <AvatarGroup size="sm" excess>
-                        <Avatar
-                          className="border-2 border-white hover:ring-0 active:ring-0"
-                          size="sm"
-                        >
-                          <AvatarImage src="/woman.jpg" alt="Woman" />
-                          <AvatarFallback>W</AvatarFallback>
-                        </Avatar>
-                        <Avatar
-                          className="border-2 border-white hover:ring-0 active:ring-0"
-                          size="sm"
-                        >
-                          <AvatarImage src="/woman.jpg" alt="Woman" />
-                          <AvatarFallback>W</AvatarFallback>
-                        </Avatar>
-                        <Avatar
-                          className="border-2 border-white hover:ring-0 active:ring-0"
-                          size="sm"
-                        >
-                          <AvatarImage src="/woman.jpg" alt="Woman" />
-                          <AvatarFallback>W</AvatarFallback>
-                        </Avatar>
-                        <Avatar
-                          className="border-2 border-white hover:ring-0 active:ring-0"
-                          size="sm"
-                        >
-                          <AvatarImage src="/woman.jpg" alt="Woman" />
-                          <AvatarFallback>W</AvatarFallback>
-                        </Avatar>
-                        <Avatar
-                          className="border-2 border-white hover:ring-0 active:ring-0"
-                          size="sm"
-                        >
-                          <AvatarImage src="/woman.jpg" alt="Woman" />
-                          <AvatarFallback>W</AvatarFallback>
-                        </Avatar>
-                        <Avatar
-                          className="border-2 border-white hover:ring-0 active:ring-0"
-                          size="sm"
-                        >
-                          <AvatarImage src="/woman.jpg" alt="Woman" />
-                          <AvatarFallback>W</AvatarFallback>
-                        </Avatar>
+                        {(Array.isArray(project.team) && project.team.length > 0
+                          ? project.team
+                          : [
+                              { firstName: "T", avatarUrl: "/woman.jpg" },
+                              { firstName: "T", avatarUrl: "/woman.jpg" },
+                              { firstName: "T", avatarUrl: "/woman.jpg" },
+                            ]
+                        ).map((m: any, i: number) => (
+                          <Avatar
+                            key={m.username ?? i}
+                            className="border-2 border-white hover:ring-0 active:ring-0"
+                            size="sm"
+                          >
+                            {m.avatarUrl ? (
+                              <AvatarImage
+                                src={m.avatarUrl}
+                                alt={m.firstName}
+                              />
+                            ) : null}
+                            <AvatarFallback>
+                              {(m.firstName || "?").charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        ))}
                       </AvatarGroup>
                     </TooltipTrigger>
                     <TooltipContent className="p-0" size="md">
@@ -4611,122 +4268,60 @@ export default function ProjectDetails() {
                         }
                       >
                         <div className="space-y-3 pr-5">
-                          <div className="flex items-center gap-x-[18px]">
-                            <div className="flex items-center gap-x-2 flex-auto">
-                              <Avatar>
-                                <AvatarImage src="/woman.jpg" alt="Woman" />
-                                <AvatarFallback>W</AvatarFallback>
-                              </Avatar>
-
-                              <div className="flex flex-col flex-auto">
-                                <div className="flex items-center gap-x-0.5">
-                                  <span className="text-xs leading-5 font-semibold text-white">
-                                    Sevil
-                                  </span>
-                                  <span className="text-[10px] leading-none font-light text-white">
-                                    @designsuperstar23
-                                  </span>
-                                </div>
-                                <span className="text-[10px] font-light text-white">
-                                  Full-stack Developer
-                                </span>
-                              </div>
-                            </div>
-
-                            <span className="text-sm font-semibold text-white leading-5">
-                              $75{" "}
-                              <span className="text-[10px] font-light leading-5">
-                                /hr
-                              </span>
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-x-[18px]">
-                            <div className="flex items-center gap-x-2 flex-auto">
-                              <Avatar>
-                                <AvatarImage src="/woman.jpg" alt="Woman" />
-                                <AvatarFallback>W</AvatarFallback>
-                              </Avatar>
-
-                              <div className="flex flex-col flex-auto">
-                                <div className="flex items-center gap-x-0.5">
-                                  <span className="text-xs leading-5 font-semibold text-white">
-                                    Sevil
-                                  </span>
-                                  <span className="text-[10px] leading-none font-light text-white">
-                                    @designsuperstar23
-                                  </span>
-                                </div>
-                                <span className="text-[10px] font-light text-white">
-                                  Full-stack Developer
-                                </span>
-                              </div>
-                            </div>
-
-                            <span className="text-sm font-semibold text-white leading-5">
-                              $75{" "}
-                              <span className="text-[10px] font-light leading-5">
-                                /hr
-                              </span>
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-x-[18px]">
-                            <div className="flex items-center gap-x-2 flex-auto">
-                              <Avatar>
-                                <AvatarImage src="/woman.jpg" alt="Woman" />
-                                <AvatarFallback>W</AvatarFallback>
-                              </Avatar>
-
-                              <div className="flex flex-col flex-auto">
-                                <div className="flex items-center gap-x-0.5">
-                                  <span className="text-xs leading-5 font-semibold text-white">
-                                    Sevil
-                                  </span>
-                                  <span className="text-[10px] leading-none font-light text-white">
-                                    @designsuperstar23
+                          {(Array.isArray(project.team) &&
+                          project.team.length > 0
+                            ? project.team
+                            : [
+                                {
+                                  firstName: "Sevil",
+                                  username: "designsuperstar23",
+                                  location: null,
+                                  skills: ["Full-stack Developer"],
+                                },
+                                {
+                                  firstName: "Sevil",
+                                  username: "designsuperstar23",
+                                  location: null,
+                                  skills: ["Full-stack Developer"],
+                                },
+                              ]
+                          ).map((m: any, i: number) => (
+                            <div
+                              key={m.username ?? i}
+                              className="flex items-center gap-x-[18px]"
+                            >
+                              <div className="flex items-center gap-x-2 flex-auto">
+                                <Avatar>
+                                  {m.avatarUrl ? (
+                                    <AvatarImage
+                                      src={m.avatarUrl}
+                                      alt={m.firstName}
+                                    />
+                                  ) : null}
+                                  <AvatarFallback>
+                                    {(m.firstName || "?")
+                                      .charAt(0)
+                                      .toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex flex-col flex-auto">
+                                  <div className="flex items-center gap-x-0.5">
+                                    <span className="text-xs leading-5 font-semibold text-white">
+                                      {m.firstName}
+                                    </span>
+                                    <span className="text-[10px] leading-none font-light text-white">
+                                      @{m.username}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] font-light text-white">
+                                    {m.location ||
+                                      m.skills?.[0] ||
+                                      "Team Member"}
                                   </span>
                                 </div>
-                                <span className="text-[10px] font-light text-white">
-                                  Full-stack Developer
-                                </span>
                               </div>
                             </div>
-
-                            <span className="text-sm font-semibold text-white leading-5">
-                              $75{" "}
-                              <span className="text-[10px] font-light leading-5">
-                                /hr
-                              </span>
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-x-[18px]">
-                            <div className="flex items-center gap-x-2 flex-auto">
-                              <Avatar>
-                                <AvatarImage src="/woman.jpg" alt="Woman" />
-                                <AvatarFallback>W</AvatarFallback>
-                              </Avatar>
-
-                              <div className="flex flex-col flex-auto">
-                                <div className="flex items-center gap-x-0.5">
-                                  <span className="text-xs leading-5 font-semibold text-white">
-                                    Sevil
-                                  </span>
-                                  <span className="text-[10px] leading-none font-light text-white">
-                                    @designsuperstar23
-                                  </span>
-                                </div>
-                                <span className="text-[10px] font-light text-white">
-                                  Full-stack Developer
-                                </span>
-                              </div>
-                            </div>
-
-                            <span className="text-sm font-semibold text-white leading-5">
-                              $75{" "}
-                              <span className="text-[10px] font-light leading-5">
-                                /hr
-                              </span>
-                            </span>
-                          </div>
+                          ))}
                         </div>
                       </ScrollArea>
                     </TooltipContent>
@@ -4738,15 +4333,19 @@ export default function ProjectDetails() {
                 <div className="flex items-center gap-x-[6.4px]">
                   <Clock className="size-[18px] text-primary-500" />
                   <span className="text-sm leading-none font-medium text-dark-blue-400">
-                    Starting from a 6 month duration
+                    {project.duration
+                      ? `${project.duration} duration`
+                      : "Duration: TBD"}
                   </span>
                 </div>
-                <div className="flex items-center gap-x-[6.4px]">
-                  <Users03 className="size-[18px] text-primary-500" />
-                  <span className="text-sm leading-none font-medium text-dark-blue-400">
-                    Minimum 4 team members
-                  </span>
-                </div>
+                {project.estimatedHours != null && (
+                  <div className="flex items-center gap-x-[6.4px]">
+                    <Users03 className="size-[18px] text-primary-500" />
+                    <span className="text-sm leading-none font-medium text-dark-blue-400">
+                      {project.estimatedHours} estimated hours
+                    </span>
+                  </div>
+                )}
               </div>
 
               <Dialog>
@@ -4762,7 +4361,8 @@ export default function ProjectDetails() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>
-                      Would you like to customize the project scope before checkout?
+                      Would you like to customize the project scope before
+                      checkout?
                     </DialogTitle>
                   </DialogHeader>
                   <DialogFooter className="mt-8">
@@ -4771,7 +4371,9 @@ export default function ProjectDetails() {
                         Edit Scope
                       </Button>
                     </DialogClose>
-                    <Button onClick={() => router.push(`/checkout/${params.slug}`)}>
+                    <Button
+                      onClick={() => router.push(`/checkout/${params.slug}`)}
+                    >
                       Continue to Checkout
                     </Button>
                   </DialogFooter>
@@ -4800,77 +4402,93 @@ export default function ProjectDetails() {
             </div>
 
             <div className="h-[50px] rounded-b-lg bg-gray-50 flex items-center justify-evenly">
-              <div className="inline-flex items-center gap-x-2">
-                <Flag className="size-[15px] text-gray-500" />
-                <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                  Report
-                </span>
-              </div>
+              {project.reportButtonEnabled !== false && (
+                <div className="inline-flex items-center gap-x-2">
+                  <Flag className="size-[15px] text-gray-500" />
+                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+                    Report
+                  </span>
+                </div>
+              )}
 
-              <div className="inline-flex items-center gap-x-2">
-                <HelpCircle className="size-[15px] text-gray-500" />
-                <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                  Help
-                </span>
-              </div>
+              {project.helpButtonEnabled === true && (
+                <div className="inline-flex items-center gap-x-2">
+                  <HelpCircle className="size-[15px] text-gray-500" />
+                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+                    Help
+                  </span>
+                </div>
+              )}
 
-              <div className="inline-flex items-center gap-x-2">
-                <Share06 className="size-[15px] text-gray-500" />
-                <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                  Share
-                </span>
-              </div>
+              {project.shareButtonEnabled !== false && (
+                <div className="inline-flex items-center gap-x-2">
+                  <Share06 className="size-[15px] text-gray-500" />
+                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+                    Share
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
           <div className="mt-3 p-6">
             <h1 className="text-base leading-none font-semibold text-dark-blue-400">
-              Peace of Mind Guarantee
+              {projectStaticContent.heading}
             </h1>
 
             <div className="mt-5 space-y-5">
-              <article className="flex items-start gap-x-2">
-                <Rocket02 className="size-[18px] text-dark-blue-400" />
-                <div className="flex-auto space-y-1">
-                  <h1 className="text-xs leading-none font-semibold text-dark-blue-400">
-                    Peace of Mind Guarantee
-                  </h1>
-                  <p className="text-xs leading-none font-extralight text-dark-blue-400">
-                    If the project falls short, you can initiate a dispute for a
-                    full refund.
-                  </p>
-                </div>
-              </article>
-              <article className="flex items-start gap-x-2">
-                <ShieldZap className="size-[18px] text-dark-blue-400" />
-                <div className="flex-auto space-y-1">
-                  <h1 className="text-xs leading-none font-semibold text-dark-blue-400">
-                    Peace of Mind Guarantee
-                  </h1>
-                  <p className="text-xs leading-none font-extralight text-dark-blue-400">
-                    If the project falls short, you can initiate a dispute for a
-                    full refund.
-                  </p>
-                </div>
-              </article>
+              {projectStaticContent.guaranteeItems.map((item, idx) => (
+                <article
+                  key={`${item.title}-${idx}`}
+                  className="flex items-start gap-x-2"
+                >
+                  {renderProjectStaticIcon(
+                    item.icon,
+                    "size-[18px] text-dark-blue-400"
+                  )}
+                  <div className="flex-auto space-y-1">
+                    <h1 className="text-xs leading-none font-semibold text-dark-blue-400">
+                      {item.title}
+                    </h1>
+                    <p className="text-xs leading-none font-extralight text-dark-blue-400">
+                      {item.description}
+                    </p>
+                  </div>
+                </article>
+              ))}
             </div>
 
             <article className="flex items-start gap-x-2 p-3 mt-3 rounded-lg bg-primary-50">
-              <ShieldDollar className="size-[18px] text-primary-500" />
+              {renderProjectStaticIcon(
+                projectStaticContent.highlightedNotice.icon,
+                "size-[18px] text-primary-500"
+              )}
               <div className="flex-auto">
                 <p className="text-xs leading-none font-extralight text-dark-blue-400">
-                  If the project falls short, you can initiate a dispute for a
-                  full refund.
+                  {projectStaticContent.highlightedNotice.description}
                 </p>
               </div>
             </article>
 
             <div className="mt-3">
               <span className="text-xs text-dark-blue-400">
-                We securely process payments and release upon rating. We
-                securely process payments{" "}
-                <Button className="text-xs" variant="link">
-                  See Policy Details.
+                {projectStaticContent.policy.prefixText}{" "}
+                <Button
+                  className="text-xs p-0 h-auto"
+                  variant="link"
+                  onClick={() => {
+                    const href = projectStaticContent.policy.linkHref?.trim()
+                    if (!href) return
+                    if (/^https?:\/\//i.test(href)) {
+                      window.open(href, "_self")
+                      return
+                    }
+                    if (href.startsWith("/")) {
+                      router.push(href)
+                    }
+                  }}
+                >
+                  {projectStaticContent.policy.linkLabel}
                 </Button>
               </span>
             </div>

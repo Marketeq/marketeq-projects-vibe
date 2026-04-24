@@ -47,9 +47,29 @@ export class UserService {
   }
 
   async getUserById(id: string): Promise<User> {
-    const user = await this.userRepository.findOne({ where: { id } });
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: ['skills'],
+    });
     if (!user) throw new NotFoundException('User not found');
     return user;
+  }
+
+  async updateAvatarUrl(id: string, avatarUrl: string): Promise<User> {
+    const user = await this.getUserById(id);
+    user.avatarUrl = avatarUrl;
+    return this.userRepository.save(user);
+  }
+
+  async listUsers(limit = 50, offset = 0): Promise<User[]> {
+    const safeLimit = Math.min(Math.max(limit, 1), 100);
+    const safeOffset = Math.max(offset, 0);
+
+    return this.userRepository.find({
+      order: { createdAt: 'DESC' },
+      take: safeLimit,
+      skip: safeOffset,
+    });
   }
 
   async getUserByEmail(email: string): Promise<User> {
@@ -61,6 +81,9 @@ export class UserService {
   async getInternalSummary(id: string): Promise<{
     id: string;
     email: string;
+    firstName?: string;
+    lastName?: string;
+    avatarUrl?: string;
     role: string;
     onboardingDismissed: boolean;
     hasCompletedOnboarding: boolean;
@@ -71,6 +94,35 @@ export class UserService {
     return {
       id: user.id,
       email: user.email,
+      firstName: user.firstName ?? undefined,
+      lastName: user.lastName ?? undefined,
+      avatarUrl: user.avatarUrl ?? undefined,
+      role: user.role ?? 'client',
+      onboardingDismissed: user.onboardingDismissed,
+      hasCompletedOnboarding: user.onboardingDismissed,
+      isActive: user.isActive,
+    };
+  }
+
+  async getInternalSummaryByEmail(email: string): Promise<{
+    id: string;
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    avatarUrl?: string;
+    role: string;
+    onboardingDismissed: boolean;
+    hasCompletedOnboarding: boolean;
+    isActive: boolean;
+  }> {
+    const user = await this.getUserByEmail(email);
+
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName ?? undefined,
+      lastName: user.lastName ?? undefined,
+      avatarUrl: user.avatarUrl ?? undefined,
       role: user.role ?? 'client',
       onboardingDismissed: user.onboardingDismissed,
       hasCompletedOnboarding: user.onboardingDismissed,
@@ -258,6 +310,19 @@ export class UserService {
     });
 
     return this.userRepository.save(user);
+  }
+
+  // Load a user with skills + languages relations for the internal
+  // profile endpoint. getUserById intentionally skips relations for
+  // perf on the auth-gated path; this variant pays the join cost only
+  // when the caller explicitly needs the nested data.
+  async getUserWithRelations(id: string): Promise<User> {
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: ['skills', 'languages'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return user;
   }
 
   /* ── Aliases used by vibe controllers (me.controller, internal.controller) ── */

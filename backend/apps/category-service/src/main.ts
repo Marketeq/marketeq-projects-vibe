@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core'
+import { MicroserviceOptions, Transport } from '@nestjs/microservices'
 import { AppModule } from './app/app.module'
 import { Logger, ValidationPipe } from '@nestjs/common'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
@@ -6,6 +7,43 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 async function bootstrap() {
   const logger = new Logger('CategoryService')
   const app = await NestFactory.create(AppModule)
+
+  // Connect RabbitMQ microservice if RABBITMQ_URL is set
+  const rabbitmqUrl = process.env.RABBITMQ_URL
+  if (rabbitmqUrl) {
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'cms.category.category',
+        queueOptions: {
+          durable: true,
+          arguments: {
+            'x-dead-letter-exchange': 'cms.events.dlx',
+            'x-message-ttl': 30000,
+          },
+        },
+        noAck: false,
+        prefetchCount: 1,
+        // cms-service publishes raw payloads via amqp-connection-manager —
+        // `{ event: 'category.saved', ...fields }` — straight to the
+        // `cms.events` topic exchange. NestJS's default RMQ deserializer
+        // expects its own `{ pattern, data }` envelope and nacks anything
+        // else with "Pattern: undefined". This deserializer lifts the
+        // publisher's `event` field into the `pattern` slot so
+        // @EventPattern handlers fire correctly.
+        deserializer: {
+          deserialize: (value: unknown) => {
+            const v = (value ?? {}) as { event?: string };
+            return { pattern: v.event, data: value };
+          },
+        },
+      },
+    })
+    logger.log('RabbitMQ microservice connected (queue: cms.category.category)')
+  } else {
+    logger.warn('RABBITMQ_URL not set — category event consumer disabled')
+  }
 
   const globalPrefix = 'api'
   app.setGlobalPrefix(globalPrefix)
@@ -24,7 +62,7 @@ async function bootstrap() {
     origin: corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'x-preview-token'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'x-preview-token', 'x-service-token'],
   })
 
   // Swagger Configuration
@@ -44,6 +82,12 @@ async function bootstrap() {
   await app.listen(port)
 
   logger.log(`category-service running on port ${port}`)
+
+  if (rabbitmqUrl) {
+    app.startAllMicroservices().catch((error) => {
+      logger.error('Failed to start category RMQ microservice', error)
+    })
+  }
 }
 
 bootstrap()

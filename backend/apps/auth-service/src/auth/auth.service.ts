@@ -314,6 +314,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
+    if (!user.hasPassword || !user.password) {
+      throw new UnauthorizedException('Incorrect email or password');
+    }
+
     const isMatch = await bcrypt.compare(dto.password, user.password);
     if (!isMatch) throw new UnauthorizedException('Invalid credentials');
 
@@ -332,7 +336,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       return { requiresTwoFactor: true, partialToken, twoFactorMethod: method };
     }
 
-    await this.syncUserProfile(user);
+    try {
+      await this.syncUserProfile(user);
+    } catch (error) {
+      this.logger.warn(
+        `login: user profile sync failed for ${user.email}; continuing with auth user. reason=${(error as Error)?.message}`,
+      );
+    }
 
     const sessionId = randomUUID();
     const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId });
@@ -671,9 +681,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       await this.syncUserProfile(user, { firstName, lastName });
     } catch (error) {
       if (createdUser) {
+        // New user: rollback the auth record so the user can retry cleanly.
         await this.userRepository.delete({ id: user.id });
+        throw error;
       }
-      throw error;
+      // Existing user: profile already exists in user-service — do not
+      // block login just because the sync refresh failed.
+      this.logger.warn(
+        `[google] sync failed for existing user ${user.id} but proceeding with login`,
+      );
     }
 
     const sessionId = randomUUID();
@@ -789,8 +805,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       if (createdUser) {
         await this.userRepository.delete({ id: user.id });
+        throw error;
       }
-      throw error;
+      this.logger.warn(
+        `[linkedin] sync failed for existing user ${user.id} but proceeding with login`,
+      );
     }
 
     const sessionId = randomUUID();
@@ -1362,21 +1381,21 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const os = parser.getOS();
     const device = parser.getDevice();
 
-    await this.sessionRepository.save({
-      id: params.id,
-      userId: params.userId,
-      refreshTokenHash: hash,
-      userAgent: params.userAgent,
-      browserName: browser.name ?? null,
-      browserVersion: browser.major ?? null,
-      osName: os.name ?? null,
-      osVersion: os.version ?? null,
-      deviceType: device.type === 'mobile' ? 'mobile'
-        : device.type === 'tablet' ? 'tablet'
-        : 'desktop',
-      ipAddress: params.ipAddress,
-      expiresAt,
-    });
+    const session = new Session();
+    session.id = params.id;
+    session.userId = params.userId;
+    session.refreshTokenHash = hash;
+    session.userAgent = params.userAgent;
+    session.browserName = browser.name ?? null;
+    session.browserVersion = browser.major ?? null;
+    session.osName = os.name ?? null;
+    session.osVersion = os.version ?? null;
+    session.deviceType = device.type === 'mobile' ? 'mobile'
+      : device.type === 'tablet' ? 'tablet'
+      : 'desktop';
+    session.ipAddress = params.ipAddress;
+    session.expiresAt = expiresAt;
+    await this.sessionRepository.save(session);
   }
 
   private parseExpiresInMs(value: string): number {
@@ -1479,7 +1498,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private getUserSyncEndpoint(): { url: string; token: string } {
     const baseUrl =
       this.configService.get<string>('USER_SERVICE_URL') ??
-      'http://localhost:3000';
+      'http://localhost:3002';
     const token = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
 
     if (!token) {
@@ -1496,11 +1515,22 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private async postUserProfileSync(payload: SyncUserProfilePayload) {
     const { url, token } = this.getUserSyncEndpoint();
-    await axios.post(url, payload, {
-      headers: {
-        'x-internal-token': token,
-      },
-    });
+    try {
+      await axios.post(url, payload, {
+        headers: {
+          'x-internal-token': token,
+        },
+      });
+    } catch (error) {
+      // user-service may return 409 when profile already exists; treat this as idempotent success.
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        this.logger.warn(
+          `[sync] user profile already exists in user-service; treating as success for user=${payload.id} email=${payload.email}`,
+        );
+        return;
+      }
+      throw error;
+    }
   }
 
   private getRetryKey(payload: SyncUserProfilePayload): string {
