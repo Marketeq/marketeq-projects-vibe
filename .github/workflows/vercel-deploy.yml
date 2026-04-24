@@ -105,7 +105,6 @@ jobs:
               name: $project,
               project: $project,
               target: "production",
-              source: "api-trigger-git-deploy",
               gitSource: {
                 type: "github",
                 org: $owner,
