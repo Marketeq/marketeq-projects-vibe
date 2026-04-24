@@ -862,12 +862,15 @@ const formatSkillLabel = (value: string) => {
   const trimmedValue = value.trim()
   if (!trimmedValue) return ""
 
-  if (!/[./]/.test(trimmedValue)) {
-    return trimmedValue
+  if (
+    trimmedValue.toLowerCase() === "react.js" ||
+    trimmedValue.toLowerCase() === "react js"
+  ) {
+    return "React JS"
   }
 
-  if (trimmedValue.toLowerCase() === "react.js") {
-    return "React JS"
+  if (!/[./]/.test(trimmedValue)) {
+    return convertToTitleCase(trimmedValue)
   }
 
   return convertToTitleCase(trimmedValue.replace(/[./]+/g, " "))
