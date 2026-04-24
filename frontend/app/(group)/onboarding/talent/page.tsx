@@ -930,14 +930,14 @@ const HighlightedSuggestion = ({
   )
 }
 
-const LOCATIONIQ_API_KEY =
-  process.env.NEXT_PUBLIC_LOCATIONIQ_API_KEY ||
-  "pk.8d6cd3795ace5efa9a0a3469b55d08cb"
+const LOCATIONIQ_API_KEY = process.env.NEXT_PUBLIC_LOCATIONIQ_API_KEY?.trim()
 
 const reverseGeocodeLocation = async (
   latitude: number,
   longitude: number
 ): Promise<string | null> => {
+  if (!LOCATIONIQ_API_KEY) return null
+
   try {
     const response = await fetch(
       `https://api.locationiq.com/v1/reverse?key=${LOCATIONIQ_API_KEY}&lat=${latitude}&lon=${longitude}&format=json`
@@ -963,6 +963,8 @@ const reverseGeocodeLocation = async (
 const geocodeLocation = async (
   location: string
 ): Promise<{ latitude: number; longitude: number } | null> => {
+  if (!LOCATIONIQ_API_KEY) return null
+
   try {
     const response = await fetch(
       `https://api.locationiq.com/v1/search?key=${LOCATIONIQ_API_KEY}&q=${encodeURIComponent(
@@ -1197,7 +1199,7 @@ const ShareYourLocation = ({
   const filteredLanguages = useMemo(() => {
     const query = languagesQuery.trim().toLowerCase()
     const searchableLanguages = languageOptions.filter(
-      (item) => !selectedLanguageValues.includes(item)
+      (item) => !hasCaseInsensitiveExactMatch(selectedLanguageValues, item)
     )
     if (!query) return searchableLanguages
     return searchableLanguages.filter((item) =>
@@ -2078,7 +2080,7 @@ const ShowcaseYourTalent = ({
   const filteredIndustries = useMemo(() => {
     const query = industriesQuery.trim().toLowerCase()
     const searchableIndustries = industriesOptions.filter(
-      (item) => !selectedIndustries.includes(item)
+      (item) => !hasCaseInsensitiveExactMatch(selectedIndustries, item)
     )
     if (!query) return searchableIndustries
     return searchableIndustries.filter((item) =>
@@ -2106,7 +2108,7 @@ const ShowcaseYourTalent = ({
 
     clearErrors("industriesWorkedWith")
     setIndustriesOptions((prev) => getUniqueOptions([...prev, value]))
-    if (!selectedIndustries.includes(value)) {
+    if (!hasCaseInsensitiveExactMatch(selectedIndustries, value)) {
       const next = [...selectedIndustries, value]
       setSelectedIndustries(next)
       setValue("industriesWorkedWith", next, { shouldValidate: true })
@@ -2678,7 +2680,7 @@ const ProjectPreferences = ({
     }
 
     onAcceptedValue?.()
-    setValues((prev) => [...prev, value])
+    setValues((prev) => getUniqueOptions([...prev, value]))
     resetInputValue()
     setIsProjectPreferencesOpen(false)
     setSuppressProjectPreferencesFocusOpen(true)
@@ -2716,7 +2718,7 @@ const ProjectPreferences = ({
     }
 
     onAcceptedValue?.()
-    setValues((prev) => [...prev, value])
+    setValues((prev) => getUniqueOptions([...prev, value]))
     resetInputValue()
     setIsProjectPreferencesOpen(false)
     setSuppressProjectPreferencesFocusOpen(true)
@@ -2734,7 +2736,6 @@ const ProjectPreferences = ({
       target: { value },
     } = event
     setInputValue(value)
-    onAcceptedValue?.()
     setIsProjectPreferencesOpen(true)
   }
 
@@ -2749,11 +2750,9 @@ const ProjectPreferences = ({
         '[role="option"][data-headlessui-state~="active"]'
       ) as HTMLElement | null
       const activeLabel = activeOption?.textContent?.trim() ?? ""
-      const fallbackSuggestion = filteredRoles[0]?.trim() ?? ""
-      const selectedSuggestion = activeLabel || fallbackSuggestion
 
-      if (selectedSuggestion) {
-        selectSuggestedValue(selectedSuggestion)
+      if (activeLabel) {
+        selectSuggestedValue(activeLabel)
         return
       }
     }
