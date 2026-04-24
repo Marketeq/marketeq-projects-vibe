@@ -163,17 +163,42 @@ export function OwnCombobox({
   onValueChange,
   options,
   value,
+  searchValue,
+  onSearchValueChange,
+  emptyMessage,
 }: {
   placeholder?: string
   options?: string[]
   value?: string
   onValueChange?: (value: string) => void
+  searchValue?: string
+  onSearchValueChange?: (value: string) => void
+  emptyMessage?: string
 }) {
   const [open, setOpen] = React.useState(false)
   const [state, setState] = useControllableState({
     value,
     onChange: onValueChange,
   })
+  const [internalSearchValue, setInternalSearchValue] = React.useState("")
+  const resolvedSearchValue =
+    typeof searchValue === "string" ? searchValue : internalSearchValue
+  const handleSearchValueChange = React.useCallback(
+    (nextValue: string) => {
+      if (typeof onSearchValueChange === "function") {
+        onSearchValueChange(nextValue)
+        return
+      }
+      setInternalSearchValue(nextValue)
+    },
+    [onSearchValueChange]
+  )
+
+  React.useEffect(() => {
+    if (!open) {
+      handleSearchValueChange("")
+    }
+  }, [open, handleSearchValueChange])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -184,9 +209,14 @@ export function OwnCombobox({
       </PopoverTrigger>
       <PopoverContent className="w-[202px] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
         <Command>
-          <CommandInput placeholder="Search" className="h-9" />
+          <CommandInput
+            placeholder="Search"
+            className="h-9"
+            value={resolvedSearchValue}
+            onValueChange={handleSearchValueChange}
+          />
           <CommandList>
-            <CommandEmpty>No framework found.</CommandEmpty>
+            <CommandEmpty>{emptyMessage ?? "No results found."}</CommandEmpty>
             <CommandGroup>
               {options?.map((option) => (
                 <CommandItem
