@@ -7,9 +7,17 @@ export type MediaType = {
 export type ProjectScopeTaskType = {
   taskName: string
   role: string
+  workSchedule?: {
+    type: "full-time" | "part-time" | "custom"
+    custom?: {
+      hours?: number
+      period?: "day" | "week" | "month" | "quarter"
+    }
+  }
   location: string[]
   experience: string
   duration: number
+  estimatedHours?: number
 }
 
 export type ProjectScopePhaseType = {
