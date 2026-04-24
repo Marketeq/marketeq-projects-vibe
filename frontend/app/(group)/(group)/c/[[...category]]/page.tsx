@@ -2423,10 +2423,12 @@ export default function Projects() {
                               {currentName} Talent
                             </h1>
                             <p className="mt-3 text-lg font-light leading-none text-white">
-                              Find {currentName.toLowerCase()} talent to bring your software development projects to life.
+                              Find {currentName.toLowerCase()} talent to bring your next project to life.
                             </p>
-                            <Button className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-primary-800 hover:bg-white text-primary-700 mt-8" size="lg">
-                              Explore More <ArrowRight className="size-[15px]" />
+                            <Button asChild className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-primary-800 hover:bg-white text-primary-700 mt-8" size="lg">
+                              <NextLink href={listingHref("talent")}>
+                                Explore More <ArrowRight className="size-[15px]" />
+                              </NextLink>
                             </Button>
                           </article>
                         </SwiperSlide>
