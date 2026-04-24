@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
@@ -11,6 +12,7 @@ import { AutocompleteRejectedEntry } from './entities/autocomplete-rejected-entr
 import { AutocompleteService } from './autocomplete.service';
 import { AutocompleteController } from './autocomplete.controller';
 import { EntryFilter } from './filters/entry.filter';
+import { JwtStrategy } from './guards/jwt-auth.guard';
 
 const envPaths = [
   resolve(process.cwd(), 'apps/autocomplete-service/.env'),
@@ -24,6 +26,7 @@ const envPaths = [
       isGlobal: true,
       envFilePath: envPaths,
     }),
+    PassportModule.register({ defaultStrategy: 'jwt' }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -40,6 +43,6 @@ const envPaths = [
     TypeOrmModule.forFeature([AutocompleteEntry, AutocompleteReviewQueue, AutocompleteCategory, AutocompleteRejectedEntry]),
   ],
   controllers: [AutocompleteController],
-  providers: [AutocompleteService, EntryFilter],
+  providers: [AutocompleteService, EntryFilter, JwtStrategy],
 })
 export class AutocompleteServiceModule {}
