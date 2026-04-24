@@ -102,6 +102,7 @@ jobs:
             --arg branch "$BRANCH" \
             --arg sha "$SHA" \
             '{
+              name: $project,
               project: $project,
               target: "production",
               source: "api-trigger-git-deploy",
