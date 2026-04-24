@@ -3,7 +3,9 @@ import { Injectable } from '@nestjs/common';
 const MIN_LENGTH = 2;
 const MAX_LENGTH = 100;
 const MAX_WORDS = 4;
-const VALID_CHARS = /^[a-zA-Z0-9\s\-_.+#@&()'/]+$/;
+// Allow common real-world punctuation used in titles/skills/languages
+// while rejecting symbols like @, _, and parentheses.
+const VALID_CHARS = /^[a-zA-Z0-9\s\-.'&+#/]+$/;
 const NOISE_PATTERN = /^(.)\1{3,}$/;
 
 const PROFANITY = [
