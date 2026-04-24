@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, In } from 'typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AutocompleteEntry, EntryStatus, EntryType } from './entities/autocomplete-entry.entity';
@@ -61,6 +61,36 @@ function assignHeuristicCategory(label: string): string | null {
   return null;
 }
 
+const AUTOCOMPLETE_ROUTE_TYPE_MAP: Partial<Record<string, EntryType>> = {
+  skills: EntryType.SKILL,
+  job_titles: EntryType.TITLE,
+  languages: EntryType.LANGUAGE,
+  industries: EntryType.INDUSTRY,
+  project_types: EntryType.PROJECT_TYPE,
+}
+
+type PendingReviewEntry = {
+  id: string;
+  value: string;
+  normalized: string;
+  type: EntryType;
+  status: EntryStatus;
+  source: string | null;
+  category: string | null;
+  subcategory: string | null;
+};
+
+type PendingReviewItem = {
+  id: string;
+  entryId: string;
+  reviewedBy: string | null;
+  action: ReviewAction | null;
+  reason: string | null;
+  createdAt: Date;
+  reviewedAt: Date | null;
+  entry: PendingReviewEntry | null;
+};
+
 @Injectable()
 export class AutocompleteService {
   constructor(
@@ -95,6 +125,7 @@ export class AutocompleteService {
   }
 
   async submit(dto: SubmitAutocompleteDto): Promise<AutocompleteEntry> {
+    dto.type = AUTOCOMPLETE_ROUTE_TYPE_MAP[dto.type] ?? dto.type
     const validation = this.filter.validate(dto.value);
     if (!validation.valid) {
       // Log the rejected entry
@@ -145,6 +176,7 @@ export class AutocompleteService {
   }
 
   async query(dto: QueryAutocompleteDto): Promise<AutocompleteEntry[]> {
+    dto.type = AUTOCOMPLETE_ROUTE_TYPE_MAP[dto.type] ?? dto.type
     const limit = dto.limit ?? 10;
     const normalizedQ = this.filter.normalize(dto.q);
 
@@ -168,6 +200,7 @@ export class AutocompleteService {
   }
 
   async getByType(type: EntryType): Promise<AutocompleteEntry[]> {
+    type = AUTOCOMPLETE_ROUTE_TYPE_MAP[type] ?? type
     return this.entryRepo.find({
       where: { type, status: EntryStatus.APPROVED },
       order: { frequency: 'DESC' },
@@ -226,13 +259,41 @@ export class AutocompleteService {
     return entry;
   }
 
-  async getPendingReview(): Promise<AutocompleteReviewQueue[]> {
-    return this.reviewRepo.find({
+  async getPendingReview(): Promise<PendingReviewItem[]> {
+    const queueItems = await this.reviewRepo.find({
       where: { action: IsNull() },
-      relations: ['entry'],
-      order: { createdAt: 'ASC' },
+      order: { createdAt: 'DESC' },
       take: 50,
     });
+
+    const entries = queueItems.length > 0
+      ? await this.entryRepo.find({
+          where: { id: In(queueItems.map((item) => item.entryId)) },
+        })
+      : [];
+    const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
+
+    return queueItems.map((item): PendingReviewItem => ({
+      id: item.id,
+      entryId: item.entryId,
+      reviewedBy: item.reviewedBy,
+      action: item.action,
+      reason: item.reason,
+      createdAt: item.createdAt,
+      reviewedAt: item.reviewedAt,
+      entry: entriesById.get(item.entryId)
+        ? {
+            id: entriesById.get(item.entryId)!.id,
+            value: entriesById.get(item.entryId)!.value,
+            normalized: entriesById.get(item.entryId)!.normalized,
+            type: entriesById.get(item.entryId)!.type,
+            status: entriesById.get(item.entryId)!.status,
+            source: entriesById.get(item.entryId)!.source,
+            category: entriesById.get(item.entryId)!.category,
+            subcategory: entriesById.get(item.entryId)!.subcategory,
+          }
+        : null,
+    }));
   }
 
   /**
@@ -247,6 +308,7 @@ export class AutocompleteService {
    * Falls back gracefully if the file does not exist.
    */
   async queryFromJson(type: string, q?: string, limit = 10): Promise<{ id: string; label: string }[]> {
+    type = AUTOCOMPLETE_ROUTE_TYPE_MAP[type] ?? type
     const filepath = resolveAutocompleteDataPath(type);
     const approvedDbEntries = await this.entryRepo.find({
       where: { type: type as EntryType, status: EntryStatus.APPROVED },

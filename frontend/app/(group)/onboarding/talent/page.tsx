@@ -20,6 +20,7 @@ import { DAY_PERIODS, HOT_KEYS, TIMES } from "@/utils/constants"
 import {
   capitalize,
   cn,
+  convertToTitleCase,
   getIsNotEmpty,
   hookFormHasError,
   noop,
@@ -851,6 +852,26 @@ const getUniqueOptions = (values: string[]) =>
   Array.from(
     new Set(values.map((value) => value.trim()).filter((value) => value.length))
   )
+
+const sortAlphabetically = (values: string[]) =>
+  getUniqueOptions(values).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" })
+  )
+
+const formatSkillLabel = (value: string) => {
+  const trimmedValue = value.trim()
+  if (!trimmedValue) return ""
+
+  if (!/[./]/.test(trimmedValue)) {
+    return trimmedValue
+  }
+
+  if (trimmedValue.toLowerCase() === "react.js") {
+    return "React JS"
+  }
+
+  return convertToTitleCase(trimmedValue.replace(/[./]+/g, " "))
+}
 
 const projectPreferenceStaticOptions = getUniqueOptions(
   (Array.isArray(rawProjectTypeSuggestions) ? rawProjectTypeSuggestions : [])
@@ -1861,19 +1882,32 @@ const TopSkills = ({
     onChange: onValueChange,
   })
   const [open, setOpen] = useState(false)
+  const [customSkillOptions, setCustomSkillOptions] = useState<string[]>([])
   const [skillOptions, setSkillOptions] =
-    useState<string[]>(FALLBACK_TOP_SKILLS)
+    useState<string[]>(sortAlphabetically(FALLBACK_TOP_SKILLS))
   const requestIdRef = useRef(0)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const skillsVocabulary = useMemo(() => toVocabulary(skillOptions), [skillOptions])
 
   const resetInputValue = () => setInputValue("")
 
+  const resolveSkillLabel = (value: string) => {
+    const trimmedValue = value.trim()
+    if (!trimmedValue) return ""
+
+    const exactMatch = skillOptions.find(
+      (option) => option.trim().toLowerCase() === trimmedValue.toLowerCase()
+    )
+
+    return exactMatch ? formatSkillLabel(exactMatch) : formatSkillLabel(trimmedValue)
+  }
+
   const addValue = async (nextValue = inputValue) => {
     const trimmedValue = nextValue.trim()
     if (!trimmedValue) return
+    const normalizedValue = resolveSkillLabel(trimmedValue)
 
-    if (hasCaseInsensitiveExactMatch(values, trimmedValue)) {
+    if (hasCaseInsensitiveExactMatch(values, normalizedValue)) {
       onAcceptedValue?.()
       resetInputValue()
       setOpen(false)
@@ -1882,11 +1916,11 @@ const TopSkills = ({
 
     const isKnownSuggestion = hasCaseInsensitiveExactMatch(
       skillOptions,
-      trimmedValue
+      normalizedValue
     )
     if (!isKnownSuggestion) {
       if (
-        !isReasonableCustomEntry(trimmedValue, {
+        !isReasonableCustomEntry(normalizedValue, {
           maxWords: 6,
           maxLength: 80,
           vocabulary: skillsVocabulary,
@@ -1896,7 +1930,7 @@ const TopSkills = ({
         setOpen(false)
         return
       }
-      const accepted = await submitAutocompleteValue("skills", trimmedValue)
+      const accepted = await submitAutocompleteValue("skills", normalizedValue)
       if (!accepted) {
         resetInputValue()
         setOpen(false)
@@ -1905,8 +1939,15 @@ const TopSkills = ({
     }
 
     onAcceptedValue?.()
-    setSkillOptions((prev) => getUniqueOptions([...prev, trimmedValue]))
-    setValues((prev) => getUniqueOptions([...prev, trimmedValue]))
+    if (!isKnownSuggestion) {
+      setCustomSkillOptions((prev) =>
+        sortAlphabetically([...prev, normalizedValue])
+      )
+    }
+    setSkillOptions((prev) =>
+      sortAlphabetically([...prev, normalizedValue])
+    )
+    setValues((prev) => getUniqueOptions([...prev, normalizedValue]))
     resetInputValue()
     setOpen(false)
   }
@@ -1945,7 +1986,9 @@ const TopSkills = ({
     const query = inputValue.trim()
     if (!query) {
       requestIdRef.current += 1
-      setSkillOptions(FALLBACK_TOP_SKILLS)
+      setSkillOptions(
+        sortAlphabetically([...FALLBACK_TOP_SKILLS, ...customSkillOptions])
+      )
       return
     }
 
@@ -1963,10 +2006,21 @@ const TopSkills = ({
 
         const normalizedApiValues = Array.from(
           new Set(apiValues.map((item) => normalizeAutocompleteLabel(item)))
-        ).filter((item) => item.length > 0)
+        )
+          .map((item) => formatSkillLabel(item))
+          .filter((item) => item.length > 0)
 
         if (getIsNotEmpty(normalizedApiValues)) {
-          setSkillOptions(normalizedApiValues)
+          const fallbackMatches = FALLBACK_TOP_SKILLS.filter((skill) =>
+            skill.toLowerCase().includes(query.toLowerCase())
+          )
+          setSkillOptions(
+            sortAlphabetically([
+              ...fallbackMatches,
+              ...customSkillOptions,
+              ...normalizedApiValues,
+            ])
+          )
           return
         }
       } catch {
@@ -1976,7 +2030,9 @@ const TopSkills = ({
       const fallbackMatches = FALLBACK_TOP_SKILLS.filter((skill) =>
         skill.toLowerCase().includes(query.toLowerCase())
       )
-      setSkillOptions(fallbackMatches)
+      setSkillOptions(
+        sortAlphabetically([...fallbackMatches, ...customSkillOptions])
+      )
     }, 250)
 
     return () => {
@@ -1984,7 +2040,7 @@ const TopSkills = ({
         clearTimeout(debounceTimerRef.current)
       }
     }
-  }, [inputValue])
+  }, [inputValue, customSkillOptions])
 
   const filteredRoles = inputValue.trim()
     ? skillOptions
@@ -1993,7 +2049,6 @@ const TopSkills = ({
             !hasCaseInsensitiveExactMatch(values, skill) &&
             skill.toLowerCase().startsWith(inputValue.trim().toLowerCase())
         )
-        .slice(0, 5)
     : []
 
   return (
@@ -2111,8 +2166,11 @@ const ShowcaseYourTalent = ({
   const [selectedIndustries, setSelectedIndustries] = useState<string[]>(
     parseMultiSelectString(stepData?.industriesWorkedIn)
   )
+  const [customJobTitleOptions, setCustomJobTitleOptions] = useState<string[]>(
+    []
+  )
   const [jobTitleOptions, setJobTitleOptions] = useState<string[]>(
-    getUniqueOptions(jobTitlesMock.map((item) => item.label))
+    sortAlphabetically(jobTitlesMock.map((item) => item.label))
   )
   const industriesOptions = useMemo(
     () => getUniqueOptions(industriesMock.map((item) => item.label)),
@@ -2130,6 +2188,17 @@ const ShowcaseYourTalent = ({
       item.toLowerCase().startsWith(query)
     )
   }, [jobTitleOptions, jobTitleQuery])
+
+  const resolveJobTitleLabel = (value: string) => {
+    const trimmedValue = value.trim()
+    if (!trimmedValue) return ""
+
+    const exactMatch = jobTitleOptions.find(
+      (option) => option.trim().toLowerCase() === trimmedValue.toLowerCase()
+    )
+
+    return exactMatch ?? convertToTitleCase(trimmedValue)
+  }
   const filteredIndustries = useMemo(() => {
     const query = industriesQuery.trim().toLowerCase()
     const searchableIndustries = industriesOptions.filter(
@@ -2180,6 +2249,12 @@ const ShowcaseYourTalent = ({
     const trimmedQuery = jobTitleQuery.trim()
     if (!trimmedQuery) {
       jobTitleRequestRef.current += 1
+      setJobTitleOptions(
+        sortAlphabetically([
+          ...jobTitlesMock.map((item) => item.label),
+          ...customJobTitleOptions,
+        ])
+      )
       return
     }
 
@@ -2201,8 +2276,11 @@ const ShowcaseYourTalent = ({
           values.map((item) => normalizeAutocompleteLabel(item))
         )
         if (!getIsNotEmpty(normalizedOptions)) return
+        setCustomJobTitleOptions((prev) =>
+          sortAlphabetically([...prev, ...normalizedOptions])
+        )
         setJobTitleOptions((prev) =>
-          getUniqueOptions([...prev, ...normalizedOptions])
+          sortAlphabetically([...prev, ...normalizedOptions])
         )
       } catch {
         // Keep current/fallback options when endpoint is unavailable.
@@ -2354,15 +2432,23 @@ const ShowcaseYourTalent = ({
                               const finalValue =
                                 activeLabel || jobTitleQuery.trim()
                               if (!finalValue) return
+                              const normalizedValue =
+                                resolveJobTitleLabel(finalValue)
                               const isKnownSuggestion =
                                 hasCaseInsensitiveExactMatch(
                                   jobTitleOptions,
-                                  finalValue
+                                  normalizedValue
                                 )
                               const applyValue = () => {
-                                onChange(finalValue)
+                                onChange(normalizedValue)
+                                setCustomJobTitleOptions((prev) =>
+                                  sortAlphabetically([...prev, normalizedValue])
+                                )
                                 setJobTitleOptions((prev) =>
-                                  getUniqueOptions([...prev, finalValue])
+                                  sortAlphabetically([
+                                    ...prev,
+                                    normalizedValue,
+                                  ])
                                 )
                                 clearErrors("recentJobTitle")
                                 setJobTitleQuery("")
@@ -2372,7 +2458,7 @@ const ShowcaseYourTalent = ({
                               if (!isKnownSuggestion) {
                                 const accepted = await submitAutocompleteValue(
                                   "job_titles",
-                                  finalValue
+                                  normalizedValue
                                 )
                                 if (!accepted) {
                                   setJobTitleQuery("")
