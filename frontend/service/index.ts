@@ -113,6 +113,9 @@ axiosInstance.interceptors.response.use(
         if (newRefreshToken) {
           Cookies.set("refresh_token", newRefreshToken, { path: "/" })
         }
+        if (res?.data?.sessionId) {
+          Cookies.set("session_id", res.data.sessionId, { path: "/" })
+        }
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
         processQueue(null, newAccessToken)
         return axiosInstance(originalRequest)
@@ -125,6 +128,7 @@ axiosInstance.interceptors.response.use(
       // Refresh failed — clear tokens, user will need to re-login
       Cookies.remove("access_token", { path: "/" })
       Cookies.remove("refresh_token", { path: "/" })
+      Cookies.remove("session_id", { path: "/" })
       return Promise.reject(refreshError)
     } finally {
       isRefreshing = false

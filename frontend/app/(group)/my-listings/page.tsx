@@ -108,6 +108,9 @@ export default function MyListingsPage() {
 
   const filteredListings = useMemo(() => {
     let items = listings
+    if (activeTab === "Shared") {
+      items = []
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       items = items.filter((l) => l.title.toLowerCase().includes(q))

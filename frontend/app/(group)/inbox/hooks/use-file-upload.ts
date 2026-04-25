@@ -7,21 +7,26 @@ import { apiFetch } from "@/src/lib/api"
 interface FileUploadResponse {
   message: {
     id: string
-    conversationId: string
+    threadId?: string
+    conversationId?: string
     senderId: string
-    type: "file"
-    ciphertext: string
+    messageType?: "file"
+    ciphertext?: string | null
+    content?: string
     createdAt: string
     updatedAt: string
-    isRead: boolean
-    isPinned: boolean
-    isDeleted: boolean
+    status?: string
+    attachments?: Array<{
+      id: string
+      fileUrl: string
+      fileName?: string | null
+      fileType: string
+      fileSize?: number | null
+    }>
   }
   attachment: {
     id: string
     messageId: string
-    conversationId: string
-    senderId: string
     fileUrl: string
     fileName: string
     fileType: string
@@ -30,7 +35,10 @@ interface FileUploadResponse {
   }
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3007"
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:3002/api"
 
 export function useFileUpload(
   token: string,
@@ -66,7 +74,7 @@ export function useFileUpload(
       }
 
       const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-        `${API_BASE_URL}/api/messaging/conversations/${conversationId}/key?isGroup=${isGroup}`,
+        `/messaging/conversations/${conversationId}/key?isGroup=${isGroup}`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
 
@@ -115,7 +123,7 @@ export function useFileUpload(
     // }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/messaging/upload`, {
+      const response = await fetch(`${API_BASE_URL}/messaging/upload`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

@@ -30,6 +30,14 @@ const formatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 })
 
+const safeDecodeSlug = (value: string): string => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
 const Visa = (props: React.SVGProps<SVGSVGElement>) => (
   <svg width={34} height={24} viewBox="0 0 34 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
     <rect x={0.5} y={0.5} width={33} height={23} rx={3.5} fill="#fff" />
@@ -63,7 +71,8 @@ export default function ConfirmationPage() {
   const slug = params.slug as string
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
-  const decodedSlug = decodeURIComponent(slug)
+  const decodedSlug = safeDecodeSlug(slug)
+  const safeSlugSegment = encodeURIComponent(decodedSlug)
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(null)
   const [isEditOfferOpen, setIsEditOfferOpen] = React.useState(false)
   const [hasAuthorizedPayment, setHasAuthorizedPayment] = React.useState(false)
@@ -146,10 +155,10 @@ export default function ConfirmationPage() {
 
   const handleEditPaymentMethods = React.useCallback(() => {
     const nextUrl = searchParams.toString()
-      ? `${basePath}/${slug}/payment?${searchParams.toString()}`
-      : `${basePath}/${slug}/payment`
+      ? `${basePath}/${safeSlugSegment}/payment?${searchParams.toString()}`
+      : `${basePath}/${safeSlugSegment}/payment`
     router.push(nextUrl)
-  }, [basePath, router, searchParams, slug])
+  }, [basePath, router, safeSlugSegment, searchParams])
 
   const handleSubmitPayment = () => {
     if (!hasAuthorizedPayment) {
@@ -164,7 +173,7 @@ export default function ConfirmationPage() {
     }
 
     setIsSubmittingPayment(true)
-    router.push(`${basePath}/${slug}/thank-you`)
+    router.push(`${basePath}/${safeSlugSegment}/thank-you`)
   }
 
   return (

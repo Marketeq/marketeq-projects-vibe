@@ -302,7 +302,7 @@ export function OfferDialog({
             )}
 
             <DialogClose asChild>
-              <IconButton variant="ghost" visual="gray" size="md">
+              <IconButton variant="ghost" visual="gray" size="sm">
                 <X className="size-5" />
               </IconButton>
             </DialogClose>
@@ -814,7 +814,7 @@ export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
       onOpenChange={setOpen}
       mode="create"
       trigger={
-        <Button size="md" {...buttonProps}>
+        <Button {...buttonProps}>
           <Plus className="size-[15px]" />
           Hire Me
         </Button>

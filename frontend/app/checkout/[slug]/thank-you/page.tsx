@@ -102,6 +102,14 @@ const formatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 })
 
+const safeDecodeSlug = (value: string): string => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
 export default function ConfirmationPage() {
   const params = useParams()
   const pathname = usePathname()
@@ -110,7 +118,7 @@ export default function ConfirmationPage() {
   const slug = params.slug as string
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
-  const decodedSlug = decodeURIComponent(slug)
+  const decodedSlug = safeDecodeSlug(slug)
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(null)
   const [paymentSnapshot, setPaymentSnapshot] =
     React.useState<PaymentPageSnapshot | null>(null)

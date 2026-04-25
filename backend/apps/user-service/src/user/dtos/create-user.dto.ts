@@ -64,6 +64,14 @@ export class CreateUserDto {
   @IsString()
   avatarUrl?: string;
 
+  @ApiPropertyOptional({ example: '+15551234567' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\+?[1-9]\d{6,14}$/, {
+    message: 'phone must be a valid E.164-style phone number',
+  })
+  phone?: string;
+
   @ApiPropertyOptional({ example : 'Miami'})
   @IsOptional()
   @IsString()

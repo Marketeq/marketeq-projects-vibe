@@ -22,7 +22,7 @@ export const AutocompleteAPI = {
     const suffix = q ? `?q=${encodeURIComponent(q)}` : ""
     return AxiosRequest.get(`/autocomplete/${type}${suffix}`)
   },
-  submit: (data: { type: string; label: string }) => {
+  submit: (data: { type: string; value: string; source?: string }) => {
     return AxiosRequest.post("/autocomplete/submit", data)
   },
   getCategoryMap: () => {
