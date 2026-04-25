@@ -52,6 +52,13 @@ export const resolveDashboardRole = (
   return undefined
 }
 
+export const hasCompletedOnboarding = (
+  user?: DashboardResolvableUser | null,
+): boolean =>
+  user?.hasCompletedOnboarding === true ||
+  user?.onboardingDismissed === true ||
+  user?.onboardedAt != null
+
 export const resolveDashboardRoute = (
   user?: DashboardResolvableUser | null,
 ): string => {
@@ -69,12 +76,7 @@ export const resolveDashboardRoute = (
   // never be bounced back to /onboarding just because the /me payload is
   // missing role/accountType/userType. Default them to client-dashboard
   // — the account switcher can flip them to talent if needed.
-  const hasCompletedOnboarding =
-    user?.hasCompletedOnboarding === true ||
-    user?.onboardingDismissed === true ||
-    user?.onboardedAt != null
-
-  if (hasCompletedOnboarding) {
+  if (hasCompletedOnboarding(user)) {
     return "/client-dashboard"
   }
 
@@ -96,7 +98,14 @@ export const mergeDashboardUserFields = <
     ...(profileUser as Record<string, unknown>),
   }
 
-  for (const key of ["role", "accountType", "userType"] as const) {
+  for (const key of [
+    "role",
+    "accountType",
+    "userType",
+    "onboardingDismissed",
+    "hasCompletedOnboarding",
+    "onboardedAt",
+  ] as const) {
     const authValue = (authUser as Record<string, unknown>)[key]
     if (merged[key] == null && authValue != null) {
       merged[key] = authValue
