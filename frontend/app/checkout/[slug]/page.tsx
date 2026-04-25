@@ -184,6 +184,14 @@ type PaymentPlanOption = {
   value: string
 }
 
+const safeDecodeSlug = (value: string): string => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
 export default function CheckoutPage() {
   const params = useParams()
   const pathname = usePathname()
@@ -192,7 +200,8 @@ export default function CheckoutPage() {
   const slug = params.slug as string
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
-  const decodedSlug = decodeURIComponent(slug)
+  const decodedSlug = safeDecodeSlug(slug)
+  const safeSlugSegment = encodeURIComponent(decodedSlug)
   const addOnStateStorageKey = React.useMemo(
     () => `checkout-addons:${basePath}:${decodedSlug}`,
     [basePath, decodedSlug],
@@ -433,7 +442,7 @@ export default function CheckoutPage() {
           <button
             onClick={() => {
               if (isTalentCheckout) {
-                router.push(`/talent-profile?username=${encodeURIComponent(decodeURIComponent(slug))}`)
+                router.push(`/talent-profile?username=${encodeURIComponent(decodedSlug)}`)
                 return
               }
               router.back()
@@ -847,7 +856,7 @@ export default function CheckoutPage() {
                               variant="outlined"
                               visual="gray"
                               onClick={() =>
-                                router.push(`/project-details/${slug}`)
+                                router.push(`/project-details/${safeSlugSegment}`)
                               }
                             >
                               Edit Scope
@@ -2125,10 +2134,10 @@ export default function CheckoutPage() {
                         nextSearchParams.set("schedule", selectedSchedule)
                         nextSearchParams.set("duration", selectedDuration)
                         nextSearchParams.set("paymentPlan", selectedTalentPaymentPlanId)
-                        router.push(`${basePath}/${slug}/payment?${nextSearchParams.toString()}`)
+                        router.push(`${basePath}/${safeSlugSegment}/payment?${nextSearchParams.toString()}`)
                         return
                       }
-                      router.push(`${basePath}/${slug}/payment`)
+                      router.push(`${basePath}/${safeSlugSegment}/payment`)
                     }}
                   >
                     {isTalentCheckout ? "Proceed to Payment" : "Proceed to Payment"}

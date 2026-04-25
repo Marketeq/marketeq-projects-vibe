@@ -69,6 +69,8 @@ export class ProxyController {
       prefix = 'listings'
     } else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {
       prefix = 'messages'
+    } else if (prefix === 'v1' && segments[1] === 'notifications') {
+      prefix = 'notifications'
     }
 
     const serviceName = SERVICE_PREFIX_MAP[prefix]

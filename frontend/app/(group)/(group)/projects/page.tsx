@@ -73,7 +73,6 @@ export default function Projects() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('Featured');
   const [pageData, setPageData] = useState<any>(null); // ✅ ADD THIS LINE
-
   // Fetch data from backend
   useEffect(() => {
     async function fetchData() {

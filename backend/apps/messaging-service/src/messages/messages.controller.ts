@@ -64,4 +64,13 @@ export class MessagesController {
   search(@Query('q') q: string, @Req() req: any) {
     return this.service.search(q, req.user?.id);
   }
+
+  @Post(':id/reactions')
+  toggleReaction(
+    @Param('id') id: string,
+    @Body('emoji') emoji: string,
+    @Req() req: any,
+  ) {
+    return this.service.toggleReaction(id, emoji, req.user?.id);
+  }
 }

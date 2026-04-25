@@ -5,6 +5,12 @@ import { Attachment } from './attachment.entity';
 export type MessageStatus = 'sent' | 'delivered' | 'read';
 export type MessageType = 'text' | 'file' | 'gif';
 
+export interface MessageReaction {
+  userId: string;
+  emoji: string;
+  createdAt: string;
+}
+
 @Entity('messages')
 export class Message {
   @PrimaryGeneratedColumn('uuid')
@@ -32,6 +38,9 @@ export class Message {
   @Column({ nullable: true })
   forwardedFromId: string;
 
+  @Column('text', { nullable: true })
+  quotedCiphertext: string;
+
   @Column({ type: 'enum', enum: ['sent', 'delivered', 'read'], default: 'sent' })
   status: MessageStatus;
 
@@ -49,6 +58,9 @@ export class Message {
 
   @Column({ default: false })
   deleted: boolean;
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  reactions: MessageReaction[];
 
   @OneToMany(() => Attachment, (a) => a.message, { cascade: true })
   attachments: Attachment[];

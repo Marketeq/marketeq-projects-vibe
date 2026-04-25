@@ -9,54 +9,177 @@ on:
     paths:
       - 'frontend/**'
       - 'package.json'
+      - '.github/workflows/vercel-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      deploy_branch:
+        description: Branch to deploy
+        required: true
+        default: dev-main
+      deploy_sha:
+        description: Commit SHA to deploy (defaults to branch head when blank)
+        required: false
+        default: ''
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     concurrency:
-      group: vercel-deploy-${{ github.ref_name }}
+      group: vercel-deploy-${{ github.event_name == 'workflow_dispatch' && inputs.deploy_branch || github.ref_name }}
       cancel-in-progress: true
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_SLUG: marketeq-projects-d993fac5
     steps:
       - name: Map branch to Vercel project
         id: map
         run: |
-          case "${{ github.ref_name }}" in
-            dev-main)  echo "project=marketeq-projects-dev" >> $GITHUB_OUTPUT ;;
-            staging)   echo "project=marketeq-projects-staging" >> $GITHUB_OUTPUT ;;
-            live-mvp)  echo "project=marketeq-projects-live-mvp" >> $GITHUB_OUTPUT ;;
+          BRANCH="${{ github.event_name == 'workflow_dispatch' && inputs.deploy_branch || github.ref_name }}"
+
+          case "$BRANCH" in
+            dev-main)
+              echo "project=marketeq-projects-dev" >> "$GITHUB_OUTPUT"
+              echo "project_id=prj_IuUgufT5MaEY03bNmdb3lFcr51WC" >> "$GITHUB_OUTPUT"
+              ;;
+            staging)
+              echo "project=marketeq-projects-staging" >> "$GITHUB_OUTPUT"
+              echo "project_id=prj_zxwZ4cEzY1kRsMbPst6nAoMWTxTG" >> "$GITHUB_OUTPUT"
+              ;;
+            live-mvp)
+              echo "project=marketeq-projects-live-mvp" >> "$GITHUB_OUTPUT"
+              echo "project_id=prj_vvtSNsNsVxyMteDejCo32rh2CEiD" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unsupported deploy branch: $BRANCH"
+              exit 1
+              ;;
           esac
+
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve commit SHA
+        id: commit
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          BRANCH="${{ steps.map.outputs.branch }}"
+          INPUT_SHA="${{ github.event_name == 'workflow_dispatch' && inputs.deploy_sha || '' }}"
+
+          if [ -n "$INPUT_SHA" ]; then
+            SHA="$INPUT_SHA"
+          else
+            SHA=$(gh api "repos/${{ github.repository }}/commits/$BRANCH" --jq '.sha')
+          fi
+
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Deploying branch $BRANCH at $SHA"
 
       - name: Make repo public
         env:
           GH_TOKEN: ${{ secrets.REPO_ADMIN_TOKEN }}
         run: |
+          set -euo pipefail
           gh api repos/${{ github.repository }} -X PATCH -f visibility=public --silent
           echo "Repo set to public"
 
+      - name: Trigger Vercel deployment from Git ref
+        id: trigger
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.map.outputs.project }}"
+          BRANCH="${{ steps.map.outputs.branch }}"
+          SHA="${{ steps.commit.outputs.sha }}"
+
+          echo "Creating explicit production deployment for $PROJECT from $BRANCH @ $SHA"
+
+          PAYLOAD=$(jq -n \
+            --arg project "$PROJECT" \
+            --arg owner "${{ github.repository_owner }}" \
+            --arg repo "${{ github.event.repository.name }}" \
+            --arg branch "$BRANCH" \
+            --arg sha "$SHA" \
+            '{
+              name: $project,
+              project: $project,
+              target: "production",
+              gitSource: {
+                type: "github",
+                org: $owner,
+                repo: $repo,
+                ref: $branch,
+                sha: $sha
+              },
+              meta: {
+                githubCommitSha: $sha,
+                githubCommitRef: $branch,
+                githubDeploymentSource: "github-actions"
+              }
+            }')
+
+          HTTP_RESPONSE=$(curl -sS -X POST \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            -w '\n%{http_code}' \
+            "https://api.vercel.com/v13/deployments?slug=$VERCEL_TEAM_SLUG")
+
+          HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -n1)
+          RESPONSE=$(echo "$HTTP_RESPONSE" | sed '$d')
+
+          echo "Vercel create deployment HTTP status: $HTTP_STATUS"
+
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "Vercel deployment creation failed:"
+            echo "$RESPONSE"
+            exit 1
+          fi
+
+          DEPLOYMENT_ID=$(echo "$RESPONSE" | jq -r '.id')
+          DEPLOYMENT_URL=$(echo "$RESPONSE" | jq -r '.url')
+          READY_STATE=$(echo "$RESPONSE" | jq -r '.readyState // .status // "UNKNOWN"')
+          SOURCE=$(echo "$RESPONSE" | jq -r '.source // "UNKNOWN"')
+
+          if [ -z "$DEPLOYMENT_ID" ] || [ "$DEPLOYMENT_ID" = "null" ]; then
+            echo "Failed to create deployment:"
+            echo "$RESPONSE"
+            exit 1
+          fi
+
+          echo "deployment_id=$DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
+          echo "deployment_url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
+
+          echo "Created deployment $DEPLOYMENT_ID ($DEPLOYMENT_URL) source=$SOURCE state=$READY_STATE"
+
       - name: Wait for Vercel deployment to complete
         run: |
-          PROJECT="${{ steps.map.outputs.project }}"
-          echo "Waiting for Vercel to detect push and start building $PROJECT..."
-          sleep 15
+          set -euo pipefail
 
-          # Poll Vercel for up to 10 minutes until the deployment finishes
-          MAX_ATTEMPTS=60
+          DEPLOYMENT_ID="${{ steps.trigger.outputs.deployment_id }}"
+          MAX_ATTEMPTS=90
+
           for i in $(seq 1 $MAX_ATTEMPTS); do
-            LATEST=$(curl -sf -H "Authorization: Bearer $VERCEL_TOKEN" \
-              "https://api.vercel.com/v6/deployments?project=$PROJECT&limit=1&target=production" \
-              | jq -r '.deployments[0].state // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
+            CURRENT=$(curl -sf \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "https://api.vercel.com/v13/deployments/$DEPLOYMENT_ID")
 
-            echo "Attempt $i/$MAX_ATTEMPTS: deployment state = $LATEST"
+            STATE=$(echo "$CURRENT" | jq -r '.readyState // .status // "UNKNOWN"')
+            SOURCE=$(echo "$CURRENT" | jq -r '.source // "UNKNOWN"')
+            ERROR_MESSAGE=$(echo "$CURRENT" | jq -r '.errorMessage // empty')
 
-            case "$LATEST" in
+            echo "Attempt $i/$MAX_ATTEMPTS: deployment $DEPLOYMENT_ID state=$STATE source=$SOURCE"
+
+            case "$STATE" in
               READY)
-                echo "Deployment succeeded!"
+                echo "Deployment succeeded: https://${{ steps.trigger.outputs.deployment_url }}"
                 exit 0
                 ;;
               ERROR|CANCELED)
-                echo "Deployment failed with state: $LATEST"
+                if [ -n "$ERROR_MESSAGE" ]; then
+                  echo "Deployment failed: $ERROR_MESSAGE"
+                fi
                 exit 1
                 ;;
               *)
@@ -64,7 +187,8 @@ jobs:
                 ;;
             esac
           done
-          echo "Timed out waiting for deployment"
+
+          echo "Timed out waiting for deployment $DEPLOYMENT_ID"
           exit 1
 
       - name: Make repo private
@@ -72,5 +196,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.REPO_ADMIN_TOKEN }}
         run: |
+          set -euo pipefail
           gh api repos/${{ github.repository }} -X PATCH -f visibility=private --silent
           echo "Repo set back to private"

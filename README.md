@@ -79,8 +79,8 @@ node -r ts-node/register/transpile-only src/server.ts
 #### Log in to Payload CMS admin at
 http://localhost:3020/admin
 Enable API Key -> Generate New API Key
-
 Set this value as CMS_API_KEY in your .env for category-service
+
 OR 
 http://localhost:3020/api/users/login
 {
@@ -102,6 +102,13 @@ psql -U postgres -c "CREATE DATABASE transaction_db;"
 ```npx typeorm-ts-node-commonjs -d apps/invitations-service/src/data-source.ts migration:run```
 ```npx typeorm-ts-node-commonjs -d apps/transaction-service/src/data-source.ts migration:run ```
 
+### To generate private and public key :
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out private.pem 
+cat private.pem
+
+openssl rsa -in private.pem -pubout -out public.pem
+cat public.pem
+
 ### Rabbitmq:
 ```docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management```
 ``` docker start rabbitmq ```
@@ -110,7 +117,9 @@ psql -U postgres -c "CREATE DATABASE transaction_db;"
 docker run -d --name redis -p 6379:6379 redis:7
 
 ### PAYLOAD_SECRET
-```node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" ```
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
 
 ### Internal service token
 ```node -e "console.log(require('crypto').randomUUID())"```

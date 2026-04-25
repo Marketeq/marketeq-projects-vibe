@@ -17,6 +17,8 @@ import { registerIpcHandlers } from './ipc';
 import { createRepos } from './db/repos';
 import {
   createTimerService,
+  TIMER_CHANNELS,
+  type TimerBusEvent,
   type TimerService,
 } from './services/timer/timer-service';
 import { createPermissionsService } from './services/permissions/permissions-service';
@@ -55,8 +57,16 @@ import type { ReleaseChannel } from './services/updater/channels';
 import { createErrorHandler } from './services/error-handler';
 import { createPowerMonitorService } from './services/power-monitor';
 import { registerContractsIpc } from './services/contracts/register-ipc';
+import {
+  createWindowManager,
+  resolveRendererPaths,
+  type WindowManager,
+} from './services/window/window-manager';
+import { createTrayService } from './services/tray/tray-service';
+import { createNotificationService } from './services/notifications/notification-service';
 
 const isDev = !app.isPackaged;
+let windowManager: WindowManager | null = null;
 
 async function createMainWindow(): Promise<BrowserWindow> {
   const win = new BrowserWindow({
@@ -206,9 +216,7 @@ async function bootstrap(): Promise<void> {
   try {
     const db = initDatabase();
     const repos = createRepos(db);
-    const authBaseUrl =
-      process.env.DTT_API_BASE_URL ?? 'https://api.marketeq.com/tts/v1';
-    const httpPort = createFetchAuthHttpPort({ logger, baseUrl: authBaseUrl });
+    const httpPort = createFetchAuthHttpPort({ logger });
     authService = createAuthService({
       logger,
       repos,
@@ -497,7 +505,7 @@ async function bootstrap(): Promise<void> {
 
     // Forward timer bus events into tray + notifications.
     if (timerService) {
-      detachTimerBus = timerService.attachEventBus((evt) => {
+      detachTimerBus = timerService.attachEventBus((evt: TimerBusEvent) => {
         try {
           if (evt.channel === TIMER_CHANNELS.stateChanged) {
             trayService?.setTimerState(evt.payload.state, evt.payload.elapsedSec);
