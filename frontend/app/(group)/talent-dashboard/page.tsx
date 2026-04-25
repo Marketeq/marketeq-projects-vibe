@@ -11,7 +11,7 @@ import {
   CreateYourOwnProject,
   Footer,
   LeftSidebar,
-  RecentProjects,
+  RecentListings,
   RecommendedForYou,
   RightDrawer,
   RightSidebar,
@@ -70,7 +70,7 @@ export default function TalentDashboard() {
             <div className="flex-auto space-y-3 md:space-y-5 min-w-0">
               <Welcome onToggle={() => setIsOpen(true)} />
 
-              <RecentProjects />
+              <RecentListings />
 
               <CreateYourOwnProject />
 
