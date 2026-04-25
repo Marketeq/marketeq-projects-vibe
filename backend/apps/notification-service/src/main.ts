@@ -1,10 +1,14 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { NotificationServiceModule } from './notification-service.module';
+import { getRabbitMqUrl, isRabbitMqReachable, shouldRequireRabbitMq } from '../../../shared/utils';
 
 async function bootstrap() {
+  const logger = new Logger('NotificationServiceBootstrap');
   const app = await NestFactory.create(NotificationServiceModule);
+  const rabbitMqUrl = getRabbitMqUrl();
+  const rabbitMqRequired = shouldRequireRabbitMq();
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableCors({
@@ -12,17 +16,28 @@ async function bootstrap() {
     credentials: true,
   });
 
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.RMQ,
-    options: {
-      urls: [process.env.RABBITMQ_URI || 'amqp://localhost:5672'],
-      queue: 'notification_service_queue',
-      queueOptions: { durable: true },
-    },
-  });
+  const rabbitMqReachable = await isRabbitMqReachable(rabbitMqUrl);
+  if (rabbitMqReachable) {
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitMqUrl],
+        queue: 'notification_service_queue',
+        queueOptions: { durable: true },
+      },
+    });
+  } else if (rabbitMqRequired) {
+    throw new Error(`RabbitMQ is required but unreachable at ${rabbitMqUrl}`);
+  } else {
+    logger.warn(`RabbitMQ is unavailable at ${rabbitMqUrl}; starting HTTP API without RMQ consumers in local/dev mode.`);
+  }
 
-  await app.startAllMicroservices();
   await app.listen(process.env.PORT || 3006);
-  console.log(`notification-service running on port ${process.env.PORT || 3006}`);
+  logger.log(`notification-service running on port ${process.env.PORT || 3006}`);
+
+  if (rabbitMqReachable) {
+    await app.startAllMicroservices();
+    logger.log(`RabbitMQ transport connected at ${rabbitMqUrl}`);
+  }
 }
 bootstrap();
