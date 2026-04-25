@@ -144,6 +144,29 @@ const LeftSidebar = ({
   const [bulkActionPending, setBulkActionPending] = useState(false)
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
   const threadActions = useThreadActions(token || "")
+  const visibleConversations = useMemo(
+    () =>
+      conversations.filter((c: any) => {
+        switch (activeFilter) {
+          case "starred":
+            return c.isStarred
+          case "unread":
+            return c.markedUnread
+          case "sent":
+            return c.lastMessage?.m_senderId === currentUserId
+          case "archived":
+            return c.isArchived
+          case "spam":
+            return c.isSpam
+          case "trash":
+            return c.isTrashed
+          case "all":
+          default:
+            return !c.isArchived && !c.isSpam && !c.isTrashed
+        }
+      }),
+    [activeFilter, conversations, currentUserId]
+  )
 
   const clearSelection = () => {
     setCheckedIds(new Set())
@@ -466,6 +489,30 @@ const LeftSidebar = ({
     setPinnedChats?.(conversations.filter((c) => c.isPinned).length)
   }, [conversations, setPinnedChats])
 
+  const searching = searchQuery.trim().length > 0
+
+  useEffect(() => {
+    if (isLoading || initialParticipantId || searching) return
+
+    const selectedVisible = selectedConversation
+      ? visibleConversations.some((c) => c.id === selectedConversation.id)
+      : false
+
+    if (selectedVisible) return
+
+    const firstVisible = visibleConversations[0] ?? null
+    if (firstVisible) {
+      setSelectedConversation(firstVisible)
+    }
+  }, [
+    initialParticipantId,
+    isLoading,
+    searching,
+    selectedConversation,
+    setSelectedConversation,
+    visibleConversations,
+  ])
+
   // Search uses the persisted client-side index when available (covers the
   // full history). Falls back to in-memory messagesByConversation (only
   // opened threads) when the index hook isn't plumbed in yet.
@@ -514,8 +561,6 @@ const LeftSidebar = ({
     }, 150)
     return () => clearTimeout(handle)
   }, [searchQuery, messagesByConversation, searchIndex])
-
-  const searching = searchQuery.trim().length > 0
 
   const openSearchResult = (threadId: string, messageId: string) => {
     const conv = conversations.find((c) => c.id === threadId)
@@ -830,19 +875,7 @@ const LeftSidebar = ({
               <Spinner size={24} strokeWidth={3} />
             </div>
           ) : (() => {
-            const filtered = conversations.filter((c: any) => {
-              switch (activeFilter) {
-                case "starred": return c.isStarred
-                case "unread": return c.markedUnread
-                case "sent": return c.lastMessage?.m_senderId === currentUserId
-                case "archived": return c.isArchived
-                case "spam": return c.isSpam
-                case "trash": return c.isTrashed
-                case "all":
-                default: return !c.isArchived && !c.isSpam && !c.isTrashed
-              }
-            })
-            return filtered.length === 0 ? (
+            return visibleConversations.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-400">
                 <Mail05 className="size-8 stroke-[1.5]" />
                 <p className="text-sm">
@@ -850,7 +883,7 @@ const LeftSidebar = ({
                 </p>
               </div>
             ) : (
-              filtered.map((conv) => (
+              visibleConversations.map((conv) => (
                 <Chat
                   key={conv.id}
                   conversation={{
