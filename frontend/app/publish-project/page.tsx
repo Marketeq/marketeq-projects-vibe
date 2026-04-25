@@ -1183,6 +1183,10 @@ const projectInfoSchema = z.object({
     .string()
     .trim()
     .min(1, "Please enter a project title")
+    .regex(
+      /^[A-Za-z0-9 -]+$/,
+      "Title can only contain letters, numbers, spaces, and hyphens."
+    )
     .min(10, "Please enter at least 10 character(s)")
     .max(120, "Please do not enter more than 120 character(s)"),
   category: z
