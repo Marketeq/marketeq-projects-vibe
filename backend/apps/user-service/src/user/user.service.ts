@@ -2,28 +2,31 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Request } from 'express';
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { Request } from "express";
 
-import { User } from './entities/user.entity';
-import { CreateUserDto } from './dtos/create-user.dto';
-import { UpdateUserDto } from './dtos/update-user.dto';
-import { SyncUserDto } from './dtos/sync-user.dto';
-import { UserRole } from './enums/user-role.enum';
-import { UpdateAvailabilityDto } from './dtos/update-availability.dto';
-import { AVAILABILITY } from '../talent/enum/availability.enum';
+import { User } from "./entities/user.entity";
+import { CreateUserDto } from "./dtos/create-user.dto";
+import { UpdateUserDto } from "./dtos/update-user.dto";
+import { SyncUserDto } from "./dtos/sync-user.dto";
+import { UserRole } from "./enums/user-role.enum";
+import { UpdateAvailabilityDto } from "./dtos/update-availability.dto";
+import { AVAILABILITY } from "../talent/enum/availability.enum";
+import { Skill } from "../skills/skills.entity";
 import {
   TimeZoneResolution,
   TimezoneResolutionService,
-} from './timezone-resolution.service';
+} from "./timezone-resolution.service";
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(Skill)
+    private readonly skillRepository: Repository<Skill>,
     private readonly timezoneResolutionService: TimezoneResolutionService,
   ) {}
 
@@ -39,7 +42,7 @@ export class UserService {
     const existing = await this.userRepository.findOne({ where });
 
     if (existing) {
-      throw new ConflictException('User already exists');
+      throw new ConflictException("User already exists");
     }
 
     const user = this.userRepository.create(dto);
@@ -47,11 +50,23 @@ export class UserService {
   }
 
   async getUserById(id: string): Promise<User> {
-    const user = await this.userRepository.findOne({
-      where: { id },
-      relations: ['skills'],
-    });
-    if (!user) throw new NotFoundException('User not found');
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) throw new NotFoundException("User not found");
+
+    try {
+      user.skills = await this.skillRepository.find({
+        where: { userId: id },
+        select: {
+          id: true,
+          name: true,
+          proficiency: true,
+          userId: true,
+        },
+      });
+    } catch {
+      user.skills = [];
+    }
+
     return user;
   }
 
@@ -66,7 +81,7 @@ export class UserService {
     const safeOffset = Math.max(offset, 0);
 
     return this.userRepository.find({
-      order: { createdAt: 'DESC' },
+      order: { createdAt: "DESC" },
       take: safeLimit,
       skip: safeOffset,
     });
@@ -74,7 +89,7 @@ export class UserService {
 
   async getUserByEmail(email: string): Promise<User> {
     const user = await this.userRepository.findOne({ where: { email } });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException("User not found");
     return user;
   }
 
@@ -97,7 +112,7 @@ export class UserService {
       firstName: user.firstName ?? undefined,
       lastName: user.lastName ?? undefined,
       avatarUrl: user.avatarUrl ?? undefined,
-      role: user.role ?? 'client',
+      role: user.role ?? "client",
       onboardingDismissed: user.onboardingDismissed,
       hasCompletedOnboarding: user.onboardingDismissed,
       isActive: user.isActive,
@@ -123,24 +138,32 @@ export class UserService {
       firstName: user.firstName ?? undefined,
       lastName: user.lastName ?? undefined,
       avatarUrl: user.avatarUrl ?? undefined,
-      role: user.role ?? 'client',
+      role: user.role ?? "client",
       onboardingDismissed: user.onboardingDismissed,
       hasCompletedOnboarding: user.onboardingDismissed,
       isActive: user.isActive,
     };
   }
 
-  async getUserByClaims(claims: { sub?: string; id?: string; email?: string }): Promise<User> {
+  async getUserByClaims(claims: {
+    sub?: string;
+    id?: string;
+    email?: string;
+  }): Promise<User> {
     const candidateId = claims.sub ?? claims.id;
     if (candidateId) {
-      const byId = await this.userRepository.findOne({ where: { id: candidateId } });
+      const byId = await this.userRepository.findOne({
+        where: { id: candidateId },
+      });
       if (byId) {
         return byId;
       }
     }
 
     if (claims.email) {
-      const byEmail = await this.userRepository.findOne({ where: { email: claims.email } });
+      const byEmail = await this.userRepository.findOne({
+        where: { email: claims.email },
+      });
       if (byEmail) {
         return byEmail;
       }
@@ -153,7 +176,7 @@ export class UserService {
       });
     }
 
-    throw new NotFoundException('User not found');
+    throw new NotFoundException("User not found");
   }
 
   async updateUser(id: string, dto: UpdateUserDto): Promise<User> {
@@ -170,7 +193,7 @@ export class UserService {
       availability: dto.availability,
       customAvailability:
         dto.availability === AVAILABILITY.CUSTOM
-          ? dto.customAvailability ?? null
+          ? (dto.customAvailability ?? null)
           : null,
     });
   }
@@ -228,9 +251,9 @@ export class UserService {
   async dismissOnboarding(id: string, role?: UserRole): Promise<User> {
     const userType =
       role === UserRole.TALENT
-        ? 'talent'
+        ? "talent"
         : role === UserRole.CLIENT
-          ? 'client'
+          ? "client"
           : undefined;
 
     return this.updateUser(id, {
@@ -252,12 +275,15 @@ export class UserService {
   }
   async syncFromAuth(dto: SyncUserDto): Promise<User> {
     let normalizedIncomingUsername =
-      typeof dto.username === 'string' ? dto.username.trim().toLowerCase() : undefined;
+      typeof dto.username === "string"
+        ? dto.username.trim().toLowerCase()
+        : undefined;
     // Treat empty/whitespace usernames as "unset" so we persist NULL/leave existing unchanged.
-    if (normalizedIncomingUsername === '') normalizedIncomingUsername = undefined;
-    const fallbackUsername = `user_${dto.id.replace(/-/g, '').slice(0, 12)}`;
+    if (normalizedIncomingUsername === "")
+      normalizedIncomingUsername = undefined;
+    const fallbackUsername = `user_${dto.id.replace(/-/g, "").slice(0, 12)}`;
     const resolvedRole = dto.role ?? UserRole.CLIENT;
-    const resolvedProvider = dto.provider ?? 'EMAIL';
+    const resolvedProvider = dto.provider ?? "EMAIL";
     const resolvedHasPassword = dto.hasPassword ?? false;
 
     const existingById = await this.userRepository.findOne({
@@ -271,7 +297,8 @@ export class UserService {
         ...(dto.firstName && { firstName: dto.firstName }),
         ...(dto.lastName && { lastName: dto.lastName }),
         provider: dto.provider ?? existingById.provider ?? resolvedProvider,
-        hasPassword: dto.hasPassword ?? existingById.hasPassword ?? resolvedHasPassword,
+        hasPassword:
+          dto.hasPassword ?? existingById.hasPassword ?? resolvedHasPassword,
       });
       if (normalizedIncomingUsername) {
         existingById.username = normalizedIncomingUsername;
@@ -285,12 +312,13 @@ export class UserService {
 
     if (existingByEmail) {
       if (existingByEmail.id !== dto.id) {
-        throw new ConflictException('User already exists with a different id');
+        throw new ConflictException("User already exists with a different id");
       }
       Object.assign(existingByEmail, {
         role: resolvedRole ?? existingByEmail.role,
         provider: dto.provider ?? existingByEmail.provider ?? resolvedProvider,
-        hasPassword: dto.hasPassword ?? existingByEmail.hasPassword ?? resolvedHasPassword,
+        hasPassword:
+          dto.hasPassword ?? existingByEmail.hasPassword ?? resolvedHasPassword,
       });
       if (normalizedIncomingUsername) {
         existingByEmail.username = normalizedIncomingUsername;
@@ -319,9 +347,9 @@ export class UserService {
   async getUserWithRelations(id: string): Promise<User> {
     const user = await this.userRepository.findOne({
       where: { id },
-      relations: ['skills', 'languages'],
+      relations: ["skills", "languages"],
     });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException("User not found");
     return user;
   }
 
