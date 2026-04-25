@@ -11,6 +11,8 @@ type DashboardFooterProps = {
 }
 
 export function DashboardFooter({ className }: DashboardFooterProps) {
+  const year = new Date().getFullYear()
+
   return (
     <div
       className={cn(
@@ -23,7 +25,7 @@ export function DashboardFooter({ className }: DashboardFooterProps) {
           <Logo3 className="shrink-0 w-[120px] h-[17.63px]" />
         </NextLink>
         <span className="text-[13px] leading-[15.73px] font-light text-dark-blue-400">
-          © 2011 - 2025 Marketeq Digital Inc. All Rights Reserved.
+          © 2011 - {year} Marketeq Digital Inc. All Rights Reserved.
         </span>
       </div>
 
