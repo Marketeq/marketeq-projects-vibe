@@ -6,14 +6,18 @@ export class Project {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  // Stable key for CMS ↔ listings sync (Payload document id as string)
+  @Column({ unique: true })
+  payloadId: string;
+
   @Column()
   title: string;
 
   @Column('text')
   description: string;
 
-  @Column({ nullable: true })
-  slug: string;
+  @Column({ type: 'text', nullable: true })
+  slug?: string;
 
   @Column({ nullable: true })
   category: string;
@@ -49,10 +53,10 @@ export class Project {
   mediaUrls: string[];
 
   @Column({ nullable: true, type: 'text' })
-  shortDescription: string;
+  shortDescription?: string;
 
   @Column({ nullable: true, type: 'text' })
-  videoUrl: string;
+  videoUrl?: string;
 
   @Column('jsonb', { nullable: true, default: () => "'[]'" })
   deliverables: Array<{ phaseLabel: string; phaseName: string; items: string[] }>;
@@ -73,16 +77,16 @@ export class Project {
   }[];
 
   @Column({ nullable: true, type: 'int' })
-  estimatedHours: number;
+  estimatedHours?: number;
 
   @Column({ type: 'enum', enum: ListingStatus, default: ListingStatus.Draft })
   status: ListingStatus;
 
   @Column({ nullable: true, type: 'decimal', precision: 10, scale: 2 })
-  budget: number;
+  budget?: number;
 
   @Column({ nullable: true })
-  duration: string;
+  duration?: string;
 
   @Column({ type: 'decimal', precision: 3, scale: 1, default: 0 })
   rating: number;

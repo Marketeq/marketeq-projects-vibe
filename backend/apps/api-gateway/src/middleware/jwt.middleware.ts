@@ -22,6 +22,8 @@ const PUBLIC_EXACT_ROUTES = new Set([
   '/auth/2fa/resend',
   '/homepage',
   '/homepage/health',
+  '/v1/homepage',
+  '/v1/homepage/health',
   '/search',
   '/autocomplete',
   '/suggestions',
@@ -47,6 +49,7 @@ const PUBLIC_PATTERNS = [
   /^\/v1\/users\/username\/[^/]+$/,
   /^\/v1\/projects(?:\/.*)?$/,
   /^\/v1\/services(?:\/.*)?$/,
+  /^\/v1\/homepage(?:\/.*)?$/,
   /^\/v1\/users\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
 ]
 

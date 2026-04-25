@@ -3,7 +3,10 @@ import { Request } from 'express';
 import { HomepageService } from './homepage.service';
 import { HomepagePayload } from './homepage.types';
 
-@Controller('homepage')
+// Alias routes:
+// - /homepage is the canonical public homepage endpoint
+// - /v1/homepage exists for legacy/frontend callers that assume v1 prefix
+@Controller(['homepage', 'v1/homepage'])
 export class HomepageController {
   constructor(private readonly homepageService: HomepageService) {}
 

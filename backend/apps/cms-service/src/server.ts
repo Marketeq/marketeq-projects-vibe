@@ -56,6 +56,35 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "cms-service" });
 });
 
+// Same-origin autocomplete proxy for Payload admin UI.
+// The admin bundle runs in the browser; calling autocomplete-service directly is
+// brittle (CORS/env/port). This endpoint keeps the UI working after refresh.
+const autocompleteOrigin = (process.env.AUTOCOMPLETE_SERVICE_URL || "http://localhost:3016").replace(
+  /\/$/,
+  "",
+);
+app.get("/cms-autocomplete/:type", async (req, res) => {
+  const type = String(req.params.type || "").trim();
+  const q = typeof req.query.q === "string" ? req.query.q : "";
+  if (!type) {
+    res.status(400).json({ error: "type required" });
+    return;
+  }
+  const upstreamUrl = `${autocompleteOrigin}/autocomplete/${encodeURIComponent(type)}?q=${encodeURIComponent(
+    q,
+  )}`;
+  try {
+    const upstream = await fetch(upstreamUrl);
+    const text = await upstream.text();
+    res.status(upstream.status);
+    res.setHeader("content-type", upstream.headers.get("content-type") || "application/json");
+    res.send(text);
+  } catch (err) {
+    payload.logger?.warn({ err, upstreamUrl }, "cms-autocomplete proxy failed");
+    res.status(502).json({ error: "autocomplete proxy failed" });
+  }
+});
+
 // Same-origin media proxy. Payload's `generateFileURL` stores media paths as
 // `/cms-media/<filename>` (see payload.config.ts) so the Next.js Image
 // Optimizer doesn't trip its private-IP SSRF guard. The frontend rewrites
@@ -116,7 +145,8 @@ async function start() {
   }
 
   // Initialize Payload CMS
-  // REST API is always mounted. Admin panel requires `payload build` first.
+  // REST API is always mounted. Admin panel requires `npm run build` (runs
+  // `payload build` then `tsc`) so ./build contains the webpack bundle; see Dockerfile.
   await payload.init({
     secret: payloadSecret,
     express: app,
