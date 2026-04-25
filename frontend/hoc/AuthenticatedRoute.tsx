@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { resolveDashboardRole, useAuth } from "@/contexts/auth"
+import {
+  hasCompletedOnboarding,
+  resolveDashboardRole,
+  useAuth,
+} from "@/contexts/auth"
 import { ROLE } from "@/types/user"
 import { Spinner } from "@/components/ui/spinner/spinner"
 
@@ -23,7 +27,7 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
 
     const dashboardRole = resolveDashboardRole(user)
     const hasRole = !!dashboardRole
-    const onboardingDismissed = user?.onboardingDismissed
+    const onboardingComplete = hasCompletedOnboarding(user)
 
     //New user, no role yet
     if (!hasRole) {
@@ -36,7 +40,7 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
     }
 
     //Has role, but onboarding not dismissed
-    if (hasRole && !onboardingDismissed) {
+    if (hasRole && !onboardingComplete) {
       if (!pathname?.includes("onboarding")) {
         router.push("/onboarding")
       } else {
@@ -46,7 +50,7 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
     }
 
     //Has role and onboarding is dismissed — user can access the requested page
-    if (hasRole && onboardingDismissed) {
+    if (hasRole && onboardingComplete) {
       // If they somehow landed on an onboarding route, send them home
       if (pathname?.includes("onboarding")) {
         router.push("/")
