@@ -3,6 +3,9 @@
 import * as React from "react"
 import { SVGProps } from "react"
 import { usePathname, useRouter } from "next/navigation"
+import { resolveDashboardRole, useAuth } from "@/contexts/auth"
+import data from "@/public/mock/projects.json"
+import { UserAPI } from "@/service/http/user"
 import { ONE_SECOND } from "@/utils/constants"
 import { cn, getId, getIsEmpty, getIsNotEmpty } from "@/utils/functions"
 import { useEditable } from "@ark-ui/react"
@@ -14,10 +17,10 @@ import {
   Briefcase,
   Check,
   ChevronLeft,
-  CoinStack,
-  CurrencyDollar,
   ChevronRight,
   Clock,
+  CoinStack,
+  CurrencyDollar,
   FileCheck02,
   Home03,
   Mail01,
@@ -33,23 +36,24 @@ import {
   UserCircle,
   X,
 } from "@blend-metrics/icons"
-import { InstagramDefault } from "@blend-metrics/icons/social"
 import { GridVertical2 } from "@blend-metrics/icons/special"
 import { AnimatePresence, motion } from "framer-motion"
 import { useMount, useTimeoutFn, useToggle } from "react-use"
 import { Pagination } from "swiper/modules"
 import { Swiper as SwiperRoot, SwiperSlide } from "swiper/react"
 import { Swiper } from "swiper/types"
+import { ROLE } from "@/types/user"
 import { ReorderGroup, ReorderItem } from "@/components/ui/reorder"
-import { Facebook, Linkedin, Logo, Logo3, XIcon } from "@/components/icons"
-import { GridVertical6 } from "@/components/icons/grid-vertical-6"
-import NextImage from "@/components/next-image"
-import NextLink from "@/components/next-link"
-import SecuritySettingsStepper from "@/components/security-settings"
 import {
   ClientAccountSidebar,
   TalentAccountSidebar,
 } from "@/components/account-sidebars"
+import { DashboardFooter } from "@/components/dashboard-footer"
+import { Logo } from "@/components/icons"
+import { GridVertical6 } from "@/components/icons/grid-vertical-6"
+import NextImage from "@/components/next-image"
+import NextLink from "@/components/next-link"
+import SecuritySettingsStepper from "@/components/security-settings"
 import {
   Avatar,
   AvatarFallback,
@@ -79,9 +83,6 @@ import {
   EditablePreview,
   EditableRoot,
 } from "@/components/ui"
-import { useAuth, resolveDashboardRole } from "@/contexts/auth"
-import { ROLE } from "@/types/user"
-import { UserAPI } from "@/service/http/user"
 import {
   type MyListing,
   formatActivityDate,
@@ -89,7 +90,6 @@ import {
   statusToBadgeVisual,
   useMyListings,
 } from "@/src/lib/my-listings"
-
 
 export const MoneyDollarCircleFill = ({
   className,
@@ -173,7 +173,15 @@ export const LeftSidebar = () => {
   return isTalent ? <TalentAccountSidebar /> : <ClientAccountSidebar />
 }
 
-export const RightDrawer = ({ className, onCompleteProfile, profileProgress = 0 }: { className?: string; onCompleteProfile?: () => void; profileProgress?: number }) => {
+export const RightDrawer = ({
+  className,
+  onCompleteProfile,
+  profileProgress = 0,
+}: {
+  className?: string
+  onCompleteProfile?: () => void
+  profileProgress?: number
+}) => {
   const { user } = useAuth()
   return (
     <div
@@ -188,7 +196,12 @@ export const RightDrawer = ({ className, onCompleteProfile, profileProgress = 0 
             href="/talent-profile"
             className="text-base leading-[19.36px] font-bold text-dark-blue-400 hover:text-primary-500 hover:underline"
           >
-            @{user?.username || `${user?.firstName || ""}${user?.lastName || ""}`.toLowerCase().replace(/\s+/g, "") || "my-profile"}
+            @
+            {user?.username ||
+              `${user?.firstName || ""}${user?.lastName || ""}`
+                .toLowerCase()
+                .replace(/\s+/g, "") ||
+              "my-profile"}
           </NextLink>
           <Button
             className="underline text-dark-blue-400 hover:text-primary-500"
@@ -317,7 +330,15 @@ export const RightDrawer = ({ className, onCompleteProfile, profileProgress = 0 
   )
 }
 
-export const RightSidebar = ({ className, onCompleteProfile, profileProgress = 0 }: { className?: string; onCompleteProfile?: () => void; profileProgress?: number }) => {
+export const RightSidebar = ({
+  className,
+  onCompleteProfile,
+  profileProgress = 0,
+}: {
+  className?: string
+  onCompleteProfile?: () => void
+  profileProgress?: number
+}) => {
   const { user } = useAuth()
   return (
     <div
@@ -329,7 +350,12 @@ export const RightSidebar = ({ className, onCompleteProfile, profileProgress = 0
             href="/talent-profile"
             className="text-base leading-[19.36px] font-bold text-dark-blue-400 hover:text-primary-500 hover:underline block"
           >
-            @{user?.username || `${user?.firstName || ""}${user?.lastName || ""}`.toLowerCase().replace(/\s+/g, "") || "my-profile"}
+            @
+            {user?.username ||
+              `${user?.firstName || ""}${user?.lastName || ""}`
+                .toLowerCase()
+                .replace(/\s+/g, "") ||
+              "my-profile"}
           </NextLink>
           <Button
             className="underline text-dark-blue-400 hover:text-primary-500"
@@ -1866,47 +1892,5 @@ export const TakeCareersToNextLevel = () => {
 }
 
 export const Footer = () => {
-  return (
-    <div className="px-5 xs:max-md:pt-5 md:px-6 pb-5 flex flex-col md:flex-row items-center gap-5 md:justify-between">
-      <div className="flex md:flex-row flex-col items-center gap-5 md:gap-x-[57px]">
-        <NextLink className="focus-visible:outline-none" href="/">
-          <Logo3 className="shrink-0 w-[120px] h-[17.63px]" />
-        </NextLink>
-        <span className="text-[13px] leading-[15.73px] font-light text-dark-blue-400">
-          © 2011 - 2025 Marketeq Digital Inc. All Rights Reserved.
-        </span>
-      </div>
-
-      <div className="flex items-center gap-x-[16.6px]">
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <Facebook className="fill-dark-blue-400 size-4" />
-        </IconButton>
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <XIcon className="text-dark-blue-400 size-4" />
-        </IconButton>
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <InstagramDefault className="text-dark-blue-400 size-4" />
-        </IconButton>
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <Linkedin className="text-dark-blue-400 size-4" />
-        </IconButton>
-      </div>
-    </div>
-  )
+  return <DashboardFooter className="px-5 xs:max-md:pt-5 pb-5 md:px-6" />
 }
