@@ -232,6 +232,11 @@ export const Projects: CollectionConfig = {
       maxLength: 120,
       validate: (value) => {
         if (typeof value !== 'string' || !value.trim()) return true;
+        // Enforce the same rule for admin UI + REST API:
+        // only letters, numbers, spaces, and hyphens.
+        if (!/^[A-Za-z0-9 -]+$/.test(value.trim())) {
+          return 'Title can only contain letters, numbers, spaces, and hyphens.';
+        }
         if (value.trim().length < 10) {
           return 'Please enter at least 10 character(s) (publish-project parity).';
         }
