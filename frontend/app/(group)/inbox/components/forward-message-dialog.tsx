@@ -1,14 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { decryptAES, encryptAES } from "@/src/crypto/e2ee"
-import { loadKey, saveKey } from "@/src/crypto/storage"
-import { apiFetch } from "@/src/lib/api"
-import { getAccessToken } from "@/utils/auth"
 import { SearchMd, X } from "@blend-metrics/icons"
-import type { Conversation } from "@/types/conversation"
-import type { Message } from "@/types/message"
-import { useToast } from "@/components/ui/toast/use-toast"
 import {
   Avatar,
   AvatarFallback,
@@ -18,6 +11,13 @@ import {
   DialogClose,
   DialogContent,
 } from "@/components/ui"
+import { apiFetch } from "@/src/lib/api"
+import { decryptAES, encryptAES } from "@/src/crypto/e2ee"
+import { loadKey, saveKey } from "@/src/crypto/storage"
+import { getAccessToken } from "@/utils/auth"
+import { useToast } from "@/components/ui/toast/use-toast"
+import type { Conversation } from "@/types/conversation"
+import type { Message } from "@/types/message"
 
 interface UserLike {
   id?: string
@@ -80,16 +80,8 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
 function formatMessageDate(iso: string): string {
   try {
     const d = new Date(iso)
-    const date = d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    })
-    const time = d.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    })
+    const date = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
     return `${date} ${time}`
   } catch {
     return iso
@@ -180,11 +172,7 @@ export function ForwardMessageDialog({
             })
 
             const displayName =
-              [user.firstName?.trim(), user.lastName?.trim()]
-                .filter(Boolean)
-                .join(" ") ||
-              user.username ||
-              "Unknown"
+              user.firstName?.trim() || user.username || "Unknown"
 
             contactList.push({
               userId: otherId,
@@ -279,7 +267,7 @@ export function ForwardMessageDialog({
         if (!sourceKey && privateKey) {
           try {
             const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-              `/messaging/conversations/${sourceThreadId}/key?isGroup=false`,
+              `/api/messaging/conversations/${sourceThreadId}/key?isGroup=false`,
               { headers: { Authorization: `Bearer ${token}` } }
             )
             const wrapped = Uint8Array.from(atob(encryptedKey), (c) =>
@@ -294,10 +282,7 @@ export function ForwardMessageDialog({
             const b64 = btoa(String.fromCharCode(...sourceKey))
             saveKey(sourceThreadId, b64)
           } catch (err) {
-            console.error(
-              "[ForwardDialog] Failed to fetch source conversation key",
-              err
-            )
+            console.error("[ForwardDialog] Failed to fetch source conversation key", err)
           }
         }
 
@@ -306,9 +291,7 @@ export function ForwardMessageDialog({
         }
         originalText = await decryptAES(message.ciphertext, sourceKey)
       } else if (originalText.trim() === "🔒 Encrypted message") {
-        throw new Error(
-          "Source message is encrypted and unavailable for forwarding."
-        )
+        throw new Error("Source message is encrypted and unavailable for forwarding.")
       }
 
       for (const contact of selectedContacts) {
@@ -322,7 +305,7 @@ export function ForwardMessageDialog({
         if (!key && privateKey) {
           try {
             const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-              `/messaging/conversations/${contact.threadId}/key?isGroup=false`,
+              `/api/messaging/conversations/${contact.threadId}/key?isGroup=false`,
               { headers: { Authorization: `Bearer ${token}` } }
             )
             const wrapped = Uint8Array.from(atob(encryptedKey), (c) =>
@@ -337,10 +320,7 @@ export function ForwardMessageDialog({
             const b64 = btoa(String.fromCharCode(...key))
             saveKey(contact.threadId, b64)
           } catch (err) {
-            console.error(
-              "[ForwardDialog] Failed to fetch conversation key",
-              err
-            )
+            console.error("[ForwardDialog] Failed to fetch conversation key", err)
           }
         }
 
@@ -390,12 +370,8 @@ export function ForwardMessageDialog({
     ? currentUserProfile
     : receiverUser
   const senderFullName =
-    [senderProfile?.firstName?.trim(), senderProfile?.lastName?.trim()]
-      .filter(Boolean)
-      .join(" ") || (isMyMessage ? "Me" : "Unknown")
-  const senderLabel = isMyMessage
-    ? "Me"
-    : senderFullName.split(" ")[0] || senderFullName
+    senderProfile?.firstName?.trim() || (isMyMessage ? "Me" : "Unknown")
+  const senderLabel = isMyMessage ? "Me" : senderFullName
   const senderUsername = senderProfile?.username || ""
   const senderAvatarUrl = senderProfile?.avatarUrl || undefined
 
@@ -438,13 +414,8 @@ export function ForwardMessageDialog({
                   className="inline-flex items-center gap-x-1 bg-gray-100 text-dark-blue-400 text-xs font-medium pl-0.5 pr-1.5 py-0.5 rounded-full"
                 >
                   <Avatar size="xs" className="shrink-0 size-5">
-                    <AvatarImage
-                      src={c.avatarUrl || undefined}
-                      alt={c.displayName}
-                    />
-                    <AvatarFallback delayMs={0}>
-                      {getInitials(c)}
-                    </AvatarFallback>
+                    <AvatarImage src={c.avatarUrl || undefined} alt={c.displayName} />
+                    <AvatarFallback delayMs={0}>{getInitials(c)}</AvatarFallback>
                   </Avatar>
                   <span>
                     {c.displayName.split(" ")[0]}{" "}
@@ -518,6 +489,8 @@ export function ForwardMessageDialog({
               </DialogContent>
             </Dialog>
 
+
+
             {/* Floating contacts dropdown */}
             {isDropdownOpen && (
               <div className="absolute left-6 right-6 top-full mt-1 z-30 bg-white rounded-lg shadow-xl border border-gray-200 max-h-[280px] overflow-y-auto">
@@ -533,7 +506,9 @@ export function ForwardMessageDialog({
                   </div>
                 ) : filteredContacts.length === 0 ? (
                   <div className="flex items-center justify-center py-6 text-gray-400 text-sm">
-                    {searchQuery ? "No contacts match" : "No recent contacts"}
+                    {searchQuery
+                      ? "No contacts match"
+                      : "No recent contacts"}
                   </div>
                 ) : (
                   <ul className="flex flex-col py-1">
@@ -606,9 +581,7 @@ export function ForwardMessageDialog({
                   {senderLabel}
                 </span>
                 {senderUsername && (
-                  <span className="text-xs text-primary-500">
-                    @{senderUsername}
-                  </span>
+                  <span className="text-xs text-primary-500">@{senderUsername}</span>
                 )}
               </div>
               <p className="mt-1.5 text-sm text-dark-blue-400 line-clamp-3">

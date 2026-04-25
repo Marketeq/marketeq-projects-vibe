@@ -1,24 +1,19 @@
-import { Injectable, OnModuleInit } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { DataSource, Repository } from "typeorm";
+import { Repository } from "typeorm";
 import * as crypto from "crypto";
 import { UserKey } from "./entities/user-key.entity";
 import { UserDevice } from "./entities/user-device.entity";
 import { RegisterDeviceDto } from "./dtos/register-device.dto";
 
 @Injectable()
-export class UserKeysService implements OnModuleInit {
+export class UserKeysService {
   constructor(
     @InjectRepository(UserKey)
     private readonly userKeyRepo: Repository<UserKey>,
     @InjectRepository(UserDevice)
     private readonly userDeviceRepo: Repository<UserDevice>,
-    private readonly dataSource: DataSource,
   ) {}
-
-  async onModuleInit(): Promise<void> {
-    await this.ensureStorageTables();
-  }
 
   async registerDevice(
     userId: string,
@@ -101,41 +96,5 @@ export class UserKeysService implements OnModuleInit {
     const authTag = cipher.getAuthTag();
 
     return `${iv.toString("base64")}:${authTag.toString("base64")}:${encrypted.toString("base64")}`;
-  }
-
-  private async ensureStorageTables(): Promise<void> {
-    await this.dataSource.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
-
-    await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS user_service.user_keys (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        "userId" UUID NOT NULL,
-        "publicKey" TEXT NOT NULL,
-        "encryptedPrivateKey" TEXT,
-        "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
-        "updatedAt" TIMESTAMP NOT NULL DEFAULT now()
-      )
-    `);
-
-    await this.dataSource.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS "IDX_user_keys_userId"
-      ON user_service.user_keys ("userId")
-    `);
-
-    await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS user_service.user_devices (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        "userId" UUID NOT NULL,
-        "publicKey" TEXT NOT NULL,
-        "deviceName" VARCHAR,
-        "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
-        "updatedAt" TIMESTAMP NOT NULL DEFAULT now()
-      )
-    `);
-
-    await this.dataSource.query(`
-      CREATE INDEX IF NOT EXISTS "IDX_user_devices_userId"
-      ON user_service.user_devices ("userId")
-    `);
   }
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { AuthAPI } from "@/service/http/auth"
@@ -234,4 +234,10 @@ function ResetPassword() {
   )
 }
 
-export default ResetPassword
+export default function ResetPasswordPage() {
+  return (
+    <Suspense>
+      <ResetPassword />
+    </Suspense>
+  )
+}

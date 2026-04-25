@@ -199,17 +199,17 @@ export const UserDetail = ({
           />
         </div>
       </div>
-      <div className="pr-3.5 flex flex-col flex-auto gap-y-0.5 items-start py-[18px] border-b border-gray-200 relative">
-        <div className="flex self-stretch items-center justify-between">
+      <div className="pr-3.5 flex flex-col flex-auto min-w-0 gap-y-0.5 items-start py-[18px] border-b border-gray-200 relative">
+        <div className="flex self-stretch items-center justify-between gap-x-2">
           <h3 className={cn(
-            "group-data-[state=active]/chat:font-bold text-[13px] leading-[18.88px] text-dark-blue-400",
+            "group-data-[state=active]/chat:font-bold text-[13px] leading-[18.88px] text-dark-blue-400 min-w-0 flex-1 truncate",
             conversation.markedUnread ? "font-semibold group-hover/chat:font-bold" : "font-medium"
           )}>
             {conversation.participantUsername || "Unknown"}
           </h3>
 
           <span className={cn(
-            "transition duration-300 group-data-[state=active]/chat:font-bold group-hover/chat:opacity-0 opacity-100 text-xs leading-[14.52px] text-dark-blue-400",
+            "transition duration-300 shrink-0 group-data-[state=active]/chat:font-bold group-hover/chat:opacity-0 opacity-100 text-xs leading-[14.52px] text-dark-blue-400",
             conversation.markedUnread ? "font-semibold" : "font-medium"
           )}>
             {formatConversationDate(conversation.createdAt)}
@@ -284,7 +284,7 @@ export const UserDetail = ({
 
         <div className="flex gap-x-1.5 self-stretch items-center justify-between">
           <span className={cn(
-            "group-data-[state=active]/chat:text-dark-blue-500 text-[11px] line-clamp-2 leading-[13.31px] flex-1 min-w-0 group-data-[state=active]/chat:font-medium",
+            "group-data-[state=active]/chat:text-dark-blue-500 text-[11px] line-clamp-2 leading-[13.31px] flex-1 min-w-0 break-words [overflow-wrap:anywhere] group-data-[state=active]/chat:font-medium",
             conversation.markedUnread ? "text-dark-blue-400 font-medium" : "text-gray-500"
           )}>
             {(conversation as any).lastMessagePreview ||

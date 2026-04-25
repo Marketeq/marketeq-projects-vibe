@@ -12,7 +12,6 @@ import { ThreadUserState } from "./entities/thread-user-state.entity";
 import { ThreadList } from "./entities/thread-list.entity";
 import { ThreadListAssignment } from "./entities/thread-list-assignment.entity";
 import { ConversationKey } from "../encryption/entities/conversation-key.entity";
-import { Message } from "../messages/entities/message.entity";
 import { AblyService } from "../ably/ably.service";
 import { BulkAction } from "./dtos/thread-list.dto";
 
@@ -58,16 +57,7 @@ export class ThreadsService {
     const enriched = await Promise.all(
       threads.map(async (t) => {
         const lastMessage = await this.repo.manager
-          .getRepository(Message)
-          .createQueryBuilder("m")
-          .select([
-            'm.id AS "m_id"',
-            'm."threadId" AS "m_threadId"',
-            'm."senderId" AS "m_senderId"',
-            'm.content AS "m_content"',
-            'm.ciphertext AS "m_ciphertext"',
-            'm."createdAt" AS "m_createdAt"',
-          ])
+          .createQueryBuilder("messaging.messages", "m")
           .where('m."threadId" = :tid', { tid: t.id })
           .andWhere("m.deleted = false")
           .orderBy('m."createdAt"', "DESC")
@@ -133,17 +123,37 @@ export class ThreadsService {
 
     // For 1:1 threads, find existing thread between the same participants
     if (!isGroup && participantIds.length === 2) {
-      const existing = await this.repo
-        .createQueryBuilder("t")
-        .where("t.isGroup = false")
-        .andWhere(":a = ANY(t.participantIds)", { a: participantIds[0] })
-        .andWhere(":b = ANY(t.participantIds)", { b: participantIds[1] })
-        .getOne();
+      const existing = await this.findOneToOneThread(
+        participantIds[0],
+        participantIds[1],
+      );
       if (existing) return existing;
     }
 
     const thread = this.repo.create({ participantIds, isGroup, groupName });
-    return this.repo.save(thread);
+    try {
+      return await this.repo.save(thread);
+    } catch (err: any) {
+      // Postgres unique_violation from the partial index on (LEAST, GREATEST)
+      // of participant pairs — a concurrent request won the race. Re-query
+      // and return the winning row so the client still gets a valid thread.
+      if (err?.code === '23505' && !isGroup && participantIds.length === 2) {
+        const existing = await this.findOneToOneThread(participantIds[0], participantIds[1]);
+        if (existing) return existing;
+      }
+      throw err;
+    }
+  }
+
+  private async findOneToOneThread(userA: string, userB: string) {
+    return this.repo
+      .createQueryBuilder('t')
+      .where('t.isGroup = false')
+      .andWhere(':a = ANY(t.participantIds)', { a: userA })
+      .andWhere(':b = ANY(t.participantIds)', { b: userB })
+      .orderBy('t.createdAt', 'ASC')
+      .limit(1)
+      .getOne();
   }
 
   async addParticipant(
