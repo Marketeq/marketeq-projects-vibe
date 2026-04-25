@@ -7,21 +7,26 @@ import { apiFetch } from "@/src/lib/api"
 interface FileUploadResponse {
   message: {
     id: string
-    conversationId: string
+    threadId?: string
+    conversationId?: string
     senderId: string
-    type: "file"
-    ciphertext: string
+    messageType?: "file"
+    ciphertext?: string | null
+    content?: string
     createdAt: string
     updatedAt: string
-    isRead: boolean
-    isPinned: boolean
-    isDeleted: boolean
+    status?: string
+    attachments?: Array<{
+      id: string
+      fileUrl: string
+      fileName?: string | null
+      fileType: string
+      fileSize?: number | null
+    }>
   }
   attachment: {
     id: string
     messageId: string
-    conversationId: string
-    senderId: string
     fileUrl: string
     fileName: string
     fileType: string

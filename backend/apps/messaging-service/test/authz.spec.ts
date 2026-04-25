@@ -244,6 +244,8 @@ describe('ThreadsService authz (PR-B1)', () => {
       threadRepo.createQueryBuilder.mockReturnValue({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
         getOne: jest.fn().mockResolvedValue(null),
       });
       threadRepo.save.mockResolvedValue({ id: 'new-thread', participantIds: [USER_A, USER_B] });

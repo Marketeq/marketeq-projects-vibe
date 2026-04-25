@@ -21,4 +21,28 @@ export class User {
 
   @Column({ default: false })
   hasPassword: boolean;
+
+  @Column({ nullable: true, select: false })
+  twoFactorSecret: string;
+
+  @Column({ default: false })
+  twoFactorEnabled: boolean;
+
+  @Column({ type: 'text', nullable: true, select: false })
+  twoFactorBackupCodes: string;
+
+  @Column({ nullable: true })
+  twoFactorMethod: string;
+
+  @Column({ nullable: true, select: false })
+  twoFactorPhone: string;
+
+  @Column({ nullable: true, select: false })
+  twoFactorOtpCode: string;
+
+  @Column({ type: 'timestamp', nullable: true, select: false })
+  twoFactorOtpExpiresAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true, select: false })
+  twoFactorOtpSentAt: Date;
 }

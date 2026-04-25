@@ -1,6 +1,7 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -25,7 +26,7 @@ export class R2Service {
   async uploadMessageAttachment(
     threadId: string,
     file: Express.Multer.File,
-  ): Promise<{ key: string; url?: string }> {
+  ): Promise<{ key: string; url: string }> {
     const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
     const publicBaseUrl = this.getEnv(
       'CLOUDFLARE_R2_PUBLIC_URL',
@@ -38,10 +39,16 @@ export class R2Service {
         'CLOUDFLARE_R2_BUCKET is required to upload message attachments',
       );
     }
+    if (!publicBaseUrl) {
+      throw new InternalServerErrorException(
+        'CLOUDFLARE_R2_PUBLIC_URL is required to expose message attachments',
+      );
+    }
 
     const client = this.getClient();
     const ext = file.originalname?.split('.').pop();
     const key = `messages/${threadId}/${randomUUID()}${ext ? `.${ext}` : ''}`;
+    const url = `${publicBaseUrl.replace(/\/$/, '')}/${key}`;
 
     await client.send(
       new PutObjectCommand({
@@ -52,11 +59,23 @@ export class R2Service {
       }),
     );
 
-    const url = publicBaseUrl
-      ? `${publicBaseUrl.replace(/\/$/, '')}/${key}`
-      : undefined;
-
     return { key, url };
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
+    if (!bucket) {
+      throw new InternalServerErrorException(
+        'CLOUDFLARE_R2_BUCKET is required to delete message attachments',
+      );
+    }
+
+    await this.getClient().send(
+      new DeleteObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      }),
+    );
   }
 
   async getReadUrl(key: string, expiresInSeconds = 900): Promise<string> {

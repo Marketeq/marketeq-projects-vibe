@@ -1,7 +1,21 @@
-import { Controller, Get, Post, Delete, Param, Query, Req, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { EventPattern, Payload } from '@nestjs/microservices';
 import { NotificationService, NotificationPayload } from '../services/notification.service';
 import { BrevoService } from '../brevo/brevo.service';
+import { UpdatePreferencesDto } from '../dtos/update-preferences.dto';
+import { Public } from '../guards/jwt-auth.guard';
 
 @Controller('v1/notifications')
 export class NotificationController {
@@ -18,43 +32,60 @@ export class NotificationController {
     @Query('category') category: string,
     @Query('unread') unread: string,
   ) {
-    return this.service.getPaginatedNotifications(req.user?.id, page, limit, category, unread);
+    return this.service.getPaginatedNotifications(req.user?.sub ?? req.user?.id, page, limit, category, unread);
   }
 
   @Get('unread-count')
   getUnreadCount(@Req() req: any) {
-    return this.service.getUnreadCount(req.user?.id).then((unreadCount) => ({ unreadCount }));
+    return this.service.getUnreadCount(req.user?.sub ?? req.user?.id).then((unreadCount) => ({ unreadCount }));
   }
 
   @Post(':id/read')
   @HttpCode(HttpStatus.OK)
   markAsRead(@Req() req: any, @Param('id') id: string) {
-    return this.service.markAsRead(req.user?.id, id);
+    return this.service.markAsRead(req.user?.sub ?? req.user?.id, id);
   }
 
   @Post('read-all')
   @HttpCode(HttpStatus.OK)
   markAllAsRead(@Req() req: any) {
-    return this.service.markAllAsRead(req.user?.id);
+    return this.service.markAllAsRead(req.user?.sub ?? req.user?.id);
   }
 
   @Post(':id/archive')
   @HttpCode(HttpStatus.OK)
   archive(@Req() req: any, @Param('id') id: string) {
-    return this.service.archive(req.user?.id, id);
+    return this.service.archive(req.user?.sub ?? req.user?.id, id);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   delete(@Req() req: any, @Param('id') id: string) {
-    return this.service.delete(req.user?.id, id);
+    return this.service.delete(req.user?.sub ?? req.user?.id, id);
   }
 
   @Get('preferences')
   getPreferences(@Req() req: any) {
-    return this.service.getOrCreatePreferences(req.user?.id);
+    return this.service.getOrCreatePreferences(req.user?.sub ?? req.user?.id);
   }
 
+  @Patch('preferences')
+  updatePreferences(@Req() req: any, @Body() dto: UpdatePreferencesDto) {
+    return this.service.updatePreferences(req.user?.sub ?? req.user?.id, dto);
+  }
+
+  @Post('preferences/reset')
+  @HttpCode(HttpStatus.OK)
+  resetPreferences(@Req() req: any) {
+    return this.service.resetPreferences(req.user?.sub ?? req.user?.id);
+  }
+
+  @Get('preferences/catalog')
+  getCatalog() {
+    return this.service.getCatalog();
+  }
+
+  @Public()
   @Get('health')
   health() {
     return { status: 'ok', service: 'notification-service' };

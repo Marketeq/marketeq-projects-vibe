@@ -4,12 +4,29 @@ export class AddUniqueIndexOneToOneThread1776800000000 implements MigrationInter
   name = "AddUniqueIndexOneToOneThread1776800000000";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Partial unique index to prevent duplicate 1:1 threads between the same
-    // two users. LEAST/GREATEST make it order-independent so [A,B] and [B,A]
-    // collide on the same key. Applies only when isGroup=false and exactly
-    // two participants — group threads and edge cases are unaffected.
-    // Qualify with the messaging schema — TypeORM's search_path isn't
-    // guaranteed to be set when migrations run.
+    // Avoid blocking boot on environments that already contain duplicate 1:1
+    // threads. The application layer already reuses an existing thread, so we
+    // only add the unique index when the data is clean enough to accept it.
+    const [result] = await queryRunner.query(`
+      SELECT EXISTS (
+        SELECT 1
+        FROM "messaging"."threads"
+        WHERE "isGroup" = false
+          AND array_length("participantIds", 1) = 2
+        GROUP BY
+          LEAST("participantIds"[1], "participantIds"[2]),
+          GREATEST("participantIds"[1], "participantIds"[2])
+        HAVING COUNT(*) > 1
+      ) AS has_duplicates
+    `);
+    const hasDuplicates =
+      result?.has_duplicates === true ||
+      result?.has_duplicates === 'true' ||
+      result?.has_duplicates === 't';
+    if (hasDuplicates) {
+      return;
+    }
+
     await queryRunner.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS "UQ_threads_one_to_one_participants"
       ON "messaging"."threads" (

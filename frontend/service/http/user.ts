@@ -84,7 +84,7 @@ export const UserAPI = {
     // profile card view.
     AxiosRequest.get(`${USER_BASE}/talent/users/${username}`),
   updateProfile: (userId: string, data: UserProfilePayload) =>
-    AxiosRequest.put(`${USER_BASE}/v1/users/${userId}`, data, {
+    AxiosRequest.patch(`${USER_BASE}/v1/users/${userId}`, data, {
       headers: authHeaders(),
     }),
   dismissOnboarding: (userId: string) =>

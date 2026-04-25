@@ -127,6 +127,8 @@ export class ThreadsService {
       .where('t.isGroup = false')
       .andWhere(':a = ANY(t.participantIds)', { a: userA })
       .andWhere(':b = ANY(t.participantIds)', { b: userB })
+      .orderBy('t.createdAt', 'ASC')
+      .limit(1)
       .getOne();
   }
 

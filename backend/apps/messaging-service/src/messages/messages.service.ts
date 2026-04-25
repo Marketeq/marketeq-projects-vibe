@@ -66,35 +66,38 @@ export class MessagesService {
     if (!file) throw new BadRequestException('file is required');
     await this.assertParticipant(threadId, senderId);
 
-    const { url } = await this.r2Service.uploadMessageAttachment(threadId, file);
-    const fileUrl = url;
-    if (!fileUrl) {
-      throw new BadRequestException(
-        'R2 public base URL not configured; cannot expose attachment',
-      );
+    const { key, url: fileUrl } = await this.r2Service.uploadMessageAttachment(
+      threadId,
+      file,
+    );
+
+    let result: { message: Message; attachment: Attachment };
+    try {
+      result = await this.dataSource.transaction(async (em) => {
+        const msg = em.getRepository(Message).create({
+          threadId,
+          senderId,
+          ciphertext: ciphertext ?? undefined,
+          messageType: 'file',
+          status: 'sent',
+        });
+        const savedMsg = await em.getRepository(Message).save(msg);
+
+        const att = em.getRepository(Attachment).create({
+          messageId: savedMsg.id,
+          fileUrl,
+          fileType: file.mimetype,
+          fileName: file.originalname,
+          fileSize: file.size,
+        });
+        const savedAtt = await em.getRepository(Attachment).save(att);
+
+        return { message: savedMsg, attachment: savedAtt };
+      });
+    } catch (error) {
+      await this.r2Service.deleteObject(key).catch(() => undefined);
+      throw error;
     }
-
-    const result = await this.dataSource.transaction(async (em) => {
-      const msg = em.getRepository(Message).create({
-        threadId,
-        senderId,
-        ciphertext: ciphertext ?? undefined,
-        messageType: 'file',
-        status: 'sent',
-      });
-      const savedMsg = await em.getRepository(Message).save(msg);
-
-      const att = em.getRepository(Attachment).create({
-        messageId: savedMsg.id,
-        fileUrl,
-        fileType: file.mimetype,
-        fileName: file.originalname,
-        fileSize: file.size,
-      });
-      const savedAtt = await em.getRepository(Attachment).save(att);
-
-      return { message: savedMsg, attachment: savedAtt };
-    });
 
     const payload = {
       ...result.message,
@@ -201,6 +204,8 @@ export class MessagesService {
         .where('t.isGroup = false')
         .andWhere(':senderId = ANY(t.participantIds)', { senderId })
         .andWhere(':userId = ANY(t.participantIds)', { userId })
+        .orderBy('t.createdAt', 'ASC')
+        .limit(1)
         .getOne();
 
       if (!thread) {

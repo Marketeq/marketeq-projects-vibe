@@ -49,7 +49,7 @@ import { DropdownMenuArrow } from "@radix-ui/react-dropdown-menu"
 import { format, isSameDay, isToday, isYesterday, parseISO } from "date-fns"
 import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
-import { Message } from "@/types/message"
+import { Message, MessageAttachment } from "@/types/message"
 import { User } from "@/types/user"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
@@ -115,6 +115,16 @@ interface ChatsProps {
   highlightMessageId?: string | null
   /** Called after the highlight has been consumed (scrolled to). */
   onHighlightConsumed?: () => void
+}
+
+interface UploadedAttachmentResult {
+  message: Partial<Message> & {
+    id: string
+    senderId: string
+    createdAt: string
+    updatedAt: string
+  }
+  attachment: MessageAttachment
 }
 
 const formatDateSeparator = (iso: string): string => {
@@ -618,6 +628,46 @@ export function Chats({
     selectedConversation?.isGroup
   )
 
+  const appendUploadedMessage = useCallback(
+    async (result: UploadedAttachmentResult) => {
+      if (!selectedConversation) return
+
+      let displayContent = result.message.content ?? ""
+      try {
+        const key = loadKey(selectedConversation.id)
+        if (key && result.message.ciphertext) {
+          displayContent = await decryptAES(result.message.ciphertext, key)
+        }
+      } catch (err) {
+        console.error("Failed to decrypt uploaded attachment caption:", err)
+        if (result.message.ciphertext) {
+          displayContent = "🔒 Encrypted message"
+        }
+      }
+
+      setLocalMsgs((prev) => {
+        if (prev.some((m) => m.id === result.message.id)) return prev
+        return [
+          ...prev,
+          {
+            ...result.message,
+            threadId:
+              result.message.threadId ??
+              result.message.conversationId ??
+              selectedConversation.id,
+            content: displayContent,
+            messageType: result.message.messageType ?? "file",
+            attachments:
+              result.message.attachments?.length
+                ? result.message.attachments
+                : [result.attachment],
+          },
+        ]
+      })
+    },
+    [selectedConversation?.id]
+  )
+
   // 4) scroll to bottom on new messages
   const scrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -659,11 +709,12 @@ export function Chats({
         const caption = textareaValue.trim()
         for (let i = 0; i < selectedFiles.length; i++) {
           const file = selectedFiles[i]
-          await uploadFile(
+          const uploaded = await uploadFile(
             selectedConversation.id,
             file,
             i === 0 ? caption : undefined,
           )
+          await appendUploadedMessage(uploaded)
         }
         setSelectedFiles([])
         setTextareaValue("")
@@ -1490,7 +1541,11 @@ export function Chats({
                   setIsUploading(true)
                   try {
                     for (const file of selectedFiles) {
-                      await uploadFile(selectedConversation.id, file)
+                      const uploaded = await uploadFile(
+                        selectedConversation.id,
+                        file
+                      )
+                      await appendUploadedMessage(uploaded)
                     }
                     setSelectedFiles([])
                     setUploadModalMode(null)
