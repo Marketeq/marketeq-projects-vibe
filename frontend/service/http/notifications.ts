@@ -157,3 +157,33 @@ export interface ListNotificationsParams {
 }
 
 export default NotificationsAPI
+
+// Used by UI to avoid noisy console errors on expected transient failures
+// (e.g., notifications-service temporarily down in dev).
+export const isTransientNotificationsApiError = (error: unknown): boolean => {
+  // AxiosRequest is an axios wrapper; errors may follow axios error shape.
+  const anyErr = error as any
+  const status = anyErr?.response?.status
+  const code = anyErr?.code
+
+  // Network / CORS / service down / gateway timeout etc.
+  if (
+    code === "ECONNABORTED" ||
+    code === "ERR_NETWORK" ||
+    code === "ERR_BAD_RESPONSE" ||
+    code === "ENOTFOUND" ||
+    code === "ECONNREFUSED"
+  ) {
+    return true
+  }
+
+  if (typeof status === "number") {
+    // 401 happens frequently during auth bootstrap; UI retries after ensureDevAuth().
+    if (status === 401) return true
+    // Retryable server errors.
+    if (status === 408 || status === 429) return true
+    if (status >= 500) return true
+  }
+
+  return false
+}
