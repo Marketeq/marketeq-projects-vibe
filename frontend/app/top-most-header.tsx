@@ -1,10 +1,21 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useCallback, useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { useAutocomplete } from "@/libs/autocomplete"
+import {
+  mapAblyNotificationToUi,
+  mapApiNotificationToUi,
+  type NotificationMetadata,
+  type UiNotificationItem,
+} from "@/libs/notifications"
+import { ensureDevAuth } from "@/src/lib/api/dev-login"
+import { respondToContract } from "@/src/lib/api/contracts"
+import NotificationsAPI, {
+  isTransientNotificationsApiError,
+} from "@/service/http/notifications"
 import { UserAPI } from "@/service/http/user"
 import { ROLE } from "@/types/user"
 import { cn } from "@/utils/functions"
@@ -30,6 +41,11 @@ import {
 } from "@blend-metrics/icons"
 import { Campaigns, Logo3, Project, Talent } from "@/components/icons"
 import { InviteWindowTrigger } from "@/components/invite-window"
+import { CounterOfferDialog } from "@/components/counter-offer-dialog"
+import {
+  OfferFlowDialog,
+  type OfferFlowDialogVariant,
+} from "@/components/offer-flow-dialog"
 import NextLink from "@/components/next-link"
 import { ThreeHorizontalLines } from "@/components/three-horizontal-lines"
 import {
@@ -65,347 +81,534 @@ import {
   TabsTrigger,
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
+import { useNotificationChannel } from "@/utils/useNotificationChannel"
+
+const OFFER_NOTIFICATION_EVENT = "contract.offer.received"
+
+const readMetadataString = (
+  metadata: NotificationMetadata,
+  key: string
+) => {
+  const value = metadata?.[key]
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined
+}
+
+const ensureUsernameHandle = (value?: string) => {
+  if (!value) return undefined
+  return value.startsWith("@") ? value : `@${value}`
+}
+
+const formatOfferDate = (value?: string, fallback?: string) => {
+  if (!value) return fallback
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return fallback
+
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
+const formatOfferStartDate = (value?: string, fallback?: string) => {
+  if (!value) return fallback
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return fallback
+
+  const day = parsed.getDate()
+  const remainder = day % 10
+  const suffix =
+    day >= 11 && day <= 13
+      ? "th"
+      : remainder === 1
+        ? "st"
+        : remainder === 2
+          ? "nd"
+          : remainder === 3
+            ? "rd"
+            : "th"
+
+  return `${parsed.toLocaleDateString("en-US", {
+    month: "short",
+  })} ${day}${suffix}, ${parsed.getFullYear()}`
+}
+
+const getOfferNotificationDetails = (item: UiNotificationItem) => {
+  const metadata = item.metadata
+  const senderUsername =
+    ensureUsernameHandle(readMetadataString(metadata, "senderUsername")) ||
+    ensureUsernameHandle(item.title.match(/@[\w.]+/)?.[0]) ||
+    "@lauradesign21"
+  const senderDisplayName =
+    readMetadataString(metadata, "senderDisplayName") || "Offer from"
+  const offerTitle =
+    readMetadataString(metadata, "offerTitle") ||
+    readMetadataString(metadata, "projectTitle") ||
+    "The Ultimate Mobile App Experience"
+  const receivedLabel =
+    formatOfferDate(
+      readMetadataString(metadata, "receivedAt") || undefined,
+      formatOfferDate(new Date().toISOString(), "Feb 1, 2025")
+    ) || "Feb 1, 2025"
+  const expiresLabel =
+    formatOfferDate(
+      readMetadataString(metadata, "expiresAt") || undefined,
+      "Sep 19, 2025"
+    ) || "Sep 19, 2025"
+
+  return {
+    contractId: readMetadataString(metadata, "contractId"),
+    senderUsername,
+    senderDisplayName,
+    offerType: readMetadataString(metadata, "offerType") || "Project",
+    receivedLabel,
+    offerTitle,
+    viewJobHref:
+      readMetadataString(metadata, "jobHref") ||
+      readMetadataString(metadata, "projectHref") ||
+      item.href ||
+      "/inbox",
+    messageHref:
+      readMetadataString(metadata, "messageHref") || "/inbox",
+    offerRate: readMetadataString(metadata, "offerRate") || "$45/hr",
+    role: readMetadataString(metadata, "role") || "UX Designer",
+    duration: readMetadataString(metadata, "duration") || "4 Months",
+    schedule:
+      readMetadataString(metadata, "scheduleLabel") ||
+      readMetadataString(metadata, "schedule") ||
+      "Full Time over 30 hrs/week",
+    startDate:
+      formatOfferStartDate(
+        readMetadataString(metadata, "startDate") || undefined,
+        "Feb 5th, 2025"
+      ) || "Feb 5th, 2025",
+    expiresLabel,
+  }
+}
 
 const Notifications = () => {
   const router = useRouter()
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <IconButton
-          className="rounded-full"
-          size="md"
-          variant="ghost"
-          visual="gray"
-        >
-          <Bell className="size-[18px]" />
-        </IconButton>
-      </PopoverTrigger>
-      <PopoverContent
-        className="w-[370px] bg-white border border-gray-100 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]"
-        align="end"
+  const { user } = useAuth()
+  const [loading, setLoading] = useState(true)
+  const [open, setOpen] = useState(false)
+  const [offerDialogOpen, setOfferDialogOpen] = useState(false)
+  const [offerDialogMode, setOfferDialogMode] = useState<
+    "details" | "accept" | "decline" | "counter"
+  >("details")
+  const [selectedOfferNotification, setSelectedOfferNotification] =
+    useState<UiNotificationItem | null>(null)
+  const [offerAcceptanceNote, setOfferAcceptanceNote] = useState("")
+  const [offerTermsAccepted, setOfferTermsAccepted] = useState(false)
+  const [offerDeclineNote, setOfferDeclineNote] = useState("")
+  const [offerDeclineReason, setOfferDeclineReason] = useState("")
+  const [offerActionLoading, setOfferActionLoading] = useState<
+    "accept" | "decline" | null
+  >(null)
+  const [activeTab, setActiveTab] = useState<"Notifications" | "Messages">(
+    "Notifications"
+  )
+  const [allNotifications, setAllNotifications] = useState<UiNotificationItem[]>([])
+  const [unreadBadgeCount, setUnreadBadgeCount] = useState(0)
+
+  const loadNotifications = useCallback(async (allowSeed = true) => {
+    try {
+      setLoading(true)
+
+      if (process.env.NODE_ENV !== "production") {
+        await ensureDevAuth()
+      }
+
+      const response = await NotificationsAPI.list({ limit: 8 })
+      const items: UiNotificationItem[] = Array.isArray(response?.data?.data)
+        ? response.data.data.map(mapApiNotificationToUi)
+        : []
+
+      if (
+        allowSeed &&
+        items.length === 0 &&
+        process.env.NEXT_PUBLIC_ENV === "development" &&
+        typeof NotificationsAPI.seedDev === "function"
+      ) {
+        await NotificationsAPI.seedDev()
+        return loadNotifications(false)
+      }
+
+      setAllNotifications(items)
+      setUnreadBadgeCount(items.filter((item) => !item.read).length)
+    } catch (error) {
+      if (!isTransientNotificationsApiError(error)) {
+        console.error("Failed to load header notifications:", error)
+      }
+      setAllNotifications([])
+      setUnreadBadgeCount(0)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadNotifications()
+  }, [loadNotifications])
+
+  useEffect(() => {
+    if (!open) return
+    loadNotifications(false)
+  }, [open, loadNotifications])
+
+  useNotificationChannel({
+    onNotificationNew: (payload) => {
+      const nextItem = mapAblyNotificationToUi(payload)
+
+      setAllNotifications((prev) => {
+        const deduped = prev.filter((item) => item.id !== nextItem.id)
+        return [nextItem, ...deduped].slice(0, 8)
+      })
+      setUnreadBadgeCount((prev) => prev + 1)
+      setActiveTab("Messages")
+    },
+    onBadgeCount: ({ unreadCount }) => {
+      setUnreadBadgeCount(unreadCount)
+    },
+  })
+
+  const messageNotifications = allNotifications.filter(
+    (item) => item.kind === "message"
+  )
+  const selectedOfferDetails = selectedOfferNotification
+    ? getOfferNotificationDetails(selectedOfferNotification)
+    : null
+  const resetOfferDialogState = useCallback(() => {
+    setOfferDialogMode("details")
+    setOfferAcceptanceNote("")
+    setOfferTermsAccepted(false)
+    setOfferDeclineNote("")
+    setOfferDeclineReason("")
+    setOfferActionLoading(null)
+  }, [])
+  const offerDialogVariant: OfferFlowDialogVariant =
+    offerDialogMode === "details"
+      ? "offer-details"
+      : offerDialogMode === "accept"
+        ? offerAcceptanceNote.trim().length > 0 && offerTermsAccepted
+          ? "accept-offer-ready"
+          : "accept-offer-empty"
+        : offerDeclineNote.trim().length > 0 || offerDeclineReason.trim().length > 0
+          ? "decline-offer-ready"
+          : "decline-offer-empty"
+
+  const markNotificationRead = async (item: UiNotificationItem) => {
+    try {
+      if (!item.read) {
+        await NotificationsAPI.markRead(item.id)
+        setAllNotifications((prev) =>
+          prev.map((notification) =>
+            notification.id === item.id
+              ? { ...notification, read: true }
+              : notification
+          )
+        )
+        setUnreadBadgeCount((prev) => Math.max(0, prev - 1))
+      }
+    } catch (error) {
+      if (!isTransientNotificationsApiError(error)) {
+        console.error(`Failed to mark notification ${item.id} as read:`, error)
+      }
+    }
+  }
+
+  const handleOfferResponse = async (accepted: boolean) => {
+    const details = selectedOfferNotification
+      ? getOfferNotificationDetails(selectedOfferNotification)
+      : null
+
+    if (!selectedOfferNotification || !details?.contractId || !user?.id) {
+      setOfferDialogOpen(false)
+      return
+    }
+
+    setOfferActionLoading(accepted ? "accept" : "decline")
+
+    try {
+      const response = await respondToContract(details.contractId, {
+        accepted,
+        talentId: user.id,
+      })
+
+      if (response) {
+        setOfferDialogOpen(false)
+        setSelectedOfferNotification(null)
+        resetOfferDialogState()
+        await loadNotifications(false)
+      }
+    } finally {
+      setOfferActionLoading(null)
+    }
+  }
+
+  const handleNotificationClick = async (item: UiNotificationItem) => {
+    await markNotificationRead(item)
+
+    if (item.event === OFFER_NOTIFICATION_EVENT) {
+      setSelectedOfferNotification(item)
+      resetOfferDialogState()
+      setOpen(false)
+      setOfferDialogOpen(true)
+      return
+    }
+
+    router.push(item.href)
+  }
+
+  const renderNotificationItem = (
+    item: UiNotificationItem,
+    showCategory: boolean
+  ) => {
+    const accent =
+      item.kind === "project"
+        ? {
+            label: "Project",
+            className: "bg-[#FEF3F2] text-[#B42318]",
+            icon: FileCheck02,
+          }
+        : item.kind === "team"
+          ? {
+              label: "Team",
+              className: "bg-[#ECFDF3] text-[#027A48]",
+              icon: Users,
+            }
+          : item.kind === "message"
+            ? {
+                label: "Message",
+                className: "bg-primary-50 text-primary-500",
+                icon: User,
+              }
+            : {
+                label: "System",
+                className: "bg-[#EEF4FF] text-[#3538CD]",
+                icon: Bell,
+              }
+
+    const AccentIcon = accent.icon
+
+    return (
+      <button
+        key={item.id}
+        type="button"
+        className="w-full text-left hover:bg-gray-100 rounded-lg flex py-2.5 px-3 items-start gap-x-3 transition-colors"
+        onClick={() => handleNotificationClick(item)}
       >
-        <Tabs defaultValue="Notifications">
-          <TabsList className="w-full">
-            <TabsTrigger value="Notifications">
-              Notifications
-              <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                5
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="Messages">
-              Messages
-              <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                2
-              </span>
-            </TabsTrigger>
-          </TabsList>
+        {item.isUserNotification ? (
+          <Avatar size="md" isOnline>
+            <AvatarImage src={item.avatarSrc} alt={item.avatarAlt} />
+            <AvatarFallback>{item.title.slice(0, 1)}</AvatarFallback>
+          </Avatar>
+        ) : (
+          <span
+            className={cn(
+              "inline-flex size-10 shrink-0 items-center justify-center rounded-full",
+              accent.className
+            )}
+          >
+            <AccentIcon className="size-[18px]" />
+          </span>
+        )}
 
-          <TabsContent value="Notifications">
-            <div className="py-3 border-b border-gray-100 flex flex-col gap-y-1">
-              <ScrollArea
-                className="h-[328px]"
-                scrollBar={<ScrollBar className="w-4 px-1" />}
-              >
-                <div className="px-2">
-                  <article className="cursor-pointer hover:bg-gray-100 rounded-lg flex py-2.5 px-3 items-start gap-x-2">
-                    <Avatar size="md">
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
-                    </Avatar>
-
-                    <div className="flex-auto">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm leading-[16.94px] font-semibold text-dark-blue-400">
-                          @Cam43
-                        </span>
-
-                        <span className="text-xs leading-[14.06px] text-[#585C65]">
-                          Just now
-                        </span>
-                      </div>
-
-                      <div className="mt-1">
-                        <span className="text-sm leading-[16.94px] text-gray-700 font-light">
-                          Uploaded final file for project{" "}
-                          <span className="font-semibold">Video Editing</span>
-                        </span>
-                      </div>
-                    </div>
-                  </article>
-                  <article className="cursor-pointer hover:bg-gray-100 flex rounded-lg py-2.5 px-3 items-start gap-x-2">
-                    <Avatar size="md">
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
-                    </Avatar>
-
-                    <div className="flex-auto">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm leading-[16.94px] font-semibold text-dark-blue-400">
-                          @Cam43
-                        </span>
-
-                        <span className="text-xs leading-[14.06px] text-[#585C65]">
-                          Just now
-                        </span>
-                      </div>
-
-                      <div className="mt-1">
-                        <span className="text-sm leading-[16.94px] text-gray-700 font-light">
-                          Uploaded final file for project{" "}
-                          <span className="font-semibold">Video Editing</span>
-                        </span>
-                      </div>
-                    </div>
-                  </article>
-                  <article className="cursor-pointer hover:bg-gray-100 flex rounded-lg py-2.5 px-3 items-start gap-x-2">
-                    <Avatar size="md">
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
-                    </Avatar>
-
-                    <div className="flex-auto">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm leading-[16.94px] font-semibold text-dark-blue-400">
-                          @Cam43
-                        </span>
-
-                        <span className="text-xs leading-[14.06px] text-[#585C65]">
-                          Just now
-                        </span>
-                      </div>
-
-                      <div className="mt-1">
-                        <span className="text-sm leading-[16.94px] text-gray-700 font-light">
-                          Uploaded final file for project{" "}
-                          <span className="font-semibold">Video Editing</span>
-                        </span>
-                      </div>
-                    </div>
-                  </article>
-                  <article className="cursor-pointer hover:bg-gray-100 flex rounded-lg py-2.5 px-3 items-start gap-x-2">
-                    <Avatar size="md">
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
-                    </Avatar>
-
-                    <div className="flex-auto">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm leading-[16.94px] font-semibold text-dark-blue-400">
-                          @Cam43
-                        </span>
-
-                        <span className="text-xs leading-[14.06px] text-[#585C65]">
-                          Just now
-                        </span>
-                      </div>
-
-                      <div className="mt-1">
-                        <span className="text-sm leading-[16.94px] text-gray-700 font-light">
-                          Uploaded final file for project{" "}
-                          <span className="font-semibold">Video Editing</span>
-                        </span>
-                      </div>
-                    </div>
-                  </article>
-                  <article className="cursor-pointer hover:bg-gray-100 flex rounded-lg py-2.5 px-3 items-start gap-x-2">
-                    <Avatar size="md">
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
-                    </Avatar>
-
-                    <div className="flex-auto">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm leading-[16.94px] font-semibold text-dark-blue-400">
-                          @Cam43
-                        </span>
-
-                        <span className="text-xs leading-[14.06px] text-[#585C65]">
-                          Just now
-                        </span>
-                      </div>
-
-                      <div className="mt-1">
-                        <span className="text-sm leading-[16.94px] text-gray-700 font-light">
-                          Uploaded final file for project{" "}
-                          <span className="font-semibold">Video Editing</span>
-                        </span>
-                      </div>
-                    </div>
-                  </article>
-                  <article className="cursor-pointer hover:bg-gray-100 flex rounded-lg py-2.5 px-3 items-start gap-x-2">
-                    <Avatar size="md">
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
-                    </Avatar>
-
-                    <div className="flex-auto">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm leading-[16.94px] font-semibold text-dark-blue-400">
-                          @Cam43
-                        </span>
-
-                        <span className="text-xs leading-[14.06px] text-[#585C65]">
-                          Just now
-                        </span>
-                      </div>
-
-                      <div className="mt-1">
-                        <span className="text-sm leading-[16.94px] text-gray-700 font-light">
-                          Uploaded final file for project{" "}
-                          <span className="font-semibold">Video Editing</span>
-                        </span>
-                      </div>
-                    </div>
-                  </article>
-                </div>
-              </ScrollArea>
+        <div className="flex-auto min-w-0">
+          <div className="flex items-center justify-between gap-x-3">
+            <div className="min-w-0">
+              {showCategory ? (
+                <span
+                  className={cn(
+                    "mb-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]",
+                    accent.className
+                  )}
+                >
+                  {accent.label}
+                </span>
+              ) : null}
+              <div className="text-sm leading-[16.94px] font-semibold text-dark-blue-400 truncate">
+                {item.title}
+              </div>
             </div>
 
-            <div className="py-3.5 grid">
-              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/notifications")}>
-                View All
-              </button>
-            </div>
-          </TabsContent>
-          <TabsContent value="Messages">
-            <div className="py-3 border-b border-gray-100 flex flex-col gap-y-1">
-              <ScrollArea
-                className="h-[328px]"
-                scrollBar={<ScrollBar className="w-4 px-1" />}
-              >
-                <div className="px-2">
-                  <article className="px-3 py-2.5 cursor-pointer flex gap-x-2 items-start hover:bg-gray-100 rounded-lg">
-                    <Avatar size="md" isOnline>
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-auto">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm leading-[16.94px] font-semibold text-dark-blue-400">
-                          @Cam43
-                        </span>
+            <span className="text-xs leading-[14.06px] text-[#585C65] whitespace-nowrap">
+              {item.timeLabel}
+            </span>
+          </div>
 
-                        <span className="text-xs leading-[14.06px] text-[#585C65]">
-                          Just now
-                        </span>
-                      </div>
-                      <div className="mt-1">
-                        <span className="text-sm line-clamp-2 leading-[16.94px] text-gray-700">
-                          Ad reprehenderit deserunt in qui ut esse magna ipsum
-                          fugiat qui aliqua aliquip amet pariatur enim sit
-                          ullamco velit eiusmod ut velit magna
-                        </span>
-                      </div>
-                    </div>
-                  </article>
-                  <article className="px-3 py-2.5 cursor-pointer flex gap-x-2 items-start hover:bg-gray-100 rounded-lg">
-                    <Avatar size="md" isOnline>
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-auto">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm leading-[16.94px] font-semibold text-dark-blue-400">
-                          @Cam43
-                        </span>
+          <div className="mt-1 text-sm leading-[16.94px] text-gray-700">
+            {item.description}
+          </div>
+          <div className="mt-2 text-xs font-semibold text-primary-500">
+            {item.ctaLabel}
+          </div>
+        </div>
+      </button>
+    )
+  }
 
-                        <span className="text-xs leading-[14.06px] text-[#585C65]">
-                          Just now
-                        </span>
-                      </div>
-                      <div className="mt-1">
-                        <span className="text-sm line-clamp-2 leading-[16.94px] text-gray-700">
-                          Ad reprehenderit deserunt in qui ut esse magna ipsum
-                          fugiat qui aliqua aliquip amet pariatur enim sit
-                          ullamco velit eiusmod ut velit magna
-                        </span>
-                      </div>
-                    </div>
-                  </article>
-                  <article className="px-3 py-2.5 cursor-pointer flex gap-x-2 items-start hover:bg-gray-100 rounded-lg">
-                    <Avatar size="md" isOnline>
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-auto">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm leading-[16.94px] font-semibold text-dark-blue-400">
-                          @Cam43
-                        </span>
+  return (
+    <>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <IconButton
+            className="rounded-full"
+            size="md"
+            variant="ghost"
+            visual="gray"
+          >
+            <Bell className="size-[18px]" />
+          </IconButton>
+        </PopoverTrigger>
+        <PopoverContent
+          className="w-[370px] bg-white border border-gray-100 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]"
+          align="end"
+        >
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "Notifications" | "Messages")}>
+            <TabsList className="w-full">
+              <TabsTrigger value="Notifications">
+                Notifications
+                <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
+                  {unreadBadgeCount}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="Messages">
+                Messages
+                <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
+                  {messageNotifications.filter((item) => !item.read).length}
+                </span>
+              </TabsTrigger>
+            </TabsList>
 
-                        <span className="text-xs leading-[14.06px] text-[#585C65]">
-                          Just now
-                        </span>
+            <TabsContent value="Notifications">
+              <div className="py-3 border-b border-gray-100 flex flex-col gap-y-1">
+                <ScrollArea
+                  className="h-[328px]"
+                  scrollBar={<ScrollBar className="w-4 px-1" />}
+                >
+                  <div className="px-2">
+                    {loading ? (
+                      <div className="px-3 py-6 text-sm text-gray-500">
+                        Loading notifications...
                       </div>
-                      <div className="mt-1">
-                        <span className="text-sm line-clamp-2 leading-[16.94px] text-gray-700">
-                          Ad reprehenderit deserunt in qui ut esse magna ipsum
-                          fugiat qui aliqua aliquip amet pariatur enim sit
-                          ullamco velit eiusmod ut velit magna
-                        </span>
+                    ) : allNotifications.length > 0 ? (
+                      allNotifications.map((item) => renderNotificationItem(item, false))
+                    ) : (
+                      <div className="px-3 py-6 text-sm text-gray-500">
+                        No notifications to show
                       </div>
-                    </div>
-                  </article>
-                  <article className="px-3 py-2.5 cursor-pointer flex gap-x-2 items-start hover:bg-gray-100 rounded-lg">
-                    <Avatar size="md" isOnline>
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-auto">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm leading-[16.94px] font-semibold text-dark-blue-400">
-                          @Cam43
-                        </span>
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
 
-                        <span className="text-xs leading-[14.06px] text-[#585C65]">
-                          Just now
-                        </span>
+              <div className="py-3.5 grid">
+                <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/notifications")}>
+                  View All
+                </button>
+              </div>
+            </TabsContent>
+            <TabsContent value="Messages">
+              <div className="py-3 border-b border-gray-100 flex flex-col gap-y-1">
+                <ScrollArea
+                  className="h-[328px]"
+                  scrollBar={<ScrollBar className="w-4 px-1" />}
+                >
+                  <div className="px-2">
+                    {loading ? (
+                      <div className="px-3 py-6 text-sm text-gray-500">
+                        Loading messages...
                       </div>
-                      <div className="mt-1">
-                        <span className="text-sm line-clamp-2 leading-[16.94px] text-gray-700">
-                          Ad reprehenderit deserunt in qui ut esse magna ipsum
-                          fugiat qui aliqua aliquip amet pariatur enim sit
-                          ullamco velit eiusmod ut velit magna
-                        </span>
+                    ) : messageNotifications.length > 0 ? (
+                      messageNotifications.map((item) => renderNotificationItem(item, false))
+                    ) : (
+                      <div className="px-3 py-6 text-sm text-gray-500">
+                        No messages to show
                       </div>
-                    </div>
-                  </article>
-                  <article className="px-3 py-2.5 cursor-pointer flex gap-x-2 items-start hover:bg-gray-100 rounded-lg">
-                    <Avatar size="md" isOnline>
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-auto">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm leading-[16.94px] font-semibold text-dark-blue-400">
-                          @Cam43
-                        </span>
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+              <div className="py-3.5 grid">
+                <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/inbox")}>
+                  View All
+                </button>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </PopoverContent>
+      </Popover>
 
-                        <span className="text-xs leading-[14.06px] text-[#585C65]">
-                          Just now
-                        </span>
-                      </div>
-                      <div className="mt-1">
-                        <span className="text-sm line-clamp-2 leading-[16.94px] text-gray-700">
-                          Ad reprehenderit deserunt in qui ut esse magna ipsum
-                          fugiat qui aliqua aliquip amet pariatur enim sit
-                          ullamco velit eiusmod ut velit magna
-                        </span>
-                      </div>
-                    </div>
-                  </article>
-                </div>
-              </ScrollArea>
-            </div>
-            <div className="py-3.5 grid">
-              <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/inbox")}>
-                View All
-              </button>
-            </div>
-          </TabsContent>
-        </Tabs>
-      </PopoverContent>
-    </Popover>
+      {selectedOfferDetails && offerDialogMode !== "counter" ? (
+        <OfferFlowDialog
+          open={offerDialogOpen}
+          onOpenChange={(nextOpen) => {
+            setOfferDialogOpen(nextOpen)
+            if (!nextOpen) {
+              setSelectedOfferNotification(null)
+              resetOfferDialogState()
+            }
+          }}
+          variant={offerDialogVariant}
+          data={selectedOfferDetails}
+          acceptanceMessage={offerAcceptanceNote}
+          termsAccepted={offerTermsAccepted}
+          declineMessage={offerDeclineNote}
+          selectedDeclineReason={offerDeclineReason}
+          acceptLoading={offerActionLoading === "accept"}
+          declineLoading={offerActionLoading === "decline"}
+          onAcceptanceMessageChange={setOfferAcceptanceNote}
+          onTermsAcceptedChange={setOfferTermsAccepted}
+          onDeclineMessageChange={setOfferDeclineNote}
+          onDeclineReasonChange={setOfferDeclineReason}
+          onViewJob={() => router.push(selectedOfferDetails.viewJobHref)}
+          onMessage={() => {
+            setOfferDialogOpen(false)
+            setSelectedOfferNotification(null)
+            resetOfferDialogState()
+            router.push(selectedOfferDetails.messageHref)
+          }}
+          onCounterOffer={() => setOfferDialogMode("counter")}
+          onDecline={() => {
+            if (offerDialogMode === "decline") {
+              void handleOfferResponse(false)
+              return
+            }
+            setOfferDialogMode("decline")
+          }}
+          onAccept={() => {
+            if (offerDialogMode === "details") {
+              setOfferDialogMode("accept")
+              return
+            }
+            void handleOfferResponse(true)
+          }}
+          onCancelAccept={() => setOfferDialogMode("details")}
+          onCancelDecline={() => setOfferDialogMode("details")}
+        />
+      ) : null}
+
+      {selectedOfferDetails && offerDialogMode === "counter" ? (
+        <CounterOfferDialog
+          open={offerDialogOpen}
+          onOpenChange={(nextOpen) => {
+            setOfferDialogOpen(nextOpen)
+            if (!nextOpen) {
+              setSelectedOfferNotification(null)
+              resetOfferDialogState()
+            }
+          }}
+          variant="default"
+          data={selectedOfferDetails}
+          onCancel={() => setOfferDialogMode("details")}
+          onReview={() => {}}
+        />
+      ) : null}
+    </>
   )
 }
 
@@ -463,14 +666,13 @@ const listingTypes = ["Projects", "Services", "Talent", "Teams", "Jobs"]
 const SearchBar = () => {
   const router = useRouter()
   const pathname = usePathname()
-  type SearchSelection = {
+  const [state, setState] = useState<string>()
+  const [selected, setSelected] = React.useState<{
     id: number
     value: string
     icon?: React.JSXElementConstructor<any>
     route?: string
-  }
-  const [state, setState] = useState<string>()
-  const [selected, setSelected] = React.useState<SearchSelection>()
+  }>()
   const [query, setQuery] = React.useState("")
   // Nonce used as `key` on the Combobox wrapper. Incrementing it forces
   // Headless UI to unmount/remount, which reliably resets its internal open
@@ -592,7 +794,7 @@ const SearchBar = () => {
       key={resetNonce}
       className="group/root w-auto flex-auto"
       value={selected}
-      onChange={(value: SearchSelection | null) => {
+      onChange={(value: { id: number; value: string; icon?: React.JSXElementConstructor<any>; route?: string }) => {
         if (!value) return
         // Fixed "Browse ..." items have a route — navigate instead of searching.
         if (value.route) {
@@ -633,7 +835,11 @@ const SearchBar = () => {
             placeholder={searchPlaceholder}
             className="p-0 border-0 text-xs leading-5 h-auto rounded-none hover:ring-0 hover:border-gray-300 focus:ring-0 focus:border-gray-300 ui-open:rounded-b-none"
             size="lg"
-            displayValue={(value: SearchSelection) => value?.value ?? ""}
+            displayValue={(value: {
+              id: number
+              value: string
+              icon?: React.JSXElementConstructor<any>
+            }) => value?.value ?? ""}
             onChange={(event) => setQuery(event.target.value)}
             onFocus={() => {
               // Open the dropdown the moment the user focuses the input
