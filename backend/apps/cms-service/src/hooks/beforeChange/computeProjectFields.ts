@@ -1,4 +1,4 @@
-import { CollectionBeforeChangeHook } from 'payload/types';
+import { CollectionBeforeChangeHook } from "payload/types";
 
 /**
  * Populate every Projects.Computed-tab field we can derive locally from
@@ -13,10 +13,10 @@ import { CollectionBeforeChangeHook } from 'payload/types';
  *       covers backfill for projects published before this hook landed.
  *
  *   • `totalEstimatedHours` (§14.1)
- *       `sum(scope[].tasks[].estimatedHours)`. The Pricing-tab field is
- *       still author-editable as a fallback for projects with no scope
- *       yet; scope-derived value wins when scope is populated. Once
- *       every project has a scope we can flip the field to `readOnly`.
+ *       `sum(scope[].tasks[].durationValue → hours)`. Duration is stored
+ *       as `{ durationValue, durationType }` (mirroring the frontend scope
+ *       builder) and converted to hours here (hours=as-is, days×24,
+ *       weeks×168). Falls back to `estimatedHours` for legacy seeded data.
  *
  *   • `projectDurationTotal` (weeks) + `projectDurationLabel` (§14.2)
  *       `max(1, ceil(totalHours / (teamSize × 40)))` — assumes every
@@ -80,15 +80,15 @@ const FALLBACK_RATE = HOURLY_RATE_BY_LEVEL.Medior;
 function periodsForViewMode(viewMode: string, weeks: number): number {
   const months = weeks / 4.345;
   switch (viewMode) {
-    case 'weekly':
+    case "weekly":
       return Math.max(1, weeks);
-    case 'biweekly':
+    case "biweekly":
       return Math.max(1, weeks / 2);
-    case 'monthly':
+    case "monthly":
       return Math.max(1, months);
-    case 'quarterly':
+    case "quarterly":
       return Math.max(1, months / 3);
-    case 'yearly':
+    case "yearly":
       return Math.max(1, months / 12);
     default:
       return Math.max(1, weeks / 2);
@@ -98,20 +98,21 @@ function periodsForViewMode(viewMode: string, weeks: number): number {
 // true (§14.13). If any of these change between originalDoc and data,
 // `moderationStatus` flips to 'pending'.
 const SENSITIVE_FIELDS = [
-  'title',
-  'shortDescription',
-  'fullDescription',
-  'deliverables',
-  'tags',
-  'projectSkills',
-  'videoWalkthrough',
+  "title",
+  "shortDescription",
+  "fullDescription",
+  "deliverables",
+  "tags",
+  "projectSkills",
+  "videoWalkthrough",
 ] as const;
 
 // §14.12 FlagScore heuristic — lightweight quality check on save.
 // Score ≥ 20 → `moderationStatus = 'needs_update'` (auto-flag).
 function computeFlagScore(data: Record<string, unknown>): number {
   let score = 0;
-  const short = typeof data.shortDescription === 'string' ? data.shortDescription : '';
+  const short =
+    typeof data.shortDescription === "string" ? data.shortDescription : "";
   if (short.length > 300) score += 5;
   const tags = Array.isArray(data.tags) ? data.tags : [];
   if (tags.length > 10) score += 10;
@@ -123,11 +124,22 @@ export const computeProjectFields: CollectionBeforeChangeHook = async ({
   originalDoc,
   operation,
 }) => {
+  // ── Scope normalization ──────────────────────────────────────────────
+  // publish-project treats phase order as the array index. Keep the CMS
+  // stored `order` field aligned automatically so editors never have to
+  // manage it manually.
+  if (Array.isArray(data.scope)) {
+    data.scope = data.scope.map((phase: any, index: number) => {
+      if (!phase || typeof phase !== "object") return phase;
+      return { ...phase, order: index + 1 };
+    });
+  }
+
   // ── previewToken ─────────────────────────────────────────────────────
   // Auto-generate a shareable preview token on first create so draft
   // projects can be previewed by stakeholders with the token in the URL.
   if (!data.previewToken) {
-    const { randomUUID } = await import('crypto');
+    const { randomUUID } = await import("crypto");
     data.previewToken = randomUUID();
   }
 
@@ -135,17 +147,19 @@ export const computeProjectFields: CollectionBeforeChangeHook = async ({
   // §14.13: if forceReviewOnEdit is true and any sensitive field changed,
   // flip moderationStatus back to 'pending'.
   if (
-    operation === 'update' &&
+    operation === "update" &&
     data.forceReviewOnEdit !== false &&
     originalDoc
   ) {
     const changed = SENSITIVE_FIELDS.some((key) => {
-      const prev = JSON.stringify((originalDoc as Record<string, unknown>)[key] ?? null);
+      const prev = JSON.stringify(
+        (originalDoc as Record<string, unknown>)[key] ?? null,
+      );
       const next = JSON.stringify(data[key] ?? null);
       return prev !== next;
     });
-    if (changed && data.moderationStatus !== 'pending') {
-      data.moderationStatus = 'pending';
+    if (changed && data.moderationStatus !== "pending") {
+      data.moderationStatus = "pending";
     }
   }
 
@@ -153,34 +167,8 @@ export const computeProjectFields: CollectionBeforeChangeHook = async ({
   const flagScore = computeFlagScore(data as Record<string, unknown>);
   if (flagScore >= 20) {
     data.isFlagged = true;
-    data.moderationStatus = 'pending';
+    data.moderationStatus = "pending";
   }
-
-  // ── activityLog append ──────────────────────────────────────────────
-  // Append one entry per save so admins can see the audit trail. Shape
-  // matches spec §14.16 / §11 ActivityLogEntry.
-  const log = Array.isArray(data.activityLog) ? [...data.activityLog] : [];
-  const prevStatus = (originalDoc as Record<string, unknown> | undefined)?._status;
-  const nextStatus = data._status;
-
-  let actionType: string;
-  if (operation === 'create') {
-    actionType = 'create';
-  } else if (nextStatus === 'published' && prevStatus !== 'published') {
-    actionType = 'publish';
-  } else if (nextStatus !== 'published' && prevStatus === 'published') {
-    actionType = 'unpublish';
-  } else {
-    actionType = 'update';
-  }
-
-  log.push({
-    actionType,
-    performedBy: 'cms-admin',
-    timestamp: new Date().toISOString(),
-    fieldChanged: operation === 'create' ? '(all)' : '(save)',
-  });
-  data.activityLog = log;
 
   // ── datePublished ────────────────────────────────────────────────────
   // Set the first time the project appears in the `published` state with
@@ -191,7 +179,7 @@ export const computeProjectFields: CollectionBeforeChangeHook = async ({
   //      the next save)
   // Never overwritten once populated, so toggling back to draft and
   // republishing preserves the original publish date.
-  if (!data.datePublished && data._status === 'published') {
+  if (!data.datePublished && data._status === "published") {
     data.datePublished = new Date().toISOString();
   }
 
@@ -211,20 +199,40 @@ export const computeProjectFields: CollectionBeforeChangeHook = async ({
     const teamRoles = new Set<string>();
 
     for (const phase of scope) {
-      if (!phase || typeof phase !== 'object') continue;
+      if (!phase || typeof phase !== "object") continue;
       const tasks = (phase as { tasks?: unknown }).tasks;
       if (!Array.isArray(tasks)) continue;
       for (const task of tasks) {
-        if (!task || typeof task !== 'object') continue;
+        if (!task || typeof task !== "object") continue;
         const t = task as {
+          // New duration shape (mirrors frontend publish-project/page.tsx)
+          durationValue?: unknown;
+          durationType?: unknown;
+          // Legacy field kept for backwards-compat with seeded projects
           estimatedHours?: unknown;
           experienceLevel?: unknown;
           roleName?: unknown;
-          assigneeEmail?: unknown;
         };
 
-        const hours = Number(t.estimatedHours);
-        const level = typeof t.experienceLevel === 'string' ? t.experienceLevel : 'Medior';
+        // Convert durationValue+durationType → hours.
+        // Mirrors the frontend calendar logic:
+        //   hours  → value as-is
+        //   days   → value × 24 (calendar day)
+        //   weeks  → value × 168 (calendar week)
+        // Falls back to estimatedHours for legacy seeded data.
+        let hours: number;
+        const dv = Number(t.durationValue);
+        const dt = typeof t.durationType === "string" ? t.durationType : "";
+        if (Number.isFinite(dv) && dv > 0 && dt) {
+          if (dt === "hours") hours = dv;
+          else if (dt === "days") hours = dv * 24;
+          else hours = dv * 168; // weeks (default)
+        } else {
+          hours = Number(t.estimatedHours);
+        }
+
+        const level =
+          typeof t.experienceLevel === "string" ? t.experienceLevel : "Medior";
         const rate = HOURLY_RATE_BY_LEVEL[level] ?? FALLBACK_RATE;
 
         if (Number.isFinite(hours) && hours > 0) {
@@ -232,16 +240,9 @@ export const computeProjectFields: CollectionBeforeChangeHook = async ({
           totalCost += hours * rate;
         }
 
-        // Team-count: prefer real assigneeEmail when available,
-        // fall back to (roleName, experienceLevel) proxy otherwise.
-        // Emails are the canonical team identifier per spec §16 L96.
-        const email =
-          typeof t.assigneeEmail === 'string' ? t.assigneeEmail.trim().toLowerCase() : '';
-        if (email) teamRoles.add(`email::${email}`);
-        else {
-          const role = typeof t.roleName === 'string' ? t.roleName.trim() : '';
-          if (role) teamRoles.add(`role::${role}::${level}`);
-        }
+        // Team-count: proxy using (roleName, experienceLevel).
+        const role = typeof t.roleName === "string" ? t.roleName.trim() : "";
+        if (role) teamRoles.add(`role::${role}::${level}`);
       }
     }
 
@@ -273,12 +274,13 @@ export const computeProjectFields: CollectionBeforeChangeHook = async ({
       // field; only the display label pivots.
       const days = Math.max(1, Math.ceil(weeksFloat * 7));
       if (days < 7) {
-        data.projectDurationLabel = days === 1 ? '1 day' : `${days} days`;
+        data.projectDurationLabel = days === 1 ? "1 day" : `${days} days`;
       } else if (weeks < 4) {
-        data.projectDurationLabel = weeks === 1 ? '1 week' : `${weeks} weeks`;
+        data.projectDurationLabel = weeks === 1 ? "1 week" : `${weeks} weeks`;
       } else {
         const months = Math.max(1, Math.ceil(weeksFloat / 4.345));
-        data.projectDurationLabel = months === 1 ? '1 month' : `${months} months`;
+        data.projectDurationLabel =
+          months === 1 ? "1 month" : `${months} months`;
       }
 
       // §14.7 EstimatedCost — rounded to whole dollars.
@@ -288,7 +290,9 @@ export const computeProjectFields: CollectionBeforeChangeHook = async ({
         // §14.7 priceViewAmount — divide by payment-period count. Uses
         // the `priceViewMode` the editor selected; defaults to biweekly.
         const viewMode =
-          typeof data.priceViewMode === 'string' ? data.priceViewMode : 'biweekly';
+          typeof data.priceViewMode === "string"
+            ? data.priceViewMode
+            : "biweekly";
         const periods = periodsForViewMode(viewMode, weeks);
         data.priceViewAmount = Math.round(totalCost / periods);
       }
@@ -298,14 +302,8 @@ export const computeProjectFields: CollectionBeforeChangeHook = async ({
       data.teamMemberCount = teamRoles.size;
     }
 
-    // Derive teamEmails — the unique set of email addresses assigned
-    // to scope tasks. Always overwrite so clearing assignments in the
-    // CMS actually shrinks the team (previous logic preserved stale
-    // values when the new scope had no emails).
-    const emails = [...teamRoles]
-      .filter((k) => k.startsWith('email::'))
-      .map((k) => k.slice(7));
-    data.teamEmails = emails;
+    // teamEmails is removed since task assignment is deferred to later phases.
+    data.teamEmails = [];
   }
 
   return data;

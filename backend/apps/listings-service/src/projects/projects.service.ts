@@ -243,7 +243,6 @@ export class ProjectsService {
       isTopRated: rating >= 4.0 && Number(project.reviewCount ?? 0) >= 20,
       badges: this.deriveBadges(project),
       recentQuestions: [],
-      skillsAndTools: this.getSkillsAndTools(project),
       chatEnabled: false,
       reportButtonEnabled: true,
       shareButtonEnabled: true,

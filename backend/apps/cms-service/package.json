@@ -4,13 +4,15 @@
   "description": "Payload CMS service for Marketeq platform",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
+    "build": "payload build && tsc",
     "start": "node dist/server.js",
     "start:dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "bootstrap": "node scripts/bootstrap.mjs",
     "fix:blog-richtext": "ts-node-dev --transpile-only --no-respawn --exit-child src/scripts/fix-blog-richtext.ts",
     "seed:homepage": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-homepage-seed.ts",
-    "seed:projects": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-projects-seed.ts"
+    "seed:projects": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-projects-seed.ts",
+    "seed:categories": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-categories-seed.ts",
+    "seed:all": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-all-seed.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.500.0",

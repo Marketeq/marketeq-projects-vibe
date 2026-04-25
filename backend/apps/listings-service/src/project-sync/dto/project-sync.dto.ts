@@ -68,27 +68,13 @@ class CmsScopePhase {
   tasks: CmsScopeTask[];
 }
 
-class CmsMediaRef {
-  @IsOptional()
-  @IsString()
-  url?: string;
-
-  @IsOptional()
-  @IsString()
-  filename?: string;
-}
-
 class CmsRecentQuestion {
   @IsString()
   question: string;
-}
 
-class CmsSkillTool {
-  @IsString()
-  title: string;
-
+  // Optional editor answer (Payload richText JSON or legacy string).
   @IsOptional()
-  icon?: CmsMediaRef | string | number | null;
+  answer?: unknown;
 }
 
 /**
@@ -249,12 +235,6 @@ export class ProjectSyncDto {
   @ValidateNested({ each: true })
   @Type(() => CmsRecentQuestion)
   recentQuestions?: CmsRecentQuestion[];
-
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CmsSkillTool)
-  skillsAndTools?: CmsSkillTool[];
 
   @IsOptional()
   @IsBoolean()

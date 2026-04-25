@@ -44,6 +44,8 @@ Team entity also has: `logo`, `specializations[]`, `completedProjects`
 - `src/services/` — service.entity.ts, service.controller.ts, service.service.ts, service.module.ts
 - `src/project-sync/` — CMS-to-listings sync (renamed from strapi to cms)
 
+- CMS sync and `/v1/projects` no longer use `skillsAndTools`; author skills are `projectSkills` → `skills` (plus `programmingLanguages` / `developmentTech` in DB as before).
+
 ## Notes
 - `strapiId` renamed to `cmsId` across all entities (2026-04-08)
 - `STRAPI_SYNC_TOKEN` env var renamed to `CMS_SYNC_TOKEN`
