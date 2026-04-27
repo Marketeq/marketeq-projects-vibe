@@ -7,68 +7,68 @@ export class AddAffiliatedTeamTables1772767311535
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "experiences" DROP CONSTRAINT "FK_experiences_user"`,
+      `ALTER TABLE "experiences" DROP CONSTRAINT IF EXISTS "FK_experiences_user"`,
     );
     await queryRunner.query(
-      `ALTER TABLE "skills" DROP CONSTRAINT "FK_skills_userId"`,
+      `ALTER TABLE "skills" DROP CONSTRAINT IF EXISTS "FK_skills_userId"`,
     );
     await queryRunner.query(
-      `CREATE TABLE "industries" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "industry" character varying NOT NULL, "yearsOfExperience" integer, "description" text, "userId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_f1626dcb2d58142d7dfcca7b8d1" PRIMARY KEY ("id"))`,
+      `CREATE TABLE IF NOT EXISTS "industries" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "industry" character varying NOT NULL, "yearsOfExperience" integer, "description" text, "userId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_f1626dcb2d58142d7dfcca7b8d1" PRIMARY KEY ("id"))`,
     );
     await queryRunner.query(
-      `CREATE TABLE "languages" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "fluency" character varying NOT NULL, "userId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_b517f827ca496b29f4d549c631d" PRIMARY KEY ("id"))`,
+      `CREATE TABLE IF NOT EXISTS "languages" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "fluency" character varying NOT NULL, "userId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_b517f827ca496b29f4d549c631d" PRIMARY KEY ("id"))`,
     );
     await queryRunner.query(
-      `CREATE TABLE "certifications" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "issuer" character varying NOT NULL, "issueDate" date NOT NULL, "expirationDate" date, "credentialId" character varying, "credentialUrl" character varying, "userId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_fd763d412e4a1fb1b6dadd6e72b" PRIMARY KEY ("id"))`,
+      `CREATE TABLE IF NOT EXISTS "certifications" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "issuer" character varying NOT NULL, "issueDate" date NOT NULL, "expirationDate" date, "credentialId" character varying, "credentialUrl" character varying, "userId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_fd763d412e4a1fb1b6dadd6e72b" PRIMARY KEY ("id"))`,
     );
     await queryRunner.query(
-      `CREATE TABLE "portfolio" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "description" text, "url" character varying, "imageUrl" character varying, "tags" text array, "userId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_6936bb92ca4b7cda0ff28794e48" PRIMARY KEY ("id"))`,
+      `CREATE TABLE IF NOT EXISTS "portfolio" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "description" text, "url" character varying, "imageUrl" character varying, "tags" text array, "userId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_6936bb92ca4b7cda0ff28794e48" PRIMARY KEY ("id"))`,
     );
     await queryRunner.query(
-      `CREATE TABLE "affiliated_teams" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "location" character varying NOT NULL, "time" character varying NOT NULL, "userId" uuid NOT NULL, CONSTRAINT "PK_d444bd7ce56cf399f7654b3a624" PRIMARY KEY ("id"))`,
+      `CREATE TABLE IF NOT EXISTS "affiliated_teams" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "location" character varying NOT NULL, "time" character varying NOT NULL, "userId" uuid NOT NULL, CONSTRAINT "PK_d444bd7ce56cf399f7654b3a624" PRIMARY KEY ("id"))`,
     );
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "dateFormat"`);
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "startOfWeek"`);
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "timeFormat"`);
+    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "dateFormat"`);
+    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "startOfWeek"`);
+    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "timeFormat"`);
     await queryRunner.query(
-      `ALTER TABLE "experiences" ADD "industryType" character varying`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "experiences" ADD "skills" text array`,
+      `ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "industryType" character varying`,
     );
     await queryRunner.query(
-      `ALTER TABLE "experiences" DROP COLUMN "description"`,
+      `ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "skills" text array`,
     );
     await queryRunner.query(
-      `ALTER TABLE "experiences" ADD "description" character varying`,
-    );
-    await queryRunner.query(`ALTER TABLE "experiences" DROP COLUMN "location"`);
-    await queryRunner.query(`ALTER TABLE "experiences" ADD "location" text`);
-    await queryRunner.query(
-      `ALTER TABLE "experiences" DROP COLUMN "startDate"`,
+      `ALTER TABLE "experiences" DROP COLUMN IF EXISTS "description"`,
     );
     await queryRunner.query(
-      `ALTER TABLE "experiences" ADD "startDate" date NOT NULL`,
+      `ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "description" character varying`,
     );
-    await queryRunner.query(`ALTER TABLE "experiences" DROP COLUMN "endDate"`);
-    await queryRunner.query(`ALTER TABLE "experiences" ADD "endDate" date`);
+    await queryRunner.query(`ALTER TABLE "experiences" DROP COLUMN IF EXISTS "location"`);
+    await queryRunner.query(`ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "location" text`);
+    await queryRunner.query(
+      `ALTER TABLE "experiences" DROP COLUMN IF EXISTS "startDate"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "startDate" date`,
+    );
+    await queryRunner.query(`ALTER TABLE "experiences" DROP COLUMN IF EXISTS "endDate"`);
+    await queryRunner.query(`ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "endDate" date`);
     await queryRunner.query(
       `ALTER TABLE "experiences" ALTER COLUMN "isCurrentRole" SET NOT NULL`,
     );
     await queryRunner.query(
-      `ALTER TABLE "experiences" DROP COLUMN "createdAt"`,
+      `ALTER TABLE "experiences" DROP COLUMN IF EXISTS "createdAt"`,
     );
     await queryRunner.query(
-      `ALTER TABLE "experiences" ADD "createdAt" TIMESTAMP NOT NULL DEFAULT now()`,
+      `ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP NOT NULL DEFAULT now()`,
     );
     await queryRunner.query(
-      `ALTER TABLE "experiences" DROP COLUMN "updatedAt"`,
+      `ALTER TABLE "experiences" DROP COLUMN IF EXISTS "updatedAt"`,
     );
     await queryRunner.query(
-      `ALTER TABLE "experiences" ADD "updatedAt" TIMESTAMP NOT NULL DEFAULT now()`,
+      `ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP NOT NULL DEFAULT now()`,
     );
     await queryRunner.query(
-      `DROP INDEX "public"."IDX_97672ac88f789774dd47f7c8be"`,
+      `DROP INDEX IF EXISTS "public"."IDX_97672ac88f789774dd47f7c8be"`,
     );
     await queryRunner.query(
       `ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "users_email_key"`,
@@ -79,30 +79,66 @@ export class AddAffiliatedTeamTables1772767311535
     await queryRunner.query(
       `ALTER TABLE "users" ALTER COLUMN "password" DROP DEFAULT`,
     );
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "timezone"`);
+    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "timezone"`);
     await queryRunner.query(
-      `ALTER TABLE "users" ADD "timezone" character varying`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "timezone" character varying`,
     );
     await queryRunner.query(
-      `CREATE UNIQUE INDEX "IDX_97672ac88f789774dd47f7c8be" ON "users" ("email") `,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "IDX_97672ac88f789774dd47f7c8be" ON "users" ("email") `,
     );
     await queryRunner.query(
-      `ALTER TABLE "industries" ADD CONSTRAINT "FK_dc2f8d935eb8e84267b05aabfd4" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'FK_dc2f8d935eb8e84267b05aabfd4'
+        ) THEN
+          ALTER TABLE "industries" ADD CONSTRAINT "FK_dc2f8d935eb8e84267b05aabfd4" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+        END IF;
+      END $$;`,
     );
     await queryRunner.query(
-      `ALTER TABLE "languages" ADD CONSTRAINT "FK_8f1b96a30ff66e0cd5c5c2fd797" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'FK_8f1b96a30ff66e0cd5c5c2fd797'
+        ) THEN
+          ALTER TABLE "languages" ADD CONSTRAINT "FK_8f1b96a30ff66e0cd5c5c2fd797" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+        END IF;
+      END $$;`,
     );
     await queryRunner.query(
-      `ALTER TABLE "certifications" ADD CONSTRAINT "FK_c5d9770c24adc7be0680f9bd963" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'FK_c5d9770c24adc7be0680f9bd963'
+        ) THEN
+          ALTER TABLE "certifications" ADD CONSTRAINT "FK_c5d9770c24adc7be0680f9bd963" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+        END IF;
+      END $$;`,
     );
     await queryRunner.query(
-      `ALTER TABLE "portfolio" ADD CONSTRAINT "FK_9d041c43c782a9135df1388ae16" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'FK_9d041c43c782a9135df1388ae16'
+        ) THEN
+          ALTER TABLE "portfolio" ADD CONSTRAINT "FK_9d041c43c782a9135df1388ae16" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+        END IF;
+      END $$;`,
     );
     await queryRunner.query(
-      `ALTER TABLE "affiliated_teams" ADD CONSTRAINT "FK_2f83b2f81cd02f84dca26794814" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'FK_2f83b2f81cd02f84dca26794814'
+        ) THEN
+          ALTER TABLE "affiliated_teams" ADD CONSTRAINT "FK_2f83b2f81cd02f84dca26794814" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+        END IF;
+      END $$;`,
     );
     await queryRunner.query(
-      `ALTER TABLE "skills" ADD CONSTRAINT "FK_ee1265e76ea0b8c5f7daa85e817" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'FK_ee1265e76ea0b8c5f7daa85e817'
+        ) THEN
+          ALTER TABLE "skills" ADD CONSTRAINT "FK_ee1265e76ea0b8c5f7daa85e817" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+        END IF;
+      END $$;`,
     );
   }
 
