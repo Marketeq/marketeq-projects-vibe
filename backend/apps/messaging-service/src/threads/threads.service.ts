@@ -63,10 +63,23 @@ export class ThreadsService {
           .orderBy('m."createdAt"', "DESC")
           .limit(1)
           .getRawOne();
+        // If the last message is a file/image, attach its first attachment
+        // so the conversation list preview can show "📎 filename.pdf" or an
+        // image thumbnail without a follow-up fetch per row.
+        let lastAttachment: any = null;
+        if (lastMessage?.m_id && lastMessage.m_messageType === 'file') {
+          lastAttachment = await this.repo.manager
+            .createQueryBuilder('messaging.attachments', 'a')
+            .where('a."messageId" = :mid', { mid: lastMessage.m_id })
+            .limit(1)
+            .getRawOne();
+        }
         const s = stateByThread.get(t.id);
         return {
           ...t,
-          lastMessage: lastMessage || null,
+          lastMessage: lastMessage
+            ? { ...lastMessage, attachment: lastAttachment || null }
+            : null,
           isPinned: s?.isPinned ?? false,
           isStarred: s?.isStarred ?? false,
           isArchived: s?.isArchived ?? false,

@@ -3,8 +3,11 @@
 import { useState } from "react"
 import { apiFetch } from "@/src/lib/api"
 import { cn } from "@/utils/functions"
+import { getCurrentUser } from "@/utils/auth"
+import { getOtherParticipantId } from "@/utils/conversation"
 import { useControllableState, useUncontrolledState } from "@/utils/hooks"
 import { createContext } from "@/utils/react-utils"
+import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import {
   AlertCircle,
   AlertTriangle,
@@ -120,6 +123,15 @@ export const UserDetail = ({
 }: UserDetailProps) => {
   const { onChatPinned, showPinnedIcon, onChatChecked, checkedChats } =
     useChatsContext()
+  const { isOnline } = useOnlineUsers()
+  // Avatar dot reflects whether the OTHER 1:1 participant is currently
+  // present on the global presence:online channel. Group conversations:
+  // show online if any non-self participant is online.
+  const me = getCurrentUser()?.id
+  const otherId = me ? getOtherParticipantId(conversation, me) : undefined
+  const showOnlineDot = conversation.isGroup
+    ? (conversation.participantIds ?? []).some((id) => id !== me && isOnline(id))
+    : isOnline(otherId)
 
   //jwt token
   const jwtToken = (() => {
@@ -173,7 +185,7 @@ export const UserDetail = ({
         <Avatar
           size="md"
           className="hover:ring-0 active:ring-primary-100"
-          isOnline
+          isOnline={showOnlineDot}
           containerClassName={cn(
             "group-hover:hidden",
             showCheckbox && "hidden"

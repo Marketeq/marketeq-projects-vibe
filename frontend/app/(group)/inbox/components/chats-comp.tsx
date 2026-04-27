@@ -18,6 +18,7 @@ import {
 import { useControllableState } from "@/utils/hooks"
 import { useAblyChannel } from "@/utils/useAblyChannel"
 import { useAblyPresence } from "@/utils/useAblyPresence"
+import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import { useUserChannel } from "@/utils/useUserChannel"
 import {
   AlertTriangle,
@@ -115,6 +116,16 @@ interface ChatsProps {
   highlightMessageId?: string | null
   /** Called after the highlight has been consumed (scrolled to). */
   onHighlightConsumed?: () => void
+  /** Append a freshly sent/received message into the search index so it's
+   * immediately searchable without waiting for the next page reload. */
+  onIndexNewMessage?: (doc: {
+    id: string
+    threadId: string
+    senderId: string
+    content: string
+    createdAt: string
+    attachments?: Message["attachments"]
+  }) => void
 }
 
 interface UploadedAttachmentResult {
@@ -154,6 +165,7 @@ export function Chats({
   onMessagesLoaded,
   highlightMessageId,
   onHighlightConsumed,
+  onIndexNewMessage,
 }: ChatsProps) {
   const [textareaValue, setTextareaValue] = useState("")
   const composerRef = useRef<HTMLTextAreaElement>(null)
@@ -202,14 +214,31 @@ export function Chats({
     }
   }, [currentUserProfile])
 
-  const handleEmojiSelect = (emoji: DataEmoji) => {
+  const handleEmojiSelect = useCallback((emoji: DataEmoji) => {
     const emojiChar = String.fromCodePoint(
       ...emoji[EmojiProperties.unified]
         .split("-")
         .map((hex) => parseInt(hex, 16))
     )
     setTextareaValue((prev) => (prev || "") + emojiChar)
-  }
+  }, [])
+
+  // Auto-grow the composer to fit its content (Figma: composer expands as
+  // the user types multi-line, then caps at max-height with internal scroll).
+  // When empty, clear the inline height so the CSS `min-h-[36px]` rules the
+  // box — otherwise an empty textarea's scrollHeight (which includes extra
+  // browser padding) would lock the field at a taller-than-default size on
+  // mount and after every send.
+  useEffect(() => {
+    const ta = composerRef.current
+    if (!ta) return
+    if (!textareaValue) {
+      ta.style.height = ""
+      return
+    }
+    ta.style.height = "auto"
+    ta.style.height = `${ta.scrollHeight}px`
+  }, [textareaValue])
 
   // Reset per-conversation state when switching conversations
   useEffect(() => {
@@ -348,8 +377,14 @@ export function Chats({
   const isSwitching = !keyError && (messagesLoading || !keyReady)
 
   // 2.2) Ably presence for this thread (online status + typing)
-  const { members: presentMembers, isOnline, sendTyping, typingUserIds } =
+  // Per-thread presence: typing indicators only. The "isOnline" check used
+  // to come from this hook too, but per-thread presence can't show whether
+  // a user is online unless they're in the same thread channel right now —
+  // which broke the avatar dot in 99% of cases. Online status now comes from
+  // the global presence:online channel via useOnlineUsers().
+  const { members: presentMembers, sendTyping, typingUserIds } =
     useAblyPresence(selectedConversation?.id ?? "")
+  const { isOnline } = useOnlineUsers()
 
   // 2.1) local messages state for optimistic updates
   const [localMsgs, setLocalMsgs] = useState<Message[]>([])
@@ -461,6 +496,7 @@ export function Chats({
       threadId: string
       createdAt: string
       updatedAt: string
+      attachments?: Message["attachments"]
       pinned?: boolean
       deleted?: boolean
       forwardedFromId?: string
@@ -509,8 +545,16 @@ export function Chats({
           },
         ]
       })
+      onIndexNewMessage?.({
+        id: incoming.id,
+        threadId: incoming.threadId,
+        senderId: incoming.senderId,
+        content: plain ?? "",
+        createdAt: incoming.createdAt,
+        attachments: incoming.attachments,
+      })
     },
-    [setLocalMsgs]
+    [setLocalMsgs, onIndexNewMessage]
   )
 
   //pin/unpin,  delete, undo delete
@@ -664,6 +708,16 @@ export function Chats({
           },
         ]
       })
+      onIndexNewMessage?.({
+        id: result.message.id,
+        threadId: selectedConversation.id,
+        senderId: result.message.senderId,
+        content: displayContent ?? "",
+        createdAt: result.message.createdAt,
+        attachments: result.message.attachments?.length
+          ? result.message.attachments
+          : [result.attachment],
+      })
     },
     [selectedConversation?.id]
   )
@@ -747,6 +801,14 @@ export function Chats({
             content: displayContent,
           },
         ]
+      })
+      onIndexNewMessage?.({
+        id: msg.id,
+        threadId: selectedConversation.id,
+        senderId: msg.senderId,
+        content: displayContent ?? "",
+        createdAt: msg.createdAt,
+        attachments: msg.attachments,
       })
 
       setTextareaValue("")
@@ -1695,7 +1757,7 @@ export function Chats({
                   ? "Add a message (optional)..."
                   : "Send message..."
             }
-            className={`w-full resize-none py-1.5 leading-5 min-h-0 h-9 overflow-hidden ${
+            className={`w-full resize-none py-1.5 leading-5 h-9 max-h-[120px] overflow-y-auto ${
               editingMessage
                 ? "pr-[120px] ring-1 ring-primary-500 border-primary-500 focus:ring-primary-500 focus:border-primary-500"
                 : "pr-11"
@@ -1717,6 +1779,13 @@ export function Chats({
                   e.preventDefault()
                   handleSaveEdit()
                 }
+                return
+              }
+              // Standard chat UX: Enter sends, Shift+Enter inserts newline
+              // (so multi-line composing still works for users who want it).
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                handleSendMessage()
               }
             }}
           />
