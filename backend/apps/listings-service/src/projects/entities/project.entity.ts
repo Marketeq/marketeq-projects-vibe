@@ -31,7 +31,7 @@ export class Project {
   @Column('text', { array: true, default: [] })
   tags: string[];
 
-  @Column('text', { array: true, default: [] })
+  @Column('text', { name: 'industries', array: true, default: [] })
   industry: string[];
 
   @Column('text', { array: true, default: [] })
@@ -85,8 +85,41 @@ export class Project {
   @Column({ nullable: true, type: 'decimal', precision: 10, scale: 2 })
   budget?: number;
 
+  @Column({ name: 'priceMax', nullable: true, type: 'decimal', precision: 10, scale: 2 })
+  priceMax?: number;
+
+  @Column({ name: 'pricingModel', nullable: true, type: 'text' })
+  pricingModel?: string;
+
+  @Column({ name: 'priceViewMode', nullable: true, type: 'text' })
+  priceViewMode?: string;
+
+  @Column({ name: 'projectType', nullable: true, type: 'text' })
+  projectType?: string;
+
+  @Column({ name: 'klarnaEnabled', type: 'boolean', default: false })
+  klarnaEnabled: boolean;
+
   @Column({ nullable: true })
   duration?: string;
+
+  @Column('jsonb', { name: 'recentQuestions', nullable: true, default: '[]' })
+  recentQuestions: Array<{ question: string; answer: string | null }>;
+
+  @Column('text', { name: 'relatedProjectIds', array: true, default: [] })
+  relatedProjectIds: string[];
+
+  @Column({ name: 'chatEnabled', type: 'boolean', default: false })
+  chatEnabled: boolean;
+
+  @Column({ name: 'reportButtonEnabled', type: 'boolean', default: true })
+  reportButtonEnabled: boolean;
+
+  @Column({ name: 'shareButtonEnabled', type: 'boolean', default: true })
+  shareButtonEnabled: boolean;
+
+  @Column({ name: 'helpButtonEnabled', type: 'boolean', default: false })
+  helpButtonEnabled: boolean;
 
   @Column({ type: 'decimal', precision: 3, scale: 1, default: 0 })
   rating: number;

@@ -1,4 +1,4 @@
-import { Access, CollectionConfig } from 'payload/types';
+import { Access, CollectionConfig, Where } from 'payload/types';
 import { isAdmin, isContentEditorOrAbove } from '../access/roles';
 import {
   syncAnnouncementToBroadcast,
@@ -25,7 +25,7 @@ const readPublishedToAudience: Access = ({ req: { user } }) => {
       { or: [{ endDate: { exists: false } }, { endDate: { greater_than_equal: now } }] },
       { audience: { in: audiences } },
     ],
-  };
+  } as Where;
 };
 
 export const Announcements: CollectionConfig = {

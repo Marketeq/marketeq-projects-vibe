@@ -179,12 +179,30 @@ export class ProjectSyncService {
     project.scope = row.scope;
     project.estimatedHours = row.estimatedHours ?? undefined;
     project.budget = row.budget ?? undefined;
+    project.priceMax = row.priceMax ?? undefined;
+    project.pricingModel = row.pricingModel ?? undefined;
+    project.priceViewMode = row.priceViewMode ?? undefined;
+    project.projectType = row.projectType ?? undefined;
+    project.klarnaEnabled = row.klarnaEnabled ?? false;
     project.duration = row.duration ?? undefined;
+    project.recentQuestions = row.recentQuestions ?? [];
+    project.relatedProjectIds = row.relatedProjectIds ?? [];
+    project.chatEnabled = row.chatEnabled ?? false;
+    project.reportButtonEnabled = row.reportButtonEnabled ?? true;
+    project.shareButtonEnabled = row.shareButtonEnabled ?? true;
+    project.helpButtonEnabled = row.helpButtonEnabled ?? false;
     project.featured = row.featured ?? false;
     project.status = row.status as ListingStatus;
     project.industry = row.industries ?? [];
     project.createdBy =
       dto.ownerId?.trim() || project.createdBy || "cms-sync";
+
+    if (!existing && dto.datePublished) {
+      const publishedAt = new Date(dto.datePublished);
+      if (!Number.isNaN(publishedAt.getTime())) {
+        project.createdAt = publishedAt;
+      }
+    }
 
     const saved = await repo.save(project);
     const action: "created" | "updated" = existing ? "updated" : "created";

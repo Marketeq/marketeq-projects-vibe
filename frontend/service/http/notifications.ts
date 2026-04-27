@@ -135,6 +135,10 @@ export const NotificationsAPI = {
 
   updatePhone: (phone: string | null) =>
     AxiosRequest.patch(`${USER_BASE}/user/phone`, { phone }),
+
+  // Explicitly present so callers can feature-detect in dev without
+  // needing `any` or tripping TypeScript when the endpoint is absent.
+  seedDev: undefined as undefined | (() => Promise<unknown>),
 }
 
 export interface NotificationItem {
