@@ -22,19 +22,19 @@ export class Session {
   @Column({ default: '' })
   userAgent: string;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column('varchar', { nullable: true })
   browserName: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column('varchar', { nullable: true })
   browserVersion: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column('varchar', { nullable: true })
   osName: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column('varchar', { nullable: true })
   osVersion: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column('varchar', { nullable: true })
   deviceType: string | null;
 
   @Column({ default: '' })
