@@ -496,6 +496,7 @@ export function Chats({
       threadId: string
       createdAt: string
       updatedAt: string
+      attachments?: Message["attachments"]
       pinned?: boolean
       deleted?: boolean
       forwardedFromId?: string

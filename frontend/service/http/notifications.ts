@@ -135,6 +135,10 @@ export const NotificationsAPI = {
 
   updatePhone: (phone: string | null) =>
     AxiosRequest.patch(`${USER_BASE}/user/phone`, { phone }),
+
+  // Keep this explicit even when unavailable so callers can feature-detect
+  // safely without reaching for `any` or failing type-checks.
+  seedDev: undefined as undefined | (() => Promise<unknown>),
 }
 
 export interface NotificationItem {
@@ -154,6 +158,11 @@ export interface ListNotificationsParams {
   limit?: number
   category?: string
   unread?: boolean
+}
+
+export const isTransientNotificationsApiError = (error: unknown) => {
+  const status = (error as { response?: { status?: number } })?.response?.status
+  return status === 401 || status === 403 || status === 404 || status === 429
 }
 
 export default NotificationsAPI
