@@ -59,4 +59,9 @@ This is the catch-all for project conventions, environment setup, shared decisio
 ## Lessons Learned
 (agents append here when something non-obvious is discovered)
 
-- Do not switch the active local checkout away from the branch we are actively editing unless the user explicitly asks first. Local working checkout stays the source of truth during active work.
+- Local working checkout is the source of truth during active work. Do not switch the user's active local branch, reset it, replace it with another branch, or pull another branch over it unless the user explicitly asks first.
+- Never treat "pushed to GitHub" as permission to move, rewrite, or replace the current local working checkout.
+- If work is in progress on local, save it in the current local branch first. Do not leave important edits only in temp state, build artifacts, detached recovery paths, or unidentified stashes.
+- Before any branch switch, branch restore, reset-like action, or recovery action, verify that the exact visible local work is safely preserved on the current local branch and that the user explicitly wants the branch change.
+- If recovery is ever needed, restore the exact local source files first. Do not substitute a different branch snapshot and present it as equivalent local state.
+- During active editing sessions, keep local branch continuity stable: same branch, same working context, explicit saves, and no silent checkout changes.
