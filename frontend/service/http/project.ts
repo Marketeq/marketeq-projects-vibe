@@ -37,6 +37,56 @@ const LISTINGS_BASE =
   ""
 
 export const ProjectAPI = {
+  CreateProjectDraft: (
+    data: Partial<CreateProjectType> & {
+      title?: string
+      shortDescription?: string
+      fullDescription?: string
+    } = {}
+  ) => {
+    return AxiosRequest.post(`${LISTINGS_BASE}/publish/project/draft`, data)
+  },
+  GetProjectDraft: (projectId: string) => {
+    return AxiosRequest.get(`${LISTINGS_BASE}/publish/project/${projectId}`)
+  },
+  UpdateProjectDraft: (
+    projectId: string,
+    data: Partial<CreateProjectType> & {
+      title?: string
+      shortDescription?: string
+      fullDescription?: string
+    }
+  ) => {
+    return AxiosRequest.put(`${LISTINGS_BASE}/publish/project/${projectId}`, data)
+  },
+  GetMyProjects: () => {
+    return AxiosRequest.get(`${LISTINGS_BASE}/publish/projects/mine`)
+  },
+  ReplaceProjectScope: (
+    projectId: string,
+    scope: Array<{
+      name: string
+      stageName: string
+      startDay: number
+      endDay: number
+      order: number
+      projectId: string
+      tasks: Array<{
+        taskName: string
+        role: string
+        location: string[]
+        experience: string[]
+        experienceLevel: string
+        duration: string
+        estimatedHours?: number
+        phaseId: string
+      }>
+    }>
+  ) => {
+    return AxiosRequest.put(`${LISTINGS_BASE}/publish/project/${projectId}/scope`, {
+      scope,
+    })
+  },
   CreateProject: (data: CreateProjectType | FormData) => {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/project`, data, {
       headers: {
@@ -50,6 +100,13 @@ export const ProjectAPI = {
   },
   UploadMedia: (data: FormData) => {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/media`, data, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    })
+  },
+  UploadRichTextImage: (data: FormData) => {
+    return AxiosRequest.post(`${LISTINGS_BASE}/publish/rich-text-image`, data, {
       headers: {
         "Content-Type": "multipart/form-data",
       },

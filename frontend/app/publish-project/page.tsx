@@ -130,6 +130,7 @@ import { Network2 } from "@/components/icons/network-2"
 import { Network3 } from "@/components/icons/network-3"
 import { Network4 } from "@/components/icons/network-4"
 import { CountriesCombobox, OwnCombobox } from "@/components/own-combobox"
+import { RichTextEditor } from "@/components/rich-text-editor"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -304,6 +305,152 @@ function makeUniqueFile(
   // If Blob or other, just return as is
   return file
 }
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+type PersistedMediaFile = File & {
+  __persistedUrl?: string
+}
+
+const isPersistedMediaFile = (file: unknown): file is PersistedMediaFile =>
+  file instanceof File &&
+  typeof (file as PersistedMediaFile).__persistedUrl === "string"
+
+const buildPersistedMediaFile = (url: string, fallbackName: string) => {
+  const pathname = (() => {
+    try {
+      return new URL(url).pathname
+    } catch {
+      return ""
+    }
+  })()
+  const derivedName = pathname.split("/").pop() || fallbackName
+  const file = new File([""], derivedName, { type: "image/jpeg" }) as PersistedMediaFile
+  file.__persistedUrl = url
+  return file
+}
+
+const resolveMediaFileForUpload = async (
+  file: File | Blob | undefined,
+  fallbackName: string
+): Promise<File | Blob | undefined> => {
+  if (!file) return undefined
+  if (isPersistedMediaFile(file)) {
+    const response = await fetch(file.__persistedUrl!)
+    const blob = await response.blob()
+    return new File([blob], file.name || fallbackName, {
+      type: blob.type || file.type || "image/jpeg",
+    })
+  }
+  return makeUniqueFile(file)
+}
+
+const hydrateRemoteMediaFile = async (url: string, fallbackName: string) => {
+  try {
+    const response = await fetch(url)
+    const blob = await response.blob()
+    const file = new File([blob], fallbackName, {
+      type: blob.type || "image/jpeg",
+    }) as PersistedMediaFile
+    file.__persistedUrl = url
+    return file
+  } catch {
+    return buildPersistedMediaFile(url, fallbackName)
+  }
+}
+
+const buildProjectDraftPayload = (projectInfo: ProjectInfoFormValues) => {
+  const categorySelections = (projectInfo.category ?? [])
+    .map((value) => ({
+      category: value?.category?.trim() ?? "",
+      subCategories: (value?.subCategories ?? [])
+        .map((subCategory) => subCategory.trim())
+        .filter(Boolean),
+    }))
+    .filter(
+      (value) => value.category.length > 0 && value.subCategories.length > 0
+    )
+
+  const categories = Array.from(
+    new Set(
+      categorySelections
+        .map((value) => value.category)
+        .filter((value): value is string => Boolean(value))
+    )
+  )
+  const subCategories = Array.from(
+    new Set(
+      categorySelections
+        .flatMap((value) => value.subCategories)
+        .filter((value): value is string => Boolean(value))
+    )
+  )
+
+  return {
+    title: projectInfo.title,
+    categories,
+    subCategories,
+    categorySelections,
+    industries: projectInfo.industry,
+    tags: projectInfo.tags,
+    skills: projectInfo.skills,
+    shortDescription: projectInfo.shortDescription,
+    fullDescription: projectInfo.fullDescription,
+  }
+}
+
+const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
+  (phases ?? [])
+    .map((phase, phaseIndex) => {
+      const phaseName = phase?.phaseName?.trim()
+      const rows = (phase?.rows ?? [])
+        .map((row) => {
+          const taskName = row?.task?.trim()
+          const role = row?.role?.trim()
+          const locationValue = row?.location?.trim()
+          const experienceLevel = row?.experience?.trim()
+          const durationValue = row?.duration?.value
+          const durationType = row?.duration?.type
+
+          if (
+            !taskName ||
+            !role ||
+            !locationValue ||
+            !experienceLevel ||
+            durationValue === undefined ||
+            !durationType
+          ) {
+            return null
+          }
+
+          return {
+            taskName,
+            role,
+            location: [locationValue],
+            experience: [experienceLevel],
+            experienceLevel,
+            duration: `${durationValue} ${durationType}`,
+            phaseId: "temporary-required-string",
+          }
+        })
+        .filter((row): row is NonNullable<typeof row> => Boolean(row))
+
+      if (!phaseName || rows.length === 0) {
+        return null
+      }
+
+      return {
+        name: phaseName,
+        stageName: `Stage ${phaseIndex + 1}`,
+        startDay: 1,
+        endDay: 8,
+        order: phaseIndex + 1,
+        projectId,
+        tasks: rows,
+      }
+    })
+    .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase))
 
 const Empty = ({
   outcome,
@@ -480,6 +627,138 @@ const meta = {
   ],
 } as const
 
+type ProjectInfoSidebarFieldName = (typeof meta)["Project Info"][number]["name"]
+type MediaSidebarFieldName = (typeof meta)["Media"][number]["name"]
+type ProjectInfoSidebarValues = Partial<
+  Omit<ProjectInfoFormValues, "category"> & {
+    category: Array<{
+      category?: string
+      subCategories?: string[]
+    }>
+  }
+>
+type MediaSidebarValues = {
+  featuredImages?: Array<{
+    progress?: number
+    hasError?: boolean
+    meta?: any
+  }>
+  additionalImages?: Array<
+    Array<{
+      progress?: number
+      hasError?: boolean
+      meta?: any
+    }>
+  >
+  featuredVideo?: string
+}
+
+const isProjectInfoFieldComplete = (
+  fieldName: ProjectInfoSidebarFieldName,
+  values: ProjectInfoSidebarValues
+) => {
+  switch (fieldName) {
+    case "title":
+      return projectInfoSchema.shape.title.safeParse(values.title).success
+    case "category":
+      return projectInfoSchema.shape.category.safeParse(values.category).success
+    case "industry":
+      return projectInfoSchema.shape.industry.safeParse(values.industry).success
+    case "shortDescription":
+      return projectInfoSchema.shape.shortDescription.safeParse(
+        values.shortDescription
+      ).success
+    case "fullDescription":
+      return projectInfoSchema.shape.fullDescription.safeParse(
+        values.fullDescription
+      ).success
+    case "tags":
+      return projectInfoSchema.shape.tags.safeParse(values.tags).success
+    case "skills":
+      return projectInfoSchema.shape.skills.safeParse(values.skills).success
+  }
+}
+
+const isMediaFieldComplete = (
+  fieldName: MediaSidebarFieldName,
+  values: MediaSidebarValues
+) => {
+  switch (fieldName) {
+    case "featuredImages": {
+      const featuredImages = values.featuredImages ?? []
+      return (
+        Array.isArray(featuredImages) &&
+        featuredImages.length >= 1 &&
+        featuredImages.every(
+          (image) =>
+            typeof image?.progress === "number" &&
+            image.progress === 100 &&
+            !image.hasError
+        )
+      )
+    }
+    case "additionalImages": {
+      const additionalImages = values.additionalImages ?? []
+      return (
+        Array.isArray(additionalImages) &&
+        additionalImages.every(
+          (group) =>
+            !group ||
+            (Array.isArray(group) &&
+              group.every(
+                (image) =>
+                  typeof image?.progress === "number" &&
+                  image.progress === 100 &&
+                  !image.hasError
+              ))
+        )
+      )
+    }
+    case "featuredVideo": {
+      const rawValue = values.featuredVideo?.trim?.() ?? ""
+      if (!rawValue) return true
+
+      const normalized = /^https?:\/\//i.test(rawValue)
+        ? rawValue
+        : `https://${rawValue.replace(/^\/+/, "")}`
+
+      try {
+        const parsed = new URL(normalized)
+        return (
+          (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+          parsed.hostname.includes(".")
+        )
+      } catch {
+        return false
+      }
+    }
+  }
+}
+
+const plainTextFromRichTextHtml = (value: string) => {
+  if (!value) return ""
+
+  if (typeof window !== "undefined") {
+    const container = window.document.createElement("div")
+    container.innerHTML = value
+    return (container.textContent ?? container.innerText ?? "")
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+
+  return value
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+const getRichTextCharacterCount = (value: string) =>
+  plainTextFromRichTextHtml(value).length
+
 const DURATION_TYPE = ["days", "weeks", "hours"] as const
 
 const formatDurationUnit = (
@@ -572,13 +851,8 @@ const Sidebar = () => {
   const mediaMethods = useMediaContext()
 
   const projectInfoValues = useWatch({ control: projectInfoMethods.control })
-  const { error: projectInfoError } =
-    projectInfoSchema.safeParse(projectInfoValues)
-  const projectInfoFlattenError = projectInfoError?.flatten()
 
   const mediaValues = useWatch({ control: mediaMethods.control })
-  const { error: mediaError } = mediaFormSchema.safeParse(mediaValues)
-  const mediaFlattenError = mediaError?.flatten()
   const { projectScopeMethods, setTaskSearchDialogOpen } =
     useProjectScopeContext()
   const [phases] = projectScopeMethods
@@ -592,7 +866,7 @@ const Sidebar = () => {
     )
 
   return (
-    <div className="py-6 px-[15px] flex flex-col shrink-0 gap-y-5 xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
+    <div className="sticky top-0 py-6 px-[15px] flex h-screen flex-col shrink-0 gap-y-5 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
       {stepsState.map(({ label, isValid }, index) => {
         const isActive = currentStep === index
         // can open this step if it's the first, or the previous step is valid
@@ -649,18 +923,16 @@ const Sidebar = () => {
                             {field.label}
                           </span>
 
-                          {projectInfoMethods.formState.dirtyFields[
-                            field.name
-                          ] &&
-                            (projectInfoFlattenError?.fieldErrors[
-                              field.name
-                            ] ? (
-                              <AlertCircle className="size-[22px] text-warning-500 shrink-0" />
-                            ) : (
-                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                                <Check className="size-3 text-white" />
-                              </div>
-                            ))}
+                          {isProjectInfoFieldComplete(
+                            field.name,
+                            projectInfoValues ?? {}
+                          ) ? (
+                            <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                              <Check className="size-3 text-white" />
+                            </div>
+                          ) : (
+                            <AlertCircle className="size-[22px] text-warning-500 shrink-0" />
+                          )}
                         </div>
                       ))}
                     {label === "Media" &&
@@ -673,14 +945,13 @@ const Sidebar = () => {
                             {field.label}
                           </span>
 
-                          {mediaMethods.formState.dirtyFields[field.name] &&
-                            (mediaFlattenError?.fieldErrors[field.name] ? (
-                              <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
-                            ) : (
-                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                                <Check className="size-3 text-white" />
-                              </div>
-                            ))}
+                          {isMediaFieldComplete(field.name, mediaValues ?? {}) ? (
+                            <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                              <Check className="size-3 text-white" />
+                            </div>
+                          ) : (
+                            <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
+                          )}
                         </div>
                       ))}
                     {label === "Project Scope" &&
@@ -753,8 +1024,8 @@ const Header = ({
 }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200">
-      <h3 className="text-sm leading-[16.94px] text-gray-900 font-semibold">
-        Publish to Marketplace
+      <h3 className="text-base leading-[19.36px] text-dark-blue-400 font-semibold">
+        Create a Project
       </h3>
 
       <div className="flex items-center gap-x-3">
@@ -877,50 +1148,46 @@ const BottomBar = ({
 
     await ensureCustomSubcategories()
 
-    const categories = Array.from(
-      new Set(
-        (projectInfo.category ?? [])
-          .map((value) => value?.category?.trim())
-          .filter((value): value is string => Boolean(value))
-      )
-    )
-    const subCategories = Array.from(
-      new Set(
-        (projectInfo.category ?? [])
-          .flatMap((value) => value?.subCategories ?? [])
-          .map((value) => value?.trim())
-          .filter((value): value is string => Boolean(value))
-      )
-    )
-
     const payload: CreateProjectType = {
-      title: projectInfo.title,
-      categories,
-      subCategories,
-      categorySelections: (projectInfo.category ?? []).map((value) => ({
-        category: value?.category?.trim() ?? "",
-        subCategories: (value?.subCategories ?? [])
-          .map((subCategory) => subCategory.trim())
-          .filter(Boolean),
-      })),
-      industries: projectInfo.industry,
-      tags: projectInfo.tags,
-      skills: projectInfo.skills,
-      shortDescription: projectInfo.shortDescription,
-      fullDescription: projectInfo.fullDescription,
+      ...buildProjectDraftPayload(projectInfo),
       userId: user?.id ?? "",
     }
 
     try {
-      // 1. Create project first
-      const createProjectResponse = await ProjectAPI.CreateProject(payload)
-      const projectId =
-        createProjectResponse?.data?.projectId ??
-        createProjectResponse?.data?.id
+      const projectIdFromUrl =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("draftId")
+          : null
+      let projectId =
+        projectIdFromUrl && UUID_PATTERN.test(projectIdFromUrl)
+          ? projectIdFromUrl
+          : null
+      let createProjectResponse
+
+      if (projectId) {
+        createProjectResponse = await ProjectAPI.UpdateProjectDraft(projectId, payload)
+      } else {
+        createProjectResponse = await ProjectAPI.CreateProjectDraft(payload)
+        projectId =
+          createProjectResponse?.data?.projectId ??
+          createProjectResponse?.data?.id
+        if (projectId && typeof window !== "undefined") {
+          const urlParams = new URLSearchParams(window.location.search)
+          const type = urlParams.get("type") ?? "project"
+          window.history.replaceState(
+            window.history.state,
+            "",
+            `/publish-project?type=${encodeURIComponent(type)}&draftId=${encodeURIComponent(
+              String(projectId)
+            )}`
+          )
+        }
+      }
+
       createdProjectId = projectId ? String(projectId) : undefined
       createdProjectSlug = createProjectResponse?.data?.slug
 
-      // 2. Upload media after project is created
+      // 2. Upload media after project draft is saved
       let mediaUploadSuccess = true
       let mediaUploadErrorMsg = ""
       if (projectId) {
@@ -937,16 +1204,22 @@ const BottomBar = ({
         if (featuredFile || additionalFiles.length || videoUrl) {
           const formData = new FormData()
           formData.append("projectId", String(projectId))
-          const uniqueFeatured = makeUniqueFile(featuredFile)
+          const uniqueFeatured = await resolveMediaFileForUpload(
+            featuredFile,
+            "featured-image.jpg"
+          )
           if (uniqueFeatured) {
             formData.append("featuredImage", uniqueFeatured)
           }
-          additionalFiles.forEach((file) => {
-            const uniqueAdditional = makeUniqueFile(file)
+          for (const file of additionalFiles) {
+            const uniqueAdditional = await resolveMediaFileForUpload(
+              file,
+              "additional-image.jpg"
+            )
             if (uniqueAdditional) {
               formData.append("additionalImages", uniqueAdditional)
             }
-          })
+          }
           if (videoUrl) {
             formData.append("videoUrl", videoUrl)
           }
@@ -1013,7 +1286,7 @@ const BottomBar = ({
         return
       }
 
-      // 4. Create phases as before
+      // 4. Replace the saved project scope before publish
       if (projectId) {
         const publishPhases = (phases ?? [])
           .map((phase, phaseIndex) => {
@@ -1227,13 +1500,13 @@ const ProjectInfoTip = ({
 
       <div className="flex items-center gap-x-2">
         <Lightbulb05 className="size-[30px] shrink-0 text-primary-500" />
-        <span className="text-base leading-[30px] font-semibold text-gray-900">
+        <span className="text-base leading-normal font-semibold text-gray-900">
           Tip
         </span>
       </div>
       <div className="mt-1">
-        <span className="text-xs leading-[14.52px] text-black/60">
-          A great title gives your audience a reason to open your project
+        <span className="text-xs leading-normal text-black/60">
+          Show the outcome, audience, and value.
         </span>
       </div>
 
@@ -1241,14 +1514,15 @@ const ProjectInfoTip = ({
         <div className="flex items-center gap-x-3">
           <CheckCircle className="size-5 shrink-0 text-primary-500" />{" "}
           <span className="text-sm leading-5 font-semibold text-gray-700">
-            Focus on the purpose
+            Outcome first
           </span>
         </div>
 
         <div className="mt-3">
-          <span className="text-sm leading-[16.94px] text-gray-500">
-            Use impactful keywords that communicate value and make it easy to
-            identify in a list of projects.
+          <span className="text-sm leading-normal text-gray-500">
+            Name the deliverable, who it helps, and the result it creates. If
+            someone only reads the first two lines, they should still
+            understand the value.
           </span>
         </div>
       </div>
@@ -1257,14 +1531,15 @@ const ProjectInfoTip = ({
         <div className="flex items-center gap-x-3">
           <CheckCircle className="size-5 shrink-0 text-primary-500" />{" "}
           <span className="text-sm leading-5 font-semibold text-gray-700">
-            Focus on the purpose
+            Proof over filler
           </span>
         </div>
 
         <div className="mt-3">
-          <span className="text-sm leading-[16.94px] text-gray-500">
-            Use impactful keywords that communicate value and make it easy to
-            identify in a list of projects.
+          <span className="text-sm leading-normal text-gray-500">
+            Include scope, constraints, tools, timeline, or measurable impact.
+            Specific tags and skills improve search visibility and help the
+            right collaborators self-select.
           </span>
         </div>
       </div>
@@ -1329,13 +1604,34 @@ const projectInfoSchema = z.object({
     .max(300, "Please do not enter more than 300 character(s)"),
   fullDescription: z
     .string()
-    .min(100, "Please enter at least 100 character(s)")
-    .max(2_000, "Please do not enter more than 2,000 character(s)"),
+    .superRefine((value, ctx) => {
+      const contentLength = getRichTextCharacterCount(value)
+
+      if (contentLength < 100) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.too_small,
+          minimum: 100,
+          type: "string",
+          inclusive: true,
+          message: "Please enter at least 100 character(s)",
+        })
+      }
+
+      if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.too_big,
+          maximum: FULL_DESCRIPTION_MAX_LENGTH,
+          type: "string",
+          inclusive: true,
+          message: "Please do not enter more than 5,000 character(s)",
+        })
+      }
+    }),
   tags: z
     .array(z.string(), {
-      required_error: "Please enter/select at least 1 tags(s)",
+      required_error: "Please add at least three tags",
     })
-    .min(1, "Please enter/select at least 1 tags(s)")
+    .min(3, "Please add at least three tags")
     .max(10, "Please do not enter/select more than 10 tag(s)"),
   skills: z
     .array(z.string(), {
@@ -1359,12 +1655,12 @@ const PROJECT_INFO_PROGRESS_FIELDS: Array<keyof ProjectInfoFormValues> = [
 
 const TITLE_MAX_LENGTH = 120
 const SHORT_DESCRIPTION_MAX_LENGTH = 300
-const FULL_DESCRIPTION_MAX_LENGTH = 2000
+const FULL_DESCRIPTION_MAX_LENGTH = 5000
 const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
   "Please do not enter more than 300 character(s)"
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 2,000 character(s)"
+  "Please do not enter more than 5,000 character(s)"
 
 const FALLBACK_CATEGORY_OPTIONS = [
   "Web Development",
@@ -1500,7 +1796,7 @@ const ProjectInfo = ({
   const { toggleValidation } = useStepContext()
   const methods = useProjectInfoContext()
   const {
-    formState: { isValid, errors },
+    formState: { errors },
     setValue,
     trigger,
   } = methods
@@ -1531,12 +1827,12 @@ const ProjectInfo = ({
     null
   )
 
-  useIsomorphicLayoutEffect(() => {
-    toggleValidation(isValid)
-  }, [isValid])
-
   const onSubmit: SubmitHandler<ProjectInfoFormValues> = (values) => {}
   const projectInfoValues = useWatch({ control: methods.control })
+  const isProjectInfoValid = projectInfoSchema.safeParse(projectInfoValues).success
+  useIsomorphicLayoutEffect(() => {
+    toggleValidation(isProjectInfoValid)
+  }, [isProjectInfoValid])
   const categoryValues = useWatch({
     control: methods.control,
     name: "category",
@@ -1638,11 +1934,11 @@ const ProjectInfo = ({
     errors,
     name: "fullDescription",
   })
+  const fullDescriptionCharacterCount = getRichTextCharacterCount(
+    projectInfoValues.fullDescription ?? ""
+  )
   const shortDescriptionField = methods.register("shortDescription", {
     onBlur: () => trigger("shortDescription"),
-  })
-  const fullDescriptionField = methods.register("fullDescription", {
-    onBlur: () => trigger("fullDescription"),
   })
 
   const triggerMaxLengthError = useCallback(
@@ -1912,6 +2208,7 @@ const ProjectInfo = ({
     <form className="contents" onSubmit={methods.handleSubmit(onSubmit)}>
       <ScrollArea
         className="h-[calc(theme(size.full)-148px)] overflow-x-hidden"
+        viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
         <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-[41.45px]">
@@ -1925,8 +2222,7 @@ const ProjectInfo = ({
                     Tip
                   </h1>
                   <p className="text-xs leading-[14.52px] text-dark-blue-400 tracking-[0.01em]">
-                    A great title gives your audience a reason to open your
-                    project
+                    Show the outcome, audience, and value.
                   </p>
                 </div>
 
@@ -2678,57 +2974,72 @@ const ProjectInfo = ({
                   </HelperText>
 
                   <span className="text-xs leading-[14.52px] text-gray-500">
-                    {projectInfoValues.fullDescription?.length || 0}/
+                    {fullDescriptionCharacterCount}/
                     {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
                   </span>
                 </div>
               </div>
 
-              <Textarea
-                id="full-description"
-                placeholder="Enter a full Description"
-                maxLength={FULL_DESCRIPTION_MAX_LENGTH}
-                {...fullDescriptionField}
-                onChange={(event) => {
-                  fullDescriptionField.onChange(event)
-                  if (
-                    fullDescriptionHasError &&
-                    get(errors, "fullDescription.type") === "manual"
-                  ) {
-                    methods.clearErrors("fullDescription")
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      event.currentTarget.value.length,
-                      FULL_DESCRIPTION_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError(
-                      "fullDescription",
-                      FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                    )
-                  }
-                }}
-                onPaste={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      event.currentTarget.value.length,
-                      FULL_DESCRIPTION_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError(
-                      "fullDescription",
-                      FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                    )
-                  }
-                }}
-                isInvalid={fullDescriptionHasError}
+              <Controller
+                name="fullDescription"
+                control={methods.control}
+                render={({ field }) => (
+                  <RichTextEditor
+                    defaultValue={field.value ?? ""}
+                    placeholder="<p class='text-gray-400'>Enter a full Description</p>"
+                    allowFullscreen
+                    className={cn(
+                      "rounded-lg border bg-white transition-colors",
+                      fullDescriptionHasError
+                        ? "border-error-500"
+                        : "border-gray-300 focus-within:border-primary-500"
+                    )}
+                    toolbarClassName="left-4"
+                    editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+                    onUpdate={(html) => {
+                      field.onChange(html)
+
+                      const contentLength = getRichTextCharacterCount(html)
+                      if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+                        triggerMaxLengthError(
+                          "fullDescription",
+                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                        )
+                        return
+                      }
+
+                      if (
+                        fullDescriptionHasError &&
+                        get(errors, "fullDescription.message") ===
+                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                      ) {
+                        methods.clearErrors("fullDescription")
+                      }
+                    }}
+                    onBlur={(html) => {
+                      field.onBlur()
+
+                      const contentLength = getRichTextCharacterCount(html)
+                      if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+                        triggerMaxLengthError(
+                          "fullDescription",
+                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                        )
+                        return
+                      }
+
+                      if (
+                        fullDescriptionHasError &&
+                        get(errors, "fullDescription.message") ===
+                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                      ) {
+                        methods.clearErrors("fullDescription")
+                      }
+
+                      void trigger("fullDescription")
+                    }}
+                  />
+                )}
               />
 
               <HookFormErrorMessage
@@ -2965,7 +3276,7 @@ const ProjectInfo = ({
               </div>
             ) : null}
           </div>
-          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0">
+          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
             <ProjectInfoTip showArrow />
           </div>
         </div>
@@ -2993,13 +3304,13 @@ const MediaTip = ({ showArrow, closeTrigger, className }: MediaTipProps) => {
       {closeTrigger}
       <div className="flex items-center gap-x-2">
         <Lightbulb05 className="size-[30px] shrink-0 text-primary-500" />
-        <span className="text-base leading-[30px] font-semibold text-gray-900">
+        <span className="text-base leading-normal font-semibold text-gray-900">
           Tip
         </span>
       </div>
       <div className="mt-1">
-        <span className="text-xs leading-[14.52px] text-black/60">
-          Make your project stand out with a better images.
+        <span className="text-xs leading-normal text-black/60">
+          Strong visuals build trust at a glance.
         </span>
       </div>
 
@@ -3012,10 +3323,10 @@ const MediaTip = ({ showArrow, closeTrigger, className }: MediaTipProps) => {
         </div>
 
         <ul className="mt-3 list-disc pl-4">
-          <li className="text-sm leading-[16.94px] text-gray-500">
+          <li className="text-sm leading-normal text-gray-500">
             Upload a professional, high-quality image to represent your scope.
           </li>
-          <li className="text-sm leading-[16.94px] text-gray-500 mt-5">
+          <li className="text-sm leading-normal text-gray-500 mt-5">
             Ensure it reflects the essence of your work and attracts attention
             in the marketplace.
           </li>
@@ -3031,7 +3342,7 @@ const MediaTip = ({ showArrow, closeTrigger, className }: MediaTipProps) => {
         </div>
 
         <div className="mt-3">
-          <span className="text-sm leading-[16.94px] text-gray-500">
+          <span className="text-sm leading-normal text-gray-500">
             Use impactful keywords that communicate value and make it easy to
             identify in a list of projects.
           </span>
@@ -3157,17 +3468,18 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
   const { currentStep } = useStepRootContext()
   const [progressValue, setProgressValue] = useState(0)
 
-  useIsomorphicLayoutEffect(() => {
-    toggleValidation(isValid)
-  }, [isValid])
-
   const onSubmit: SubmitHandler<MediaFormValues> = (values) => {}
 
   const mediaValues = useWatch({ control: control })
+  const isMediaValid = mediaFormSchema.safeParse(mediaValues).success
   const { error } = mediaFormSchema.safeParse(mediaValues)
   const featuredImage = useWatch({ control, name: "featuredImages" })
   const additionalImages = useWatch({ control, name: "additionalImages" })
   const featuredVideo = useWatch({ control, name: "featuredVideo" })
+
+  useIsomorphicLayoutEffect(() => {
+    toggleValidation(isMediaValid)
+  }, [isMediaValid])
 
   const featuredImageRef = React.useRef(featuredImage)
   const progressValueRef = React.useRef(progressValue)
@@ -3245,6 +3557,7 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
     <form className="contents" onSubmit={handleSubmit(onSubmit)}>
       <ScrollArea
         className="h-[calc(theme(size.full)-148px)] overflow-x-hidden"
+        viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
         <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col gap-y-10 min-[1024px]:flex-row min-[1024px]:gap-x-[41.45px]">
@@ -3520,7 +3833,7 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
             </div>
           </div>
 
-          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0">
+          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
             <MediaTip />
           </div>
         </div>
@@ -3553,21 +3866,21 @@ const ProjectScopeTip = ({
 
       <div className="flex items-center gap-x-2">
         <Lightbulb05 className="size-[30px] shrink-0 text-primary-500" />
-        <span className="text-base leading-[30px] font-semibold text-gray-900">
+        <span className="text-base leading-normal font-semibold text-gray-900">
           Tip
         </span>
       </div>
       <div className="mt-1">
-        <span className="text-xs leading-[14.52px] block text-dark-blue-400">
-          Review and Refine Your Project Scope
+        <span className="text-xs leading-normal block text-dark-blue-400">
+          Clarify phases, owners, and deliverables.
         </span>
 
         <ul className="mt-3 list-disc pl-4 space-y-5">
-          <li className="text-xs leading-[14.52px] tracking-[0.01em] text-dark-blue-400">
+          <li className="text-xs leading-normal tracking-[0.01em] text-dark-blue-400">
             Ensure all phases and tasks align with your project goals and
             deliverables.
           </li>
-          <li className="text-xs leading-[14.52px] tracking-[0.01em] text-dark-blue-400">
+          <li className="text-xs leading-normal tracking-[0.01em] text-dark-blue-400">
             Review dependencies, timelines, and assignments for clarity.
           </li>
         </ul>
@@ -3608,15 +3921,15 @@ const ProjectScopeTip = ({
         </div>
 
         <ul className="mt-3 list-disc pl-4 space-y-5">
-          <li className="text-sm leading-[16.94px] text-gray-500">
+          <li className="text-sm leading-normal text-gray-500">
             Use the project planner to edit existing phases or tasks
             effortlessly.
           </li>
-          <li className="text-sm leading-[16.94px] text-gray-500">
+          <li className="text-sm leading-normal text-gray-500">
             Double-check for any overlapping or missing tasks to maintain
             efficiency.
           </li>
-          <li className="text-sm leading-[16.94px] text-gray-500">
+          <li className="text-sm leading-normal text-gray-500">
             Add new phases, tasks, or processes quickly with the + Add option. •
           </li>
         </ul>
@@ -5325,6 +5638,7 @@ const ProjectScope = ({
     <>
       <ScrollArea
         className="h-[calc(theme(size.full)-148px)] overflow-x-hidden"
+        viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
         <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] min-[1024px]:flex space-y-10 min-[1024px]:space-y-0 min-[1024px]:flex-row min-[1024px]:gap-x-[41.45px]">
@@ -5709,7 +6023,7 @@ const ProjectScope = ({
             />
           </div>
 
-          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0">
+          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
             <ProjectScopeTip showArrow />
           </div>
         </div>
@@ -5816,87 +6130,343 @@ function PublishProject({
   const [submissionOutcome, setSubmissionOutcome] =
     useState<SubmissionOutcome | null>(null)
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
-
-  // Autosave: persist draft to localStorage on every change so new/edited
-  // projects appear on /my-listings even if the user never clicks Save.
-  const draftIdRef = useRef<string>("")
-  if (!draftIdRef.current && typeof window !== "undefined") {
-    const urlParams = new URLSearchParams(window.location.search)
-    const existing = urlParams.get("draftId")
-    draftIdRef.current =
-      existing ||
-      `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  }
-
-  // Load existing draft on mount (if ?draftId= is in URL)
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    const urlParams = new URLSearchParams(window.location.search)
-    const id = urlParams.get("draftId")
-    if (!id) return
-    try {
-      const raw = window.localStorage.getItem("marketeq-project-drafts")
-      const drafts = raw ? JSON.parse(raw) : {}
-      const draft = drafts[id]
-      if (!draft) return
-      if (draft.projectInfo) projectInfoMethods.reset(draft.projectInfo)
-      if (draft.media) mediaMethods.reset(draft.media)
-      if (draft.projectScope) projectScopeMethods[1](draft.projectScope)
-    } catch {
-      /* ignore */
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
+  const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
+  const persistedMediaRef = useRef<{
+    featuredImage?: string
+    additionalImages?: string[]
+    featuredVideo?: string
+  } | null>(null)
+  const lastDraftPayloadRef = useRef<string>("")
+  const lastScopePayloadRef = useRef<string>("")
+  const lastMediaPayloadRef = useRef<string>("")
 
   useEffect(() => {
     if (typeof window === "undefined") return
-    // Derive draft lifecycle status. Draft → In Review → Published (after
-    // content moderation passes) or Needs Update (rejected).
-    const draftStatus: "draft" | "in_review" | "published" | "needs_update" =
-      !isProjectSubmitted
-        ? "draft"
-        : submissionOutcome?.status === "published"
-          ? "published"
-          : submissionOutcome?.status === "needs_update"
-            ? "needs_update"
-            : "in_review"
 
-    const saveDraft = () => {
+    let cancelled = false
+
+    const hydrateDraft = async () => {
+      const urlParams = new URLSearchParams(window.location.search)
+      const existingDraftId = urlParams.get("draftId")
+      const type = urlParams.get("type") ?? "project"
+
       try {
-        const info = projectInfoMethods.getValues()
-        const mediaVals = mediaMethods.getValues()
-        const scope = projectScopeMethods[0]
-        const key = "marketeq-project-drafts"
-        const raw = window.localStorage.getItem(key)
-        const drafts = raw ? JSON.parse(raw) : {}
-        drafts[draftIdRef.current] = {
-          id: draftIdRef.current,
-          projectInfo: info,
-          media: {
-            // Strip non-serializable File objects from media
-            featuredVideo: mediaVals?.featuredVideo ?? "",
-          },
-          projectScope: scope,
-          currentStep,
-          status: draftStatus,
-          savedAt: new Date().toISOString(),
+        let response
+
+        if (existingDraftId && UUID_PATTERN.test(existingDraftId)) {
+          response = await ProjectAPI.GetProjectDraft(existingDraftId)
+        } else {
+          response = await ProjectAPI.CreateProjectDraft({})
+          const nextDraftId = String(response?.data?.id ?? "")
+          if (nextDraftId) {
+            const nextUrl = `/publish-project?type=${encodeURIComponent(
+              type
+            )}&draftId=${encodeURIComponent(nextDraftId)}`
+            window.history.replaceState(window.history.state, "", nextUrl)
+          }
         }
-        window.localStorage.setItem(key, JSON.stringify(drafts))
-      } catch {
-        /* ignore serialization errors */
+
+        if (cancelled) return
+
+        const draft = response?.data ?? {}
+        const nextDraftId = String(draft?.id ?? existingDraftId ?? "")
+        setDraftProjectId(nextDraftId || null)
+
+        projectInfoMethods.reset({
+          title: draft?.title ?? "",
+          category: Array.isArray(draft?.categorySelections)
+            ? draft.categorySelections
+            : [],
+          industry: Array.isArray(draft?.industries) ? draft.industries : [],
+          shortDescription: draft?.shortDescription ?? "",
+          fullDescription: draft?.fullDescription ?? "",
+          tags: Array.isArray(draft?.tags) ? draft.tags : [],
+          skills: Array.isArray(draft?.skills) ? draft.skills : [],
+        })
+        lastDraftPayloadRef.current = JSON.stringify(
+          buildProjectDraftPayload({
+            title: draft?.title ?? "",
+            category: Array.isArray(draft?.categorySelections)
+              ? draft.categorySelections
+              : [],
+            industry: Array.isArray(draft?.industries) ? draft.industries : [],
+            shortDescription: draft?.shortDescription ?? "",
+            fullDescription: draft?.fullDescription ?? "",
+            tags: Array.isArray(draft?.tags) ? draft.tags : [],
+            skills: Array.isArray(draft?.skills) ? draft.skills : [],
+          })
+        )
+
+        const persistedMedia = draft?.media
+          ? {
+              featuredImage: draft.media.featuredImage,
+              additionalImages: Array.isArray(draft.media.additionalImages)
+                ? draft.media.additionalImages
+                : [],
+              featuredVideo: draft.media.featuredVideo ?? "",
+            }
+          : null
+        persistedMediaRef.current = persistedMedia
+
+        const hydratedFeaturedImage = persistedMedia?.featuredImage
+          ? await hydrateRemoteMediaFile(
+              persistedMedia.featuredImage,
+              "featured-image.jpg"
+            )
+          : null
+        const hydratedAdditionalImages = await Promise.all(
+          (persistedMedia?.additionalImages ?? []).map((url: string) =>
+            hydrateRemoteMediaFile(url, "additional-image.jpg")
+          )
+        )
+
+        mediaMethods.reset({
+          featuredImages: hydratedFeaturedImage
+            ? [
+                {
+                  meta: hydratedFeaturedImage,
+                  progress: 100,
+                  hasError: false,
+                },
+              ]
+            : [],
+          additionalImages: hydratedAdditionalImages.map((file) => [
+            {
+              meta: file,
+              progress: 100,
+              hasError: false,
+            },
+          ]),
+          featuredVideo: persistedMedia?.featuredVideo ?? "",
+        })
+        lastMediaPayloadRef.current = JSON.stringify({
+          featuredImage: persistedMedia?.featuredImage ?? "",
+          additionalImages: persistedMedia?.additionalImages ?? [],
+          featuredVideo: persistedMedia?.featuredVideo ?? "",
+        })
+
+        const scope = Array.isArray(draft?.scope)
+          ? draft.scope.map((phase: any) => ({
+              phaseName: phase?.name ?? "",
+              rows: Array.isArray(phase?.task)
+                ? phase.task.map((task: any) => {
+                    const durationRaw = String(task?.duration ?? "").trim()
+                    const [durationValue, ...durationTypeParts] =
+                      durationRaw.split(/\s+/)
+                    return {
+                      id: String(task?.id ?? getId()),
+                      task: task?.taskName ?? "",
+                      role: task?.role ?? "",
+                      location: Array.isArray(task?.location)
+                        ? task.location[0] ?? ""
+                        : "",
+                      experience: Array.isArray(task?.experience)
+                        ? task.experience[0] ?? task?.experienceLevel ?? ""
+                        : task?.experienceLevel ?? "",
+                      duration: {
+                        value: Number(durationValue) || 0,
+                        type:
+                          (durationTypeParts.join(" ") as
+                            | "days"
+                            | "weeks"
+                            | "hours") || "weeks",
+                      },
+                    }
+                  })
+                : [],
+            }))
+          : []
+
+        projectScopeMethods[1](scope.length > 0 ? scope : [{}])
+        lastScopePayloadRef.current = JSON.stringify(
+          buildScopeDraftPayload(nextDraftId, scope.length > 0 ? scope : [])
+        )
+      } catch (error) {
+        console.error("Failed to hydrate project draft", error)
+      } finally {
+        if (!cancelled) {
+          setIsDraftBootstrapping(false)
+        }
       }
     }
-    saveDraft()
-    if (isProjectSubmitted) return
-    const interval = setInterval(saveDraft, 2000)
+
+    void hydrateDraft()
+
+    return () => {
+      cancelled = true
+    }
+  }, [mediaMethods, projectInfoMethods, projectScopeMethods])
+
+  useEffect(() => {
+    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
+
+    const saveDraft = async () => {
+      const info = projectInfoMethods.getValues()
+      const payload = buildProjectDraftPayload({
+        title: info.title ?? "",
+        category: info.category ?? [],
+        industry: info.industry ?? [],
+        tags: info.tags ?? [],
+        skills: info.skills ?? [],
+        shortDescription: info.shortDescription ?? "",
+        fullDescription: info.fullDescription ?? "",
+      })
+
+      const serializedPayload = JSON.stringify(payload)
+      if (serializedPayload === lastDraftPayloadRef.current) return
+
+      try {
+        await ProjectAPI.UpdateProjectDraft(draftProjectId, payload)
+        lastDraftPayloadRef.current = serializedPayload
+      } catch (error) {
+        console.error("Failed to save project draft", error)
+      }
+    }
+
+    void saveDraft()
+    const interval = setInterval(() => {
+      void saveDraft()
+    }, 2000)
     return () => clearInterval(interval)
   }, [
+    draftProjectId,
+    isDraftBootstrapping,
     projectInfoMethods,
-    mediaMethods,
-    projectScopeMethods,
-    currentStep,
     isProjectSubmitted,
-    submissionOutcome,
+  ])
+
+  useEffect(() => {
+    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
+
+    const saveScope = async () => {
+      const payload = buildScopeDraftPayload(draftProjectId, projectScopeMethods[0])
+      const serializedPayload = JSON.stringify(payload)
+
+      if (serializedPayload === lastScopePayloadRef.current) return
+
+      try {
+        await ProjectAPI.ReplaceProjectScope(draftProjectId, payload)
+        lastScopePayloadRef.current = serializedPayload
+      } catch (error) {
+        console.error("Failed to save project scope draft", error)
+      }
+    }
+
+    void saveScope()
+    const interval = setInterval(() => {
+      void saveScope()
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [
+    draftProjectId,
+    isDraftBootstrapping,
+    isProjectSubmitted,
+    projectScopeMethods,
+  ])
+
+  useEffect(() => {
+    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
+
+    const saveMedia = async () => {
+      const mediaValues = mediaMethods.getValues()
+      const featuredMeta = mediaValues.featuredImages?.[0]?.meta
+      const additionalMeta =
+        mediaValues.additionalImages?.flat().map((item) => item?.meta).filter(Boolean) ?? []
+      const videoUrl = mediaValues.featuredVideo?.trim() ?? ""
+
+      const signature = JSON.stringify({
+        featuredImage: isPersistedMediaFile(featuredMeta)
+          ? featuredMeta.__persistedUrl
+          : featuredMeta?.name ?? "",
+        additionalImages: additionalMeta.map((item: any) =>
+          isPersistedMediaFile(item) ? item.__persistedUrl : item?.name ?? ""
+        ),
+        featuredVideo: videoUrl,
+      })
+
+      if (signature === lastMediaPayloadRef.current) return
+      if (!featuredMeta) return
+
+      const formData = new FormData()
+      formData.append("projectId", draftProjectId)
+
+      const resolvedFeatured = await resolveMediaFileForUpload(
+        featuredMeta,
+        "featured-image.jpg"
+      )
+      if (!resolvedFeatured) return
+      formData.append("featuredImage", resolvedFeatured)
+
+      for (const file of additionalMeta) {
+        const resolvedAdditional = await resolveMediaFileForUpload(
+          file,
+          "additional-image.jpg"
+        )
+        if (resolvedAdditional) {
+          formData.append("additionalImages", resolvedAdditional)
+        }
+      }
+
+      if (videoUrl) {
+        formData.append("videoUrl", videoUrl.replace(/^(https?:\/\/)+/i, "https://"))
+      }
+
+      try {
+        const response = await ProjectAPI.UploadMedia(formData)
+        const nextMedia = {
+          featuredImage: response?.data?.featuredImage ?? persistedMediaRef.current?.featuredImage ?? "",
+          additionalImages:
+            response?.data?.additionalImages ??
+            persistedMediaRef.current?.additionalImages ??
+            [],
+          featuredVideo:
+            response?.data?.featuredVideo ??
+            response?.data?.videoUrl ??
+            videoUrl,
+        }
+
+        persistedMediaRef.current = nextMedia
+        lastMediaPayloadRef.current = JSON.stringify(nextMedia)
+
+        mediaMethods.reset({
+          featuredImages: nextMedia.featuredImage
+            ? [
+                {
+                  meta: buildPersistedMediaFile(
+                    nextMedia.featuredImage,
+                    "featured-image.jpg"
+                  ),
+                  progress: 100,
+                  hasError: false,
+                },
+              ]
+            : [],
+          additionalImages: (nextMedia.additionalImages ?? []).map((url: string) => [
+            {
+              meta: buildPersistedMediaFile(url, "additional-image.jpg"),
+              progress: 100,
+              hasError: false,
+            },
+          ]),
+          featuredVideo: nextMedia.featuredVideo ?? "",
+        })
+      } catch (error) {
+        console.error("Failed to save project media draft", error)
+      }
+    }
+
+    const interval = setInterval(() => {
+      void saveMedia()
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [
+    draftProjectId,
+    isDraftBootstrapping,
+    isProjectSubmitted,
+    mediaMethods,
   ])
 
   const projectScopeValue = useMemo(
@@ -5944,30 +6514,9 @@ function PublishProject({
   }, [projectInfoProgress, mediaProgress, projectScopeProgress])
 
   const handleSaveExit = React.useCallback(() => {
-    try {
-      const draft = {
-        projectInfo: projectInfoMethods.getValues(),
-        media: mediaMethods.getValues(),
-        projectScope: projectScopeMethods[0],
-        currentStep,
-        savedAt: new Date().toISOString(),
-      }
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          "publish-project-draft",
-          JSON.stringify(draft)
-        )
-      }
-    } catch (err) {
-      console.error("Failed to save draft", err)
-    }
     toggleIsSaveExitDialogOpen(false)
     router.push("/my-listings")
   }, [
-    projectInfoMethods,
-    mediaMethods,
-    projectScopeMethods,
-    currentStep,
     toggleIsSaveExitDialogOpen,
     router,
   ])
@@ -5975,8 +6524,8 @@ function PublishProject({
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">
       <div className="h-[70px] border-b border-gray-200 flex items-center pr-[17px] pl-8">
-        <h1 className="text-sm leading-[16.94px] font-semibold text-gray-900">
-          Publish to Marketplace
+        <h1 className="text-base leading-[19.36px] font-semibold text-dark-blue-400">
+          Create a Project
         </h1>
       </div>
       <Empty
@@ -6043,6 +6592,12 @@ export default function PublishRootProject() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.title = "Create a Project | Marketeq"
+    }
   }, [])
 
   if (!mounted) {

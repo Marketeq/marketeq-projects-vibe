@@ -492,7 +492,6 @@ function shapeProject(row: any) {
 
   const budget =
     row.budget != null ? Number(row.budget) : deriveBudgetFromScope(row.scope);
-
   return {
     id: String(row.id),
     title: row.title,

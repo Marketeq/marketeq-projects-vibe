@@ -1,0 +1,246 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: rich-text-editor.spec.ts >> image drag preview reflects alignment with blue 2px dropcursor
+- Location: tests/rich-text-editor.spec.ts:375:5
+
+# Error details
+
+```
+Error: Channel closed
+```
+
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - button "1 Project Info" [ref=e6] [cursor=pointer]:
+            - generic [ref=e7]:
+              - generic [ref=e8]: "1"
+              - generic [ref=e9]: Project Info
+          - generic [ref=e10]:
+            - generic [ref=e11]:
+              - generic [ref=e12]: Title
+              - img [ref=e13]
+            - generic [ref=e16]:
+              - generic [ref=e17]: Category
+              - img [ref=e18]
+            - generic [ref=e21]:
+              - generic [ref=e22]: Industry(s)
+              - img [ref=e23]
+            - generic [ref=e26]:
+              - generic [ref=e27]: Short Description
+              - img [ref=e28]
+            - generic [ref=e31]:
+              - generic [ref=e32]: Full Description
+              - img [ref=e33]
+            - generic [ref=e36]:
+              - generic [ref=e37]: Tags
+              - img [ref=e38]
+            - generic [ref=e41]:
+              - generic [ref=e42]: Skills
+              - img [ref=e43]
+        - button "2 Media" [disabled] [ref=e47]:
+          - generic [ref=e48]:
+            - generic [ref=e49]: "2"
+            - generic [ref=e50]: Media
+          - img [ref=e51]
+        - button "3 Project Scope" [disabled] [ref=e54]:
+          - generic [ref=e55]:
+            - generic [ref=e56]: "3"
+            - generic [ref=e57]: Project Scope
+          - img [ref=e58]
+      - generic [ref=e60]:
+        - generic [ref=e61]:
+          - heading "Create a Project" [level=3] [ref=e62]
+          - generic [ref=e63]:
+            - button [ref=e64] [cursor=pointer]:
+              - img [ref=e65]
+            - button "Preview" [ref=e68] [cursor=pointer]:
+              - img [ref=e69]
+              - text: Preview
+            - button "Save & Exit" [ref=e72] [cursor=pointer]
+        - generic [ref=e79]:
+          - generic [ref=e80]:
+            - heading "Project Info" [level=1] [ref=e81]
+            - generic [ref=e82]:
+              - generic [ref=e83]:
+                - generic [ref=e84] [cursor=pointer]: Title
+                - generic [ref=e85]:
+                  - generic [ref=e86]: Write a title that accurately describes your project scope for the marketplace.
+                  - generic [ref=e87]: 0/120
+              - textbox "Title" [ref=e89]:
+                - /placeholder: Enter Title
+            - generic [ref=e90]:
+              - generic [ref=e91]:
+                - generic [ref=e92] [cursor=pointer]: Category
+                - generic [ref=e93]: Select categories that best fit your project scope for easier discovery.
+              - generic [ref=e94]:
+                - generic [ref=e95]: "1"
+                - generic [ref=e96]:
+                  - button "Add Category" [ref=e99] [cursor=pointer]:
+                    - generic [ref=e100]: Add Category
+                    - img [ref=e101]
+                  - generic [ref=e104]:
+                    - textbox "Add Sub-Category(s)" [ref=e106]
+                    - img [ref=e107]
+              - generic [ref=e109]:
+                - generic [ref=e110]: "2"
+                - generic [ref=e111]:
+                  - button "Add Category" [ref=e114] [cursor=pointer]:
+                    - generic [ref=e115]: Add Category
+                    - img [ref=e116]
+                  - generic [ref=e119]:
+                    - textbox "Add Sub-Category(s)" [ref=e121]
+                    - img [ref=e122]
+              - generic [ref=e124]:
+                - generic [ref=e125]: "3"
+                - generic [ref=e126]:
+                  - button "Add Category" [ref=e129] [cursor=pointer]:
+                    - generic [ref=e130]: Add Category
+                    - img [ref=e131]
+                  - generic [ref=e134]:
+                    - textbox "Add Sub-Category(s)" [ref=e136]
+                    - img [ref=e137]
+            - generic [ref=e139]:
+              - generic [ref=e140]: Suggested Categories
+              - generic [ref=e141]:
+                - button "Design / UI/UX Design" [ref=e142] [cursor=pointer]:
+                  - text: Design / UI/UX Design
+                  - img [ref=e143]
+                - button "Development / Mobile App" [ref=e145] [cursor=pointer]:
+                  - text: Development / Mobile App
+                  - img [ref=e146]
+                - button "Data Science / Machine Learning" [ref=e148] [cursor=pointer]:
+                  - text: Data Science / Machine Learning
+                  - img [ref=e149]
+            - generic [ref=e152]:
+              - generic [ref=e153]:
+                - generic [ref=e154] [cursor=pointer]: Industry
+                - generic [ref=e155]:
+                  - generic [ref=e156]: Add up to 5 industries that aligns with your project scope for targeted visibility.
+                  - generic [ref=e157]: 0/5
+              - generic [ref=e158]:
+                - textbox "Industry" [ref=e160]:
+                  - /placeholder: Add Industries
+                - img [ref=e161]
+            - generic [ref=e163]:
+              - generic [ref=e164]:
+                - generic [ref=e165] [cursor=pointer]: Short Description
+                - generic [ref=e166]:
+                  - generic [ref=e167]: Provide a brief overview of your project scope.
+                  - generic [ref=e168]: 0/300
+              - textbox "Short Description" [ref=e169]:
+                - /placeholder: Enter a short Description
+            - generic [ref=e170]:
+              - generic [ref=e171]:
+                - generic [ref=e172] [cursor=pointer]: Full Description
+                - generic [ref=e173]:
+                  - generic [ref=e174]: Provide a comprehensive description of this project, including its purpose and features.
+                  - generic [ref=e175]: 9/5,000
+              - generic [ref=e176]:
+                - button [ref=e178] [cursor=pointer]:
+                  - img [ref=e179]
+                - generic [ref=e182]:
+                  - generic [active] [ref=e183]:
+                    - paragraph [ref=e184]: Alpha
+                    - paragraph [ref=e185]: Beta
+                    - paragraph [ref=e186]
+                  - generic [ref=e188]:
+                    - generic [ref=e189]:
+                      - combobox [ref=e190] [cursor=pointer]:
+                        - generic: Normal Text
+                        - img [ref=e192]
+                      - combobox [ref=e194]
+                    - generic [ref=e196]:
+                      - button [ref=e197] [cursor=pointer]:
+                        - img [ref=e198]
+                      - button [ref=e200] [cursor=pointer]:
+                        - img [ref=e201]
+                      - button [ref=e203] [cursor=pointer]:
+                        - img [ref=e204]
+                      - button [ref=e206] [cursor=pointer]:
+                        - img [ref=e207]
+                    - generic [ref=e210]:
+                      - button [ref=e211] [cursor=pointer]:
+                        - img [ref=e212]
+                      - button [ref=e214] [cursor=pointer]:
+                        - img [ref=e215]
+                    - button [ref=e219] [cursor=pointer]:
+                      - img [ref=e220]
+                    - button "Edit with Smart Assistant" [ref=e224] [cursor=pointer]:
+                      - img [ref=e225]
+                      - generic [ref=e227]: Edit with Smart Assistant
+                    - button [ref=e230] [cursor=pointer]:
+                      - img [ref=e231]
+            - generic [ref=e234]:
+              - generic [ref=e235]:
+                - generic [ref=e236] [cursor=pointer]: Tags
+                - generic [ref=e237]:
+                  - generic [ref=e238]: Add up to 10 tags that best describe your project. Use relevant keywords to highlight its features and make it easier to find.
+                  - generic [ref=e239]: 0/10
+              - generic [ref=e240]:
+                - textbox "Tags" [ref=e242]:
+                  - /placeholder: Add Tags
+                - img [ref=e243]
+            - generic [ref=e246]:
+              - generic [ref=e247]:
+                - generic [ref=e248] [cursor=pointer]: Skills
+                - generic [ref=e249]:
+                  - generic [ref=e250]: List up to 10 key skills or proficiencies required to implement this project effectively.
+                  - generic [ref=e251]: 0/10
+              - generic [ref=e252]:
+                - textbox "Skills" [ref=e254]:
+                  - /placeholder: Add Skills
+                - img [ref=e255]
+            - generic [ref=e257]:
+              - generic [ref=e258]: Suggested Skills
+              - generic [ref=e259]:
+                - button "Node.js" [ref=e260] [cursor=pointer]:
+                  - text: Node.js
+                  - img [ref=e261]
+                - button "JavaScript" [ref=e263] [cursor=pointer]:
+                  - text: JavaScript
+                  - img [ref=e264]
+                - button "Wireframing" [ref=e266] [cursor=pointer]:
+                  - text: Wireframing
+                  - img [ref=e267]
+          - generic [ref=e270]:
+            - generic [ref=e272]:
+              - img [ref=e273]
+              - generic [ref=e275]: Tip
+            - generic [ref=e276]: Show the outcome, audience, and value.
+            - generic [ref=e277]:
+              - generic [ref=e278]:
+                - img [ref=e279]
+                - generic [ref=e282]: Lead with the outcome
+              - generic [ref=e283]: Use the title and short description to name the deliverable, who it helps, and the result it creates. If someone only reads the first two lines, they should still understand the value.
+            - generic [ref=e284]:
+              - generic [ref=e285]:
+                - img [ref=e286]
+                - generic [ref=e289]: Add proof, not filler
+              - generic [ref=e290]: In the full description, include scope, constraints, tools, timeline, or measurable impact. Specific tags and skills improve search visibility and help the right collaborators self-select.
+        - generic [ref=e291]:
+          - progressbar [ref=e292]
+          - generic [ref=e294]:
+            - generic [ref=e295]: 0% Complete
+            - button "Next" [ref=e297] [cursor=pointer]:
+              - text: Next
+              - img [ref=e298]
+    - region "Notifications (F8)":
+      - list
+  - region "Notifications (F8)":
+    - list
+  - button "Open Next.js Dev Tools" [ref=e305] [cursor=pointer]:
+    - img [ref=e306]
+  - alert [ref=e309]
+```

@@ -1,10 +1,12 @@
 "use client"
 
 import * as React from "react"
+import { parse } from "date-fns"
 import { X } from "@blend-metrics/icons"
 import type { OfferDialogData } from "@/components/offer-dialog.types"
 import {
   Button,
+  DatePicker,
   Dialog,
   DialogClose,
   DialogContent,
@@ -58,10 +60,16 @@ const DURATION_OPTIONS = [
 ] as const
 
 const CUSTOM_DURATION_UNITS = ["Months", "Years"] as const
+const SCHEDULE_OPTIONS = [
+  { value: "full-time", label: "Full Time" },
+  { value: "part-time", label: "Part Time" },
+  { value: "custom", label: "Custom" },
+] as const
 
 type RateValue = (typeof RATE_OPTIONS)[number]["value"]
 type DurationValue = (typeof DURATION_OPTIONS)[number]["value"]
 type DurationUnit = (typeof CUSTOM_DURATION_UNITS)[number]
+type ScheduleValue = (typeof SCHEDULE_OPTIONS)[number]["value"]
 
 interface CounterOfferState {
   rateValue: string
@@ -69,18 +77,24 @@ interface CounterOfferState {
   durationValue: string
   durationSelection: DurationValue
   durationUnit: DurationUnit
+  scheduleSelection: ScheduleValue
   scheduleValue: string
-  startDateValue: string
+  startDateValue?: Date
   messageValue: string
   rateSelectOpen: boolean
   durationSelectOpen: boolean
+  scheduleSelectOpen: boolean
   showCustomRateInput: boolean
   showCustomDurationInput: boolean
+  showCustomScheduleInput: boolean
 }
 
 const rateMap = new Map(RATE_OPTIONS.map((option) => [option.value, option]))
 const durationMap = new Map(
   DURATION_OPTIONS.map((option) => [option.value, option])
+)
+const scheduleMap = new Map(
+  SCHEDULE_OPTIONS.map((option) => [option.value, option])
 )
 
 const createInitialState = (
@@ -93,13 +107,16 @@ const createInitialState = (
     durationValue: "4 months",
     durationSelection: "custom-duration",
     durationUnit: "Months",
+    scheduleSelection: "full-time",
     scheduleValue: "Full Time",
-    startDateValue: "February 5th, 2026",
+    startDateValue: parse("February 5th, 2026", "MMMM do, yyyy", new Date()),
     messageValue: message ?? "",
     rateSelectOpen: false,
     durationSelectOpen: false,
+    scheduleSelectOpen: false,
     showCustomRateInput: false,
     showCustomDurationInput: false,
+    showCustomScheduleInput: false,
   }
 
   switch (variant) {
@@ -230,6 +247,33 @@ export function CounterOfferDialog({
     [updateState]
   )
 
+  const handleScheduleChange = React.useCallback(
+    (value: string) => {
+      const nextValue = value as ScheduleValue
+
+      if (nextValue === "custom") {
+        updateState((previous) => ({
+          ...previous,
+          scheduleSelection: nextValue,
+          scheduleSelectOpen: false,
+          showCustomScheduleInput: true,
+          scheduleValue: "",
+        }))
+        return
+      }
+
+      const option = scheduleMap.get(nextValue)
+      updateState((previous) => ({
+        ...previous,
+        scheduleSelection: nextValue,
+        scheduleSelectOpen: false,
+        showCustomScheduleInput: false,
+        scheduleValue: option?.label ?? previous.scheduleValue,
+      }))
+    },
+    [updateState]
+  )
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -242,7 +286,7 @@ export function CounterOfferDialog({
         }}
       >
         <div className="pointer-events-auto w-[520px] overflow-hidden rounded-[20px] bg-white shadow-xl transition-[height,width] duration-1000 ease-out [interpolate-size:allow-keywords]">
-          <div className="flex h-[60px] items-start justify-between border-b border-gray-100 px-6 py-3">
+          <div className="flex h-[68px] items-start justify-between border-b border-gray-100 px-6 py-3">
             <div className="space-y-0.5">
               <DialogTitle className="text-[18px] font-semibold leading-7 text-dark-blue-400">
                 Make a Counter Offer
@@ -442,15 +486,60 @@ export function CounterOfferDialog({
                   </div>
                 </div>
 
-                <Input
-                  value={state.scheduleValue}
-                  onChange={(event) =>
-                    updateState((previous) => ({
-                      ...previous,
-                      scheduleValue: event.target.value,
-                    }))
-                  }
-                />
+                {state.showCustomScheduleInput ? (
+                  <div className="space-y-2">
+                    <Input
+                      autoFocus
+                      placeholder="Enter schedule"
+                      value={state.scheduleValue}
+                      onChange={(event) =>
+                        updateState((previous) => ({
+                          ...previous,
+                          scheduleValue: event.target.value,
+                        }))
+                      }
+                    />
+                    <div className="flex justify-end">
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        onClick={() =>
+                          updateState((previous) => ({
+                            ...previous,
+                            showCustomScheduleInput: false,
+                            scheduleSelection: "full-time",
+                            scheduleValue: "Full Time",
+                          }))
+                        }
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Select
+                    open={state.scheduleSelectOpen}
+                    onOpenChange={(nextOpen) =>
+                      updateState((previous) => ({
+                        ...previous,
+                        scheduleSelectOpen: nextOpen,
+                      }))
+                    }
+                    value={state.scheduleSelection}
+                    onValueChange={handleScheduleChange}
+                  >
+                    <SelectTrigger className="w-full text-left text-[15px] leading-7 text-dark-blue-400">
+                      {state.scheduleValue}
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SCHEDULE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="grid grid-cols-[156px_1fr] items-start gap-x-3">
@@ -463,14 +552,18 @@ export function CounterOfferDialog({
                   </div>
                 </div>
 
-                <Input
+                <DatePicker
                   value={state.startDateValue}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     updateState((previous) => ({
                       ...previous,
-                      startDateValue: event.target.value,
+                      startDateValue: value,
                     }))
                   }
+                  placeholder="Select a date"
+                  displayFormat="MMMM do, yyyy"
+                  indicator={null}
+                  inputClassName="w-full justify-start px-[14px] text-left text-[15px] font-normal leading-7 text-gray-500"
                 />
               </div>
             </div>

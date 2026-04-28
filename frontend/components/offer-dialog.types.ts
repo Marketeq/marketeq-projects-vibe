@@ -1,6 +1,7 @@
 export interface OfferDialogData {
   senderDisplayName: string
   senderUsername: string
+  senderProfileHref?: string
   offerType: string
   receivedLabel: string
   offerTitle: string

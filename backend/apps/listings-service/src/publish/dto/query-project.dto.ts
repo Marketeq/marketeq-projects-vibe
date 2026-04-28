@@ -13,6 +13,11 @@ export class FilterProjectDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
+  userId?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
   provider?: string;
 
   @ApiProperty({ required: false })

@@ -212,23 +212,109 @@ export class CategoryService {
 
   /** Recursive tree: roots when parentUuid is null/omitted */
   async getCategoryTree(parentUuid: string | null = null): Promise<CategoryEntity[]> {
-    const where =
-      parentUuid === null || parentUuid === undefined || parentUuid === ''
-        ? { parentId: IsNull() }
-        : { parent: { uuid: parentUuid } };
+    const rows = await this.catRepo.query(`
+      SELECT
+        c.id,
+        c.uuid,
+        c.name,
+        c.slug,
+        c.approved,
+        c.published_in_marketplace,
+        l.inv_category_id AS parent_id
+      FROM public.categories c
+      LEFT JOIN public.categories_parent_lnk l
+        ON l.category_id = c.id
+      ORDER BY c.name ASC
+    `);
 
-    const nodes = await this.catRepo.find({
-      where: where as any,
-      relations: ['tags', 'parent'],
-      order: { name: 'ASC' },
+    type TreeNode = {
+      id: number;
+      uuid: string;
+      name: string;
+      slug: string;
+      approved: boolean;
+      published_in_marketplace: boolean;
+      children: TreeNode[];
+      __id: number;
+      __parentId: number | null;
+    };
+
+    const byId = new Map<number, TreeNode>();
+    rows.forEach((row: any) => {
+      byId.set(Number(row.id), {
+        id: Number(row.id),
+        uuid: row.uuid,
+        name: row.name,
+        slug: row.slug,
+        approved: Boolean(row.approved),
+        published_in_marketplace: Boolean(row.published_in_marketplace),
+        children: [],
+        __id: Number(row.id),
+        __parentId:
+          row.parent_id === null || row.parent_id === undefined
+            ? null
+            : Number(row.parent_id),
+      } as TreeNode);
     });
 
-    for (const node of nodes) {
-      (node as CategoryEntity & { children?: CategoryEntity[] }).children =
-        await this.getCategoryTree(node.uuid);
+    const roots: TreeNode[] = [];
+
+    for (const node of byId.values()) {
+      if (node.__parentId && byId.has(node.__parentId)) {
+        byId.get(node.__parentId)!.children!.push(node);
+      } else {
+        roots.push(node);
+      }
     }
 
-    return nodes;
+    const dedupeNodes = (nodes: TreeNode[]): TreeNode[] => {
+      const byKey = new Map<string, TreeNode>();
+
+      for (const node of nodes) {
+        const normalizedChildren = dedupeNodes(node.children ?? []);
+        const key = `${node.uuid || ''}::${node.slug || ''}`.toLowerCase();
+        const existing = byKey.get(key);
+
+        if (existing) {
+          existing.children = dedupeNodes([
+            ...(existing.children ?? []),
+            ...normalizedChildren,
+          ]);
+          continue;
+        }
+
+        byKey.set(key, {
+          ...node,
+          children: normalizedChildren,
+        });
+      }
+
+      return Array.from(byKey.values()).sort((a, b) =>
+        a.name.localeCompare(b.name),
+      );
+    };
+
+    const strip = (node: TreeNode): CategoryEntity => ({
+      id: node.id,
+      uuid: node.uuid,
+      name: node.name,
+      slug: node.slug,
+      approved: node.approved,
+      published_in_marketplace: node.published_in_marketplace,
+      children: (node.children ?? [])
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(strip),
+      created_at: new Date(0),
+      updated_at: new Date(0),
+    } as CategoryEntity);
+
+    if (parentUuid === null || parentUuid === undefined || parentUuid === '') {
+      return dedupeNodes(roots).map(strip);
+    }
+
+    const parentNode = Array.from(byId.values()).find((node) => node.uuid === parentUuid);
+    if (!parentNode) return [];
+    return dedupeNodes(parentNode.children ?? []).map(strip);
   }
 
   async getBreadcrumbs(uuid: string): Promise<CategoryEntity[]> {
