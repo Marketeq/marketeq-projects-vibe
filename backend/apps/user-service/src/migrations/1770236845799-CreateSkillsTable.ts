@@ -11,7 +11,11 @@ export class CreateSkillsTable1770236845799 implements MigrationInterface {
                 IF NOT EXISTS (
                     SELECT 1 FROM pg_constraint WHERE conname = 'FK_skills_userId'
                 ) THEN
-                    ALTER TABLE "skills" ADD CONSTRAINT "FK_skills_userId" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+                    BEGIN
+                        ALTER TABLE "skills" ADD CONSTRAINT "FK_skills_userId" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+                    EXCEPTION
+                        WHEN insufficient_privilege THEN NULL;
+                    END;
                 END IF;
             END $$;`,
         );

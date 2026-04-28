@@ -10,9 +10,9 @@
       "chore/*": false,
       "refactor/*": false,
       "agent/*": false,
-      "dev-main": true,
-      "staging": true,
-      "live-mvp": true
+      "dev-main": false,
+      "staging": false,
+      "live-mvp": false
     }
   }
 }
