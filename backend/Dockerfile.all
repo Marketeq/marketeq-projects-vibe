@@ -5,16 +5,19 @@ WORKDIR /app
 COPY . .
 
 # Install ALL deps including devDependencies (need @nestjs/cli for build)
-RUN npm install --include=dev --legacy-peer-deps
+# Use npm ci to strictly follow the lockfile during Render workspace builds.
+RUN npm ci --include=dev --legacy-peer-deps
 
-# Build core services for staging (split into two steps to limit memory pressure)
+# Build time-tracking-service first so it gets a clean heap during Docker builds.
+RUN npx nest build time-tracking-service
+
+# Build remaining staging services in two batches to limit memory pressure.
 RUN npx nest build api-gateway \
  && npx nest build auth-service \
  && npx nest build user-service
 RUN npx nest build listings-service \
  && npx nest build invitations-service \
- && npx nest build content-moderation-service \
- && npx nest build time-tracking-service
+ && npx nest build content-moderation-service
 
 # Prune devDependencies for smaller production image
 RUN npm prune --production --legacy-peer-deps
