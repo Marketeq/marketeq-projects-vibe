@@ -26,10 +26,16 @@ export class DeliverablesAdapterHeuristic extends DeliverablesAdapter {
           const title =
             typeof task?.title === 'string' ? task.title.trim() : '';
           if (!title) continue;
-          const key = title.toLowerCase();
+          // Include role in the key to reduce accidental collisions like
+          // "Implementation" across multiple roles.
+          const role =
+            typeof (task as any)?.roleName === 'string'
+              ? String((task as any).roleName).trim()
+              : '';
+          const key = `${title}::${role}`.toLowerCase();
           if (seen.has(key)) continue;
           seen.add(key);
-          items.push(title);
+          items.push(role ? `${title} (${role})` : title);
         }
         if (items.length === 0) return null;
         return {

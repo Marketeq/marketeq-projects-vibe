@@ -23,6 +23,7 @@ import {
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
+import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { HTTPS, ONE_SECOND } from "@/utils/constants"
 import {
@@ -230,6 +231,66 @@ type SubmissionOutcome = {
   projectSlug?: string
 }
 
+type PublishErrorClassification =
+  | "image_rejection"
+  | "video_rejection"
+  | "content_rejection"
+  | "temporary_unavailable"
+  | "other"
+
+function classifyPublishError(input: {
+  message?: string
+  statusCode?: number
+  status?: string
+}): PublishErrorClassification {
+  const message = String(input.message ?? "").trim()
+  const normalizedMessage = message.toLowerCase()
+  const normalizedStatus = String(input.status ?? "")
+    .trim()
+    .toLowerCase()
+
+  const isTemporaryUnavailable =
+    input.statusCode === 502 ||
+    input.statusCode === 503 ||
+    normalizedStatus === "publish_blocked" ||
+    /temporarily unavailable|currently unavailable|upstream listings-service|retry media upload|invalid response|failed with status 5\d{2}|bad gateway|service unavailable/.test(
+      normalizedMessage
+    )
+
+  if (isTemporaryUnavailable) {
+    return "temporary_unavailable"
+  }
+
+  const isVideoRejection =
+    /project rejected:\s*video|video violates moderation policy|unsafe frame|frame_moderation|video rejected|video moderation review/.test(
+      normalizedMessage
+    )
+
+  if (isVideoRejection) {
+    return "video_rejection"
+  }
+
+  const isImageRejection =
+    /project rejected:\s*image|image violates moderation policy|featured image failed moderation|image rejected by moderation|nudity|graphic|gore|weapon|hate symbol|blur/.test(
+      normalizedMessage
+    )
+
+  if (isImageRejection) {
+    return "image_rejection"
+  }
+
+  const isContentRejection =
+    /project rejected:\s*content|content violates moderation policy|banned keyword|bad words|profanity|content failed validation|content moderation|community guidelines|rejected by moderation/.test(
+      normalizedMessage
+    )
+
+  if (isContentRejection) {
+    return "content_rejection"
+  }
+
+  return "other"
+}
+
 function makeUniqueFile(
   file: File | Blob | undefined
 ): File | Blob | undefined {
@@ -391,7 +452,13 @@ const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
     })
     .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase))
 
-const Empty = ({ outcome }: { outcome?: SubmissionOutcome }) => {
+const Empty = ({
+  outcome,
+  draftId,
+}: {
+  outcome?: SubmissionOutcome
+  draftId?: string
+}) => {
   const status = outcome?.status ?? "in_review"
   // Category slug is not known at this point in the flow; fall back to an
   // empty string so buildProjectUrl returns "/c//projects/<slug>-<shortId>",
@@ -496,7 +563,15 @@ const Empty = ({ outcome }: { outcome?: SubmissionOutcome }) => {
           </div>
         ) : status === "needs_update" ? (
           <div className="mt-8">
-            <Button onClick={() => window.location.reload()}>
+            <Button
+              onClick={() => {
+                if (draftId) {
+                  router.push(editProjectListingUrl(draftId))
+                  return
+                }
+                router.push("/publish-project")
+              }}
+            >
               Update Project
             </Button>
           </div>
@@ -685,6 +760,28 @@ const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length
 
 const DURATION_TYPE = ["days", "weeks", "hours"] as const
+
+const formatDurationUnit = (
+  value: number,
+  type: (typeof DURATION_TYPE)[number]
+) => {
+  if (value === 1) {
+    if (type === "days") return "day"
+    if (type === "weeks") return "week"
+    return "hour"
+  }
+
+  return type
+}
+
+const durationToDays = (
+  value: number,
+  type: (typeof DURATION_TYPE)[number]
+) => {
+  if (type === "weeks") return value * 7
+  if (type === "hours") return Math.max(1, Math.ceil(value / 24))
+  return value
+}
 const EXPERIENCE_LEVELS = [
   "Student",
   "Junior",
@@ -918,7 +1015,13 @@ const Sidebar = () => {
   )
 }
 
-const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
+const Header = ({
+  onSaveExit,
+  onPreview,
+}: {
+  onSaveExit?: () => void
+  onPreview?: () => void
+}) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200">
       <h3 className="text-base leading-[19.36px] text-dark-blue-400 font-semibold">
@@ -941,7 +1044,10 @@ const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
           </Tooltip>
         </TooltipProvider>
 
-        <Button className="bg-primary-500/15 text-primary-500 hover:bg-primary-500 hover:text-white">
+        <Button
+          className="bg-primary-500/15 text-primary-500 hover:bg-primary-500 hover:text-white"
+          onClick={onPreview}
+        >
           <Eye className="size-[15px]" /> Preview
         </Button>
         <Button
@@ -1126,24 +1232,33 @@ const BottomBar = ({
               error?.response?.data?.message ||
               error?.message ||
               "Media upload failed. Please check your files."
+            const errorType = classifyPublishError({
+              message: mediaUploadErrorMsg,
+              statusCode: error?.response?.status,
+              status: error?.response?.data?.status,
+            })
+
+            if (errorType === "temporary_unavailable") {
+              toast({
+                title:
+                  mediaUploadErrorMsg ||
+                  "Media upload is temporarily unavailable. Please try again.",
+                variant: "destructive",
+              })
+              return
+            }
           }
         }
       }
 
       // 3. If media upload failed, set project to needs_update and show re-upload option
       if (!mediaUploadSuccess) {
-        const isVideoViolation =
-          /featured video|video moderation|unsafe frame|video rejected|video violates|frame_moderation/i.test(
-            mediaUploadErrorMsg
-          )
-        const isImageViolation =
-          /image|media|animation|blur|nudity|graphic|gore|weapon|hate symbol/i.test(
-            mediaUploadErrorMsg
-          )
-        const isContentModerationRejection =
-          /banned keyword|profanity|content failed validation|content moderation|community guidelines|rejected by moderation/i.test(
-            mediaUploadErrorMsg
-          )
+        const errorType = classifyPublishError({
+          message: mediaUploadErrorMsg,
+        })
+        const isVideoViolation = errorType === "video_rejection"
+        const isImageViolation = errorType === "image_rejection"
+        const isContentModerationRejection = errorType === "content_rejection"
 
         if (!isVideoViolation && !isImageViolation && !isContentModerationRejection) {
           toast({
@@ -1173,10 +1288,71 @@ const BottomBar = ({
 
       // 4. Replace the saved project scope before publish
       if (projectId) {
-        await ProjectAPI.ReplaceProjectScope(
-          String(projectId),
-          buildScopeDraftPayload(String(projectId), phases ?? [])
-        )
+        const publishPhases = (phases ?? [])
+          .map((phase, phaseIndex) => {
+            const phaseName = phase?.phaseName?.trim()
+            const rows = (phase?.rows ?? [])
+              .map((row) => {
+                const taskName = row?.task?.trim()
+                const role = row?.role?.trim()
+                const locationValue = row?.location?.trim()
+                const experienceLevel = row?.experience?.trim()
+                const durationValue = row?.duration?.value
+                const durationType = row?.duration?.type
+
+                if (
+                  !taskName ||
+                  !role ||
+                  !locationValue ||
+                  !experienceLevel ||
+                  durationValue === undefined ||
+                  !durationType
+                ) {
+                  return null
+                }
+
+                return {
+                  taskName,
+                  role,
+                  location: [locationValue],
+                  experience: [experienceLevel],
+                  experienceLevel,
+                  duration: `${durationValue} ${formatDurationUnit(
+                    durationValue,
+                    durationType
+                  )}`,
+                  phaseId: "temporary-required-string",
+                }
+              })
+              .filter((row): row is NonNullable<typeof row> => Boolean(row))
+
+            if (!phaseName || rows.length === 0) {
+              return null
+            }
+
+            const { startDay, endDay } = getPhaseDayRange(
+              phases ?? [],
+              phaseIndex
+            )
+            if (typeof endDay !== "number") {
+              return null
+            }
+
+            return {
+              name: phaseName,
+              stageName: `Stage ${phaseIndex + 1}`,
+              startDay,
+              endDay,
+              order: phaseIndex + 1,
+              projectId: String(projectId),
+              tasks: rows,
+            }
+          })
+          .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase))
+
+        for (const phasePayload of publishPhases) {
+          await ProjectAPI.CreatePhase(phasePayload)
+        }
       }
 
       if (projectId) {
@@ -1222,19 +1398,14 @@ const BottomBar = ({
         error?.response?.data?.message ||
         error?.message ||
         "Unable to submit project"
-
-      const isVideoViolation =
-        /featured video|video moderation|unsafe frame|video rejected|video violates|frame_moderation/i.test(
-          errorMessage
-        )
-      const isImageViolation =
-        /image|media|animation|blur|nudity|graphic|gore|weapon|hate symbol/i.test(
-          errorMessage
-        )
-      const isContentModerationRejection =
-        /banned keyword|profanity|content failed validation|content moderation|community guidelines|rejected by moderation/i.test(
-          errorMessage
-        )
+      const errorType = classifyPublishError({
+        message: errorMessage,
+        statusCode: error?.response?.status,
+        status: error?.response?.data?.status,
+      })
+      const isVideoViolation = errorType === "video_rejection"
+      const isImageViolation = errorType === "image_rejection"
+      const isContentModerationRejection = errorType === "content_rejection"
 
       if (isVideoViolation || isImageViolation || isContentModerationRejection) {
         await waitForReviewWindow()
@@ -1379,25 +1550,48 @@ const ProjectInfoTip = ({
 const projectInfoSchema = z.object({
   title: z
     .string()
+    .trim()
+    .min(1, "Please enter a project title")
+    .regex(
+      /^[A-Za-z0-9 -]+$/,
+      "Title can only contain letters, numbers, spaces, and hyphens."
+    )
     .min(10, "Please enter at least 10 character(s)")
     .max(120, "Please do not enter more than 120 character(s)"),
   category: z
     .array(
-      z.object({
-        category: z
-          .string({
-            required_error: "Please enter/select a category",
-          })
-          .min(1, "Please select at least 1 character(s)"),
-        subCategories: z
-          .array(z.string(), {
-            required_error: "Please add at least one subcategory",
-          })
-          .min(1, "Please enter/select at least 1 category(s)")
-          .max(5, "You can add a maximum of five (5) sub categories"),
-      })
+      z
+        .object({
+          category: z.string().default(""),
+          subCategories: z
+            .array(z.string())
+            .max(5, "You can add a maximum of five (5) sub categories"),
+        })
+        .superRefine((value, ctx) => {
+          const selectedCategory = value.category.trim()
+          const selectedSubCategories = value.subCategories.filter((subCategory) =>
+            subCategory.trim()
+          )
+
+          if (!selectedCategory) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["category"],
+              message: "Please select a category",
+            })
+            return
+          }
+
+          if (!selectedSubCategories.length) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["subCategories"],
+              message: "Please select at least 1 sub-category for this category",
+            })
+          }
+        })
     )
-    .length(3, "Please enter/select all the categories and sub-categories"),
+    .length(3, "Please select all required categories"),
   industry: z
     .array(z.string(), {
       required_error: "Please enter/select at least 1 industry(s)",
@@ -1617,16 +1811,13 @@ const ProjectInfo = ({
   const [categoryOptions, setCategoryOptions] = useState<string[]>(
     FALLBACK_CATEGORY_OPTIONS
   )
-  const [subCategoryOptions, setSubCategoryOptions] = useState<string[]>(
-    (FALLBACK_SUBCATEGORY_OPTIONS as string[]) ?? []
-  )
+  const [subCategoryOptions, setSubCategoryOptions] = useState<string[]>([])
   const [industryOptions, setIndustryOptions] = useState<string[]>(
     FALLBACK_INDUSTRY_OPTIONS
   )
   const [tagOptions, setTagOptions] = useState<string[]>(FALLBACK_TAG_OPTIONS)
   const [skills, setSkills] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
   const [suggestedSkillOptions] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
-  const [titleInputValue, setTitleInputValue] = useState("")
   const categoryRequestRef = useRef(0)
   const categoryDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -1651,13 +1842,11 @@ const ProjectInfo = ({
   }, [categoryTree])
   const getSubCategoryOptionsForCategory = useCallback(
     (categoryName?: string, query = "") => {
+      if (!categoryName) return []
+
       const normalizedQuery = query.trim().toLowerCase()
-      const activeNode = categoryName
-        ? categoryNodesByName.get(categoryName)
-        : undefined
-      const sourceNodes = activeNode
-        ? collectCategoryDescendants(activeNode)
-        : categoryTree.flatMap((node) => collectCategoryDescendants(node))
+      const activeNode = categoryNodesByName.get(categoryName)
+      const sourceNodes = activeNode ? collectCategoryDescendants(activeNode) : []
 
       return getUniqueOptions(
         sourceNodes
@@ -1708,11 +1897,12 @@ const ProjectInfo = ({
         methods.setValue(fieldName, nextSubCategories, {
           shouldDirty: true,
           shouldTouch: true,
-          shouldValidate: true,
+          shouldValidate: false,
         })
       }
 
-      void methods.trigger(`category.${index}`)
+      methods.clearErrors(`category.${index}.category`)
+      methods.clearErrors(`category.${index}.subCategories`)
     },
     [getSubCategoryOptionsForCategory, methods]
   )
@@ -1731,8 +1921,7 @@ const ProjectInfo = ({
       )
     )
   )
-  const titleCharacterCount =
-    titleInputValue.length || projectInfoValues.title?.length || 0
+  const titleCharacterCount = projectInfoValues.title?.length || 0
   const titleHasError = hookFormHasError({
     errors,
     name: "title",
@@ -1748,43 +1937,9 @@ const ProjectInfo = ({
   const fullDescriptionCharacterCount = getRichTextCharacterCount(
     projectInfoValues.fullDescription ?? ""
   )
-  const hasCommittedTitle =
-    typeof projectInfoValues.title === "string" &&
-    projectInfoValues.title.trim().length > 0
   const shortDescriptionField = methods.register("shortDescription", {
     onBlur: () => trigger("shortDescription"),
   })
-
-  const commitTitleValue = useCallback(() => {
-    const nextValue = titleInputValue.trim()
-
-    if (!nextValue) {
-      void methods.trigger("title")
-      return
-    }
-
-    methods.setValue("title", nextValue, {
-      shouldDirty: true,
-      shouldTouch: true,
-      shouldValidate: true,
-    })
-    void methods.trigger("title").then((isValid) => {
-      if (isValid) {
-        methods.clearErrors("title")
-        setTitleInputValue("")
-      }
-    })
-  }, [methods, titleInputValue])
-
-  const clearCommittedTitle = useCallback(() => {
-    methods.setValue("title", "", {
-      shouldDirty: true,
-      shouldTouch: true,
-      shouldValidate: true,
-    })
-    methods.clearErrors("title")
-    setTitleInputValue("")
-  }, [methods])
 
   const triggerMaxLengthError = useCallback(
     (
@@ -1840,6 +1995,11 @@ const ProjectInfo = ({
         ? categoryValues[index]?.category
         : undefined
       const fallbackOptions = getSubCategoryOptionsForCategory(activeCategoryName)
+
+      if (!activeCategoryName) {
+        setSubCategoryOptions([])
+        return
+      }
 
       if (!trimmedQuery) {
         setSubCategoryOptions(fallbackOptions)
@@ -2020,15 +2180,28 @@ const ProjectInfo = ({
       ),
     [categoryValues]
   )
+  const selectedCategoryNames = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(categoryValues) ? categoryValues : [])
+          .map((item) => item?.category?.trim())
+          .filter(
+            (category): category is string =>
+              typeof category === "string" && category.length > 0
+          )
+      ),
+    [categoryValues]
+  )
   const suggestedForDisplay = useMemo(
     () =>
       suggested
         .filter(
           ({ category, subCategory }) =>
+            !selectedCategoryNames.has(category) &&
             !selectedSuggestedPairs.has(`${category}::${subCategory}`)
         )
         .slice(0, 3),
-    [selectedSuggestedPairs, suggested]
+    [selectedCategoryNames, selectedSuggestedPairs, suggested]
   )
 
   return (
@@ -2107,81 +2280,56 @@ const ProjectInfo = ({
                 </div>
               </div>
 
-              <div className="relative">
-                <Input
-                  id="title"
-                  type="text"
-                  placeholder={hasCommittedTitle && !titleInputValue ? "" : "Enter Title"}
-                  value={titleInputValue}
-                  maxLength={TITLE_MAX_LENGTH}
-                  onChange={(event) => {
-                    setTitleInputValue(
-                      event.target.value.slice(0, TITLE_MAX_LENGTH)
+              <Input
+                id="title"
+                type="text"
+                placeholder="Enter Title"
+                value={projectInfoValues.title ?? ""}
+                maxLength={TITLE_MAX_LENGTH}
+                onChange={(event) => {
+                  methods.setValue(
+                    "title",
+                    event.target.value.slice(0, TITLE_MAX_LENGTH),
+                    {
+                      shouldDirty: true,
+                      shouldTouch: true,
+                      shouldValidate: false,
+                    }
+                  )
+                  if (
+                    titleHasError &&
+                    get(errors, "title.type") === "manual"
+                  ) {
+                    methods.clearErrors("title")
+                  }
+                }}
+                onBlur={() => void methods.trigger("title")}
+                onKeyDown={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      projectInfoValues.title?.length || 0,
+                      TITLE_MAX_LENGTH
                     )
-                    if (
-                      titleHasError &&
-                      get(errors, "title.type") === "manual"
-                    ) {
-                      methods.clearErrors("title")
-                    }
-                  }}
-                  onBlur={commitTitleValue}
-                  onKeyDown={(event) => {
-                    if (
-                      shouldBlockMaxLengthInput(
-                        event,
-                        titleInputValue.length,
-                        TITLE_MAX_LENGTH
-                      )
-                    ) {
-                      event.preventDefault()
-                      triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
-                      return
-                    }
-                    if (event.key !== "Enter") return
+                  ) {
                     event.preventDefault()
-                    commitTitleValue()
-                  }}
-                  onPaste={(event) => {
-                    if (
-                      shouldBlockMaxLengthInput(
-                        event,
-                        titleInputValue.length,
-                        TITLE_MAX_LENGTH
-                      )
-                    ) {
-                      event.preventDefault()
-                      triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
-                    }
-                  }}
-                  className={cn(
-                    hasCommittedTitle &&
-                      !titleInputValue &&
-                      !titleHasError &&
-                      "text-transparent"
-                  )}
-                  isInvalid={titleHasError}
-                />
-
-                {hasCommittedTitle && !titleInputValue && !titleHasError ? (
-                  <div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center px-[14px]">
-                    <div className="pointer-events-auto inline-flex max-w-full items-center gap-1 rounded-md bg-primary-50 px-2 py-1 text-sm leading-none text-primary-500">
-                      <span className="truncate">
-                        {projectInfoValues.title}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="Remove selected title"
-                        className="inline-flex size-4 items-center justify-center rounded-sm opacity-60 transition hover:bg-primary-100 hover:opacity-100"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={clearCommittedTitle}
-                      >
-                        <X2 className="size-3" />
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                  }
+                }}
+                onPaste={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      projectInfoValues.title?.length || 0,
+                      TITLE_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                  }
+                }}
+                isInvalid={titleHasError}
+              />
 
               <HookFormErrorMessage
                 errors={errors}
@@ -3938,6 +4086,11 @@ const TaskDialog = ({
       },
     },
   })
+  const taskDurationValue = useWatch({
+    control,
+    name: "duration.value",
+    defaultValue: 1,
+  })
   const onSubmit: SubmitHandler<TaskFormValues> = (values) => {
     onAddTask(values)
     toggleIsOpen(false)
@@ -3965,6 +4118,59 @@ const TaskDialog = ({
               name="task"
               render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
             />
+          </div>
+
+          <div className="space-y-1.5 mt-3">
+            <Label htmlFor="duration" className="text-gray-700" size="sm">
+              Duration
+            </Label>
+            <div className="grid grid-cols-2 gap-x-3">
+              <Input
+                id="duration"
+                className="text-gray-900"
+                type="number"
+                min={1}
+                {...register("duration.value")}
+                isInvalid={hookFormHasError({ errors, name: "duration.value" })}
+              />
+              <Controller
+                control={control}
+                name="duration.type"
+                render={({ field: { value, onChange } }) => (
+                  <Listbox value={value} onChange={onChange} id="duration">
+                    <ListboxButton placeholder="Select">
+                      {({ value: selectedValue }) =>
+                        formatDurationUnit(
+                          Number(taskDurationValue) || 0,
+                          selectedValue as (typeof DURATION_TYPE)[number]
+                        ).replace(/^./, (character) => character.toUpperCase())
+                      }
+                    </ListboxButton>
+                    <ListboxOptions>
+                      {DURATION_TYPE.map((format) => (
+                        <ListboxOption key={format} value={format}>
+                          {formatDurationUnit(
+                            Number(taskDurationValue) || 0,
+                            format
+                          ).replace(/^./, (character) => character.toUpperCase())}
+                        </ListboxOption>
+                      ))}
+                    </ListboxOptions>
+                  </Listbox>
+                )}
+              />
+            </div>
+
+            {(hookFormHasError({ errors, name: "duration.value" }) ||
+              hookFormHasError({
+                errors,
+                name: "duration.type",
+              })) && (
+              <ErrorMessage size="sm">
+                {get(errors, "duration.value.message") ||
+                  get(errors, "duration.type.message")}
+              </ErrorMessage>
+            )}
           </div>
 
           <div className="space-y-1.5 mt-3">
@@ -4032,48 +4238,6 @@ const TaskDialog = ({
               name="experience"
               render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
             />
-          </div>
-
-          <div className="space-y-1.5 mt-3">
-            <Label htmlFor="duration" className="text-gray-700" size="sm">
-              Duration
-            </Label>
-            <div className="grid grid-cols-2 gap-x-3">
-              <Input
-                id="duration"
-                className="text-gray-900"
-                defaultValue="1"
-                {...register("duration.value")}
-                isInvalid={hookFormHasError({ errors, name: "duration.value" })}
-              />
-              <Controller
-                control={control}
-                name="duration.type"
-                render={({ field: { value, onChange } }) => (
-                  <Listbox value={value} onChange={onChange} id="duration">
-                    <ListboxButton placeholder="Select" />
-                    <ListboxOptions>
-                      {DURATION_TYPE.map((format) => (
-                        <ListboxOption key={format} value={format}>
-                          {format.charAt(0).toUpperCase() + format.slice(1)}
-                        </ListboxOption>
-                      ))}
-                    </ListboxOptions>
-                  </Listbox>
-                )}
-              />
-            </div>
-
-            {(hookFormHasError({ errors, name: "duration.value" }) ||
-              hookFormHasError({
-                errors,
-                name: "duration.type",
-              })) && (
-              <ErrorMessage size="sm">
-                {get(errors, "duration.value.message") ||
-                  get(errors, "duration.type.message")}
-              </ErrorMessage>
-            )}
           </div>
 
           <DialogFooter className="mt-8 grid gap-x-3">
@@ -4460,6 +4624,51 @@ interface Phase {
   rows?: PhaseRow[]
 }
 
+const getPhaseDurationInDays = (phase?: Phase) => {
+  const rows = phase?.rows ?? []
+  const durations = rows
+    .map((row) => {
+      const value = Number(row?.duration?.value)
+      const type = row?.duration?.type
+
+      if (!Number.isFinite(value) || value <= 0 || !type) return null
+      return durationToDays(value, type)
+    })
+    .filter((value): value is number => typeof value === "number")
+
+  return durations.length ? Math.max(...durations) : 0
+}
+
+const getPhaseDayRange = (phases: Phase[], phaseIndex: number) => {
+  const priorDays = phases
+    .slice(0, phaseIndex)
+    .reduce((sum, phase) => sum + getPhaseDurationInDays(phase), 0)
+  const startDay = priorDays + 1
+  const duration = getPhaseDurationInDays(phases[phaseIndex])
+  const endDay = duration > 0 ? startDay + duration - 1 : undefined
+
+  return { startDay, endDay }
+}
+
+const getPhaseDayRangeLabel = (phases: Phase[], phaseIndex: number) => {
+  const { startDay, endDay } = getPhaseDayRange(phases, phaseIndex)
+
+  return typeof endDay === "number"
+    ? `Day ${startDay} - Day ${endDay}`
+    : `Day ${startDay} -`
+}
+
+const getPhaseSearchTargetId = (phaseIndex: number) =>
+  `project-scope-phase-${phaseIndex}`
+
+const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
+  `project-scope-phase-${phaseIndex}-task-${rowIndex}`
+
+const normalizeSearchText = (value?: string) =>
+  (value ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
 interface PhaseTableRowProps {
   row: Row<PhaseRow>
 }
@@ -4544,6 +4753,7 @@ const columns = [
             onValueChange={setValue}
             placeholder="Add Role"
             options={table.options.meta?.roles}
+            triggerClassName="max-w-full"
           />
         </TableCell>
       )
@@ -4601,7 +4811,8 @@ const columns = [
           type="button"
           onClick={() => table.options.meta?.openDurationDialog(index)}
         >
-          {getValue().value} {getValue().type}
+          {getValue().value}{" "}
+          {formatDurationUnit(getValue().value, getValue().type)}
         </button>
       </TableCell>
     ),
@@ -4803,7 +5014,11 @@ const PhaseTable = ({
 type PhaseNameDialogAction =
   | {
       type: "TOGGLE"
-      payload?: { open?: boolean; addTo?: "start" | "end" }
+      payload?: {
+        open?: boolean
+        addTo?: "start" | "end" | "below"
+        targetPhaseIndex?: number
+      }
     }
   | { type: "EDIT"; payload: number }
 
@@ -4811,7 +5026,7 @@ type PhaseNameDialogState = {
   open: boolean
   editingPhaseIndex: number | null
   action: "EDIT" | null
-  addTo: "start" | "end"
+  addTo: "start" | "end" | "below"
 }
 
 const phaseNameDialogReducer = (
@@ -4824,7 +5039,10 @@ const phaseNameDialogReducer = (
       return {
         ...state,
         action: null,
-        editingPhaseIndex: null,
+        editingPhaseIndex:
+          typeof payload?.targetPhaseIndex === "number"
+            ? payload.targetPhaseIndex
+            : null,
         open: typeof payload?.open === "boolean" ? payload.open : !state.open,
         addTo: typeof payload?.addTo === "string" ? payload.addTo : "end",
       }
@@ -5006,7 +5224,7 @@ const ProjectScope = ({
           // Toast
           toast({
             variant: "success",
-            title: "Phase renamed",
+            title: "Phase Renamed",
             action: (
               <ToastAction
                 altText="Undo"
@@ -5028,25 +5246,42 @@ const ProjectScope = ({
       }
 
       // Do the add
+      let insertedPhaseIndex = 0
       setPhases((prev) => {
-        if (addTo === "start") {
-          // prepend (added above)
-          return [{ phaseName }, ...prev]
-        }
-        // append (added below)
-        return [...prev, { phaseName }]
+        const next = [...prev]
+        const hasTargetPhase =
+          typeof editingPhaseIndex === "number" &&
+          editingPhaseIndex >= 0 &&
+          editingPhaseIndex < next.length
+
+        insertedPhaseIndex =
+          addTo === "start" && hasTargetPhase
+            ? editingPhaseIndex
+            : addTo === "below" && hasTargetPhase
+              ? editingPhaseIndex + 1
+              : next.length
+
+        next.splice(insertedPhaseIndex, 0, { phaseName })
+        return next
       })
 
       // Prepare Undo for this action
-      lastUndo.current =
-        addTo === "start"
-          ? () => setPhases((prev) => prev.slice(1)) // remove first
-          : () => setPhases((prev) => prev.slice(0, -1)) // remove last
+      lastUndo.current = () =>
+        setPhases((prev) =>
+          prev.filter((_, index) => index !== insertedPhaseIndex)
+        )
 
       // Toast
+      const phaseAddedTitle =
+        addTo === "start"
+          ? "Phase Added Above"
+          : addTo === "below"
+            ? "Phase Added Below"
+            : "Phase Added"
+
       toast({
         variant: "success",
-        title: addTo === "start" ? "Phase added above" : "Phase added below",
+        title: phaseAddedTitle,
         action: (
           <ToastAction
             altText="Undo"
@@ -5138,7 +5373,7 @@ const ProjectScope = ({
       if (didChange) {
         toast({
           variant: "success",
-          title: "Duration changed",
+          title: "Duration Changed",
           action: (
             <ToastAction
               altText="Undo"
@@ -5195,7 +5430,7 @@ const ProjectScope = ({
         return prev.filter((_, i) => i !== idx)
       })
 
-      pushSuccess("Phase deleted", lastUndo.current || undefined)
+      pushSuccess("Phase Deleted", lastUndo.current || undefined)
       lastUndo.current = null
     },
     [pushSuccess, setPhases]
@@ -5243,7 +5478,7 @@ const ProjectScope = ({
         return next
       })
 
-      pushSuccess("Phase duplicated", lastUndo.current || undefined)
+      pushSuccess("Phase Duplicated", lastUndo.current || undefined)
       lastUndo.current = null
     },
     [pushSuccess, setPhases]
@@ -5312,6 +5547,11 @@ const ProjectScope = ({
       },
       values: durationFormValues,
     })
+    const selectedDurationValue = useWatch({
+      control,
+      name: "duration.value",
+      defaultValue: 1,
+    })
 
     React.useEffect(() => {
       if (open && durationFormValues) {
@@ -5353,9 +5593,24 @@ const ProjectScope = ({
                 control={control}
                 render={({ field }) => (
                   <select {...field} className="border rounded px-2 py-1">
-                    <option value="days">Days</option>
-                    <option value="weeks">Weeks</option>
-                    <option value="hours">Hours</option>
+                    <option value="days">
+                      {formatDurationUnit(
+                        Number(selectedDurationValue) || 0,
+                        "days"
+                      ).replace(/^./, (character) => character.toUpperCase())}
+                    </option>
+                    <option value="weeks">
+                      {formatDurationUnit(
+                        Number(selectedDurationValue) || 0,
+                        "weeks"
+                      ).replace(/^./, (character) => character.toUpperCase())}
+                    </option>
+                    <option value="hours">
+                      {formatDurationUnit(
+                        Number(selectedDurationValue) || 0,
+                        "hours"
+                      ).replace(/^./, (character) => character.toUpperCase())}
+                    </option>
                   </select>
                 )}
               />
@@ -5374,6 +5629,7 @@ const ProjectScope = ({
     )
   }
   const currentPhaseName =
+    phaseDialogState.action === "EDIT" &&
     typeof phaseDialogState.editingPhaseIndex === "number"
       ? (phases[phaseDialogState.editingPhaseIndex]?.phaseName ?? "")
       : ""
@@ -5508,15 +5764,9 @@ const ProjectScope = ({
                               </span>
                             </div>
 
-                            <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:w-[118px] md:pl-0">
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 1
-                              </span>
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                -
-                              </span>
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 8
+                                {getPhaseDayRangeLabel(phases, index)}
                               </span>
                             </div>
                           </div>
@@ -5536,10 +5786,21 @@ const ProjectScope = ({
                               onInsertAbove={() =>
                                 dispatch({
                                   type: "TOGGLE",
-                                  payload: { addTo: "start" },
+                                  payload: {
+                                    addTo: "start",
+                                    targetPhaseIndex: index,
+                                  },
                                 })
                               }
-                              onInsertBelow={() => dispatch({ type: "TOGGLE" })}
+                              onInsertBelow={() =>
+                                dispatch({
+                                  type: "TOGGLE",
+                                  payload: {
+                                    addTo: "below",
+                                    targetPhaseIndex: index,
+                                  },
+                                })
+                              }
                               onDuplicatePhase={() => onDuplicatePhase(index)}
                             />
                             <PlusDropdown
@@ -5612,21 +5873,15 @@ const ProjectScope = ({
                                 )}
                                 <div className="inline-block md:hidden">
                                   <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    Day 1 - Day 8
+                                    {getPhaseDayRangeLabel(phases, index)}
                                   </span>
                                 </div>
                               </div>
                             </div>
 
-                            <div className="hidden md:inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                            <div className="hidden items-center justify-start gap-x-2 pl-10 md:inline-flex md:w-[118px] md:pl-0">
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 1
-                              </span>
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                -
-                              </span>
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 8
+                                {getPhaseDayRangeLabel(phases, index)}
                               </span>
                             </div>
                           </div>
@@ -5646,10 +5901,21 @@ const ProjectScope = ({
                               onInsertAbove={() =>
                                 dispatch({
                                   type: "TOGGLE",
-                                  payload: { addTo: "start" },
+                                  payload: {
+                                    addTo: "start",
+                                    targetPhaseIndex: index,
+                                  },
                                 })
                               }
-                              onInsertBelow={() => dispatch({ type: "TOGGLE" })}
+                              onInsertBelow={() =>
+                                dispatch({
+                                  type: "TOGGLE",
+                                  payload: {
+                                    addTo: "below",
+                                    targetPhaseIndex: index,
+                                  },
+                                })
+                              }
                               onDuplicatePhase={() => onDuplicatePhase(index)}
                             />
                             <PlusDropdown
@@ -5839,6 +6105,19 @@ function PublishProject({
   const router = useRouter()
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
     resolver: zodResolver(projectInfoSchema),
+    defaultValues: {
+      title: "",
+      category: [
+        { category: "", subCategories: [] },
+        { category: "", subCategories: [] },
+        { category: "", subCategories: [] },
+      ],
+      industry: [],
+      shortDescription: "",
+      fullDescription: "",
+      tags: [],
+      skills: [],
+    },
   })
   const mediaMethods = useForm<MediaFormValues>({
     resolver: zodResolver(mediaFormSchema),
@@ -6249,7 +6528,10 @@ function PublishProject({
           Create a Project
         </h1>
       </div>
-      <Empty outcome={submissionOutcome ?? undefined} />
+      <Empty
+        outcome={submissionOutcome ?? undefined}
+        draftId={draftIdRef.current}
+      />
     </div>
   ) : (
     <StepperProvider value={stepperValue}>

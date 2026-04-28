@@ -1,71 +1,278 @@
 [
-  { "id": "web-application", "label": "Web Application" },
-  { "id": "mobile-application", "label": "Mobile Application" },
-  { "id": "dashboard-development", "label": "Dashboard Development" },
-  { "id": "saas-platform", "label": "SaaS Platform" },
-  { "id": "e-commerce-platform", "label": "E-commerce Platform" },
-  { "id": "automation-tool", "label": "Automation Tool" },
-  { "id": "cloud-migration", "label": "Cloud Migration" },
-  { "id": "legacy-modernization", "label": "Legacy Modernization" },
-  { "id": "data-platform", "label": "Data Platform" },
-  { "id": "ai-product", "label": "AI Product" },
-  { "id": "blockchain-platform", "label": "Blockchain Platform" },
-  { "id": "smart-contracts", "label": "Smart Contracts" },
-  { "id": "javascript", "label": "JavaScript" },
-  { "id": "typescript", "label": "TypeScript" },
-  { "id": "python", "label": "Python" },
-  { "id": "java", "label": "Java" },
-  { "id": "c-sharp", "label": "C#" },
-  { "id": "c-plus-plus", "label": "C++" },
-  { "id": "c", "label": "C" },
-  { "id": "go", "label": "Go" },
-  { "id": "rust", "label": "Rust" },
-  { "id": "ruby", "label": "Ruby" },
-  { "id": "php", "label": "PHP" },
-  { "id": "kotlin", "label": "Kotlin" },
-  { "id": "swift", "label": "Swift" },
-  { "id": "dart", "label": "Dart" },
-  { "id": "scala", "label": "Scala" },
-  { "id": "r", "label": "R" },
-  { "id": "matlab", "label": "MATLAB" },
-  { "id": "sql", "label": "SQL" },
-  { "id": "bash", "label": "Bash" },
-  { "id": "powershell", "label": "PowerShell" },
-  { "id": "react", "label": "React" },
-  { "id": "next-js", "label": "Next.js" },
-  { "id": "vue-js", "label": "Vue.js" },
-  { "id": "nuxt-js", "label": "Nuxt.js" },
-  { "id": "angular", "label": "Angular" },
-  { "id": "svelte", "label": "Svelte" },
-  { "id": "node-js", "label": "Node.js" },
-  { "id": "nestjs", "label": "NestJS" },
-  { "id": "express-js", "label": "Express.js" },
-  { "id": "django", "label": "Django" },
-  { "id": "fastapi", "label": "FastAPI" },
-  { "id": "spring-boot", "label": "Spring Boot" },
-  { "id": "ruby-on-rails", "label": "Ruby on Rails" },
-  { "id": "dotnet", "label": ".NET" },
-  { "id": "flutter", "label": "Flutter" },
-  { "id": "react-native", "label": "React Native" },
-  { "id": "pytorch", "label": "PyTorch" },
-  { "id": "tensorflow", "label": "TensorFlow" },
-  { "id": "aws", "label": "AWS" },
-  { "id": "azure", "label": "Azure" },
-  { "id": "gcp", "label": "GCP" },
-  { "id": "docker", "label": "Docker" },
-  { "id": "kubernetes", "label": "Kubernetes" },
-  { "id": "terraform", "label": "Terraform" },
-  { "id": "ci-cd", "label": "CI/CD" },
-  { "id": "git", "label": "Git" },
-  { "id": "github", "label": "GitHub" },
-  { "id": "gitlab", "label": "GitLab" },
-  { "id": "postman", "label": "Postman" },
-  { "id": "figma", "label": "Figma" },
-  { "id": "jira", "label": "Jira" },
-  { "id": "notion", "label": "Notion" },
-  { "id": "webpack", "label": "Webpack" },
-  { "id": "vite", "label": "Vite" },
-  { "id": "jest", "label": "Jest" },
-  { "id": "cypress", "label": "Cypress" },
-  { "id": "playwright", "label": "Playwright" }
+    {
+        "id":  "web-application",
+        "label":  "Web Application"
+    },
+    {
+        "id":  "mobile-application",
+        "label":  "Mobile Application"
+    },
+    {
+        "id":  "dashboard-development",
+        "label":  "Dashboard Development"
+    },
+    {
+        "id":  "saas-platform",
+        "label":  "SaaS Platform"
+    },
+    {
+        "id":  "e-commerce-platform",
+        "label":  "E-commerce Platform"
+    },
+    {
+        "id":  "automation-tool",
+        "label":  "Automation Tool"
+    },
+    {
+        "id":  "cloud-migration",
+        "label":  "Cloud Migration"
+    },
+    {
+        "id":  "legacy-modernization",
+        "label":  "Legacy Modernization"
+    },
+    {
+        "id":  "data-platform",
+        "label":  "Data Platform"
+    },
+    {
+        "id":  "ai-product",
+        "label":  "AI Product"
+    },
+    {
+        "id":  "blockchain-platform",
+        "label":  "Blockchain Platform"
+    },
+    {
+        "id":  "smart-contracts",
+        "label":  "Smart Contracts"
+    },
+    {
+        "id":  "javascript",
+        "label":  "JavaScript"
+    },
+    {
+        "id":  "typescript",
+        "label":  "TypeScript"
+    },
+    {
+        "id":  "python",
+        "label":  "Python"
+    },
+    {
+        "id":  "java",
+        "label":  "Java"
+    },
+    {
+        "id":  "c-sharp",
+        "label":  "C#"
+    },
+    {
+        "id":  "c-plus-plus",
+        "label":  "C++"
+    },
+    {
+        "id":  "c",
+        "label":  "C"
+    },
+    {
+        "id":  "go",
+        "label":  "Go"
+    },
+    {
+        "id":  "rust",
+        "label":  "Rust"
+    },
+    {
+        "id":  "ruby",
+        "label":  "Ruby"
+    },
+    {
+        "id":  "php",
+        "label":  "PHP"
+    },
+    {
+        "id":  "kotlin",
+        "label":  "Kotlin"
+    },
+    {
+        "id":  "swift",
+        "label":  "Swift"
+    },
+    {
+        "id":  "dart",
+        "label":  "Dart"
+    },
+    {
+        "id":  "scala",
+        "label":  "Scala"
+    },
+    {
+        "id":  "r",
+        "label":  "R"
+    },
+    {
+        "id":  "matlab",
+        "label":  "MATLAB"
+    },
+    {
+        "id":  "sql",
+        "label":  "SQL"
+    },
+    {
+        "id":  "bash",
+        "label":  "Bash"
+    },
+    {
+        "id":  "powershell",
+        "label":  "PowerShell"
+    },
+    {
+        "id":  "react",
+        "label":  "React"
+    },
+    {
+        "id":  "next-js",
+        "label":  "Next.js"
+    },
+    {
+        "id":  "vue-js",
+        "label":  "Vue.js"
+    },
+    {
+        "id":  "nuxt-js",
+        "label":  "Nuxt.js"
+    },
+    {
+        "id":  "angular",
+        "label":  "Angular"
+    },
+    {
+        "id":  "svelte",
+        "label":  "Svelte"
+    },
+    {
+        "id":  "node-js",
+        "label":  "Node.js"
+    },
+    {
+        "id":  "nestjs",
+        "label":  "NestJS"
+    },
+    {
+        "id":  "express-js",
+        "label":  "Express.js"
+    },
+    {
+        "id":  "django",
+        "label":  "Django"
+    },
+    {
+        "id":  "fastapi",
+        "label":  "FastAPI"
+    },
+    {
+        "id":  "spring-boot",
+        "label":  "Spring Boot"
+    },
+    {
+        "id":  "ruby-on-rails",
+        "label":  "Ruby on Rails"
+    },
+    {
+        "id":  "dotnet",
+        "label":  ".NET"
+    },
+    {
+        "id":  "flutter",
+        "label":  "Flutter"
+    },
+    {
+        "id":  "react-native",
+        "label":  "React Native"
+    },
+    {
+        "id":  "pytorch",
+        "label":  "PyTorch"
+    },
+    {
+        "id":  "tensorflow",
+        "label":  "TensorFlow"
+    },
+    {
+        "id":  "aws",
+        "label":  "AWS"
+    },
+    {
+        "id":  "azure",
+        "label":  "Azure"
+    },
+    {
+        "id":  "gcp",
+        "label":  "GCP"
+    },
+    {
+        "id":  "docker",
+        "label":  "Docker"
+    },
+    {
+        "id":  "kubernetes",
+        "label":  "Kubernetes"
+    },
+    {
+        "id":  "terraform",
+        "label":  "Terraform"
+    },
+    {
+        "id":  "ci-cd",
+        "label":  "CI/CD"
+    },
+    {
+        "id":  "git",
+        "label":  "Git"
+    },
+    {
+        "id":  "github",
+        "label":  "GitHub"
+    },
+    {
+        "id":  "gitlab",
+        "label":  "GitLab"
+    },
+    {
+        "id":  "postman",
+        "label":  "Postman"
+    },
+    {
+        "id":  "figma",
+        "label":  "Figma"
+    },
+    {
+        "id":  "jira",
+        "label":  "Jira"
+    },
+    {
+        "id":  "notion",
+        "label":  "Notion"
+    },
+    {
+        "id":  "webpack",
+        "label":  "Webpack"
+    },
+    {
+        "id":  "vite",
+        "label":  "Vite"
+    },
+    {
+        "id":  "jest",
+        "label":  "Jest"
+    },
+    {
+        "id":  "cypress",
+        "label":  "Cypress"
+    },
+    {
+        "id":  "playwright",
+        "label":  "Playwright"
+    }
 ]

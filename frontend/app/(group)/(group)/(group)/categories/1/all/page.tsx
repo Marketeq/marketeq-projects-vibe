@@ -1,5 +1,4 @@
 "use client"
-
 import { fromLength } from "@/utils/functions"
 import {
   ArrowRight,
@@ -3777,12 +3776,7 @@ export default function All() {
                 Guides Related to Software Development
               </h1>
 
-              <Button
-                className="transition-[column-gap] hover:gap-x-3.5"
-                size="lg"
-                variant="link"
-                visual="gray"
-              >
+              <Button size="lg" variant="link" visual="gray">
                 Visit the Blog <ArrowRight className="size-[15px]" />
               </Button>
             </div>

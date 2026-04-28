@@ -2,7 +2,11 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { resolveDashboardRoute, useAuth } from "@/contexts/auth"
+import {
+  mergeDashboardUserFields,
+  resolveDashboardRoute,
+  useAuth,
+} from "@/contexts/auth"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
 import { GoogleDefault } from "@blend-metrics/icons/social"
@@ -36,6 +40,12 @@ const GoogleLoginButtonInner = () => {
             response?.data?.user
           ) {
             Cookies.set("access_token", response.data.access_token, { path: "/" })
+            if (response.data.refresh_token) {
+              Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
+            }
+            if (response.data.sessionId) {
+              Cookies.set("session_id", response.data.sessionId, { path: "/" })
+            }
 
             let nextUser = response.data.user
             try {
@@ -43,13 +53,7 @@ const GoogleLoginButtonInner = () => {
               if (me?.status === 200) {
                 const profileUser = me.data?.user ?? me.data?.data?.user ?? me.data
                 if (profileUser && typeof profileUser === "object") {
-                  const merged: Record<string, unknown> = { ...nextUser, ...profileUser }
-                  for (const key of ["role", "accountType", "userType"] as const) {
-                    if (merged[key] == null && (nextUser as any)?.[key] != null) {
-                      merged[key] = (nextUser as any)[key]
-                    }
-                  }
-                  nextUser = merged as typeof nextUser
+                  nextUser = mergeDashboardUserFields(nextUser, profileUser)
                 }
               }
             } catch {

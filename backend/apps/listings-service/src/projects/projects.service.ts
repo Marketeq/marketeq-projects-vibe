@@ -205,6 +205,10 @@ export class ProjectsService {
       project.budget != null && project.budget !== ('' as any)
         ? Number(project.budget)
         : null;
+    const priceMax =
+      project.priceMax != null && project.priceMax !== ('' as any)
+        ? Number(project.priceMax)
+        : null;
     const rating = project.rating != null ? Number(project.rating) : 0;
     const adminBoost = project.adminBoost != null ? Number(project.adminBoost) : 0;
 
@@ -222,11 +226,11 @@ export class ProjectsService {
       updatedAt: project.updatedAt,
       budget,
       priceMin: budget,
-      priceMax: budget,
-      pricingModel: null,
-      priceViewMode: null,
-      projectType: null,
-      klarnaEnabled: false,
+      priceMax,
+      pricingModel: project.pricingModel ?? null,
+      priceViewMode: project.priceViewMode ?? null,
+      projectType: project.projectType ?? null,
+      klarnaEnabled: project.klarnaEnabled ?? false,
       estimatedHours: project.estimatedHours ?? null,
       duration: project.duration ?? null,
       mediaUrls: project.mediaUrls ?? [],
@@ -239,15 +243,14 @@ export class ProjectsService {
       faqs: project.faqs ?? [],
       scope: project.scope ?? [],
       industries: project.industry ?? [],
-      relatedProjectIds: [],
+      relatedProjectIds: project.relatedProjectIds ?? [],
       isTopRated: rating >= 4.0 && Number(project.reviewCount ?? 0) >= 20,
       badges: this.deriveBadges(project),
-      recentQuestions: [],
-      skillsAndTools: this.getSkillsAndTools(project),
-      chatEnabled: false,
-      reportButtonEnabled: true,
-      shareButtonEnabled: true,
-      helpButtonEnabled: false,
+      recentQuestions: project.recentQuestions ?? [],
+      chatEnabled: project.chatEnabled ?? false,
+      reportButtonEnabled: project.reportButtonEnabled ?? true,
+      shareButtonEnabled: project.shareButtonEnabled ?? true,
+      helpButtonEnabled: project.helpButtonEnabled ?? false,
       rating,
       reviewCount: project.reviewCount ?? 0,
       completionsCount: project.completionsCount ?? 0,

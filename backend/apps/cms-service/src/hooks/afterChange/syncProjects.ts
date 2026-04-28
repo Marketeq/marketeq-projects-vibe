@@ -39,6 +39,7 @@ type ProjectSyncProjection = {
   subcategories?: unknown;
   tags?: unknown;
   projectSkills?: unknown;
+  /** Always [] — marketplace wizard does not collect separate language/framework lists. */
   programmingLanguages?: unknown;
   developmentTechnologies?: unknown;
   totalEstimatedHours?: number;
@@ -51,7 +52,6 @@ type ProjectSyncProjection = {
   projectType?: string;
   klarnaPaymentEnabled?: boolean;
   recentQuestions?: unknown;
-  skillsAndTools?: unknown;
   chatEnabled?: boolean;
   reportButtonEnabled?: boolean;
   shareButtonEnabled?: boolean;
@@ -64,11 +64,38 @@ type ProjectSyncProjection = {
   videoUrl?: string;
   scope?: unknown;
   industries?: unknown;
-  relatedProjects?: unknown;
   datePublished?: string;
   projectDurationLabel?: string;
   ownerId?: string;
 };
+
+function scopeWithEstimatedHours(scope: unknown): unknown {
+  if (!Array.isArray(scope)) return scope;
+
+  const toHours = (task: any): number | null => {
+    const dv = Number(task?.durationValue);
+    const dt = typeof task?.durationType === "string" ? task.durationType : "";
+    if (Number.isFinite(dv) && dv > 0 && dt) {
+      if (dt === "hours") return dv;
+      if (dt === "days") return dv * 24;
+      return dv * 168; // weeks (default)
+    }
+    const legacy = Number(task?.estimatedHours);
+    return Number.isFinite(legacy) && legacy > 0 ? legacy : null;
+  };
+
+  return scope.map((phase: any) => {
+    if (!phase || typeof phase !== "object") return phase;
+    const tasks = Array.isArray(phase.tasks) ? phase.tasks : [];
+    return {
+      ...phase,
+      tasks: tasks.map((t: any) => {
+        const hours = toHours(t);
+        return hours == null ? t : { ...t, estimatedHours: hours };
+      }),
+    };
+  });
+}
 
 function isResolvedMedia(value: unknown): value is ResolvedMediaRef {
   if (typeof value !== "object") return false;
@@ -192,7 +219,6 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
     if (docStatus && docStatus !== "published") {
       // Keep listings-service aligned with Payload's public visibility:
       // any transition away from `published` must immediately hide the
-      // row from `/v1/projects` and `/v1/projects/slug/:slug`.
       const url = `${listingsUrl.replace(/\/$/, "")}/internal/project-sync/${encodeURIComponent(String(doc.id))}`;
       const res = await fetch(url, {
         method: "DELETE",
@@ -276,6 +302,19 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       cmsBase,
     );
 
+    const flattenedSubcategories = Array.from(
+      new Set(
+        ((doc as any).categories ?? [])
+          .flatMap((category: any) =>
+            Array.isArray(category?.subcategories) ? category.subcategories : [],
+          )
+          .map((entry: any) =>
+            typeof entry?.value === "string" ? entry.value.trim() : "",
+          )
+          .filter((value: string) => value.length > 0),
+      ),
+    ).map((value) => ({ value }));
+
     // Sync contract boundary: only forward serving/projection fields.
     // This prevents admin/editorial-only keys from drifting into the
     // listings write-model via broad object spreads.
@@ -288,11 +327,11 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       deliverables: (doc as any).deliverables,
       faqQuestions: (doc as any).faqQuestions,
       categories: (doc as any).categories,
-      subcategories: (doc as any).subcategories,
+      subcategories: flattenedSubcategories,
       tags: (doc as any).tags,
       projectSkills: (doc as any).projectSkills,
-      programmingLanguages: (doc as any).programmingLanguages,
-      developmentTechnologies: (doc as any).developmentTechnologies,
+      programmingLanguages: [],
+      developmentTechnologies: [],
       totalEstimatedHours: (doc as any).totalEstimatedHours,
       timelineValue: (doc as any).timelineValue,
       timelineUnit: (doc as any).timelineUnit,
@@ -303,7 +342,6 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       projectType: (doc as any).projectType,
       klarnaPaymentEnabled: (doc as any).klarnaPaymentEnabled,
       recentQuestions: (doc as any).recentQuestions,
-      skillsAndTools: (doc as any).skillsAndTools,
       chatEnabled: (doc as any).chatEnabled,
       reportButtonEnabled: (doc as any).reportButtonEnabled,
       shareButtonEnabled: (doc as any).shareButtonEnabled,
@@ -324,9 +362,8 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       thumbnailUrl: thumbnailUrl ?? undefined,
       galleryUrls,
       videoUrl,
-      scope: (doc as any).scope,
+      scope: scopeWithEstimatedHours((doc as any).scope),
       industries: (doc as any).industries,
-      relatedProjects: (doc as any).relatedProjects,
       datePublished: (doc as any).datePublished,
       projectDurationLabel: (doc as any).projectDurationLabel,
       ownerId: (doc as any).ownerId,

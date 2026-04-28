@@ -340,30 +340,11 @@ export interface Project {
       }[]
     | null;
   /**
-   * Languages used in the project (max 10).
+   * Industry badges (max 5), distinct from categories.
    */
-  programmingLanguages?:
+  industries?:
     | {
         value: string;
-        id?: string | null;
-      }[]
-    | null;
-  /**
-   * Frameworks and tools used in the project (max 10).
-   */
-  developmentTechnologies?:
-    | {
-        value: string;
-        id?: string | null;
-      }[]
-    | null;
-  /**
-   * Skill or tool with an icon shown on the project details page.
-   */
-  skillsAndTools?:
-    | {
-        title: string;
-        icon?: (number | null) | Media;
         id?: string | null;
       }[]
     | null;
@@ -933,23 +914,10 @@ export interface ProjectsSelect<T extends boolean = true> {
         value?: T;
         id?: T;
       };
-  programmingLanguages?:
+  industries?:
     | T
     | {
         value?: T;
-        id?: T;
-      };
-  developmentTechnologies?:
-    | T
-    | {
-        value?: T;
-        id?: T;
-      };
-  skillsAndTools?:
-    | T
-    | {
-        title?: T;
-        icon?: T;
         id?: T;
       };
   thumbnail?: T;

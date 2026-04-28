@@ -1,5 +1,133 @@
 [
   {
+    "label": "English",
+    "id": "en"
+  },
+  {
+    "label": "Spanish, Castilian",
+    "id": "es"
+  },
+  {
+    "label": "French",
+    "id": "fr"
+  },
+  {
+    "label": "German",
+    "id": "de"
+  },
+  {
+    "label": "Chinese",
+    "id": "zh"
+  },
+  {
+    "label": "Hindi",
+    "id": "hi"
+  },
+  {
+    "label": "Arabic",
+    "id": "ar"
+  },
+  {
+    "label": "Portuguese",
+    "id": "pt"
+  },
+  {
+    "label": "Bengali",
+    "id": "bn"
+  },
+  {
+    "label": "Russian",
+    "id": "ru"
+  },
+  {
+    "label": "Japanese",
+    "id": "ja"
+  },
+  {
+    "label": "Punjabi, Panjabi",
+    "id": "pa"
+  },
+  {
+    "label": "Korean",
+    "id": "ko"
+  },
+  {
+    "label": "Telugu",
+    "id": "te"
+  },
+  {
+    "label": "Marathi",
+    "id": "mr"
+  },
+  {
+    "label": "Tamil",
+    "id": "ta"
+  },
+  {
+    "label": "Urdu",
+    "id": "ur"
+  },
+  {
+    "label": "Turkish",
+    "id": "tr"
+  },
+  {
+    "label": "Vietnamese",
+    "id": "vi"
+  },
+  {
+    "label": "Italian",
+    "id": "it"
+  },
+  {
+    "label": "Polish",
+    "id": "pl"
+  },
+  {
+    "label": "Ukrainian",
+    "id": "uk"
+  },
+  {
+    "label": "Dutch, Flemish",
+    "id": "nl"
+  },
+  {
+    "label": "Greek, Modern (1453–)",
+    "id": "el"
+  },
+  {
+    "label": "Hebrew",
+    "id": "he"
+  },
+  {
+    "label": "Indonesian",
+    "id": "id"
+  },
+  {
+    "label": "Malay",
+    "id": "ms"
+  },
+  {
+    "label": "Thai",
+    "id": "th"
+  },
+  {
+    "label": "Swedish",
+    "id": "sv"
+  },
+  {
+    "label": "Norwegian",
+    "id": "no"
+  },
+  {
+    "label": "Danish",
+    "id": "da"
+  },
+  {
+    "label": "Finnish",
+    "id": "fi"
+  },
+  {
     "label": "Abkhazian",
     "id": "ab"
   },
@@ -22,10 +150,6 @@
   {
     "label": "Amharic",
     "id": "am"
-  },
-  {
-    "label": "Arabic",
-    "id": "ar"
   },
   {
     "label": "Aragonese",
@@ -72,10 +196,6 @@
     "id": "be"
   },
   {
-    "label": "Bengali",
-    "id": "bn"
-  },
-  {
     "label": "Bislama",
     "id": "bi"
   },
@@ -100,6 +220,10 @@
     "id": "ca"
   },
   {
+    "label": "Central Khmer",
+    "id": "km"
+  },
+  {
     "label": "Chamorro",
     "id": "ch"
   },
@@ -112,11 +236,7 @@
     "id": "ny"
   },
   {
-    "label": "Chinese",
-    "id": "zh"
-  },
-  {
-    "label": "Church\u00a0Slavonic, Old\u00a0Slavonic, Old\u00a0Church\u00a0Slavonic",
+    "label": "Church Slavonic, Old Slavonic, Old Church Slavonic",
     "id": "cu"
   },
   {
@@ -144,24 +264,12 @@
     "id": "cs"
   },
   {
-    "label": "Danish",
-    "id": "da"
-  },
-  {
     "label": "Divehi, Dhivehi, Maldivian",
     "id": "dv"
   },
   {
-    "label": "Dutch, Flemish",
-    "id": "nl"
-  },
-  {
     "label": "Dzongkha",
     "id": "dz"
-  },
-  {
-    "label": "English",
-    "id": "en"
   },
   {
     "label": "Esperanto",
@@ -184,32 +292,16 @@
     "id": "fj"
   },
   {
-    "label": "Finnish",
-    "id": "fi"
-  },
-  {
-    "label": "French",
-    "id": "fr"
-  },
-  {
-    "label": "Western Frisian",
-    "id": "fy"
-  },
-  {
     "label": "Fulah",
     "id": "ff"
   },
   {
-    "label": "Gaelic, Scottish\u00a0Gaelic",
+    "label": "Gaelic, Scottish Gaelic",
     "id": "gd"
   },
   {
     "label": "Galician",
     "id": "gl"
-  },
-  {
-    "label": "Visigothic",
-    "id": "got"
   },
   {
     "label": "Ganda",
@@ -220,18 +312,6 @@
     "id": "ka"
   },
   {
-    "label": "German",
-    "id": "de"
-  },
-  {
-    "label": "Greek, Modern\u00a0(1453\u2013)",
-    "id": "el"
-  },
-  {
-    "label": "Kalaallisut, Greenlandic",
-    "id": "kl"
-  },
-  {
     "label": "Guarani",
     "id": "gn"
   },
@@ -240,7 +320,7 @@
     "id": "gu"
   },
   {
-    "label": "Haitian, Haitian\u00a0Creole",
+    "label": "Haitian, Haitian Creole",
     "id": "ht"
   },
   {
@@ -248,16 +328,8 @@
     "id": "ha"
   },
   {
-    "label": "Hebrew",
-    "id": "he"
-  },
-  {
     "label": "Herero",
     "id": "hz"
-  },
-  {
-    "label": "Hindi",
-    "id": "hi"
   },
   {
     "label": "Hiri Motu",
@@ -280,10 +352,6 @@
     "id": "ig"
   },
   {
-    "label": "Indonesian",
-    "id": "id"
-  },
-  {
     "label": "Interlingua (International Auxiliary Language Association)",
     "id": "ia"
   },
@@ -304,16 +372,12 @@
     "id": "ga"
   },
   {
-    "label": "Italian",
-    "id": "it"
-  },
-  {
-    "label": "Japanese",
-    "id": "ja"
-  },
-  {
     "label": "Javanese",
     "id": "jv"
+  },
+  {
+    "label": "Kalaallisut, Greenlandic",
+    "id": "kl"
   },
   {
     "label": "Kannada",
@@ -332,20 +396,12 @@
     "id": "kk"
   },
   {
-    "label": "Central Khmer",
-    "id": "km"
-  },
-  {
     "label": "Kikuyu, Gikuyu",
     "id": "ki"
   },
   {
     "label": "Kinyarwanda",
     "id": "rw"
-  },
-  {
-    "label": "Kyrgyz, Kirghiz",
-    "id": "ky"
   },
   {
     "label": "Komi",
@@ -356,16 +412,16 @@
     "id": "kg"
   },
   {
-    "label": "Korean",
-    "id": "ko"
-  },
-  {
     "label": "Kuanyama, Kwanyama",
     "id": "kj"
   },
   {
     "label": "Kurdish",
     "id": "ku"
+  },
+  {
+    "label": "Kyrgyz, Kirghiz",
+    "id": "ky"
   },
   {
     "label": "Lao",
@@ -408,10 +464,6 @@
     "id": "mg"
   },
   {
-    "label": "Malay",
-    "id": "ms"
-  },
-  {
     "label": "Malayalam",
     "id": "ml"
   },
@@ -426,10 +478,6 @@
   {
     "label": "Maori",
     "id": "mi"
-  },
-  {
-    "label": "Marathi",
-    "id": "mr"
   },
   {
     "label": "Marshallese",
@@ -448,14 +496,6 @@
     "id": "nv"
   },
   {
-    "label": "North Ndebele",
-    "id": "nd"
-  },
-  {
-    "label": "South Ndebele",
-    "id": "nr"
-  },
-  {
     "label": "Ndonga",
     "id": "ng"
   },
@@ -464,11 +504,15 @@
     "id": "ne"
   },
   {
-    "label": "Norwegian",
-    "id": "no"
+    "label": "North Ndebele",
+    "id": "nd"
   },
   {
-    "label": "Norwegian Bokm\u00e5l",
+    "label": "Northern Sami",
+    "id": "se"
+  },
+  {
+    "label": "Norwegian Bokmål",
     "id": "nb"
   },
   {
@@ -508,18 +552,6 @@
     "id": "fa"
   },
   {
-    "label": "Polish",
-    "id": "pl"
-  },
-  {
-    "label": "Portuguese",
-    "id": "pt"
-  },
-  {
-    "label": "Punjabi, Panjabi",
-    "id": "pa"
-  },
-  {
     "label": "Quechua",
     "id": "qu"
   },
@@ -534,14 +566,6 @@
   {
     "label": "Rundi",
     "id": "rn"
-  },
-  {
-    "label": "Russian",
-    "id": "ru"
-  },
-  {
-    "label": "Northern Sami",
-    "id": "se"
   },
   {
     "label": "Samoan",
@@ -568,6 +592,10 @@
     "id": "sn"
   },
   {
+    "label": "Sichuan Yi, Nuosu",
+    "id": "ii"
+  },
+  {
     "label": "Sindhi",
     "id": "sd"
   },
@@ -588,12 +616,12 @@
     "id": "so"
   },
   {
-    "label": "Southern Sotho",
-    "id": "st"
+    "label": "South Ndebele",
+    "id": "nr"
   },
   {
-    "label": "Spanish, Castilian",
-    "id": "es"
+    "label": "Southern Sotho",
+    "id": "st"
   },
   {
     "label": "Sundanese",
@@ -608,10 +636,6 @@
     "id": "ss"
   },
   {
-    "label": "Swedish",
-    "id": "sv"
-  },
-  {
     "label": "Tagalog",
     "id": "tl"
   },
@@ -624,20 +648,8 @@
     "id": "tg"
   },
   {
-    "label": "Tamil",
-    "id": "ta"
-  },
-  {
     "label": "Tatar",
     "id": "tt"
-  },
-  {
-    "label": "Telugu",
-    "id": "te"
-  },
-  {
-    "label": "Thai",
-    "id": "th"
   },
   {
     "label": "Tibetan",
@@ -660,10 +672,6 @@
     "id": "tn"
   },
   {
-    "label": "Turkish",
-    "id": "tr"
-  },
-  {
     "label": "Turkmen",
     "id": "tk"
   },
@@ -676,14 +684,6 @@
     "id": "ug"
   },
   {
-    "label": "Ukrainian",
-    "id": "uk"
-  },
-  {
-    "label": "Urdu",
-    "id": "ur"
-  },
-  {
     "label": "Uzbek",
     "id": "uz"
   },
@@ -692,11 +692,11 @@
     "id": "ve"
   },
   {
-    "label": "Vietnamese",
-    "id": "vi"
+    "label": "Visigothic",
+    "id": "got"
   },
   {
-    "label": "Volap\u00fck",
+    "label": "Volapük",
     "id": "vo"
   },
   {
@@ -708,16 +708,16 @@
     "id": "cy"
   },
   {
+    "label": "Western Frisian",
+    "id": "fy"
+  },
+  {
     "label": "Wolof",
     "id": "wo"
   },
   {
     "label": "Xhosa",
     "id": "xh"
-  },
-  {
-    "label": "Sichuan Yi, Nuosu",
-    "id": "ii"
   },
   {
     "label": "Yiddish",

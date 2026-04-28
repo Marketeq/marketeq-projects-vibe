@@ -331,9 +331,7 @@ export function OfferFlowDialog({
 
                   <DialogTitle className="text-[18px] font-semibold leading-7 text-dark-blue-400">
                     {data.senderDisplayName}{" "}
-                    <span className="text-primary-500">
-                      {data.senderUsername}
-                    </span>
+                    <span className="text-primary-500">{data.senderUsername}</span>
                   </DialogTitle>
                 </div>
 

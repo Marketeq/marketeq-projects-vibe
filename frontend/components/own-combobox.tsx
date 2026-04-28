@@ -163,30 +163,69 @@ export function OwnCombobox({
   onValueChange,
   options,
   value,
+  searchValue,
+  onSearchValueChange,
+  emptyMessage,
+  triggerClassName,
 }: {
   placeholder?: string
   options?: string[]
   value?: string
   onValueChange?: (value: string) => void
+  searchValue?: string
+  onSearchValueChange?: (value: string) => void
+  emptyMessage?: string
+  triggerClassName?: string
 }) {
   const [open, setOpen] = React.useState(false)
   const [state, setState] = useControllableState({
     value,
     onChange: onValueChange,
   })
+  const [internalSearchValue, setInternalSearchValue] = React.useState("")
+  const resolvedSearchValue =
+    typeof searchValue === "string" ? searchValue : internalSearchValue
+  const handleSearchValueChange = React.useCallback(
+    (nextValue: string) => {
+      if (typeof onSearchValueChange === "function") {
+        onSearchValueChange(nextValue)
+        return
+      }
+      setInternalSearchValue(nextValue)
+    },
+    [onSearchValueChange]
+  )
+
+  React.useEffect(() => {
+    if (!open) {
+      handleSearchValueChange("")
+    }
+  }, [open, handleSearchValueChange])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button className="focus-visible:outline-none transition duration-300 border border-transparent hover:border-gray-300 h-7 px-[8px] rounded-[5px] border-dashed hover:bg-gray-100 shrink-0 text-sm leading-[16.94px] text-gray-600">
-          {state ? options?.find((option) => option === state) : placeholder}
+        <button
+          className={cn(
+            "focus-visible:outline-none transition duration-300 border border-transparent hover:border-gray-300 h-7 px-[8px] rounded-[5px] border-dashed hover:bg-gray-100 shrink-0 text-sm leading-[16.94px] text-gray-600 truncate whitespace-nowrap",
+            triggerClassName
+          )}
+        >
+          <span className="block truncate">
+            {state ? options?.find((option) => option === state) : placeholder}
+          </span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-[202px] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
         <Command>
-          <CommandInput placeholder="Search" className="h-9" />
+          <CommandInput
+            placeholder="Search"
+            className="h-9"
+            value={resolvedSearchValue}
+            onValueChange={handleSearchValueChange}
+          />
           <CommandList>
-            <CommandEmpty>No framework found.</CommandEmpty>
+            <CommandEmpty>{emptyMessage ?? "No results found."}</CommandEmpty>
             <CommandGroup>
               {options?.map((option) => (
                 <CommandItem

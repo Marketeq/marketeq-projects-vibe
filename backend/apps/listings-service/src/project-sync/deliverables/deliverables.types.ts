@@ -19,5 +19,9 @@ export interface DeliverableGroup {
 export interface ScopePhaseInput {
   phaseName: string;
   order: number;
-  tasks: Array<{ title: string }>;
+  tasks: Array<{
+    title: string;
+    roleName?: string;
+    description?: string;
+  }>;
 }

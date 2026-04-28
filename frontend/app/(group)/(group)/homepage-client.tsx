@@ -6,21 +6,14 @@ import { cn, fromLength } from "@/utils/functions"
 import {
   AlertCircle,
   ArrowRight,
-  ArrowUp,
   Check,
   ChevronLeft,
   ChevronRight,
   X,
 } from "@blend-metrics/icons"
-import {
-  FacebookSolid,
-  InstagramSolid,
-  TwitterSolid,
-} from "@blend-metrics/icons/social-solid"
 import { SwiperSlide } from "swiper/react"
 import type {
   CategoryRef,
-  FooterNavColumn,
   HomepageBanner,
   HomepageBlock,
   HomepageHeroSlide,
@@ -29,13 +22,12 @@ import type {
   ProjectCard,
   ServiceCard,
   TalentCard,
-  TalentNetworkCta,
   TeamCard,
 } from "@/types/homepage"
 import { Blocks1 } from "@/components/blocks-1"
-import { LinkedinSolid, Logo3 } from "@/components/icons"
 import { ListingCard } from "@/components/listing-card"
 import { ListingCardCompact } from "@/components/listing-card-compact"
+import { MarketplaceFooter } from "@/components/marketplace-footer"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import {
@@ -986,160 +978,6 @@ function MoreCategories({ categories }: { categories: CategoryRef[] }) {
 // The previous standalone gradient-banner section component was removed when
 // the content moved into the footer's right column.
 
-// ── Footer ──────────────────────────────────────────────────────────────────
-
-function Footer({
-  columns,
-  talentCta,
-}: {
-  columns: FooterNavColumn[]
-  talentCta: TalentNetworkCta | null
-}) {
-  if (columns.length === 0 && !talentCta?.headline) return null
-  const year = new Date().getFullYear()
-
-  return (
-    <footer className="bg-white">
-      {/* Full-width "Back to Top" row with border separator — per Figma */}
-      <div className="border-y border-gray-200">
-        <button
-          type="button"
-          onClick={() =>
-            typeof window !== "undefined" &&
-            window.scrollTo({ top: 0, behavior: "smooth" })
-          }
-          className="w-full py-[22px] flex items-center justify-center gap-x-2 text-sm font-medium text-dark-blue-400 hover:bg-gray-50 transition-colors focus-visible:outline-none"
-          aria-label="Back to top"
-        >
-          <ArrowUp className="size-[15px]" />
-          Back to Top
-        </button>
-      </div>
-
-      <div className="max-w-[1440px] mx-auto px-[50px] pt-10 lg:pt-[50px]">
-        <div className="flex gap-y-10 md:gap-y-20 lg:gap-x-[100px] lg:flex-row flex-col lg:items-start">
-          {columns.length > 0 && (
-            <div className="flex-auto grid grid-cols-2 gap-y-10 md:flex items-start md:justify-between">
-              {columns.map((col) => (
-                <div key={col.heading} className="flex flex-col gap-y-[15px]">
-                  <span className="inline-block text-sm leading-[16.94px] font-medium text-dark-blue-600">
-                    {col.heading}
-                  </span>
-                  <ul className="space-y-[15px]">
-                    {col.links.map((link) => (
-                      <li key={`${col.heading}-${link.label}`}>
-                        <NextLink
-                          href={link.url}
-                          className="focus-visible:outline-none text-[13px] leading-[15.73px] font-light text-dark-blue-600 hover:underline"
-                        >
-                          {link.label}
-                        </NextLink>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {talentCta?.headline && (
-            <div className="max-w-[363px] w-full lg:ml-auto">
-              <h2 className="text-base leading-[19.36px] font-medium text-dark-blue-400">
-                {talentCta.headline}
-              </h2>
-
-              {talentCta.description && (
-                <p className="mt-3 text-[13px] font-light leading-[15.73px] whitespace-pre-line text-gray-700">
-                  {talentCta.description}
-                </p>
-              )}
-
-              {talentCta.ctaLabel && talentCta.ctaUrl && (
-                <NextLink href={talentCta.ctaUrl}>
-                  <Button
-                    className="mt-[30px] text-primary-500 hover:bg-primary-50 border-primary-500"
-                    variant="outlined"
-                    visual="gray"
-                  >
-                    {talentCta.ctaLabel}
-                    <ArrowRight className="size-[15px]" />
-                  </Button>
-                </NextLink>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="flex lg:flex-row flex-col gap-y-10 items-center justify-between mt-10 lg:mt-[50px] py-10 md:py-5 border-t border-gray-200">
-          <div className="flex items-center md:flex-row flex-col gap-y-5 md:gap-x-[57px]">
-            <Logo3 className="w-[120px] shrink-0 h-[17.62px]" />
-            <span className="inline-block text-[13px] leading-[15.73px] font-light text-dark-blue-600">
-              © 2011 - {year} Marketeq Digital Inc. All Rights Reserved.
-            </span>
-          </div>
-
-          <div className="flex md:flex-row flex-col items-center gap-10 lg:gap-x-[50px]">
-            <div className="flex gap-x-5 items-center">
-              <NextLink href="/terms">
-                <Button className="text-dark-blue-400" variant="link">
-                  Terms & Conditions
-                </Button>
-              </NextLink>
-
-              <span className="inline-block bg-gray-200 h-4 w-px shrink-0" />
-
-              <NextLink href="/privacy">
-                <Button className="text-dark-blue-400" variant="link">
-                  Privacy Policy
-                </Button>
-              </NextLink>
-            </div>
-
-            <div className="flex items-center gap-x-[16.6px]">
-              <NextLink href="#" aria-label="Facebook">
-                <IconButton
-                  variant="outlined"
-                  visual="gray"
-                  className="size-[30px] rounded-full"
-                >
-                  <FacebookSolid className="size-3.5 text-dark-blue-400" />
-                </IconButton>
-              </NextLink>
-              <NextLink href="#" aria-label="Twitter">
-                <IconButton
-                  variant="outlined"
-                  visual="gray"
-                  className="size-[30px] rounded-full"
-                >
-                  <TwitterSolid className="size-3.5 text-dark-blue-400" />
-                </IconButton>
-              </NextLink>
-              <NextLink href="#" aria-label="Instagram">
-                <IconButton
-                  variant="outlined"
-                  visual="gray"
-                  className="size-[30px] rounded-full"
-                >
-                  <InstagramSolid className="size-3.5 text-dark-blue-400" />
-                </IconButton>
-              </NextLink>
-              <NextLink href="#" aria-label="LinkedIn">
-                <IconButton
-                  variant="outlined"
-                  visual="gray"
-                  className="size-[30px] rounded-full"
-                >
-                  <LinkedinSolid className="size-3.5 text-dark-blue-400" />
-                </IconButton>
-              </NextLink>
-            </div>
-          </div>
-        </div>
-      </div>
-    </footer>
-  )
-}
-
 // ── Main client component ───────────────────────────────────────────────────
 
 export function HomepageClient({ data }: { data: HomepagePayload }) {
@@ -1159,7 +997,10 @@ export function HomepageClient({ data }: { data: HomepagePayload }) {
           {/* <TalentNetworkCtaSection cta={data.talentNetworkCta} /> */}
         </div>
       </div>
-      <Footer columns={data.footerNav} talentCta={data.talentNetworkCta} />
+      <MarketplaceFooter
+        columns={data.footerNav}
+        talentCta={data.talentNetworkCta}
+      />
     </div>
   )
 }

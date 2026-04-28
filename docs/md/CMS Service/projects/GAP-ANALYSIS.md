@@ -88,7 +88,7 @@
 | **(top-level)** | `title` (req), `slug` (req, unique, sidebar) | ✅ |
 | **Content** | `shortDescription` (320ch), `fullDescription` (Lexical richText), `deliverables` (array of phases `{phaseLabel, phaseName, items[]}`), `faqQuestions` (array `{question, answer: richText}`), `recentQuestions` (array) | ✅ |
 | **Pricing & Scope** | `totalEstimatedHours` (author-editable fallback), `timelineValue`/`timelineUnit`, `pricingModel` enum, `priceViewMode` enum, `priceRangeMin/Max` USD, `projectType`, `klarnaPaymentEnabled`, **`scope`** (phases → tasks with `title`, `roleName`, `location`, `experienceLevel`, `estimatedHours`, **`assigneeEmail`**) | ✅ |
-| **Categorization** | `categories` (≤3), `subcategories` (≤5), `tags` (≤10), `projectSkills` (≤25, editable; see §3.3), `programmingLanguages` (≤10), `developmentTechnologies` (≤10), `skillsAndTools` (array with icon upload), `industries` (≤5), `relatedProjects` (M2M self-ref) | ✅ |
+| **Categorization** | `categories` (≤3), `subcategories` (≤5), `tags` (≤10), `projectSkills` (≤25, editable; see §3.3), `programmingLanguages` (≤10), `developmentTechnologies` (≤10), `industries` (≤5), `relatedProjects` (M2M self-ref) | ✅ |
 | **Media** | `thumbnail` (req upload), `gallery` (array of image+caption), `videoWalkthrough` (group: upload **or** externalUrl) | ✅ |
 | **Computed** (readOnly) | `startingPriceTotal`, `priceViewAmount`, `teamMemberCount`, `projectDurationTotal`, `projectDurationLabel`, `datePublished`, `teamEmails`, `projectHistoryRatings` (ref to read-time derivation) | ✅ |
 | **Admin & Moderation** | `visibility`, `moderationStatus` (4-state enum), `ownerId` (UUID text), `isFlagged`, `forceReviewOnEdit`, `previewToken` (auto), `adminNotes` (richText), `adminTags` (array), `activityLog` (readOnly audit), `seoTitle` (70ch), `seoDescription` (160ch) | ✅ |
@@ -276,7 +276,7 @@ Enrichments (all in parallel, all fail-soft):
 | `deliverables` (3-col checkmark grid, L1084-1125) | `videoUrl` |
 | `faqs` (collapsible accordion, L1804-1874) | `projectType`, `klarnaEnabled` |
 | `scope` (phase+task tree, L3425-3555) | `completionsCount`, `views90d` |
-| `mediaUrls[0]` (hero thumbnail) + gallery | `skillsAndTools` |
+| `mediaUrls[0]` (hero thumbnail) + gallery | `adminBoost` |
 | `budget`, `priceMin`, `priceMax`, `pricingModel`, `priceViewMode` | `similarProjects[]` |
 | `estimatedHours`, `duration` | `relatedCategories[]` |
 | `recentQuestions` (accordion) | `relatedSkills[]` |
@@ -287,7 +287,7 @@ Enrichments (all in parallel, all fail-soft):
 
 **Consumption rate: ~55%.** The missing fields divide into two categories:
 
-1. **Non-spec fields** — `shortDescription`, `skills`, `skillsAndTools`, `projectType`, `klarnaEnabled`, `completionsCount`, `views90d`, `chatEnabled` — these either have no spec UI block, or the block uses a more specific sibling field.
+1. **Non-spec fields** — `shortDescription`, `skills`, `projectType`, `klarnaEnabled`, `completionsCount`, `views90d`, `chatEnabled` — these either have no spec UI block, or the block uses a more specific sibling field.
 2. **Spec-promised but unwired enrichments** — `similarProjects`, `relatedCategories`, `relatedSkills`, `badges`, `projectHistoryRatings`, `industries`, `videoUrl`, `relatedProjectIds` — backend data is **live**; frontend just hasn't wired the render.
 
 ### 7.2 Unused enrichment data
@@ -377,7 +377,7 @@ Things we ship that no spec doc requires — recorded here so future spec update
 | `relatedProjects` M2M self-ref | Editor override so curation can beat the §14.9 auto-ranker |
 | `industries` (distinct from categories) | Spec mentions "industry badges" in §13 L52 but doesn't define a field; we gave it one |
 | `videoWalkthrough.externalUrl` OR upload | Spec variously says "external only" (§16 L59) and "upload or URL" (Strapi Collection Type) — we support both |
-| `skillsAndTools` with per-item icon upload | Spec has the concept but no icon upload |
+| *Removed* `skillsAndTools` (legacy) | Replaced by `projectSkills` + `programmingLanguages` / `developmentTechnologies` only; no per-item icon row in CMS |
 | `adminNotes`, `adminTags`, `seoTitle`, `seoDescription` | §16 "SEO & Admin Features" lists them; admin tab consolidates |
 | `visibility` (public/private/unlisted) | §16 L34 mentions visibility but doesn't define the enum |
 | `chatEnabled`, `reportButtonEnabled`, `shareButtonEnabled`, `helpButtonEnabled` | Admin overrides so editors can force-disable widgets per project |
@@ -410,7 +410,7 @@ Things we ship that no spec doc requires — recorded here so future spec update
 - [ ] **Messaging-service presence** — provides `isOnline` for `team[].isOnline` + `chatEnabled` runtime AND logic. Today `hydrateTeam()` stubs `isOnline: false`.
 - [ ] **Workload validation (§14.6)** — needs (a) `workSchedule` + `customHours` fields per scope Task, (b) user-service exposes `schedule.maxHoursPerWeek` on `/internal/users/by-email/:email`, (c) §9.2 #1 unresolved-email decision.
 - [ ] **Roles collection** — replaces the `HOURLY_RATE_BY_LEVEL` stand-in rate card with a proper `roles` table. Single point of change at `computeProjectFields.ts:60-66`.
-- [ ] **Project entity schema mismatch** — TypeORM `Project` entity at `listings-service/projects/entities/project.entity.ts` declares only ~24 of the 35+ columns the sync INSERT writes. Columns exist in DB; queries work because `shapeProject` reads raw SQL. Clean-up: backfill entity declarations for `pricingModel`, `priceViewMode`, `priceMax`, `projectType`, `klarnaEnabled`, `payloadId`, `recentQuestions`, `skillsAndTools`, `chatEnabled`, `reportButtonEnabled`, `shareButtonEnabled`, `helpButtonEnabled`, `relatedProjectIds`, `industries`.
+- [ ] **Project entity schema mismatch** — TypeORM `Project` entity at `listings-service/projects/entities/project.entity.ts` declares only ~24 of the 35+ columns the sync INSERT writes. Columns exist in DB; queries work because `shapeProject` reads raw SQL. Clean-up: backfill entity declarations for `pricingModel`, `priceViewMode`, `priceMax`, `projectType`, `klarnaEnabled`, `payloadId`, `recentQuestions`, `chatEnabled`, `reportButtonEnabled`, `shareButtonEnabled`, `helpButtonEnabled`, `relatedProjectIds`, `industries`. (Optional: drop legacy `skillsAndTools` / `skills_and_tools` in DB if no longer needed.)
 - [ ] **Reverse-path sync** (spec §05 L136-141) — on moderation rejection in listings-service, surface back to Payload. Today the flow is one-way. Needed only if moderation moves out of Payload admin.
 - [ ] **category-service embeddings upgrade** — spec data-dict L17 names HuggingFace for `related_skills`; category-service uses heuristic (shared-tag → siblings → recent). Not in CMS scope; category-service `SuggestionsAdapter` already has the interface ready for the swap.
 
@@ -476,7 +476,7 @@ Chrome DevTools MCP audit against running local stack (cms-service:3020, listing
 - ✅ `relatedCategories: []`, `relatedSkills: []` — graceful fail-soft (category-service down)
 - ✅ `projectHistoryRatings: null` — skips `cms-sync` placeholder correctly
 - ✅ `industries: ["Technology","SaaS","Design"]`
-- ✅ `recentQuestions: [...]`, `skillsAndTools: []`
+- ✅ `recentQuestions: [...]`
 
 **Frontend rendering verified** (live DOM):
 
