@@ -10,7 +10,13 @@ export class AddAffiliatedTeamTables1772767311535
       `ALTER TABLE "experiences" DROP CONSTRAINT IF EXISTS "FK_experiences_user"`,
     );
     await queryRunner.query(
-      `ALTER TABLE "skills" DROP CONSTRAINT IF EXISTS "FK_skills_userId"`,
+      `DO $$ BEGIN
+        BEGIN
+          ALTER TABLE "skills" DROP CONSTRAINT IF EXISTS "FK_skills_userId";
+        EXCEPTION
+          WHEN insufficient_privilege THEN NULL;
+        END;
+      END $$;`,
     );
     await queryRunner.query(
       `CREATE TABLE IF NOT EXISTS "industries" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "industry" character varying NOT NULL, "yearsOfExperience" integer, "description" text, "userId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_f1626dcb2d58142d7dfcca7b8d1" PRIMARY KEY ("id"))`,
@@ -260,7 +266,11 @@ export class AddAffiliatedTeamTables1772767311535
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_ee1265e76ea0b8c5f7daa85e817'
         ) THEN
-          ALTER TABLE "skills" ADD CONSTRAINT "FK_ee1265e76ea0b8c5f7daa85e817" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          BEGIN
+            ALTER TABLE "skills" ADD CONSTRAINT "FK_ee1265e76ea0b8c5f7daa85e817" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          EXCEPTION
+            WHEN insufficient_privilege THEN NULL;
+          END;
         END IF;
       END $$;`,
     );
@@ -268,7 +278,13 @@ export class AddAffiliatedTeamTables1772767311535
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "skills" DROP CONSTRAINT IF EXISTS "FK_ee1265e76ea0b8c5f7daa85e817"`,
+      `DO $$ BEGIN
+        BEGIN
+          ALTER TABLE "skills" DROP CONSTRAINT IF EXISTS "FK_ee1265e76ea0b8c5f7daa85e817";
+        EXCEPTION
+          WHEN insufficient_privilege THEN NULL;
+        END;
+      END $$;`,
     );
     await queryRunner.query(
       `ALTER TABLE "affiliated_teams" DROP CONSTRAINT IF EXISTS "FK_2f83b2f81cd02f84dca26794814"`,
@@ -367,7 +383,11 @@ export class AddAffiliatedTeamTables1772767311535
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_skills_userId'
         ) THEN
-          ALTER TABLE "skills" ADD CONSTRAINT "FK_skills_userId" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          BEGIN
+            ALTER TABLE "skills" ADD CONSTRAINT "FK_skills_userId" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          EXCEPTION
+            WHEN insufficient_privilege THEN NULL;
+          END;
         END IF;
       END $$;`,
     );
