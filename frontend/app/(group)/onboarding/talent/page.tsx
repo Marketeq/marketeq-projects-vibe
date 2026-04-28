@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth"
 import industriesMock from "@/public/mock/industries.json"
 import jobTitlesMock from "@/public/mock/job_titles.json"
 import languagesMock from "@/public/mock/languages.json"
+import rawProjectTypeSuggestions from "@/public/mock/projectsnew.json"
 import rawSkillSuggestions from "@/public/mock/skills.json"
 import { AuthAPI } from "@/service/http/auth"
 import {
@@ -19,11 +20,17 @@ import { DAY_PERIODS, HOT_KEYS, TIMES } from "@/utils/constants"
 import {
   capitalize,
   cn,
+  convertToTitleCase,
   getIsNotEmpty,
   hookFormHasError,
   noop,
 } from "@/utils/functions"
 import { useControllableState, useStepper } from "@/utils/hooks"
+import {
+  nonsenseKeywordCheck,
+  profanityCheck,
+  spellCheck,
+} from "@/utils/jobTitleValidation"
 import { generateUsernameSuggestions } from "@/utils/username"
 import {
   AlertCircle,
@@ -846,12 +853,197 @@ const getUniqueOptions = (values: string[]) =>
     new Set(values.map((value) => value.trim()).filter((value) => value.length))
   )
 
+const sortAlphabetically = (values: string[]) =>
+  getUniqueOptions(values).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" })
+  )
+
+const formatSkillLabel = (value: string) => {
+  const trimmedValue = value.trim()
+  if (!trimmedValue) return ""
+
+  if (
+    trimmedValue.toLowerCase() === "react.js" ||
+    trimmedValue.toLowerCase() === "react js"
+  ) {
+    return "React JS"
+  }
+
+  if (!/[./]/.test(trimmedValue)) {
+    return convertToTitleCase(trimmedValue)
+  }
+
+  return convertToTitleCase(trimmedValue.replace(/[./]+/g, " "))
+}
+
+const projectPreferenceStaticOptions = getUniqueOptions(
+  (Array.isArray(rawProjectTypeSuggestions) ? rawProjectTypeSuggestions : [])
+    .map((item) => (typeof item?.label === "string" ? item.label : ""))
+    .filter((item) => item.length > 0)
+)
+
 const hasCaseInsensitiveExactMatch = (values: string[], candidate: string) => {
   const normalizedCandidate = candidate.trim().toLowerCase()
   if (!normalizedCandidate) return false
   return values.some(
     (value) => value.trim().toLowerCase() === normalizedCandidate
   )
+}
+
+const COMMON_SHORT_TOKENS = new Set([
+  "ai",
+  "ml",
+  "ui",
+  "ux",
+  "qa",
+  "hr",
+  "it",
+  "bi",
+  "db",
+  "ios",
+  "api",
+  "aws",
+  "gcp",
+  "seo",
+  "sem",
+  "saas",
+  "b2b",
+  "b2c",
+  "erp",
+  "crm",
+])
+
+const SKILL_ROLE_WORDS = new Set([
+  "developer",
+  "engineer",
+  "engineering",
+  "manager",
+  "managerial",
+  "specialist",
+  "consultant",
+  "architect",
+  "architectural",
+  "analyst",
+  "administrator",
+  "admin",
+  "lead",
+  "leader",
+  "intern",
+  "trainee",
+])
+
+const normalizeWordToken = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9+#./-]/g, "")
+    .trim()
+
+const toVocabulary = (values: string[]) =>
+  new Set(
+    values
+      .flatMap((value) => value.split(/[^a-zA-Z0-9+#./-]+/))
+      .map((word) => normalizeWordToken(word))
+      .filter((word) => word.length >= 3)
+  )
+
+const normalizeSkillInputForChecks = (value: string) =>
+  value
+    .replace(/[^a-zA-Z0-9\s-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+const getEditDistance = (a: string, b: string) => {
+  const aLen = a.length
+  const bLen = b.length
+
+  if (!aLen) return bLen
+  if (!bLen) return aLen
+
+  const matrix = Array.from({ length: aLen + 1 }, () =>
+    new Array<number>(bLen + 1).fill(0)
+  )
+
+  for (let i = 0; i <= aLen; i += 1) matrix[i][0] = i
+  for (let j = 0; j <= bLen; j += 1) matrix[0][j] = j
+
+  for (let i = 1; i <= aLen; i += 1) {
+    for (let j = 1; j <= bLen; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      )
+    }
+  }
+
+  return matrix[aLen][bLen]
+}
+
+const hasLikelyMisspelledToken = (
+  value: string,
+  vocabulary: Set<string>
+): boolean => {
+  const tokens = value
+    .split(/[^a-zA-Z0-9+#./-]+/)
+    .map((token) => normalizeWordToken(token))
+    .filter(Boolean)
+
+  return tokens.some((token) => {
+    if (token.length <= 2) return false
+    if (COMMON_SHORT_TOKENS.has(token)) return false
+    if (/[0-9+#./-]/.test(token)) return false
+    if (!/[aeiou]/.test(token) && token.length > 3) return true
+    if (/([a-z])\1\1/i.test(token)) return true
+    if (/[bcdfghjklmnpqrstvwxyz]{5,}/i.test(token)) return true
+    if (vocabulary.has(token) || token.length < 5) return false
+
+    for (const word of vocabulary) {
+      if (Math.abs(word.length - token.length) > 2) continue
+      const distance = getEditDistance(token, word)
+      if (distance <= 1) return true
+    }
+
+    return false
+  })
+}
+
+const isReasonableCustomEntry = async (
+  rawValue: string,
+  {
+    maxWords,
+    maxLength,
+    vocabulary,
+  }: {
+    maxWords: number
+    maxLength: number
+    vocabulary: Set<string>
+  }
+) => {
+  const trimmed = rawValue.trim()
+  if (trimmed.length < 2 || trimmed.length > maxLength) return false
+  if (trimmed.split(/\s+/).length > maxWords) return false
+  if (!/^[a-zA-Z0-9\s\-.&+#/]+$/.test(trimmed)) return false
+  if (/^\d+$/.test(trimmed)) return false
+  if (hasLikelyMisspelledToken(trimmed, vocabulary)) return false
+  if (
+    trimmed
+      .split(/\s+/)
+      .some((token) => SKILL_ROLE_WORDS.has(token.toLowerCase()))
+  ) {
+    return false
+  }
+
+  const normalizedForChecks = normalizeSkillInputForChecks(trimmed)
+  if (!normalizedForChecks) return false
+  try {
+    if (!(await spellCheck(normalizedForChecks))) return false
+  } catch {
+    // If the remote spell-check service is unavailable, keep the local checks.
+  }
+  if (!profanityCheck(normalizedForChecks)) return false
+  if (!nonsenseKeywordCheck(normalizedForChecks)) return false
+  return true
 }
 
 const AUTOCOMPLETE_SUBMIT_TYPE_MAP: Record<string, string> = {
@@ -1182,8 +1374,9 @@ const ShareYourLocation = ({
   const [isHomeCountry, setIsHomeCountry] = useState(true)
   const [suppressLanguageFocusOpen, setSuppressLanguageFocusOpen] =
     useState(false)
-  const [languageOptions, setLanguageOptions] = useState<string[]>(
-    getUniqueOptions(languagesMock.map((item) => item.label))
+  const languageOptions = useMemo(
+    () => getUniqueOptions(languagesMock.map((item) => item.label)),
+    []
   )
   const watchedLanguages = useWatch({
     control,
@@ -1192,14 +1385,10 @@ const ShareYourLocation = ({
   const selectedLanguageValues = Array.isArray(watchedLanguages)
     ? watchedLanguages
     : []
-  const languagesRequestRef = useRef(0)
-  const languagesDebounceTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null)
   const filteredLanguages = useMemo(() => {
     const query = languagesQuery.trim().toLowerCase()
     const searchableLanguages = languageOptions.filter(
-      (item) => !hasCaseInsensitiveExactMatch(selectedLanguageValues, item)
+      (item) => !selectedLanguageValues.includes(item)
     )
     if (!query) return searchableLanguages
     return searchableLanguages.filter((item) =>
@@ -1216,30 +1405,26 @@ const ShareYourLocation = ({
     if (!value) return
 
     const normalizedCurrentValues = getUniqueOptions(currentValues)
-    if (normalizedCurrentValues.includes(value)) {
+    const matchedValue = languageOptions.find(
+      (option) => option.trim().toLowerCase() === value.toLowerCase()
+    )
+
+    if (!matchedValue) {
       setLanguagesQuery("")
       setIsLanguagesOpen(false)
       setSuppressLanguageFocusOpen(true)
       return
     }
 
-    const isKnownSuggestion = hasCaseInsensitiveExactMatch(
-      languageOptions,
-      value
-    )
-    if (!isKnownSuggestion) {
-      const accepted = await submitAutocompleteValue("languages", value)
-      if (!accepted) {
-        setLanguagesQuery("")
-        setIsLanguagesOpen(false)
-        setSuppressLanguageFocusOpen(true)
-        return
-      }
+    if (normalizedCurrentValues.includes(matchedValue)) {
+      setLanguagesQuery("")
+      setIsLanguagesOpen(false)
+      setSuppressLanguageFocusOpen(true)
+      return
     }
 
     clearErrors("languages")
-    setLanguageOptions((prev) => getUniqueOptions([...prev, value]))
-    const next = getUniqueOptions([...normalizedCurrentValues, value])
+    const next = getUniqueOptions([...normalizedCurrentValues, matchedValue])
     onChange(next)
     setLanguagesQuery("")
     setIsLanguagesOpen(false)
@@ -1276,52 +1461,6 @@ const ShareYourLocation = ({
       isCancelled = true
     }
   }, [detectedCoordinates, detectedLocation])
-
-  useEffect(() => {
-    if (languagesDebounceTimerRef.current) {
-      clearTimeout(languagesDebounceTimerRef.current)
-    }
-
-    const trimmedQuery = languagesQuery.trim()
-    if (!trimmedQuery) {
-      languagesRequestRef.current += 1
-      return
-    }
-
-    languagesDebounceTimerRef.current = setTimeout(async () => {
-      const currentRequestId = ++languagesRequestRef.current
-      try {
-        const response = await AutocompleteAPI.getByType(
-          "languages",
-          trimmedQuery
-        )
-        if (currentRequestId !== languagesRequestRef.current) return
-
-        const values: AutocompleteTypeSuggestion[] = Array.isArray(
-          response?.data
-        )
-          ? response.data
-          : []
-        const normalizedOptions = getUniqueOptions(
-          values.map((item) => normalizeAutocompleteLabel(item))
-        )
-        if (!getIsNotEmpty(normalizedOptions)) return
-        setLanguageOptions((prev) =>
-          getUniqueOptions([...prev, ...normalizedOptions])
-        )
-      } catch {
-        // Keep current/fallback options when endpoint is unavailable.
-      }
-    }, 250)
-  }, [languagesQuery])
-
-  useEffect(() => {
-    return () => {
-      if (languagesDebounceTimerRef.current) {
-        clearTimeout(languagesDebounceTimerRef.current)
-      }
-    }
-  }, [])
 
   useEffect(() => {
     if (stepData?.location?.trim()) return
@@ -1524,7 +1663,7 @@ const ShareYourLocation = ({
                     const selectedLanguages = Array.isArray(value) ? value : []
 
                     return (
-                      <div className="space-y-3">
+                      <div className="flex flex-col gap-y-1.5">
                         <Combobox
                           className="w-full"
                           value={selectedLanguages}
@@ -1575,9 +1714,12 @@ const ShareYourLocation = ({
                                     const activeLabel =
                                       activeOption?.textContent?.trim() ?? ""
 
-                                    if (activeLabel) {
+                                    const selectedLabel =
+                                      activeLabel || filteredLanguages[0]
+
+                                    if (selectedLabel) {
                                       void addLanguageValue(
-                                        activeLabel,
+                                        selectedLabel,
                                         onChange,
                                         selectedLanguages
                                       )
@@ -1727,78 +1869,6 @@ const PROJECT_PREFERENCE_OPTIONS = [
   "Version Control",
   "Web Security",
 ]
-const projectPreferenceOptions = [
-  "Web Application",
-  "Mobile Application",
-  "Dashboard Development",
-  "SaaS Platform",
-  "E-commerce Platform",
-  "Automation Tool",
-  "Cloud Migration",
-  "Legacy Modernization",
-  "Data Platform",
-  "AI Product",
-  "Blockchain Platform",
-  "Smart Contracts",
-  "JavaScript",
-  "TypeScript",
-  "Python",
-  "Java",
-  "C#",
-  "C++",
-  "C",
-  "Go",
-  "Rust",
-  "Ruby",
-  "PHP",
-  "Kotlin",
-  "Swift",
-  "Dart",
-  "Scala",
-  "R",
-  "MATLAB",
-  "SQL",
-  "Bash",
-  "PowerShell",
-  "React",
-  "Next.js",
-  "Vue.js",
-  "Nuxt.js",
-  "Angular",
-  "Svelte",
-  "Node.js",
-  "NestJS",
-  "Express.js",
-  "Django",
-  "FastAPI",
-  "Spring Boot",
-  "Ruby on Rails",
-  ".NET",
-  "Flutter",
-  "React Native",
-  "PyTorch",
-  "TensorFlow",
-  "AWS",
-  "Azure",
-  "GCP",
-  "Docker",
-  "Kubernetes",
-  "Terraform",
-  "CI/CD",
-  "Git",
-  "GitHub",
-  "GitLab",
-  "Postman",
-  "Figma",
-  "Jira",
-  "Notion",
-  "Webpack",
-  "Vite",
-  "Jest",
-  "Cypress",
-  "Playwright",
-]
-
 const TopSkills = ({
   onValueChange,
   value: valueProp,
@@ -1817,18 +1887,32 @@ const TopSkills = ({
     onChange: onValueChange,
   })
   const [open, setOpen] = useState(false)
+  const [customSkillOptions, setCustomSkillOptions] = useState<string[]>([])
   const [skillOptions, setSkillOptions] =
-    useState<string[]>(FALLBACK_TOP_SKILLS)
+    useState<string[]>(sortAlphabetically(FALLBACK_TOP_SKILLS))
   const requestIdRef = useRef(0)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const skillsVocabulary = useMemo(() => toVocabulary(skillOptions), [skillOptions])
 
   const resetInputValue = () => setInputValue("")
+
+  const resolveSkillLabel = (value: string) => {
+    const trimmedValue = value.trim()
+    if (!trimmedValue) return ""
+
+    const exactMatch = skillOptions.find(
+      (option) => option.trim().toLowerCase() === trimmedValue.toLowerCase()
+    )
+
+    return exactMatch ? formatSkillLabel(exactMatch) : formatSkillLabel(trimmedValue)
+  }
 
   const addValue = async (nextValue = inputValue) => {
     const trimmedValue = nextValue.trim()
     if (!trimmedValue) return
+    const normalizedValue = resolveSkillLabel(trimmedValue)
 
-    if (hasCaseInsensitiveExactMatch(values, trimmedValue)) {
+    if (hasCaseInsensitiveExactMatch(values, normalizedValue)) {
       onAcceptedValue?.()
       resetInputValue()
       setOpen(false)
@@ -1837,10 +1921,21 @@ const TopSkills = ({
 
     const isKnownSuggestion = hasCaseInsensitiveExactMatch(
       skillOptions,
-      trimmedValue
+      normalizedValue
     )
     if (!isKnownSuggestion) {
-      const accepted = await submitAutocompleteValue("skills", trimmedValue)
+      if (
+        !isReasonableCustomEntry(normalizedValue, {
+          maxWords: 6,
+          maxLength: 80,
+          vocabulary: skillsVocabulary,
+        })
+      ) {
+        resetInputValue()
+        setOpen(false)
+        return
+      }
+      const accepted = await submitAutocompleteValue("skills", normalizedValue)
       if (!accepted) {
         resetInputValue()
         setOpen(false)
@@ -1849,8 +1944,15 @@ const TopSkills = ({
     }
 
     onAcceptedValue?.()
-    setSkillOptions((prev) => getUniqueOptions([...prev, trimmedValue]))
-    setValues((prev) => getUniqueOptions([...prev, trimmedValue]))
+    if (!isKnownSuggestion) {
+      setCustomSkillOptions((prev) =>
+        sortAlphabetically([...prev, normalizedValue])
+      )
+    }
+    setSkillOptions((prev) =>
+      sortAlphabetically([...prev, normalizedValue])
+    )
+    setValues((prev) => getUniqueOptions([...prev, normalizedValue]))
     resetInputValue()
     setOpen(false)
   }
@@ -1889,7 +1991,9 @@ const TopSkills = ({
     const query = inputValue.trim()
     if (!query) {
       requestIdRef.current += 1
-      setSkillOptions(FALLBACK_TOP_SKILLS)
+      setSkillOptions(
+        sortAlphabetically([...FALLBACK_TOP_SKILLS, ...customSkillOptions])
+      )
       return
     }
 
@@ -1907,10 +2011,21 @@ const TopSkills = ({
 
         const normalizedApiValues = Array.from(
           new Set(apiValues.map((item) => normalizeAutocompleteLabel(item)))
-        ).filter((item) => item.length > 0)
+        )
+          .map((item) => formatSkillLabel(item))
+          .filter((item) => item.length > 0)
 
         if (getIsNotEmpty(normalizedApiValues)) {
-          setSkillOptions(normalizedApiValues)
+          const fallbackMatches = FALLBACK_TOP_SKILLS.filter((skill) =>
+            skill.toLowerCase().includes(query.toLowerCase())
+          )
+          setSkillOptions(
+            sortAlphabetically([
+              ...fallbackMatches,
+              ...customSkillOptions,
+              ...normalizedApiValues,
+            ])
+          )
           return
         }
       } catch {
@@ -1920,7 +2035,9 @@ const TopSkills = ({
       const fallbackMatches = FALLBACK_TOP_SKILLS.filter((skill) =>
         skill.toLowerCase().includes(query.toLowerCase())
       )
-      setSkillOptions(fallbackMatches)
+      setSkillOptions(
+        sortAlphabetically([...fallbackMatches, ...customSkillOptions])
+      )
     }, 250)
 
     return () => {
@@ -1928,7 +2045,7 @@ const TopSkills = ({
         clearTimeout(debounceTimerRef.current)
       }
     }
-  }, [inputValue])
+  }, [inputValue, customSkillOptions])
 
   const filteredRoles = inputValue.trim()
     ? skillOptions
@@ -1937,11 +2054,10 @@ const TopSkills = ({
             !hasCaseInsensitiveExactMatch(values, skill) &&
             skill.toLowerCase().startsWith(inputValue.trim().toLowerCase())
         )
-        .slice(0, 5)
     : []
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-y-1.5">
       <Combobox
         className="w-full"
         value={values}
@@ -2055,20 +2171,20 @@ const ShowcaseYourTalent = ({
   const [selectedIndustries, setSelectedIndustries] = useState<string[]>(
     parseMultiSelectString(stepData?.industriesWorkedIn)
   )
-  const [jobTitleOptions, setJobTitleOptions] = useState<string[]>(
-    getUniqueOptions(jobTitlesMock.map((item) => item.label))
+  const [customJobTitleOptions, setCustomJobTitleOptions] = useState<string[]>(
+    []
   )
-  const [industriesOptions, setIndustriesOptions] = useState<string[]>(
-    getUniqueOptions(industriesMock.map((item) => item.label))
+  const [jobTitleOptions, setJobTitleOptions] = useState<string[]>(
+    sortAlphabetically(jobTitlesMock.map((item) => item.label))
+  )
+  const industriesOptions = useMemo(
+    () => getUniqueOptions(industriesMock.map((item) => item.label)),
+    []
   )
   const jobTitleRequestRef = useRef(0)
-  const industriesRequestRef = useRef(0)
   const jobTitleDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   )
-  const industriesDebounceTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null)
 
   const filteredJobTitles = useMemo(() => {
     const query = jobTitleQuery.trim().toLowerCase()
@@ -2077,10 +2193,21 @@ const ShowcaseYourTalent = ({
       item.toLowerCase().startsWith(query)
     )
   }, [jobTitleOptions, jobTitleQuery])
+
+  const resolveJobTitleLabel = (value: string) => {
+    const trimmedValue = value.trim()
+    if (!trimmedValue) return ""
+
+    const exactMatch = jobTitleOptions.find(
+      (option) => option.trim().toLowerCase() === trimmedValue.toLowerCase()
+    )
+
+    return exactMatch ?? convertToTitleCase(trimmedValue)
+  }
   const filteredIndustries = useMemo(() => {
     const query = industriesQuery.trim().toLowerCase()
     const searchableIndustries = industriesOptions.filter(
-      (item) => !hasCaseInsensitiveExactMatch(selectedIndustries, item)
+      (item) => !selectedIndustries.includes(item)
     )
     if (!query) return searchableIndustries
     return searchableIndustries.filter((item) =>
@@ -2092,24 +2219,19 @@ const ShowcaseYourTalent = ({
     const value = nextValue.trim()
     if (!value) return
 
-    const isKnownSuggestion = hasCaseInsensitiveExactMatch(
-      industriesOptions,
-      value
+    const matchedValue = industriesOptions.find(
+      (option) => option.trim().toLowerCase() === value.toLowerCase()
     )
-    if (!isKnownSuggestion) {
-      const accepted = await submitAutocompleteValue("industries", value)
-      if (!accepted) {
-        setIndustriesQuery("")
-        setIsIndustriesOpen(false)
-        setSuppressIndustryFocusOpen(true)
-        return
-      }
+    if (!matchedValue) {
+      setIndustriesQuery("")
+      setIsIndustriesOpen(false)
+      setSuppressIndustryFocusOpen(true)
+      return
     }
 
     clearErrors("industriesWorkedWith")
-    setIndustriesOptions((prev) => getUniqueOptions([...prev, value]))
-    if (!hasCaseInsensitiveExactMatch(selectedIndustries, value)) {
-      const next = [...selectedIndustries, value]
+    if (!selectedIndustries.includes(matchedValue)) {
+      const next = [...selectedIndustries, matchedValue]
       setSelectedIndustries(next)
       setValue("industriesWorkedWith", next, { shouldValidate: true })
     }
@@ -2132,6 +2254,12 @@ const ShowcaseYourTalent = ({
     const trimmedQuery = jobTitleQuery.trim()
     if (!trimmedQuery) {
       jobTitleRequestRef.current += 1
+      setJobTitleOptions(
+        sortAlphabetically([
+          ...jobTitlesMock.map((item) => item.label),
+          ...customJobTitleOptions,
+        ])
+      )
       return
     }
 
@@ -2153,8 +2281,11 @@ const ShowcaseYourTalent = ({
           values.map((item) => normalizeAutocompleteLabel(item))
         )
         if (!getIsNotEmpty(normalizedOptions)) return
+        setCustomJobTitleOptions((prev) =>
+          sortAlphabetically([...prev, ...normalizedOptions])
+        )
         setJobTitleOptions((prev) =>
-          getUniqueOptions([...prev, ...normalizedOptions])
+          sortAlphabetically([...prev, ...normalizedOptions])
         )
       } catch {
         // Keep current/fallback options when endpoint is unavailable.
@@ -2163,50 +2294,9 @@ const ShowcaseYourTalent = ({
   }, [jobTitleQuery])
 
   useEffect(() => {
-    if (industriesDebounceTimerRef.current) {
-      clearTimeout(industriesDebounceTimerRef.current)
-    }
-
-    const trimmedQuery = industriesQuery.trim()
-    if (!trimmedQuery) {
-      industriesRequestRef.current += 1
-      return
-    }
-
-    industriesDebounceTimerRef.current = setTimeout(async () => {
-      const currentRequestId = ++industriesRequestRef.current
-      try {
-        const response = await AutocompleteAPI.getByType(
-          "industries",
-          trimmedQuery
-        )
-        if (currentRequestId !== industriesRequestRef.current) return
-
-        const values: AutocompleteTypeSuggestion[] = Array.isArray(
-          response?.data
-        )
-          ? response.data
-          : []
-        const normalizedOptions = getUniqueOptions(
-          values.map((item) => normalizeAutocompleteLabel(item))
-        )
-        if (!getIsNotEmpty(normalizedOptions)) return
-        setIndustriesOptions((prev) =>
-          getUniqueOptions([...prev, ...normalizedOptions])
-        )
-      } catch {
-        // Keep current/fallback options when endpoint is unavailable.
-      }
-    }, 250)
-  }, [industriesQuery])
-
-  useEffect(() => {
     return () => {
       if (jobTitleDebounceTimerRef.current) {
         clearTimeout(jobTitleDebounceTimerRef.current)
-      }
-      if (industriesDebounceTimerRef.current) {
-        clearTimeout(industriesDebounceTimerRef.current)
       }
     }
   }, [])
@@ -2306,7 +2396,7 @@ const ShowcaseYourTalent = ({
                   control={control}
                   name="recentJobTitle"
                   render={({ field: { value, onChange } }) => (
-                    <div className="space-y-3">
+                    <div className="flex flex-col gap-y-1.5">
                       <Combobox
                         className="w-full"
                         value={value}
@@ -2347,15 +2437,23 @@ const ShowcaseYourTalent = ({
                               const finalValue =
                                 activeLabel || jobTitleQuery.trim()
                               if (!finalValue) return
+                              const normalizedValue =
+                                resolveJobTitleLabel(finalValue)
                               const isKnownSuggestion =
                                 hasCaseInsensitiveExactMatch(
                                   jobTitleOptions,
-                                  finalValue
+                                  normalizedValue
                                 )
                               const applyValue = () => {
-                                onChange(finalValue)
+                                onChange(normalizedValue)
+                                setCustomJobTitleOptions((prev) =>
+                                  sortAlphabetically([...prev, normalizedValue])
+                                )
                                 setJobTitleOptions((prev) =>
-                                  getUniqueOptions([...prev, finalValue])
+                                  sortAlphabetically([
+                                    ...prev,
+                                    normalizedValue,
+                                  ])
                                 )
                                 clearErrors("recentJobTitle")
                                 setJobTitleQuery("")
@@ -2365,7 +2463,7 @@ const ShowcaseYourTalent = ({
                               if (!isKnownSuggestion) {
                                 const accepted = await submitAutocompleteValue(
                                   "job_titles",
-                                  finalValue
+                                  normalizedValue
                                 )
                                 if (!accepted) {
                                   setJobTitleQuery("")
@@ -2503,8 +2601,11 @@ const ShowcaseYourTalent = ({
                                 const activeLabel =
                                   activeOption?.textContent?.trim() ?? ""
 
-                                if (activeLabel) {
-                                  void addIndustryValue(activeLabel)
+                                const selectedLabel =
+                                  activeLabel || filteredIndustries[0]
+
+                                if (selectedLabel) {
+                                  void addIndustryValue(selectedLabel)
                                   return
                                 }
                               }
@@ -2651,12 +2752,6 @@ const ProjectPreferences = ({
     suppressProjectPreferencesFocusOpen,
     setSuppressProjectPreferencesFocusOpen,
   ] = useState(false)
-  const [projectPreferenceOptionsState, setProjectPreferenceOptionsState] =
-    useState<string[]>(getUniqueOptions(projectPreferenceOptions))
-  const projectPreferencesRequestRef = useRef(0)
-  const projectPreferencesDebounceTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null)
   const [values, setValues] = useControllableState<string[]>({
     defaultValue: [],
     onChange: onValueChange,
@@ -2680,13 +2775,13 @@ const ProjectPreferences = ({
     }
 
     onAcceptedValue?.()
-    setValues((prev) => getUniqueOptions([...prev, value]))
+    setValues((prev) => [...prev, value])
     resetInputValue()
     setIsProjectPreferencesOpen(false)
     setSuppressProjectPreferencesFocusOpen(true)
   }
 
-  const addValue = async (nextValue: string) => {
+  const addValue = (nextValue: string) => {
     const value = nextValue.trim()
     if (!value) return
 
@@ -2696,29 +2791,22 @@ const ProjectPreferences = ({
     if (alreadySelected) {
       resetInputValue()
       setIsProjectPreferencesOpen(false)
+      setSuppressProjectPreferencesFocusOpen(true)
       return
     }
 
-    const isKnownSuggestion = hasCaseInsensitiveExactMatch(
-      projectPreferenceOptionsState,
-      value
+    const matchedSuggestion = projectPreferenceStaticOptions.find(
+      (item) => item.trim().toLowerCase() === value.toLowerCase()
     )
-
-    if (!isKnownSuggestion) {
-      const accepted = await submitAutocompleteValue("project_types", value)
-      if (!accepted) {
-        resetInputValue()
-        setIsProjectPreferencesOpen(false)
-        setSuppressProjectPreferencesFocusOpen(true)
-        return
-      }
-      setProjectPreferenceOptionsState((prev) =>
-        getUniqueOptions([...prev, value])
-      )
+    if (!matchedSuggestion) {
+      resetInputValue()
+      setIsProjectPreferencesOpen(false)
+      setSuppressProjectPreferencesFocusOpen(true)
+      return
     }
 
     onAcceptedValue?.()
-    setValues((prev) => getUniqueOptions([...prev, value]))
+    setValues((prev) => [...prev, matchedSuggestion])
     resetInputValue()
     setIsProjectPreferencesOpen(false)
     setSuppressProjectPreferencesFocusOpen(true)
@@ -2736,6 +2824,7 @@ const ProjectPreferences = ({
       target: { value },
     } = event
     setInputValue(value)
+    onAcceptedValue?.()
     setIsProjectPreferencesOpen(true)
   }
 
@@ -2744,26 +2833,28 @@ const ProjectPreferences = ({
 
     const hasSuggestions = isProjectPreferencesOpen && filteredRoles.length > 0
 
+    event.preventDefault()
+
     if (hasSuggestions) {
-      event.preventDefault()
       const activeOption = document.querySelector(
         '[role="option"][data-headlessui-state~="active"]'
       ) as HTMLElement | null
       const activeLabel = activeOption?.textContent?.trim() ?? ""
+      const fallbackSuggestion = filteredRoles[0]?.trim() ?? ""
+      const selectedSuggestion = activeLabel || fallbackSuggestion
 
-      if (activeLabel) {
-        selectSuggestedValue(activeLabel)
+      if (selectedSuggestion) {
+        selectSuggestedValue(selectedSuggestion)
         return
       }
     }
 
-    event.preventDefault()
     void addValue(inputValue)
   }
 
   const filteredRoles = useMemo(() => {
     const query = inputValue.trim().toLowerCase()
-    return projectPreferenceOptionsState.filter((projectType) => {
+    return projectPreferenceStaticOptions.filter((projectType) => {
       if (
         values.some(
           (value) =>
@@ -2776,57 +2867,10 @@ const ProjectPreferences = ({
       if (!query) return true
       return projectType.toLowerCase().startsWith(query)
     })
-  }, [inputValue, projectPreferenceOptionsState, values])
-
-  useEffect(() => {
-    if (projectPreferencesDebounceTimerRef.current) {
-      clearTimeout(projectPreferencesDebounceTimerRef.current)
-    }
-
-    const trimmedQuery = inputValue.trim()
-    if (!trimmedQuery) {
-      projectPreferencesRequestRef.current += 1
-      return
-    }
-
-    projectPreferencesDebounceTimerRef.current = setTimeout(async () => {
-      const currentRequestId = ++projectPreferencesRequestRef.current
-
-      try {
-        const response = await AutocompleteAPI.getByType(
-          "project_types",
-          trimmedQuery
-        )
-        if (currentRequestId !== projectPreferencesRequestRef.current) return
-
-        const nextOptions = getUniqueOptions(
-          (response?.data as AutocompleteTypeSuggestion[] | undefined)?.map(
-            normalizeAutocompleteLabel
-          ) ?? []
-        )
-
-        if (nextOptions.length > 0) {
-          setProjectPreferenceOptionsState(nextOptions)
-          return
-        }
-      } catch {
-        // keep fallback options when autocomplete API is unavailable
-      }
-
-      setProjectPreferenceOptionsState(
-        getUniqueOptions(projectPreferenceOptions)
-      )
-    }, 250)
-
-    return () => {
-      if (projectPreferencesDebounceTimerRef.current) {
-        clearTimeout(projectPreferencesDebounceTimerRef.current)
-      }
-    }
-  }, [inputValue])
+  }, [inputValue, values])
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-y-1.5">
       <Combobox
         className="w-full"
         value={values}
