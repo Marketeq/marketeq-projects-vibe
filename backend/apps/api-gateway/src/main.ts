@@ -117,7 +117,8 @@ async function bootstrap() {
   await app.startAllMicroservices()
 
   const port = process.env.PORT || 4000
-  await app.listen(port)
-  logger.log(`api-gateway running on port ${port}`)
+  const host = process.env.HOST || '0.0.0.0'
+  await app.listen(port, host)
+  logger.log(`api-gateway running on ${host}:${port}`)
 }
 bootstrap()
