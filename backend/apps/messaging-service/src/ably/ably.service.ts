@@ -18,6 +18,10 @@ export class AblyService {
     if (!this.client) return null;
     const capability: Record<string, string[]> = {
       [`user:${userId}`]: ['subscribe'],
+      // Global presence channel: every authenticated client can join + observe
+      // who else is online. Drives the avatar dot in inbox left/right sidebars
+      // and the chat header (replacing the previous per-thread-only presence).
+      'presence:online': ['subscribe', 'presence'],
     };
     for (const threadId of threadIds) {
       capability[`chat:thread-${threadId}`] = ['subscribe', 'presence'];

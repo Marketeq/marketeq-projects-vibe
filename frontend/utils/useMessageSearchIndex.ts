@@ -23,6 +23,13 @@ export interface MessageSearchIndexState {
   /** True once the cached index has been loaded from IndexedDB. */
   ready: boolean
   docCount: number
+  /** Full doc set; exposed so consumers can run their own non-fuzzy filters
+   * (e.g. filenames, URL substrings) that fuse's content-keyed match misses. */
+  allDocs: SearchDoc[]
+  /** Append a single doc into the live index without a full rebuild. Used
+   * after sending or receiving a message so search picks it up immediately
+   * instead of waiting for the next session-bootstrap rebuild. */
+  addDoc: (doc: SearchDoc) => void
 }
 
 /**
@@ -118,6 +125,29 @@ export function useMessageSearchIndex({
     return searcherRef.current(query)
   }, [])
 
+  const addDoc = useCallback(
+    (doc: SearchDoc) => {
+      setDocs((prev) => {
+        // Replace if same id already present (handles edits), otherwise append.
+        const idx = prev.findIndex((d) => d.id === doc.id)
+        const next = idx >= 0 ? prev.slice() : [...prev, doc]
+        if (idx >= 0) next[idx] = doc
+        // Persist asynchronously; fire-and-forget — the in-memory state is
+        // what drives the searcher above, IDB is just the cache for next load.
+        if (userId) {
+          void saveCachedDocs(
+            userId,
+            next,
+            // We don't track threadsIndexed here; saveCachedDocs handles it.
+            [],
+          ).catch(() => {})
+        }
+        return next
+      })
+    },
+    [userId],
+  )
+
   // Stable object identity — consumers put this in effect deps.
   return useMemo(
     () => ({
@@ -126,7 +156,9 @@ export function useMessageSearchIndex({
       progress,
       ready,
       docCount: docs.length,
+      allDocs: docs,
+      addDoc,
     }),
-    [search, isIndexing, progress, ready, docs.length]
+    [search, isIndexing, progress, ready, docs, addDoc]
   )
 }

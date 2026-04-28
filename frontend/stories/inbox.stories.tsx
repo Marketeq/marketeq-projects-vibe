@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { memo, useEffect, useState } from "react"
 import Image from "next/image"
 import { apiFetch } from "@/src/lib/api"
 import { CurrentUser } from "@/utils/auth"
@@ -245,7 +245,7 @@ const MessageAttachmentView = ({
   )
 }
 
-export const Bubble = ({
+const BubbleImpl = ({
   message,
   currentUser,
   participantUsername,
@@ -524,6 +524,9 @@ export const Bubble = ({
   )
 }
 
+export const Bubble = memo(BubbleImpl)
+Bubble.displayName = "Bubble"
+
 export const [EditContextProvider, useEditContext] = createContext<{
   chat: string
   onChatChange: (value: string) => void
@@ -534,7 +537,7 @@ export const [EditContextProvider, useEditContext] = createContext<{
   displayName: "EditContext",
 })
 
-export const YourBubble = ({
+const YourBubbleImpl = ({
   message,
   currentUser,
   participantUsername,
@@ -731,6 +734,237 @@ export const YourBubble = ({
     </article>
   )
 }
+
+export const YourBubble = memo(YourBubbleImpl)
+YourBubble.displayName = "YourBubble"
+
+// ---------------------------------------------------------------------------
+// Search result rows (per Figma: "Inbox - Search Results - All Messages
+// Panel States"). One component per section so left-sidebar can compose
+// them without inlining JSX.
+// ---------------------------------------------------------------------------
+
+const SearchPeopleRowImpl = ({
+  name,
+  username,
+  avatarUrl,
+  onClick,
+}: {
+  name: string
+  username?: string
+  avatarUrl?: string
+  onClick: () => void
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="flex items-center gap-x-3 px-4 py-2 w-full text-left hover:bg-gray-100"
+  >
+    <Avatar size="md" className="shrink-0">
+      <AvatarImage src={avatarUrl || undefined} alt={name} />
+      <AvatarFallbackIcon />
+    </Avatar>
+    <div className="flex flex-col min-w-0">
+      <span className="text-[13px] font-semibold text-dark-blue-400 truncate">
+        {name}
+      </span>
+      {username && (
+        <span className="text-[11px] text-gray-500 truncate">@{username}</span>
+      )}
+    </div>
+  </button>
+)
+
+export const SearchPeopleRow = memo(SearchPeopleRowImpl)
+SearchPeopleRow.displayName = "SearchPeopleRow"
+
+const SearchMessageRowImpl = ({
+  participantName,
+  participantAvatarUrl,
+  snippet,
+  date,
+  onClick,
+}: {
+  participantName: string
+  participantAvatarUrl?: string
+  snippet: string
+  date: string
+  onClick: () => void
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="flex items-start gap-x-3 px-4 py-3 w-full text-left hover:bg-gray-100 border-b border-gray-100"
+  >
+    <Avatar size="md" className="shrink-0">
+      <AvatarImage
+        src={participantAvatarUrl || undefined}
+        alt={participantName}
+      />
+      <AvatarFallbackIcon />
+    </Avatar>
+    <div className="flex flex-col min-w-0 flex-1 gap-y-0.5">
+      <div className="flex items-center justify-between gap-x-2">
+        <span className="text-[13px] font-semibold text-dark-blue-400 truncate">
+          {participantName}
+        </span>
+        <span className="text-[11px] text-gray-500 shrink-0">{date}</span>
+      </div>
+      <span className="text-[11px] text-gray-600 line-clamp-2 break-words [overflow-wrap:anywhere]">
+        {snippet}
+      </span>
+    </div>
+  </button>
+)
+
+export const SearchMessageRow = memo(SearchMessageRowImpl)
+SearchMessageRow.displayName = "SearchMessageRow"
+
+const SearchLinkRowImpl = ({
+  url,
+  title,
+  senderName,
+  date,
+  onClick,
+}: {
+  url: string
+  title?: string
+  senderName?: string
+  date?: string
+  onClick: () => void
+}) => {
+  const isDrive = /drive\.google\.com/.test(url)
+  return (
+    <div className="px-4 pt-2 pb-1 border-b border-gray-100">
+      {(senderName || date) && (
+        <div className="flex items-center justify-between gap-x-2 pb-1">
+          <span className="text-[12px] font-semibold text-dark-blue-400 truncate">
+            {senderName || ""}
+          </span>
+          {date && (
+            <span className="text-[11px] text-gray-500 shrink-0">{date}</span>
+          )}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex items-center gap-x-3 py-2 w-full text-left rounded hover:bg-gray-100"
+      >
+        <div className="size-10 shrink-0 rounded bg-gray-50 flex items-center justify-center">
+          {isDrive ? (
+            <GoogleDrive1Brand className="size-5" />
+          ) : (
+            <Compass03 className="size-5 text-gray-400" />
+          )}
+        </div>
+        <div className="flex flex-col min-w-0 flex-1 gap-y-0.5">
+          <span className="text-[13px] font-semibold text-dark-blue-400 truncate">
+            {title || url}
+          </span>
+          <span className="text-[11px] text-gray-500 truncate">{url}</span>
+        </div>
+      </button>
+    </div>
+  )
+}
+
+export const SearchLinkRow = memo(SearchLinkRowImpl)
+SearchLinkRow.displayName = "SearchLinkRow"
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// Mid-string ellipsis that preserves the file extension so users can still
+// tell .docx from .png at a glance even after truncation.
+//   UncertaintyPropagation-Pilot Study.docx (39) → Uncertainty…Study.docx (22)
+export function truncateFilenameMiddle(name: string, max = 28): string {
+  if (name.length <= max) return name
+  const dot = name.lastIndexOf(".")
+  if (dot < 0 || name.length - dot > 6) {
+    return name.slice(0, max - 1) + "…"
+  }
+  const ext = name.slice(dot)
+  const headBudget = max - ext.length - 1
+  if (headBudget <= 1) return "…" + ext
+  return name.slice(0, headBudget) + "…" + ext
+}
+
+const SearchFileRowImpl = ({
+  fileName,
+  fileSize,
+  fileType,
+  fileUrl,
+  senderName,
+  date,
+  onClick,
+}: {
+  fileName: string
+  fileSize?: number | null
+  fileType?: string
+  fileUrl?: string
+  senderName?: string
+  date?: string
+  onClick: () => void
+}) => {
+  const isImage = fileType?.startsWith("image/")
+  const ext = fileName.includes(".")
+    ? fileName.split(".").pop()?.slice(0, 4).toUpperCase()
+    : "FILE"
+  return (
+    <div className="px-4 pt-2 pb-1 border-b border-gray-100">
+      {(senderName || date) && (
+        <div className="flex items-center justify-between gap-x-2 pb-1">
+          <span className="text-[12px] font-semibold text-dark-blue-400 truncate">
+            {senderName || ""}
+          </span>
+          {date && (
+            <span className="text-[11px] text-gray-500 shrink-0">{date}</span>
+          )}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex items-center gap-x-3 py-2 w-full text-left rounded hover:bg-gray-100"
+      >
+        <div className="size-10 shrink-0 rounded bg-gray-50 overflow-hidden flex items-center justify-center">
+          {isImage && fileUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={fileUrl}
+              alt={fileName}
+              className="size-full object-cover"
+            />
+          ) : (
+            <span className="text-[10px] font-semibold text-gray-500">
+              {ext}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-col min-w-0 flex-1 gap-y-0.5">
+          <span
+            className="text-[13px] font-semibold text-dark-blue-400 truncate"
+            title={fileName}
+          >
+            {truncateFilenameMiddle(fileName)}
+          </span>
+          {fileSize != null && (
+            <span className="text-[11px] text-gray-500">
+              {formatFileSize(fileSize)}
+            </span>
+          )}
+        </div>
+      </button>
+    </div>
+  )
+}
+
+export const SearchFileRow = memo(SearchFileRowImpl)
+SearchFileRow.displayName = "SearchFileRow"
 
 const dummyConv: Conversation & { participantUsername: string } = {
   id: "conv-1",

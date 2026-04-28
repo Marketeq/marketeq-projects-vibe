@@ -84,6 +84,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
+import {
+  SearchResultsPanel,
+  extractUrls,
+  type SearchFileResult,
+  type SearchLinkResult,
+  type SearchMessageResult,
+  type SearchPeopleResult,
+} from "./search-results-panel"
+import { truncateFilenameMiddle } from "@/stories/inbox.stories"
 
 function getOtherParticipantId(
   conv: Conversation,
@@ -105,11 +114,32 @@ interface LeftSidebarProps {
       senderId: string
       content: string
       createdAt: string
+      attachments?: Array<{
+        id: string
+        fileUrl: string
+        fileType: string
+        fileName?: string | null
+        fileSize?: number | null
+      }>
     }>
     isIndexing: boolean
     progress: number
     ready: boolean
     docCount: number
+    allDocs: Array<{
+      id: string
+      threadId: string
+      senderId: string
+      content: string
+      createdAt: string
+      attachments?: Array<{
+        id: string
+        fileUrl: string
+        fileType: string
+        fileName?: string | null
+        fileSize?: number | null
+      }>
+    }>
   }
   onHighlightMessage?: (messageId: string) => void
 }
@@ -260,11 +290,35 @@ const LeftSidebar = ({
       // Last-message preview (best-effort; placeholder already rendered)
       const lm = (conv as any).lastMessage
       if (!lm) return
+      // Forward indicator mirrors chat-bubble UI (Send03 icon + "Forwarded"
+      // label there, ↪ here in the row preview where icons are unavailable).
+      const fwd = lm.m_forwardedFromId ? "↪ " : ""
       if (lm.m_content) {
-        patchConv(conv.id, { lastMessagePreview: lm.m_content } as any)
+        patchConv(conv.id, { lastMessagePreview: `${fwd}${lm.m_content}` } as any)
         return
       }
-      if (!lm.m_ciphertext) return
+      // File-only or image-only message — show filename as the preview.
+      // Backend uses TypeORM getRawOne() which prefixes attachment columns
+      // with the table alias, e.g. `a_fileName`/`a_fileType`.
+      const att = lm.attachment
+      if (att?.a_fileName || att?.a_fileType) {
+        const isImage = (att.a_fileType || "").startsWith("image/")
+        const rawName = att.a_fileName || (isImage ? "Image" : "File")
+        const name = truncateFilenameMiddle(rawName)
+        patchConv(conv.id, {
+          lastMessagePreview: `${fwd}${isImage ? "🖼️" : "📎"} ${name}`,
+        } as any)
+        return
+      }
+      if (!lm.m_ciphertext) {
+        // Forwarded messages may have neither content, ciphertext, nor an
+        // attachment (forward only copies content/ciphertext, not attachments —
+        // upstream bug). Still surface that the conversation has activity.
+        if (lm.m_forwardedFromId) {
+          patchConv(conv.id, { lastMessagePreview: "↪ Forwarded message" } as any)
+        }
+        return
+      }
 
       let key: Uint8Array | null = null
       try {
@@ -298,8 +352,10 @@ const LeftSidebar = ({
 
       if (key) {
         try {
-          const preview = await decryptAES(lm.m_ciphertext, key)
-          patchConv(conv.id, { lastMessagePreview: preview } as any)
+          const decrypted = await decryptAES(lm.m_ciphertext, key)
+          patchConv(conv.id, {
+            lastMessagePreview: `${fwd}${decrypted}`,
+          } as any)
         } catch {
           /* decrypt failed; placeholder remains */
         }
@@ -315,13 +371,32 @@ const LeftSidebar = ({
         if (cancelled) return
 
         // Render list immediately with placeholders; no network/crypto blocked.
-        const placeholders = data.map((conv: Conversation) => ({
-          ...conv,
-          participantUsername: conv.isGroup ? "Group" : "…",
-          lastMessagePreview: (conv as any).lastMessage?.m_ciphertext
-            ? "Encrypted message"
-            : (conv as any).lastMessage?.m_content ?? "",
-        })) as Conversation[]
+        const placeholders = data.map((conv: Conversation) => {
+          const lm = (conv as any).lastMessage
+          let preview = ""
+          const att = lm?.attachment
+          const fwd = lm?.m_forwardedFromId ? "↪ " : ""
+          if (lm?.m_content) {
+            preview = `${fwd}${lm.m_content}`
+          } else if (att?.a_fileName || att?.a_fileType) {
+            const isImage = (att.a_fileType || "").startsWith("image/")
+            const rawName = att.a_fileName || (isImage ? "Image" : "File")
+            const name = truncateFilenameMiddle(rawName)
+            preview = `${fwd}${isImage ? "🖼️" : "📎"} ${name}`
+          } else if (lm?.m_ciphertext) {
+            preview = `${fwd}Encrypted message`
+          } else if (lm?.m_forwardedFromId) {
+            // Forwarded file/image messages don't carry attachments via the
+            // forward (backend bug — forward.ts only copies content/ciphertext).
+            // Show a generic forward indicator so the row isn't "No messages yet".
+            preview = "↪ Forwarded message"
+          }
+          return {
+            ...conv,
+            participantUsername: conv.isGroup ? "Group" : "…",
+            lastMessagePreview: preview,
+          }
+        }) as Conversation[]
         setConversations(placeholders)
         setPinnedChats?.(placeholders.filter((c) => (c as any).isPinned).length)
         setIsLoading(false)
@@ -562,12 +637,140 @@ const LeftSidebar = ({
     return () => clearTimeout(handle)
   }, [searchQuery, messagesByConversation, searchIndex])
 
-  const openSearchResult = (threadId: string, messageId: string) => {
+  const openSearchResult = (threadId: string, messageId?: string) => {
     const conv = conversations.find((c) => c.id === threadId)
     if (conv) setSelectedConversation(conv)
-    onHighlightMessage?.(messageId)
+    if (messageId) onHighlightMessage?.(messageId)
     setSearchQuery("")
   }
+
+  // Derive the four sections from search results + conversations list.
+  // People comes from the conversations array (no index needed). Messages,
+  // Links and Files all derive from the existing searchResults array.
+  const searchSections = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) {
+      return {
+        people: [] as SearchPeopleResult[],
+        messages: [] as SearchMessageResult[],
+        links: [] as SearchLinkResult[],
+        files: [] as SearchFileResult[],
+      }
+    }
+
+    const people: SearchPeopleResult[] = []
+    for (const conv of conversations) {
+      if (conv.isGroup) continue
+      const otherId = conv.participantIds?.find((id) => id !== currentUserId)
+      if (!otherId) continue
+      const name = (conv as any).participantName || conv.participantUsername
+      const username = conv.participantUsername
+      if (!name && !username) continue
+      const haystack = `${name ?? ""} ${username ?? ""}`.toLowerCase()
+      if (!haystack.includes(q)) continue
+      people.push({
+        participantId: otherId,
+        threadId: conv.id,
+        name: name || username || "Unknown",
+        username: username,
+        avatarUrl: conv.participantAvatarUrl,
+      })
+    }
+
+    const convById = new Map(conversations.map((c) => [c.id, c]))
+
+    // Messages section = matches in actual message TEXT.
+    // File-only messages (empty content, attachments only) belong in the
+    // Files section, not Messages — otherwise the same message shows up
+    // twice with a misleading "Encrypted message" snippet.
+    // Sorted newest-first so users find their recent activity quickly
+    // (matching Slack/Discord/iMessage search behavior).
+    const messages: SearchMessageResult[] = searchResults
+      .filter((r) => (r.content || "").trim().length > 0)
+      .map((r) => {
+        const conv = convById.get(r.threadId)
+        return {
+          id: r.id,
+          threadId: r.threadId,
+          participantName: conv?.participantUsername || "Conversation",
+          participantAvatarUrl: conv?.participantAvatarUrl,
+          snippet: r.content,
+          createdAt: r.createdAt,
+        }
+      })
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
+    // Links and Files iterate the FULL doc set (not fuse output) because
+    // fuse keys on `content` + filenames; a URL inside a message body that
+    // doesn't otherwise fuzzy-match the query would be missed by fuse but
+    // still belongs in the Links list. Same logic for Files when the query
+    // is a partial filename — the substring filter below catches it even
+    // when fuse's threshold doesn't.
+    const allDocs = searchIndex?.allDocs ?? []
+
+    // Per Figma, Links and Files rows include a small sender-name header
+    // above each card. For 1:1 threads we can derive that from the cached
+    // participantUsername — for the current user we just say "You".
+    const senderNameFor = (
+      senderId: string,
+      conv: Conversation | undefined,
+    ): string => {
+      if (senderId === currentUserId) return "You"
+      return conv?.participantUsername || "Unknown"
+    }
+
+    const links: SearchLinkResult[] = []
+    for (const r of allDocs) {
+      const contentLower = (r.content || "").toLowerCase()
+      const urls = extractUrls(r.content || "")
+      const conv = convById.get(r.threadId)
+      for (const url of urls) {
+        if (!url.toLowerCase().includes(q) && !contentLower.includes(q)) {
+          continue
+        }
+        links.push({
+          id: r.id,
+          threadId: r.threadId,
+          url,
+          senderName: senderNameFor(r.senderId, conv),
+          createdAt: r.createdAt,
+        })
+      }
+    }
+
+    const files: SearchFileResult[] = []
+    for (const r of allDocs) {
+      if (!r.attachments?.length) continue
+      const contentLower = (r.content || "").toLowerCase()
+      const conv = convById.get(r.threadId)
+      for (const a of r.attachments) {
+        const fname = a.fileName || "(untitled)"
+        if (!fname.toLowerCase().includes(q) && !contentLower.includes(q)) {
+          continue
+        }
+        files.push({
+          id: a.id,
+          threadId: r.threadId,
+          fileName: fname,
+          fileSize: a.fileSize ?? null,
+          fileType: a.fileType,
+          fileUrl: a.fileUrl,
+          senderName: senderNameFor(r.senderId, conv),
+          createdAt: r.createdAt,
+        })
+      }
+    }
+
+    // Links and Files: newest-first.
+    const byCreatedDesc = (
+      a: { createdAt?: string },
+      b: { createdAt?: string },
+    ) => (b.createdAt || "").localeCompare(a.createdAt || "")
+    links.sort(byCreatedDesc)
+    files.sort(byCreatedDesc)
+
+    return { people, messages, links, files }
+  }, [searchQuery, searchResults, conversations, currentUserId, searchIndex])
 
   return (
     <div className="w-[322px] shrink-0 border-r bg-white border-gray-200 h-full flex flex-col min-h-0">
@@ -815,61 +1018,17 @@ const LeftSidebar = ({
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col">
           {searching ? (
-            <div className="py-2">
-              <div className="px-4 py-1.5 flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
-                  Messages
-                </span>
-                {searchIndex?.isIndexing && (
-                  <span className="inline-flex items-center gap-x-1 text-[10px] text-gray-400">
-                    <Spinner size={10} strokeWidth={3} />
-                    Indexing {Math.round((searchIndex.progress ?? 0) * 100)}%
-                  </span>
-                )}
-              </div>
-              {searchLoading ? (
-                <div className="flex items-center justify-center py-8 text-gray-400">
-                  <Spinner size={20} strokeWidth={3} />
-                </div>
-              ) : searchResults.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 gap-2 text-gray-400 px-6 text-center">
-                  <SearchMd className="size-6 stroke-[1.5]" />
-                  <p className="text-xs">No messages matching "{searchQuery}"</p>
-                  {searchIndex?.isIndexing && (
-                    <p className="text-[11px] leading-4 text-gray-500">
-                      Still indexing older messages — try again in a moment.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                searchResults.map((r) => {
-                  const conv = conversations.find((c) => c.id === r.threadId)
-                  return (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => openSearchResult(r.threadId, r.id)}
-                      className="flex flex-col items-start gap-y-1 px-4 py-3 text-left hover:bg-gray-100 border-b border-gray-100"
-                    >
-                      <div className="flex items-center justify-between w-full gap-x-2">
-                        <span className="text-[13px] font-semibold text-dark-blue-400 truncate">
-                          {conv?.participantUsername || "Conversation"}
-                        </span>
-                        <span className="text-[11px] text-gray-500 shrink-0">
-                          {new Date(r.createdAt).toLocaleDateString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-gray-600 line-clamp-2 break-words [overflow-wrap:anywhere]">
-                        {r.content || "Encrypted message"}
-                      </span>
-                    </button>
-                  )
-                })
-              )}
-            </div>
+            <SearchResultsPanel
+              query={searchQuery}
+              isLoading={searchLoading}
+              isIndexing={searchIndex?.isIndexing}
+              indexProgress={searchIndex?.progress}
+              people={searchSections.people}
+              messages={searchSections.messages}
+              links={searchSections.links}
+              files={searchSections.files}
+              onOpenThread={openSearchResult}
+            />
           ) : isLoading ? (
             <div className="flex items-center justify-center py-12 text-gray-400">
               <Spinner size={24} strokeWidth={3} />

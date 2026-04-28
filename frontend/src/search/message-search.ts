@@ -12,7 +12,7 @@ import { decryptAES } from "@/src/crypto/e2ee"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
 import type { Conversation } from "@/types/conversation"
-import type { Message } from "@/types/message"
+import type { Message, MessageAttachment } from "@/types/message"
 
 const DB_NAME = "marketeq-search"
 const DB_VERSION = 1
@@ -25,6 +25,11 @@ export interface SearchDoc {
   senderId: string
   content: string
   createdAt: string
+  // Attachments are captured at index time so the search panel can drive its
+  // Files section without a separate query. Optional because older cached
+  // indexes (built before this field was added) won't have it; consumers
+  // should treat `undefined` as "no attachments" rather than "not yet known".
+  attachments?: MessageAttachment[]
 }
 
 let dbPromise: Promise<IDBPDatabase> | null = null
@@ -203,10 +208,13 @@ export async function buildSearchIndex(opts: BuildOptions): Promise<{
           try {
             content = await decryptAES(m.ciphertext, aesKey)
           } catch {
-            continue
+            // Decryption failed — but if the message has attachments, still
+            // index it so the Files section can find them by filename.
+            if (!(m as Message).attachments?.length) continue
           }
         }
-        if (!content) continue
+        // Skip only if there's NEITHER content NOR attachments.
+        if (!content && !(m as Message).attachments?.length) continue
 
         byId.set(m.id, {
           id: m.id,
@@ -214,6 +222,7 @@ export async function buildSearchIndex(opts: BuildOptions): Promise<{
           senderId: m.senderId,
           content,
           createdAt: m.createdAt,
+          attachments: (m as Message).attachments,
         })
       }
       threadsIndexed.push(thread.id)
@@ -236,7 +245,10 @@ export async function buildSearchIndex(opts: BuildOptions): Promise<{
 }
 
 const FUSE_OPTIONS: IFuseOptions<SearchDoc> = {
-  keys: ["content"],
+  // Search both message body text and attachment filenames so that typing a
+  // filename surfaces the conversation it lives in, not just messages whose
+  // body contains the filename.
+  keys: ["content", "attachments.fileName"],
   threshold: 0.3,
   ignoreLocation: true,
   includeMatches: false,

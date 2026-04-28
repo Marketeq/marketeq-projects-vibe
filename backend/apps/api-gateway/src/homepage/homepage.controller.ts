@@ -6,7 +6,9 @@ import { HomepagePayload } from './homepage.types';
 // Alias routes:
 // - /homepage is the canonical public homepage endpoint
 // - /v1/homepage exists for legacy/frontend callers that assume v1 prefix
-@Controller(['homepage', 'v1/homepage'])
+// - /api/homepage keeps compatibility for callers that still hit the
+//   controller through an explicit /api-prefixed path.
+@Controller(['homepage', 'v1/homepage', 'api/homepage'])
 export class HomepageController {
   constructor(private readonly homepageService: HomepageService) {}
 

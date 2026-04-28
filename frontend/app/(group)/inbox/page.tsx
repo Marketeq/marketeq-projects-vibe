@@ -209,6 +209,7 @@ export default function InboxRoot() {
           onMessagesLoaded={handleMessagesLoaded}
           highlightMessageId={highlightMessageId}
           onHighlightConsumed={() => setHighlightMessageId(null)}
+          onIndexNewMessage={searchIndex.addDoc}
         />
 
         {rightSidebarOpen && (

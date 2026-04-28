@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/utils/auth"
 import { apiFetch } from "@/src/lib/api"
 import { Conversation } from "@/types/conversation"
 import { UserProfile } from "@/types/user"
+import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import {
   AlertTriangle,
   Archive,
@@ -81,6 +82,7 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
   const [user, setUser] = useState<UserProfile | null>(null)
   const currentUser = getCurrentUser()
   const router = useRouter()
+  const { isOnline } = useOnlineUsers()
 
   useEffect(() => {
     setUser(null)
@@ -123,7 +125,7 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
   return (
     <div className="w-[300px] bg-white flex flex-col shrink-0 pt-10 pb-6 px-5 border-l border-gray-200">
       <div className="pb-5 flex flex-col items-center border-b border-gray-200">
-        <Avatar size="2xl">
+        <Avatar size="2xl" isOnline={isOnline(user?.id)}>
           <AvatarImage src={avatarUrl || undefined} alt={fullName} />
           <AvatarFallback delayMs={0}>{initials}</AvatarFallback>
         </Avatar>

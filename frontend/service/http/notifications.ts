@@ -136,8 +136,8 @@ export const NotificationsAPI = {
   updatePhone: (phone: string | null) =>
     AxiosRequest.patch(`${USER_BASE}/user/phone`, { phone }),
 
-  // Explicitly present so callers can feature-detect in dev without
-  // needing `any` or tripping TypeScript when the endpoint is absent.
+  // Keep this explicit even when unavailable so callers can feature-detect
+  // safely without reaching for `any` or failing type-checks.
   seedDev: undefined as undefined | (() => Promise<unknown>),
 }
 
@@ -159,8 +159,6 @@ export interface ListNotificationsParams {
   category?: string
   unread?: boolean
 }
-
-export default NotificationsAPI
 
 // Used by UI to avoid noisy console errors on expected transient failures
 // (e.g., notifications-service temporarily down in dev).
@@ -191,3 +189,5 @@ export const isTransientNotificationsApiError = (error: unknown): boolean => {
 
   return false
 }
+
+export default NotificationsAPI
