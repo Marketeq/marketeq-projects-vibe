@@ -59,7 +59,8 @@ async function bootstrap() {
   }
 
   await app.startAllMicroservices();
-  await app.listen(port);
-  logger.log(`User Service is running on port ${port}`);
+  const host = process.env.HOST || '0.0.0.0';
+  await app.listen(port, host);
+  logger.log(`User Service is running on ${host}:${port}`);
 }
 bootstrap();

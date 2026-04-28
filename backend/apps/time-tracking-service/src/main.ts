@@ -42,8 +42,9 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   const port = process.env.PORT ?? 3017;
-  await app.listen(port, '0.0.0.0');
-  Logger.log(`✅ time-tracking-service listening on http://localhost:${port}`, 'Bootstrap');
+  const host = process.env.HOST || '0.0.0.0';
+  await app.listen(port, host);
+  Logger.log(`✅ time-tracking-service listening on http://${host}:${port}`, 'Bootstrap');
 }
 
 bootstrap();

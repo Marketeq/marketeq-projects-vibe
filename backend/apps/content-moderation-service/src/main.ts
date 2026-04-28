@@ -8,6 +8,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   console.log('MOCK_MODE:', process.env.MOCK_MODE);
   const port = process.env.PORT || 3014; // Fallback to port 3014 if PORT is not defined
+  const host = process.env.HOST || '0.0.0.0';
   // Only apply body parsers if not multipart/form-data
   app.use((req: Request, res: Response, next: NextFunction) => {
     console.log('[MIDDLEWARE] Incoming request:', req.method, req.url, req.headers['content-type']);
@@ -21,9 +22,9 @@ async function bootstrap() {
       });
     }
   });
-  await app.listen(port);
+  await app.listen(port, host);
   console.log(
-    ` Content Moderation Service is running on: http://localhost:${port}`,
+    ` Content Moderation Service is running on: http://${host}:${port}`,
   );
 }
 bootstrap();

@@ -31,7 +31,8 @@ async function bootstrap() {
   // Re-enable after upgrading @nestjs/swagger or express
 
   const port = process.env.PORT || 3001;
-  await app.listen(port);
-  Logger.log(`Authentication Service running on port ${port}`);
+  const host = process.env.HOST || '0.0.0.0';
+  await app.listen(port, host);
+  Logger.log(`Authentication Service running on ${host}:${port}`);
 }
 bootstrap();

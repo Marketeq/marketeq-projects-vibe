@@ -44,6 +44,7 @@ const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gatewa
 const gatewayEnv = {
   ...process.env,
   PORT: GATEWAY_PORT,
+  HOST: '0.0.0.0',
   AUTH_SERVICE_URL:             'http://localhost:3001',
   USER_SERVICE_URL:             'http://localhost:3002',
   LISTINGS_SERVICE_URL:         'http://localhost:3003',
@@ -100,7 +101,7 @@ console.log('[boot] Launching all services in single container...');
 console.log(`[boot] Gateway will listen on port ${GATEWAY_PORT}`);
 
 for (const svc of SERVICES) {
-  launchService(svc, { ...process.env, PORT: svc.port }, false);
+  launchService(svc, { ...process.env, PORT: svc.port, HOST: '127.0.0.1' }, false);
 }
 
 // Give services 2 seconds to start, then launch gateway

@@ -49,9 +49,10 @@ async function bootstrap() {
   await app.startAllMicroservices();
 
   const httpPort = Number(process.env.PORT ?? 3004);
-  await app.listen(httpPort, '0.0.0.0');
+  const httpHost = process.env.HOST || '0.0.0.0';
+  await app.listen(httpPort, httpHost);
   logger.log(
-    `Listings Service HTTP on ${httpPort}, gRPC (owner-target) on ${grpcHost}:${grpcPort}`,
+    `Listings Service HTTP on ${httpHost}:${httpPort}, gRPC (owner-target) on ${grpcHost}:${grpcPort}`,
   );
 }
 bootstrap();
