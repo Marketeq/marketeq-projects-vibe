@@ -106,14 +106,16 @@ async function chooseFontSize(
 }
 
 async function uploadEditorImage(
-  page: Parameters<typeof test>[0]["page"]
+  page: Parameters<typeof test>[0]["page"],
+  selectionText = "Beta"
 ) {
+  await selectTextInEditor(page, selectionText)
   const uploadPromise = page.waitForResponse((response) =>
     response.url().includes("/publish/rich-text-image")
   )
   await page.locator("[data-rich-text-command='image']").click()
   await page
-    .locator("[data-rich-text-editor-toolbar='true'] input[type='file']")
+    .locator("[data-rich-text-file-input='true']")
     .setInputFiles(IMAGE_FIXTURE)
   const uploadResponse = await uploadPromise
   expect(uploadResponse.ok()).toBeTruthy()
@@ -287,13 +289,12 @@ test("rich text editor toolbar preserves styling and applies size only to select
   expect(html).not.toContain('data-font-size="large-heading">Beta')
   expect(html).toContain("strong")
 
-  await editor.click()
-  await page.keyboard.press("End")
+  await selectTextInEditor(page, "Beta")
   const uploadPromise = page.waitForResponse((response) =>
     response.url().includes("/publish/rich-text-image")
   )
   await page.locator("[data-rich-text-command='image']").click()
-  await page.locator("[data-rich-text-editor-toolbar='true'] input[type='file']").setInputFiles(IMAGE_FIXTURE)
+  await page.locator("[data-rich-text-file-input='true']").setInputFiles(IMAGE_FIXTURE)
   const uploadResponse = await uploadPromise
   console.log("uploaded image")
   expect(uploadResponse.ok()).toBeTruthy()
@@ -459,4 +460,74 @@ test("image drag preview reflects alignment with blue 2px dropcursor", async ({
   expect(fullWidthDropCursorStyles.backgroundColor).toBe("rgb(48, 108, 254)")
   expect(fullWidthDropCursorStyles.height).toBe("2px")
   expect(fullWidthDropCursorStyles.width).toBe(editorWidth)
+})
+
+test("toolbar only appears for text selection and survives pin/unpin", async ({
+  page,
+  request,
+  context,
+}) => {
+  test.setTimeout(120000)
+
+  await authenticateDevUser({ request, context })
+  await page.goto(EDITOR_URL, { waitUntil: "domcontentloaded" })
+
+  await page.getByText("Enter a full Description").click()
+  await page.waitForTimeout(250)
+
+  await expect(page.locator("[data-rich-text-editor-toolbar='true']")).toHaveCount(0)
+
+  const editor = page.locator(".ProseMirror").first()
+  await expect(editor).toBeVisible()
+
+  await editor.click()
+  await page.keyboard.press("Meta+A")
+  await page.keyboard.press("Backspace")
+  await editor.type("Alpha Beta Gamma")
+
+  await selectTextInEditor(page, "Beta")
+  await expect(page.locator("[data-rich-text-editor-toolbar='true']")).toHaveCount(1)
+
+  const toolbar = page.locator("[data-rich-text-editor-toolbar='true']").first()
+  const editorBox = await editor.boundingBox()
+  expect(editorBox).toBeTruthy()
+
+  await page.locator("[data-rich-text-command='toggle-pin']").click()
+  await page.waitForTimeout(300)
+
+  const pinnedToolbar = page.locator("[data-rich-text-editor-toolbar='true']").first()
+  const pinnedBox = await pinnedToolbar.boundingBox()
+  expect(pinnedBox).toBeTruthy()
+  expect(pinnedBox!.y).toBeLessThan(editorBox!.y)
+
+  await page.locator("[data-rich-text-command='toggle-pin']").click()
+  await page.waitForTimeout(300)
+
+  await expect(page.locator("[data-rich-text-editor-toolbar='true']")).toHaveCount(1)
+})
+
+test("fullscreen editor opens with constrained content width", async ({
+  page,
+  request,
+  context,
+}) => {
+  test.setTimeout(120000)
+
+  await authenticateDevUser({ request, context })
+  await page.goto(EDITOR_URL, { waitUntil: "domcontentloaded" })
+
+  await page.locator("label[for='full-description']").scrollIntoViewIfNeeded()
+  await page.locator("[data-rich-text-fullscreen-toggle='true']").click()
+
+  const dialog = page.locator("[data-rich-text-fullscreen-dialog='true']")
+  await expect(dialog).toBeVisible()
+  await expect(
+    page.locator("[data-rich-text-fullscreen-dialog='true'] nav h2")
+  ).toHaveText("Project Description")
+
+  const contentWidth = await page
+    .locator("[data-rich-text-fullscreen-content='true']")
+    .evaluate((node) => window.getComputedStyle(node).width)
+
+  expect(contentWidth).toBe("818px")
 })

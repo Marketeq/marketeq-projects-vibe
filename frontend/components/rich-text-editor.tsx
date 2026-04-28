@@ -392,11 +392,12 @@ const FullscreenToggleButton = ({
   return (
     <TooltipProvider delayDuration={75}>
       <Tooltip>
-        <TooltipTrigger
-          type="button"
-          onClick={onClick}
-          className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
-        >
+      <TooltipTrigger
+        type="button"
+        data-rich-text-fullscreen-toggle="true"
+        onClick={onClick}
+        className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
+      >
           {isFullscreen ? (
             <Minimize01 className="size-4" />
           ) : (
@@ -560,6 +561,7 @@ const RichTextToolbar = ({
   isFontMenuOpen,
   onFontMenuOpenChange,
   onFontMenuTriggerMouseDown,
+  getSelectionSnapshot,
   isPinned,
   onTogglePinned,
 }: {
@@ -570,6 +572,7 @@ const RichTextToolbar = ({
   isFontMenuOpen: boolean
   onFontMenuOpenChange: (open: boolean) => void
   onFontMenuTriggerMouseDown: () => void
+  getSelectionSnapshot: () => { from: number; to: number } | null
   isPinned: boolean
   onTogglePinned: () => void
 }) => {
@@ -596,7 +599,12 @@ const RichTextToolbar = ({
 
   const handleHeadingChange = (value: string) => {
     const chain = editor.chain().focus()
+    const selectionSnapshot = getSelectionSnapshot()
     const isLegacyHeading = editor.isActive("heading")
+
+    if (selectionSnapshot && selectionSnapshot.from !== selectionSnapshot.to) {
+      chain.setTextSelection(selectionSnapshot)
+    }
 
     switch (value) {
       case "Large Heading":
@@ -621,7 +629,7 @@ const RichTextToolbar = ({
         if (isLegacyHeading) {
           chain.setParagraph()
         }
-        chain.unsetFontSize().run()
+        chain.extendMarkRange("fontSize").unsetFontSize().run()
         break
     }
   }
@@ -961,6 +969,10 @@ const ActiveEditor = ({
     from: number
     to: number
   } | null>(null)
+  const fontMenuSelectionRef = useRef<{
+    from: number
+    to: number
+  } | null>(null)
   const shouldRestoreBubbleMenuRef = useRef(false)
   const fontMenuAnchorSelectionRef = useRef(false)
   const draggedImageRef = useRef<{
@@ -993,19 +1005,78 @@ const ActiveEditor = ({
     alignment: ImageAlignValue
     src: string
     alt: string
-  } | null>(null)
+      } | null>(null)
+
+  const syncDropCursorPreview = useCallback((
+    align: ImageAlignValue,
+    dropSide?: "left" | "right"
+  ) => {
+    if (typeof window === "undefined" || !containerRef.current) {
+      return
+    }
+
+    window.requestAnimationFrame(() => {
+      const dropCursor = containerRef.current?.querySelector(
+        ".rich-text-dropcursor"
+      ) as HTMLElement | null
+      const proseMirrorElement = containerRef.current?.querySelector(
+        ".ProseMirror"
+      ) as HTMLElement | null
+
+      if (!dropCursor || !proseMirrorElement) {
+        return
+      }
+
+      const proseMirrorWidth = proseMirrorElement.getBoundingClientRect().width
+      const nextWidth =
+        align === "full-width" ? proseMirrorWidth : proseMirrorWidth / 2
+      const nextLeft =
+        align === "full-width"
+          ? 0
+          : dropSide === "right"
+            ? proseMirrorWidth - nextWidth
+            : 0
+
+      dropCursor.style.width = `${nextWidth}px`
+      dropCursor.style.left = `${nextLeft}px`
+      dropCursor.style.right = "auto"
+      dropCursor.style.backgroundColor = "#306CFE"
+      dropCursor.style.height = "2px"
+    })
+  }, [])
+
+  const clearDropCursorPreview = useCallback(() => {
+    if (typeof document === "undefined" || !containerRef.current) {
+      return
+    }
+
+    const dropCursor = containerRef.current.querySelector(
+      ".rich-text-dropcursor"
+    ) as HTMLElement | null
+
+    if (!dropCursor) {
+      return
+    }
+
+    dropCursor.style.removeProperty("width")
+    dropCursor.style.removeProperty("left")
+    dropCursor.style.removeProperty("right")
+    dropCursor.style.removeProperty("background-color")
+    dropCursor.style.removeProperty("height")
+  }, [])
 
   const clearImageDragPreviewState = useCallback(() => {
     if (typeof document === "undefined") {
       return
     }
 
+    clearDropCursorPreview()
     draggedImageRef.current?.element?.removeAttribute("data-rich-text-drag-source")
     draggedImageRef.current = null
     document.body.classList.remove("rich-text-image-dragging")
     delete document.body.dataset.richTextDragAlign
     delete document.body.dataset.richTextDropSide
-  }, [])
+  }, [clearDropCursorPreview])
 
   const editor = useEditor({
     extensions: [
@@ -1074,6 +1145,13 @@ const ActiveEditor = ({
             } else {
               delete document.body.dataset.richTextDropSide
             }
+
+            syncDropCursorPreview(
+              imageAlign,
+              imageAlign === "left" || imageAlign === "right"
+                ? imageAlign
+                : undefined
+            )
           }
           return false
         },
@@ -1090,6 +1168,7 @@ const ActiveEditor = ({
           if (currentAlign === "full-width") {
             document.body.dataset.richTextDragAlign = currentAlign
             delete document.body.dataset.richTextDropSide
+            syncDropCursorPreview(currentAlign)
             return false
           }
 
@@ -1099,6 +1178,7 @@ const ActiveEditor = ({
 
           document.body.dataset.richTextDragAlign = currentAlign
           document.body.dataset.richTextDropSide = nextSide
+          syncDropCursorPreview(currentAlign, nextSide)
           return false
         },
         dragend: () => {
@@ -1240,6 +1320,7 @@ const ActiveEditor = ({
   const handleFontMenuOpenChange = useCallback((open: boolean) => {
     if (!open) {
       fontMenuAnchorSelectionRef.current = false
+      fontMenuSelectionRef.current = null
       setIsFontMenuOpen(false)
       setHasFontMenuAnchorSelection(false)
       return
@@ -1255,6 +1336,10 @@ const ActiveEditor = ({
     }
 
     fontMenuAnchorSelectionRef.current = true
+    fontMenuSelectionRef.current = {
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+    }
     setHasFontMenuAnchorSelection(true)
     setIsFontMenuOpen(true)
 
@@ -1268,6 +1353,10 @@ const ActiveEditor = ({
   const handleFontMenuTriggerMouseDown = useCallback(() => {
     if (editor && selectionHasTextContent(editor)) {
       fontMenuAnchorSelectionRef.current = true
+      fontMenuSelectionRef.current = {
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+      }
       setHasFontMenuAnchorSelection(true)
     }
   }, [editor])
@@ -1640,7 +1729,20 @@ const ActiveEditor = ({
       return
     }
 
-    const selectionPosition = editor.state.selection.from
+    const hasSelectedTextNow = selectionHasTextContent(editor)
+    if (hasSelectedTextNow) {
+      fontMenuAnchorSelectionRef.current = true
+      fontMenuSelectionRef.current = {
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+      }
+      setHasFontMenuAnchorSelection(true)
+    }
+
+    const selectionRange = {
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+    }
 
     if (!nextPinned) {
       shouldRestoreBubbleMenuRef.current = true
@@ -1650,13 +1752,29 @@ const ActiveEditor = ({
 
     const refocusEditor = () => {
       setIsEditorFocused(true)
-      editor.commands.focus(selectionPosition, { scrollIntoView: false })
+      editor.commands.focus(selectionRange.from, { scrollIntoView: false })
       editor.view.focus()
+
+      if (hasSelectedTextNow) {
+        editor.commands.setTextSelection({
+          from: fontMenuSelectionRef.current?.from ?? selectionRange.from,
+          to: fontMenuSelectionRef.current?.to ?? selectionRange.to,
+        })
+      }
 
       if (!nextPinned) {
         editor.view.dispatch(
           editor.state.tr.setMeta("bubbleMenu", "updatePosition")
         )
+      }
+
+      if (hasSelectedTextNow) {
+        window.requestAnimationFrame(() => {
+          if (selectionHasTextContent(editor)) {
+            fontMenuAnchorSelectionRef.current = false
+            setHasFontMenuAnchorSelection(false)
+          }
+        })
       }
     }
 
@@ -1778,6 +1896,7 @@ const ActiveEditor = ({
         ref={fileInputRef}
         type="file"
         accept="image/jpeg,image/png,image/webp"
+        data-rich-text-file-input="true"
         className="hidden"
         onChange={handleImageFileChange}
       />
@@ -1795,6 +1914,7 @@ const ActiveEditor = ({
             isFontMenuOpen={isFontMenuOpen}
             onFontMenuOpenChange={handleFontMenuOpenChange}
             onFontMenuTriggerMouseDown={handleFontMenuTriggerMouseDown}
+            getSelectionSnapshot={() => fontMenuSelectionRef.current}
             isPinned={isToolbarPinned}
             onTogglePinned={() => handleToolbarPinnedChange(false)}
           />
@@ -1821,6 +1941,7 @@ const ActiveEditor = ({
             isFontMenuOpen={isFontMenuOpen}
             onFontMenuOpenChange={handleFontMenuOpenChange}
             onFontMenuTriggerMouseDown={handleFontMenuTriggerMouseDown}
+            getSelectionSnapshot={() => fontMenuSelectionRef.current}
             isPinned={isToolbarPinned}
             onTogglePinned={() => handleToolbarPinnedChange(true)}
           />
@@ -2146,6 +2267,7 @@ const RichTextEditor = ({
         >
           <DialogContent
             accessibilityTitle="Fullscreen rich text editor"
+            data-rich-text-fullscreen-dialog="true"
             className="!left-0 !top-0 !translate-x-0 !translate-y-0 !max-w-none h-screen w-screen !rounded-none p-0 gap-0 flex flex-col overflow-hidden shadow-none"
           >
             <DialogTitle className="sr-only">Project Description</DialogTitle>
@@ -2277,7 +2399,10 @@ const RichTextEditor = ({
               <div className="pointer-events-none absolute inset-0 bg-gray-50" />
               <div className="relative z-10 h-full overflow-y-auto">
                 <div className="p-[50px]">
-                  <div className="mx-auto w-full max-w-[818px]">
+                  <div
+                    data-rich-text-fullscreen-content="true"
+                    className="mx-auto w-full max-w-[818px]"
+                  >
                     {fullscreenEditor}
                   </div>
                 </div>
