@@ -58,3 +58,5 @@ This is the catch-all for project conventions, environment setup, shared decisio
 
 ## Lessons Learned
 (agents append here when something non-obvious is discovered)
+
+- Do not switch the active local checkout away from the branch we are actively editing unless the user explicitly asks first. Local working checkout stays the source of truth during active work.
