@@ -278,7 +278,7 @@ const ActiveEditor = ({
     editorProps: {
       attributes: {
         class: cn(
-          "focus:outline-none",
+          "focus:outline-none rich-text-content",
           editorClassName
         ),
       },
@@ -364,7 +364,7 @@ const RichTextEditor = ({
       onClick={handleClick}
     >
       <div
-        className={cn("focus:outline-none", editorClassName)}
+        className={cn("focus:outline-none rich-text-content", editorClassName)}
         dangerouslySetInnerHTML={{ __html: content || placeholder || "" }}
       />
     </div>
