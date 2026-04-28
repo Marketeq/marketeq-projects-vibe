@@ -300,18 +300,28 @@ const hydrateRemoteMediaFile = async (url: string, fallbackName: string) => {
 }
 
 const buildProjectDraftPayload = (projectInfo: ProjectInfoFormValues) => {
+  const categorySelections = (projectInfo.category ?? [])
+    .map((value) => ({
+      category: value?.category?.trim() ?? "",
+      subCategories: (value?.subCategories ?? [])
+        .map((subCategory) => subCategory.trim())
+        .filter(Boolean),
+    }))
+    .filter(
+      (value) => value.category.length > 0 && value.subCategories.length > 0
+    )
+
   const categories = Array.from(
     new Set(
-      (projectInfo.category ?? [])
-        .map((value) => value?.category?.trim())
+      categorySelections
+        .map((value) => value.category)
         .filter((value): value is string => Boolean(value))
     )
   )
   const subCategories = Array.from(
     new Set(
-      (projectInfo.category ?? [])
-        .flatMap((value) => value?.subCategories ?? [])
-        .map((value) => value?.trim())
+      categorySelections
+        .flatMap((value) => value.subCategories)
         .filter((value): value is string => Boolean(value))
     )
   )
@@ -320,12 +330,7 @@ const buildProjectDraftPayload = (projectInfo: ProjectInfoFormValues) => {
     title: projectInfo.title,
     categories,
     subCategories,
-    categorySelections: (projectInfo.category ?? []).map((value) => ({
-      category: value?.category?.trim() ?? "",
-      subCategories: (value?.subCategories ?? [])
-        .map((subCategory) => subCategory.trim())
-        .filter(Boolean),
-    })),
+    categorySelections,
     industries: projectInfo.industry,
     tags: projectInfo.tags,
     skills: projectInfo.skills,
@@ -6019,22 +6024,15 @@ function PublishProject({
 
     const saveDraft = async () => {
       const info = projectInfoMethods.getValues()
-      const payload = {
+      const payload = buildProjectDraftPayload({
         title: info.title ?? "",
-        categorySelections: info.category ?? [],
-        categories: (info.category ?? [])
-          .map((entry) => entry?.category?.trim())
-          .filter(Boolean),
-        subCategories: (info.category ?? [])
-          .flatMap((entry) => entry?.subCategories ?? [])
-          .map((value) => value.trim())
-          .filter(Boolean),
-        industries: info.industry ?? [],
+        category: info.category ?? [],
+        industry: info.industry ?? [],
         tags: info.tags ?? [],
         skills: info.skills ?? [],
         shortDescription: info.shortDescription ?? "",
         fullDescription: info.fullDescription ?? "",
-      }
+      })
 
       const serializedPayload = JSON.stringify(payload)
       if (serializedPayload === lastDraftPayloadRef.current) return

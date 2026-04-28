@@ -12,6 +12,7 @@ import { JobListingModule } from './job-listing/job-listing.module';
 import { ProjectsModule } from './projects/projects.module';
 import { TeamsModule } from './teams/team.module';
 import { ServicesModule } from './services/service.module';
+import { MediaModule } from './media/media.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { ServicesModule } from './services/service.module';
     JobListingModule,
     TeamsModule,
     ServicesModule,
+    MediaModule,
   ],
   controllers: [AppController, ListingsController],
   providers: [ProjectService],

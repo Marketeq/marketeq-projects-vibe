@@ -8,6 +8,7 @@ import { ProxyController } from './proxy/proxy.controller'
 import { TalentUploadController } from './controllers/talent-upload.controller'
 import { UserAvatarUploadController } from './controllers/user-avatar-upload.controller'
 import { PublishMediaController } from './controllers/publish-media.controller'
+import { PublishRichTextImageController } from './controllers/publish-rich-text-image.controller'
 import { HomepageModule } from './homepage/homepage.module'
 import { HomepageController } from './homepage/homepage.controller'
 import { JwtStrategy } from './guards/jwt-auth.guard'
@@ -48,6 +49,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
     TalentUploadController,
     UserAvatarUploadController,
     PublishMediaController,
+    PublishRichTextImageController,
     ProxyController,
   ],
 })

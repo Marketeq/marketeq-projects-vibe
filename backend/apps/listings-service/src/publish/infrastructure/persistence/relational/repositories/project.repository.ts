@@ -78,6 +78,10 @@ export class ProjectRelationalRepository implements ProjectRepository {
   }): Promise<Project[]> {
     const where: FindOptionsWhere<ProjectEntity> = {};
 
+    if (filterOptions?.userId) {
+      where.userId = filterOptions.userId;
+    }
+
     if (filterOptions?.email) {
       where;
     }

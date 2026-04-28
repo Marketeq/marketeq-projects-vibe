@@ -38,6 +38,8 @@ import {
 import { CloudflareStorageService } from './cloudflare-storage.service';
 import { HttpService } from '@nestjs/axios';
 import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategory.dto';
+import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
+import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
 
 @Injectable()
 export class PublishService {
@@ -315,6 +317,180 @@ export class PublishService {
       this.throwIfHttpException(error);
       throw new InternalServerErrorException('Failed to create project');
     }
+  }
+
+  async createProjectDraft(
+    userId: string,
+    dto: UpsertProjectDraftDto,
+  ): Promise<Project> {
+    try {
+      const payload = {
+        title: dto.title ?? '',
+        subtitle: dto.subtitle ?? null,
+        shortDescription: dto.shortDescription ?? '',
+        fullDescription: dto.fullDescription ?? '',
+        budget: dto.budget ?? null,
+        initialTeamBudget: dto.initialTeamBudget ?? null,
+        durationMonths: dto.durationMonths ?? null,
+        location: dto.location ?? null,
+        timezone: dto.timezone ?? null,
+        categories: dto.categories ?? [],
+        subCategories: dto.subCategories ?? [],
+        categorySelections: dto.categorySelections ?? [],
+        industries: dto.industries ?? dto.industry ?? [],
+        tags: dto.tags ?? [],
+        skills: dto.skills ?? [],
+        status: 'draft',
+        projectDatePublished: null,
+        userId,
+      };
+
+      return await this.projectRepository.create(payload);
+    } catch (error) {
+      this.throwIfHttpException(error);
+      throw new InternalServerErrorException('Failed to create project draft');
+    }
+  }
+
+  async getProjectDraft(userId: string, projectId: string): Promise<any> {
+    const project = await this.ensureProjectOwnership(projectId, userId);
+
+    const media = await this.mediaRepository.find({ projectId: project.id });
+    const phases = await this.phaseRepository.findAll({
+      filterOptions: { projectId: project.id },
+    });
+
+    const scope = await Promise.all(
+      phases
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map(async (phase) => {
+          const hydratedPhase =
+            (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
+
+          return {
+            ...hydratedPhase,
+            task: [...(hydratedPhase.task ?? [])].sort(
+              (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+            ),
+          };
+        }),
+    );
+
+    return {
+      ...project,
+      media: media ?? null,
+      scope,
+    };
+  }
+
+  async updateProjectDraft(
+    userId: string,
+    projectId: string,
+    dto: UpsertProjectDraftDto,
+  ): Promise<Project> {
+    await this.ensureProjectOwnership(projectId, userId);
+
+    const payload: Partial<Project> = {};
+
+    if (dto.title !== undefined) payload.title = dto.title;
+    if (dto.subtitle !== undefined) payload.subtitle = dto.subtitle;
+    if (dto.shortDescription !== undefined) {
+      payload.shortDescription = dto.shortDescription;
+    }
+    if (dto.fullDescription !== undefined) {
+      payload.fullDescription = dto.fullDescription;
+    }
+    if (dto.budget !== undefined) payload.budget = dto.budget;
+    if (dto.initialTeamBudget !== undefined) {
+      payload.initialTeamBudget = dto.initialTeamBudget;
+    }
+    if (dto.durationMonths !== undefined) {
+      payload.durationMonths = dto.durationMonths;
+    }
+    if (dto.location !== undefined) payload.location = dto.location;
+    if (dto.timezone !== undefined) payload.timezone = dto.timezone;
+    if (dto.categories !== undefined) payload.categories = dto.categories;
+    if (dto.subCategories !== undefined) {
+      payload.subCategories = dto.subCategories;
+    }
+    if (dto.categorySelections !== undefined) {
+      payload.categorySelections = dto.categorySelections;
+    }
+    if (dto.industries !== undefined || dto.industry !== undefined) {
+      payload.industries = dto.industries ?? dto.industry ?? [];
+    }
+    if (dto.tags !== undefined) payload.tags = dto.tags;
+    if (dto.skills !== undefined) payload.skills = dto.skills;
+
+    const updated = await this.projectRepository.update(projectId, payload);
+    if (!updated) {
+      throw new NotFoundException('Project not found');
+    }
+
+    return updated;
+  }
+
+  async getMyProjects(userId: string): Promise<Project[]> {
+    return this.projectRepository.findAll({
+      filterOptions: {
+        userId,
+      },
+    });
+  }
+
+  async replaceProjectScope(
+    userId: string,
+    projectId: string,
+    dto: UpsertProjectScopeDto,
+  ): Promise<{ scope: Phase[] }> {
+    await this.ensureProjectOwnership(projectId, userId);
+
+    const existingPhases = await this.phaseRepository.findAll({
+      filterOptions: { projectId },
+    });
+
+    for (const phase of existingPhases) {
+      const hydratedPhase =
+        (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
+
+      for (const task of hydratedPhase.task ?? []) {
+        await this.taskRepository.softDelete(task.id);
+      }
+
+      await this.phaseRepository.softDelete(phase.id);
+    }
+
+    const scope: Phase[] = [];
+
+    for (const phaseDto of dto.scope ?? []) {
+      const phase = await this.phaseRepository.create({
+        name: phaseDto.name,
+        stageName: phaseDto.stageName,
+        startDay: phaseDto.startDay,
+        endDay: phaseDto.endDay,
+        order: phaseDto.order,
+        projectId,
+      });
+
+      for (const taskDto of phaseDto.tasks ?? []) {
+        await this.taskRepository.create({
+          taskName: taskDto.taskName,
+          role: taskDto.role,
+          location: taskDto.location,
+          experience: taskDto.experience,
+          experienceLevel: taskDto.experienceLevel,
+          duration: taskDto.duration,
+          estimatedHours: taskDto.estimatedHours,
+          phaseId: phase.id,
+        });
+      }
+
+      const phaseWithTasks =
+        (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
+      scope.push(phaseWithTasks);
+    }
+
+    return { scope };
   }
 
   async publishExistingProject(

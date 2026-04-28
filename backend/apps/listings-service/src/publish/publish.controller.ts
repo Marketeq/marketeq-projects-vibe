@@ -27,6 +27,8 @@ import { CreateProjectTaskDto } from './dto/create-task.dto';
 import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategory.dto';
 import { UpdatePhaseDto } from './dto/update-phase.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
+import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
 import { Request } from 'express';
 
 type AuthenticatedRequest = Request & {
@@ -50,6 +52,78 @@ export class PublishController {
   ) {
     try {
       return await this.publishService.createNewProject(req.user.sub, dto);
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Post('project/draft')
+  async createProjectDraft(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: UpsertProjectDraftDto,
+  ) {
+    try {
+      return await this.publishService.createProjectDraft(req.user.sub, dto);
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Get('project/:projectId')
+  async getProjectDraft(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.getProjectDraft(req.user.sub, projectId);
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Put('project/:projectId')
+  async updateProjectDraft(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() dto: UpsertProjectDraftDto,
+  ) {
+    try {
+      return await this.publishService.updateProjectDraft(
+        req.user.sub,
+        projectId,
+        dto,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Get('projects/mine')
+  async getMyProjects(@Req() req: AuthenticatedRequest) {
+    try {
+      return await this.publishService.getMyProjects(req.user.sub);
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Put('project/:projectId/scope')
+  async replaceProjectScope(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() dto: UpsertProjectScopeDto,
+  ) {
+    try {
+      return await this.publishService.replaceProjectScope(
+        req.user.sub,
+        projectId,
+        dto,
+      );
     } catch (error) {
       console.log('err', error);
       throw error;
