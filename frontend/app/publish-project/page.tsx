@@ -23,6 +23,7 @@ import {
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
+import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { HTTPS, ONE_SECOND } from "@/utils/constants"
 import {
@@ -229,6 +230,66 @@ type SubmissionOutcome = {
   projectSlug?: string
 }
 
+type PublishErrorClassification =
+  | "image_rejection"
+  | "video_rejection"
+  | "content_rejection"
+  | "temporary_unavailable"
+  | "other"
+
+function classifyPublishError(input: {
+  message?: string
+  statusCode?: number
+  status?: string
+}): PublishErrorClassification {
+  const message = String(input.message ?? "").trim()
+  const normalizedMessage = message.toLowerCase()
+  const normalizedStatus = String(input.status ?? "")
+    .trim()
+    .toLowerCase()
+
+  const isTemporaryUnavailable =
+    input.statusCode === 502 ||
+    input.statusCode === 503 ||
+    normalizedStatus === "publish_blocked" ||
+    /temporarily unavailable|currently unavailable|upstream listings-service|retry media upload|invalid response|failed with status 5\d{2}|bad gateway|service unavailable/.test(
+      normalizedMessage
+    )
+
+  if (isTemporaryUnavailable) {
+    return "temporary_unavailable"
+  }
+
+  const isVideoRejection =
+    /project rejected:\s*video|video violates moderation policy|unsafe frame|frame_moderation|video rejected|video moderation review/.test(
+      normalizedMessage
+    )
+
+  if (isVideoRejection) {
+    return "video_rejection"
+  }
+
+  const isImageRejection =
+    /project rejected:\s*image|image violates moderation policy|featured image failed moderation|image rejected by moderation|nudity|graphic|gore|weapon|hate symbol|blur/.test(
+      normalizedMessage
+    )
+
+  if (isImageRejection) {
+    return "image_rejection"
+  }
+
+  const isContentRejection =
+    /project rejected:\s*content|content violates moderation policy|banned keyword|bad words|profanity|content failed validation|content moderation|community guidelines|rejected by moderation/.test(
+      normalizedMessage
+    )
+
+  if (isContentRejection) {
+    return "content_rejection"
+  }
+
+  return "other"
+}
+
 function makeUniqueFile(
   file: File | Blob | undefined
 ): File | Blob | undefined {
@@ -244,7 +305,13 @@ function makeUniqueFile(
   return file
 }
 
-const Empty = ({ outcome }: { outcome?: SubmissionOutcome }) => {
+const Empty = ({
+  outcome,
+  draftId,
+}: {
+  outcome?: SubmissionOutcome
+  draftId?: string
+}) => {
   const status = outcome?.status ?? "in_review"
   // Category slug is not known at this point in the flow; fall back to an
   // empty string so buildProjectUrl returns "/c//projects/<slug>-<shortId>",
@@ -349,7 +416,15 @@ const Empty = ({ outcome }: { outcome?: SubmissionOutcome }) => {
           </div>
         ) : status === "needs_update" ? (
           <div className="mt-8">
-            <Button onClick={() => window.location.reload()}>
+            <Button
+              onClick={() => {
+                if (draftId) {
+                  router.push(editProjectListingUrl(draftId))
+                  return
+                }
+                router.push("/publish-project")
+              }}
+            >
               Update Project
             </Button>
           </div>
@@ -669,7 +744,13 @@ const Sidebar = () => {
   )
 }
 
-const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
+const Header = ({
+  onSaveExit,
+  onPreview,
+}: {
+  onSaveExit?: () => void
+  onPreview?: () => void
+}) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200">
       <h3 className="text-sm leading-[16.94px] text-gray-900 font-semibold">
@@ -692,7 +773,10 @@ const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
           </Tooltip>
         </TooltipProvider>
 
-        <Button className="bg-primary-500/15 text-primary-500 hover:bg-primary-500 hover:text-white">
+        <Button
+          className="bg-primary-500/15 text-primary-500 hover:bg-primary-500 hover:text-white"
+          onClick={onPreview}
+        >
           <Eye className="size-[15px]" /> Preview
         </Button>
         <Button
@@ -875,24 +959,33 @@ const BottomBar = ({
               error?.response?.data?.message ||
               error?.message ||
               "Media upload failed. Please check your files."
+            const errorType = classifyPublishError({
+              message: mediaUploadErrorMsg,
+              statusCode: error?.response?.status,
+              status: error?.response?.data?.status,
+            })
+
+            if (errorType === "temporary_unavailable") {
+              toast({
+                title:
+                  mediaUploadErrorMsg ||
+                  "Media upload is temporarily unavailable. Please try again.",
+                variant: "destructive",
+              })
+              return
+            }
           }
         }
       }
 
       // 3. If media upload failed, set project to needs_update and show re-upload option
       if (!mediaUploadSuccess) {
-        const isVideoViolation =
-          /featured video|video moderation|unsafe frame|video rejected|video violates|frame_moderation/i.test(
-            mediaUploadErrorMsg
-          )
-        const isImageViolation =
-          /image|media|animation|blur|nudity|graphic|gore|weapon|hate symbol/i.test(
-            mediaUploadErrorMsg
-          )
-        const isContentModerationRejection =
-          /banned keyword|profanity|content failed validation|content moderation|community guidelines|rejected by moderation/i.test(
-            mediaUploadErrorMsg
-          )
+        const errorType = classifyPublishError({
+          message: mediaUploadErrorMsg,
+        })
+        const isVideoViolation = errorType === "video_rejection"
+        const isImageViolation = errorType === "image_rejection"
+        const isContentModerationRejection = errorType === "content_rejection"
 
         if (!isVideoViolation && !isImageViolation && !isContentModerationRejection) {
           toast({
@@ -964,7 +1057,13 @@ const BottomBar = ({
               return null
             }
 
-            const { startDay, endDay } = getPhaseDayRange(phases ?? [], phaseIndex)
+            const { startDay, endDay } = getPhaseDayRange(
+              phases ?? [],
+              phaseIndex
+            )
+            if (typeof endDay !== "number") {
+              return null
+            }
 
             return {
               name: phaseName,
@@ -1026,19 +1125,14 @@ const BottomBar = ({
         error?.response?.data?.message ||
         error?.message ||
         "Unable to submit project"
-
-      const isVideoViolation =
-        /featured video|video moderation|unsafe frame|video rejected|video violates|frame_moderation/i.test(
-          errorMessage
-        )
-      const isImageViolation =
-        /image|media|animation|blur|nudity|graphic|gore|weapon|hate symbol/i.test(
-          errorMessage
-        )
-      const isContentModerationRejection =
-        /banned keyword|profanity|content failed validation|content moderation|community guidelines|rejected by moderation/i.test(
-          errorMessage
-        )
+      const errorType = classifyPublishError({
+        message: errorMessage,
+        statusCode: error?.response?.status,
+        status: error?.response?.data?.status,
+      })
+      const isVideoViolation = errorType === "video_rejection"
+      const isImageViolation = errorType === "image_rejection"
+      const isContentModerationRejection = errorType === "content_rejection"
 
       if (isVideoViolation || isImageViolation || isContentModerationRejection) {
         await waitForReviewWindow()
@@ -3714,6 +3808,59 @@ const TaskDialog = ({
           </div>
 
           <div className="space-y-1.5 mt-3">
+            <Label htmlFor="duration" className="text-gray-700" size="sm">
+              Duration
+            </Label>
+            <div className="grid grid-cols-2 gap-x-3">
+              <Input
+                id="duration"
+                className="text-gray-900"
+                type="number"
+                min={1}
+                {...register("duration.value")}
+                isInvalid={hookFormHasError({ errors, name: "duration.value" })}
+              />
+              <Controller
+                control={control}
+                name="duration.type"
+                render={({ field: { value, onChange } }) => (
+                  <Listbox value={value} onChange={onChange} id="duration">
+                    <ListboxButton placeholder="Select">
+                      {({ value: selectedValue }) =>
+                        formatDurationUnit(
+                          Number(taskDurationValue) || 0,
+                          selectedValue as (typeof DURATION_TYPE)[number]
+                        ).replace(/^./, (character) => character.toUpperCase())
+                      }
+                    </ListboxButton>
+                    <ListboxOptions>
+                      {DURATION_TYPE.map((format) => (
+                        <ListboxOption key={format} value={format}>
+                          {formatDurationUnit(
+                            Number(taskDurationValue) || 0,
+                            format
+                          ).replace(/^./, (character) => character.toUpperCase())}
+                        </ListboxOption>
+                      ))}
+                    </ListboxOptions>
+                  </Listbox>
+                )}
+              />
+            </div>
+
+            {(hookFormHasError({ errors, name: "duration.value" }) ||
+              hookFormHasError({
+                errors,
+                name: "duration.type",
+              })) && (
+              <ErrorMessage size="sm">
+                {get(errors, "duration.value.message") ||
+                  get(errors, "duration.type.message")}
+              </ErrorMessage>
+            )}
+          </div>
+
+          <div className="space-y-1.5 mt-3">
             <Label htmlFor="role-name" className="text-gray-700" size="sm">
               Role
             </Label>
@@ -3778,57 +3925,6 @@ const TaskDialog = ({
               name="experience"
               render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
             />
-          </div>
-
-          <div className="space-y-1.5 mt-3">
-            <Label htmlFor="duration" className="text-gray-700" size="sm">
-              Duration
-            </Label>
-            <div className="grid grid-cols-2 gap-x-3">
-              <Input
-                id="duration"
-                className="text-gray-900"
-                {...register("duration.value")}
-                isInvalid={hookFormHasError({ errors, name: "duration.value" })}
-              />
-              <Controller
-                control={control}
-                name="duration.type"
-                render={({ field: { value, onChange } }) => (
-                  <Listbox value={value} onChange={onChange} id="duration">
-                    <ListboxButton placeholder="Select">
-                      {({ value: selectedValue }) =>
-                        formatDurationUnit(
-                          Number(taskDurationValue) || 0,
-                          selectedValue as (typeof DURATION_TYPE)[number]
-                        ).replace(/^./, (character) => character.toUpperCase())
-                      }
-                    </ListboxButton>
-                    <ListboxOptions>
-                      {DURATION_TYPE.map((format) => (
-                        <ListboxOption key={format} value={format}>
-                          {formatDurationUnit(
-                            Number(taskDurationValue) || 0,
-                            format
-                          ).replace(/^./, (character) => character.toUpperCase())}
-                        </ListboxOption>
-                      ))}
-                    </ListboxOptions>
-                  </Listbox>
-                )}
-              />
-            </div>
-
-            {(hookFormHasError({ errors, name: "duration.value" }) ||
-              hookFormHasError({
-                errors,
-                name: "duration.type",
-              })) && (
-              <ErrorMessage size="sm">
-                {get(errors, "duration.value.message") ||
-                  get(errors, "duration.type.message")}
-              </ErrorMessage>
-            )}
           </div>
 
           <DialogFooter className="mt-8 grid gap-x-3">
@@ -4227,7 +4323,7 @@ const getPhaseDurationInDays = (phase?: Phase) => {
     })
     .filter((value): value is number => typeof value === "number")
 
-  return durations.length ? Math.max(...durations) : 1
+  return durations.length ? Math.max(...durations) : 0
 }
 
 const getPhaseDayRange = (phases: Phase[], phaseIndex: number) => {
@@ -4235,11 +4331,31 @@ const getPhaseDayRange = (phases: Phase[], phaseIndex: number) => {
     .slice(0, phaseIndex)
     .reduce((sum, phase) => sum + getPhaseDurationInDays(phase), 0)
   const startDay = priorDays + 1
-  const endDay = startDay + getPhaseDurationInDays(phases[phaseIndex]) - 1
+  const duration = getPhaseDurationInDays(phases[phaseIndex])
+  const endDay = duration > 0 ? startDay + duration - 1 : undefined
 
   return { startDay, endDay }
 }
 
+const getPhaseDayRangeLabel = (phases: Phase[], phaseIndex: number) => {
+  const { startDay, endDay } = getPhaseDayRange(phases, phaseIndex)
+
+  return typeof endDay === "number"
+    ? `Day ${startDay} - Day ${endDay}`
+    : `Day ${startDay} -`
+}
+
+const getPhaseSearchTargetId = (phaseIndex: number) =>
+  `project-scope-phase-${phaseIndex}`
+
+const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
+  `project-scope-phase-${phaseIndex}-task-${rowIndex}`
+
+const normalizeSearchText = (value?: string) =>
+  (value ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
 interface PhaseTableRowProps {
   row: Row<PhaseRow>
 }
@@ -4324,6 +4440,7 @@ const columns = [
             onValueChange={setValue}
             placeholder="Add Role"
             options={table.options.meta?.roles}
+            triggerClassName="max-w-full"
           />
         </TableCell>
       )
@@ -4584,7 +4701,11 @@ const PhaseTable = ({
 type PhaseNameDialogAction =
   | {
       type: "TOGGLE"
-      payload?: { open?: boolean; addTo?: "start" | "end" }
+      payload?: {
+        open?: boolean
+        addTo?: "start" | "end" | "below"
+        targetPhaseIndex?: number
+      }
     }
   | { type: "EDIT"; payload: number }
 
@@ -4592,7 +4713,7 @@ type PhaseNameDialogState = {
   open: boolean
   editingPhaseIndex: number | null
   action: "EDIT" | null
-  addTo: "start" | "end"
+  addTo: "start" | "end" | "below"
 }
 
 const phaseNameDialogReducer = (
@@ -4605,7 +4726,10 @@ const phaseNameDialogReducer = (
       return {
         ...state,
         action: null,
-        editingPhaseIndex: null,
+        editingPhaseIndex:
+          typeof payload?.targetPhaseIndex === "number"
+            ? payload.targetPhaseIndex
+            : null,
         open: typeof payload?.open === "boolean" ? payload.open : !state.open,
         addTo: typeof payload?.addTo === "string" ? payload.addTo : "end",
       }
@@ -4787,7 +4911,7 @@ const ProjectScope = ({
           // Toast
           toast({
             variant: "success",
-            title: "Phase renamed",
+            title: "Phase Renamed",
             action: (
               <ToastAction
                 altText="Undo"
@@ -4809,25 +4933,42 @@ const ProjectScope = ({
       }
 
       // Do the add
+      let insertedPhaseIndex = 0
       setPhases((prev) => {
-        if (addTo === "start") {
-          // prepend (added above)
-          return [{ phaseName }, ...prev]
-        }
-        // append (added below)
-        return [...prev, { phaseName }]
+        const next = [...prev]
+        const hasTargetPhase =
+          typeof editingPhaseIndex === "number" &&
+          editingPhaseIndex >= 0 &&
+          editingPhaseIndex < next.length
+
+        insertedPhaseIndex =
+          addTo === "start" && hasTargetPhase
+            ? editingPhaseIndex
+            : addTo === "below" && hasTargetPhase
+              ? editingPhaseIndex + 1
+              : next.length
+
+        next.splice(insertedPhaseIndex, 0, { phaseName })
+        return next
       })
 
       // Prepare Undo for this action
-      lastUndo.current =
-        addTo === "start"
-          ? () => setPhases((prev) => prev.slice(1)) // remove first
-          : () => setPhases((prev) => prev.slice(0, -1)) // remove last
+      lastUndo.current = () =>
+        setPhases((prev) =>
+          prev.filter((_, index) => index !== insertedPhaseIndex)
+        )
 
       // Toast
+      const phaseAddedTitle =
+        addTo === "start"
+          ? "Phase Added Above"
+          : addTo === "below"
+            ? "Phase Added Below"
+            : "Phase Added"
+
       toast({
         variant: "success",
-        title: addTo === "start" ? "Phase added above" : "Phase added below",
+        title: phaseAddedTitle,
         action: (
           <ToastAction
             altText="Undo"
@@ -4919,7 +5060,7 @@ const ProjectScope = ({
       if (didChange) {
         toast({
           variant: "success",
-          title: "Duration changed",
+          title: "Duration Changed",
           action: (
             <ToastAction
               altText="Undo"
@@ -4976,7 +5117,7 @@ const ProjectScope = ({
         return prev.filter((_, i) => i !== idx)
       })
 
-      pushSuccess("Phase deleted", lastUndo.current || undefined)
+      pushSuccess("Phase Deleted", lastUndo.current || undefined)
       lastUndo.current = null
     },
     [pushSuccess, setPhases]
@@ -5024,7 +5165,7 @@ const ProjectScope = ({
         return next
       })
 
-      pushSuccess("Phase duplicated", lastUndo.current || undefined)
+      pushSuccess("Phase Duplicated", lastUndo.current || undefined)
       lastUndo.current = null
     },
     [pushSuccess, setPhases]
@@ -5175,6 +5316,7 @@ const ProjectScope = ({
     )
   }
   const currentPhaseName =
+    phaseDialogState.action === "EDIT" &&
     typeof phaseDialogState.editingPhaseIndex === "number"
       ? (phases[phaseDialogState.editingPhaseIndex]?.phaseName ?? "")
       : ""
@@ -5308,15 +5450,9 @@ const ProjectScope = ({
                               </span>
                             </div>
 
-                            <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:w-[118px] md:pl-0">
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day {getPhaseDayRange(phases, index).startDay}
-                              </span>
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                -
-                              </span>
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day {getPhaseDayRange(phases, index).endDay}
+                                {getPhaseDayRangeLabel(phases, index)}
                               </span>
                             </div>
                           </div>
@@ -5336,10 +5472,21 @@ const ProjectScope = ({
                               onInsertAbove={() =>
                                 dispatch({
                                   type: "TOGGLE",
-                                  payload: { addTo: "start" },
+                                  payload: {
+                                    addTo: "start",
+                                    targetPhaseIndex: index,
+                                  },
                                 })
                               }
-                              onInsertBelow={() => dispatch({ type: "TOGGLE" })}
+                              onInsertBelow={() =>
+                                dispatch({
+                                  type: "TOGGLE",
+                                  payload: {
+                                    addTo: "below",
+                                    targetPhaseIndex: index,
+                                  },
+                                })
+                              }
                               onDuplicatePhase={() => onDuplicatePhase(index)}
                             />
                             <PlusDropdown
@@ -5412,22 +5559,15 @@ const ProjectScope = ({
                                 )}
                                 <div className="inline-block md:hidden">
                                   <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    Day {getPhaseDayRange(phases, index).startDay} - Day{" "}
-                                    {getPhaseDayRange(phases, index).endDay}
+                                    {getPhaseDayRangeLabel(phases, index)}
                                   </span>
                                 </div>
                               </div>
                             </div>
 
-                            <div className="hidden md:inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                            <div className="hidden items-center justify-start gap-x-2 pl-10 md:inline-flex md:w-[118px] md:pl-0">
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day {getPhaseDayRange(phases, index).startDay}
-                              </span>
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                -
-                              </span>
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day {getPhaseDayRange(phases, index).endDay}
+                                {getPhaseDayRangeLabel(phases, index)}
                               </span>
                             </div>
                           </div>
@@ -5447,10 +5587,21 @@ const ProjectScope = ({
                               onInsertAbove={() =>
                                 dispatch({
                                   type: "TOGGLE",
-                                  payload: { addTo: "start" },
+                                  payload: {
+                                    addTo: "start",
+                                    targetPhaseIndex: index,
+                                  },
                                 })
                               }
-                              onInsertBelow={() => dispatch({ type: "TOGGLE" })}
+                              onInsertBelow={() =>
+                                dispatch({
+                                  type: "TOGGLE",
+                                  payload: {
+                                    addTo: "below",
+                                    targetPhaseIndex: index,
+                                  },
+                                })
+                              }
                               onDuplicatePhase={() => onDuplicatePhase(index)}
                             />
                             <PlusDropdown
@@ -5828,7 +5979,10 @@ function PublishProject({
           Publish to Marketplace
         </h1>
       </div>
-      <Empty outcome={submissionOutcome ?? undefined} />
+      <Empty
+        outcome={submissionOutcome ?? undefined}
+        draftId={draftIdRef.current}
+      />
     </div>
   ) : (
     <StepperProvider value={stepperValue}>

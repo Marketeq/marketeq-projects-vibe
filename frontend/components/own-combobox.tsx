@@ -166,6 +166,7 @@ export function OwnCombobox({
   searchValue,
   onSearchValueChange,
   emptyMessage,
+  triggerClassName,
 }: {
   placeholder?: string
   options?: string[]
@@ -174,6 +175,7 @@ export function OwnCombobox({
   searchValue?: string
   onSearchValueChange?: (value: string) => void
   emptyMessage?: string
+  triggerClassName?: string
 }) {
   const [open, setOpen] = React.useState(false)
   const [state, setState] = useControllableState({
@@ -203,8 +205,15 @@ export function OwnCombobox({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button className="focus-visible:outline-none transition duration-300 border border-transparent hover:border-gray-300 h-7 px-[8px] rounded-[5px] border-dashed hover:bg-gray-100 shrink-0 text-sm leading-[16.94px] text-gray-600">
-          {state ? options?.find((option) => option === state) : placeholder}
+        <button
+          className={cn(
+            "focus-visible:outline-none transition duration-300 border border-transparent hover:border-gray-300 h-7 px-[8px] rounded-[5px] border-dashed hover:bg-gray-100 shrink-0 text-sm leading-[16.94px] text-gray-600 truncate whitespace-nowrap",
+            triggerClassName
+          )}
+        >
+          <span className="block truncate">
+            {state ? options?.find((option) => option === state) : placeholder}
+          </span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-[202px] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
