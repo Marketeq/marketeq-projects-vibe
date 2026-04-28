@@ -10,7 +10,6 @@ import { UserAvatarUploadController } from './controllers/user-avatar-upload.con
 import { PublishMediaController } from './controllers/publish-media.controller'
 import { PublishRichTextImageController } from './controllers/publish-rich-text-image.controller'
 import { HomepageModule } from './homepage/homepage.module'
-import { HomepageController } from './homepage/homepage.controller'
 import { JwtStrategy } from './guards/jwt-auth.guard'
 import { JwtMiddleware } from './middleware/jwt.middleware'
 import { LoggingMiddleware } from './middleware/logging.middleware'
@@ -45,7 +44,6 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
   ],
   providers: [ProxyService, JwtStrategy],
   controllers: [
-    HomepageController,
     TalentUploadController,
     UserAvatarUploadController,
     PublishMediaController,
