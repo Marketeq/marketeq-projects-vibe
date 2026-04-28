@@ -11,6 +11,7 @@ import { ManualTimeModule } from './manual-time/manual-time.module';
 import { SettingsModule } from './settings/settings.module';
 import { TooltipsModule } from './tooltips/tooltips.module';
 import { TasksModule } from './tasks/tasks.module';
+import { SessionsModule } from './sessions/sessions.module';
 import { TimeTrackingConsumer } from './consumers/time-tracking.consumer';
 
 // Entities for TypeORM root registration
@@ -21,6 +22,7 @@ import { AdminSettings } from './entities/admin-settings.entity';
 import { UserPreferences } from './entities/user-preferences.entity';
 import { Tooltip } from './tooltips/tooltip.entity';
 import { ContractTask } from './entities/contract-task.entity';
+import { Session } from './sessions/session.entity';
 
 @Module({
   imports: [
@@ -36,7 +38,7 @@ import { ContractTask } from './entities/contract-task.entity';
         return {
           type: 'postgres' as const,
           url: config.get<string>('DATABASE_URL') ?? 'postgres://postgres:password@localhost:5432/marketeq',
-          entities: [ActivityWatchEvent, Screenshot, ManualTime, AdminSettings, UserPreferences, Tooltip, ContractTask],
+          entities: [ActivityWatchEvent, Screenshot, ManualTime, AdminSettings, UserPreferences, Tooltip, ContractTask, Session],
           synchronize: false,
           migrationsRun: true,
           migrations: [__dirname + '/../migrations/*{.ts,.js}'],
@@ -57,6 +59,7 @@ import { ContractTask } from './entities/contract-task.entity';
     SettingsModule,
     TooltipsModule,
     TasksModule,
+    SessionsModule,
   ],
   controllers: [TimeTrackingConsumer],
 })
