@@ -1,7 +1,7 @@
 export interface Message {
   id: string
-  content: string // encrypted by default
-  ciphertext: string // encrypted payload
+  content: string // decrypted display content
+  ciphertext?: string | null // encrypted payload (nullable for wrapper-only forwards)
   senderId: string
   threadId: string
   conversationId?: string // legacy alias for threadId
@@ -18,6 +18,24 @@ export interface Message {
   starred?: boolean
   replyToMessageId?: string
   forwardedFromId?: string
+  quotedCiphertext?: string | null
+  quotedContent?: string | null
+  attachments?: MessageAttachment[]
+  reactions?: MessageReaction[]
+}
+
+export interface MessageReaction {
+  userId: string
+  emoji: string
+  createdAt: string
+}
+
+export interface MessageAttachment {
+  id: string
+  fileUrl: string
+  fileType: string
+  fileName?: string | null
+  fileSize?: number | null
 }
 
 // Extended Message type to include file attachments

@@ -95,3 +95,18 @@ body {
 .avatar-carousel .swiper-slide {
   @apply w-[230px];
 }
+
+/* Inbox — brief highlight when jumping to a message from search */
+@keyframes inbox-highlight-flash {
+  0% {
+    background-color: theme(colors.primary.100);
+    box-shadow: 0 0 0 4px theme(colors.primary.100);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.inbox-highlight-flash {
+  animation: inbox-highlight-flash 2s ease-out;
+}

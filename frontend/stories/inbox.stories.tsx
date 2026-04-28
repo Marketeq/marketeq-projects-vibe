@@ -1,8 +1,13 @@
-import { useEffect, useState } from "react"
+import { memo, useEffect, useState } from "react"
 import Image from "next/image"
 import { apiFetch } from "@/src/lib/api"
 import { CurrentUser } from "@/utils/auth"
-import { isNotUndefined } from "@/utils/functions"
+import {
+  DataEmoji,
+  EmojiProperties,
+  isNotUndefined,
+} from "@/utils/functions"
+import { EmojiPicker } from "@/components/emoji-picker"
 import { useUncontrolledState } from "@/utils/hooks"
 import { createContext } from "@/utils/react-utils"
 import {
@@ -18,6 +23,7 @@ import {
   Smile,
   Tag,
   Trash2,
+  X,
 } from "@blend-metrics/icons"
 import { GoogleDrive1Brand } from "@blend-metrics/icons/brands"
 import { Meta } from "@storybook/react"
@@ -30,6 +36,9 @@ import {
   Avatar,
   AvatarFallbackIcon,
   AvatarImage,
+  Dialog,
+  DialogClose,
+  DialogContent,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -47,6 +56,64 @@ const getJwtToken = () => {
   if (typeof window === "undefined") return null
   const Cookies = require("js-cookie")
   return Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("token") || null
+}
+
+const dataEmojiToChar = (emoji: DataEmoji): string =>
+  String.fromCodePoint(
+    ...emoji[EmojiProperties.unified]
+      .split("-")
+      .map((hex) => parseInt(hex, 16))
+  )
+
+// Groups a message's reactions by emoji and returns [{ emoji, count, reactedByMe }].
+const groupReactions = (
+  reactions: Message["reactions"] | undefined,
+  myId: string | undefined
+) => {
+  if (!reactions || reactions.length === 0) return []
+  const by = new Map<string, { count: number; reactedByMe: boolean }>()
+  for (const r of reactions) {
+    const entry = by.get(r.emoji) ?? { count: 0, reactedByMe: false }
+    entry.count += 1
+    if (r.userId === myId) entry.reactedByMe = true
+    by.set(r.emoji, entry)
+  }
+  return Array.from(by.entries()).map(([emoji, v]) => ({ emoji, ...v }))
+}
+
+const ReactionChips = ({
+  reactions,
+  myId,
+  onToggle,
+}: {
+  reactions: Message["reactions"] | undefined
+  myId: string | undefined
+  onToggle?: (emoji: string) => void
+}) => {
+  const groups = groupReactions(reactions, myId)
+  if (groups.length === 0) return null
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {groups.map((g) => (
+        <button
+          key={g.emoji}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggle?.(g.emoji)
+          }}
+          className={`inline-flex items-center gap-x-1 px-2 py-0.5 rounded-full border text-[12px] leading-4 transition-colors ${
+            g.reactedByMe
+              ? "bg-primary-50 border-primary-300 text-primary-700"
+              : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          <span>{g.emoji}</span>
+          <span className="text-[11px] font-medium">{g.count}</span>
+        </button>
+      ))}
+    </div>
+  )
 }
 
 const formatConversationDate = (isoDateStr: string) => {
@@ -83,7 +150,102 @@ const handlePinMessage = async (messageId: string) => {
   }
 }
 
-export const Bubble = ({
+const formatAttachmentSize = (bytes?: number | null) => {
+  if (!bytes && bytes !== 0) return ""
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} kb`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const MessageAttachmentView = ({
+  attachment,
+}: {
+  attachment: {
+    id: string
+    fileUrl: string
+    fileType: string
+    fileName?: string | null
+    fileSize?: number | null
+  }
+}) => {
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const isImage = attachment.fileType?.startsWith("image/")
+  if (isImage) {
+    return (
+      <div className="flex flex-col gap-y-1">
+        <button
+          type="button"
+          onClick={() => setLightboxOpen(true)}
+          className="focus-visible:outline-none"
+        >
+          <img
+            src={attachment.fileUrl}
+            alt={attachment.fileName || "image"}
+            className="max-w-[300px] max-h-[300px] rounded-md object-cover cursor-zoom-in transition hover:opacity-95"
+          />
+        </button>
+        {attachment.fileName && (
+          <p className="text-[11px] text-gray-500">
+            {attachment.fileName}
+            {attachment.fileSize
+              ? ` (${formatAttachmentSize(attachment.fileSize)})`
+              : ""}
+          </p>
+        )}
+        <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+          <DialogContent
+            className="max-w-none w-auto rounded-none bg-transparent p-0 shadow-none"
+            accessibilityTitle={attachment.fileName || "Image preview"}
+          >
+            <div className="relative flex items-center justify-center">
+              <img
+                src={attachment.fileUrl}
+                alt={attachment.fileName || "image"}
+                className="max-h-[92vh] max-w-[92vw] rounded-md object-contain"
+              />
+              <div className="absolute right-3 top-3 flex items-center gap-x-2">
+                <a
+                  href={attachment.fileUrl}
+                  download={attachment.fileName || true}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Download image"
+                  className="inline-flex size-9 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
+                >
+                  <Download02 className="size-4" />
+                </a>
+                <DialogClose
+                  aria-label="Close"
+                  className="inline-flex size-9 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
+                >
+                  <X className="size-4" />
+                </DialogClose>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
+  }
+  return (
+    <a
+      href={attachment.fileUrl}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-x-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 hover:border-gray-300 max-w-[300px]"
+    >
+      <Download02 className="size-4 shrink-0 text-gray-500" />
+      <span className="truncate">{attachment.fileName || "Attachment"}</span>
+      {attachment.fileSize ? (
+        <span className="text-gray-400">
+          {formatAttachmentSize(attachment.fileSize)}
+        </span>
+      ) : null}
+    </a>
+  )
+}
+
+const BubbleImpl = ({
   message,
   currentUser,
   participantUsername,
@@ -94,6 +256,7 @@ export const Bubble = ({
   replyToMessage,
   onLocalDelete,
   onLocalRestore,
+  onToggleReaction,
 }: {
   message: Message
   currentUser: CurrentUser
@@ -105,6 +268,7 @@ export const Bubble = ({
   replyToMessage?: Message | null
   onLocalDelete?: (messageId: string) => void
   onLocalRestore?: (messageId: string) => void
+  onToggleReaction?: (messageId: string, emoji: string) => void
 }) => {
   const [value, setValue] = useState(message.content)
   const { onChatChange, chat, isSaved, onUnsave } = useEditContext()
@@ -112,6 +276,7 @@ export const Bubble = ({
   const [isDeleted, setIsDeleted] = useState(!!message.isDeleted)
   const [deletedAt, setDeletedAt] = useState<number | null>(null)
   const [showUndo, setShowUndo] = useState(false)
+  const [actionMenuOpen, setActionMenuOpen] = useState(false)
 
   // Determine sender name
   const isMe = message.senderId === currentUser.id
@@ -217,13 +382,8 @@ export const Bubble = ({
   }
 
   return (
-    <article className="group inline-flex flex-col items-start gap-y-2">
-      <div className="p-5 pt-2.5 flex-auto rounded-xl flex flex-col gap-y-2 bg-primary-500/[.04]">
-        {message.forwardedFromId && !isDeleted && (
-          <span className="inline-flex items-center gap-x-1 text-[11px] text-gray-400 italic">
-            <Send03 className="size-3" /> Forwarded
-          </span>
-        )}
+    <article className="group flex flex-col items-start gap-y-2 min-w-0 max-w-[calc(100%-60px)] md:max-w-[640px]">
+      <div className="p-5 pt-2.5 min-w-0 w-full rounded-xl flex flex-col gap-y-2 bg-primary-500/[.04]">
         <div className="flex items-end justify-between">
           <h3 className="text-sm leading-[16.8px] font-bold text-dark-blue-400">
             {senderName}{" "}
@@ -233,25 +393,37 @@ export const Bubble = ({
           </h3>
 
           {!isDeleted && (
-            <div className="inline-flex transition duration-300 opacity-0 group-hover:opacity-100 items-center gap-x-0.5">
+            <div
+              className={`inline-flex transition duration-300 items-center gap-x-0.5 ${
+                actionMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              }`}
+            >
               <button
                 className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0"
                 onClick={() => onReply?.(message)}
               >
                 <CornerUpLeft className="size-4" />
               </button>
-              <button className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
-                <Smile className="size-4" />
-              </button>
+              <EmojiPicker
+                side="top"
+                align="end"
+                onEmojiSelect={(emoji) =>
+                  onToggleReaction?.(message.id, dataEmojiToChar(emoji))
+                }
+              >
+                <button className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
+                  <Smile className="size-4" />
+                </button>
+              </EmojiPicker>
 
-              <DropdownMenu>
+              <DropdownMenu open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
                 <DropdownMenuTrigger className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
                   <DotsHorizontal className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   side="bottom"
-                  align="start"
-                  className="min-w-[142px]"
+                  align="end"
+                  className="min-w-0 w-auto"
                 >
                   <DropdownMenuItem onSelect={() => onEdit?.(message)}>
                     <Edit03 className="h-4 w-4" /> Edit
@@ -279,6 +451,19 @@ export const Bubble = ({
           {value}
         </span> */}
 
+        {message.forwardedFromId && !isDeleted && (
+          <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">
+            <p className="inline-flex items-center gap-x-1 text-xs font-semibold text-primary-600">
+              <Send03 className="size-3" /> Forwarded
+            </p>
+            {message.quotedContent && (
+              <p className="text-xs text-gray-600 line-clamp-3 mt-0.5">
+                {message.quotedContent}
+              </p>
+            )}
+          </div>
+        )}
+
         {replyToMessage && !isDeleted && (
           <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">
             <p className="text-xs font-semibold text-primary-600">
@@ -288,6 +473,10 @@ export const Bubble = ({
               {replyToMessage.content || "Encrypted message"}
             </p>
           </div>
+        )}
+
+        {!isDeleted && message.attachments?.[0] && (
+          <MessageAttachmentView attachment={message.attachments[0]} />
         )}
 
         {isDeleted ? (
@@ -303,9 +492,16 @@ export const Bubble = ({
             )}
           </div>
         ) : (
-          <span className="text-sm leading-[16.94px] text-dark-blue-400">
+          <span className="text-sm leading-[16.94px] text-dark-blue-400 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
             {value}
           </span>
+        )}
+        {!isDeleted && (
+          <ReactionChips
+            reactions={message.reactions}
+            myId={currentUser.id}
+            onToggle={(emoji) => onToggleReaction?.(message.id, emoji)}
+          />
         )}
       </div>
 
@@ -314,7 +510,12 @@ export const Bubble = ({
       )}
 
       <span className="inline-flex self-end text-[11px] leading-[15.47px] text-gray-500 items-center gap-x-1">
-        Sent <span className="font-bold">{formattedTime}</span>
+        {message.status === "read" && !isDeleted ? (
+          <span className="font-semibold text-primary-500">Seen</span>
+        ) : (
+          <>Sent</>
+        )}{" "}
+        <span className="font-bold">{formattedTime}</span>
         {message.edited && !isDeleted && (
           <span className="text-gray-400 italic">(edited)</span>
         )}
@@ -322,6 +523,9 @@ export const Bubble = ({
     </article>
   )
 }
+
+export const Bubble = memo(BubbleImpl)
+Bubble.displayName = "Bubble"
 
 export const [EditContextProvider, useEditContext] = createContext<{
   chat: string
@@ -333,7 +537,7 @@ export const [EditContextProvider, useEditContext] = createContext<{
   displayName: "EditContext",
 })
 
-export const YourBubble = ({
+const YourBubbleImpl = ({
   message,
   currentUser,
   participantUsername,
@@ -342,6 +546,7 @@ export const YourBubble = ({
   onForward,
   onReply,
   replyToMessage,
+  onToggleReaction,
 }: {
   message: Message
   currentUser: CurrentUser
@@ -351,10 +556,12 @@ export const YourBubble = ({
   onForward?: (message: Message) => void
   onReply?: (message: Message) => void
   replyToMessage?: Message | null
+  onToggleReaction?: (messageId: string, emoji: string) => void
 }) => {
   const [isPinned, setIsPinned] = useState(!!message.isPinned)
   const [isDeleted, setIsDeleted] = useState(!!message.isDeleted)
   const [value, setValue] = useState(message.content)
+  const [actionMenuOpen, setActionMenuOpen] = useState(false)
 
   useEffect(() => {
     setIsDeleted(!!message.isDeleted)
@@ -401,10 +608,10 @@ export const YourBubble = ({
   const formattedTime = formatConversationDate(message.createdAt)
 
   return (
-    <article className="inline-flex items-end gap-x-2">
+    <article className="flex items-end gap-x-2 min-w-0 max-w-[calc(100%-60px)] md:max-w-[680px]">
       <Avatar
         size="md"
-        className="hover:ring-0 active:ring-primary-100"
+        className="hover:ring-0 active:ring-primary-100 shrink-0"
         isOnline
       >
         <AvatarImage
@@ -414,13 +621,8 @@ export const YourBubble = ({
         <AvatarFallbackIcon />
       </Avatar>
 
-      <div className="group inline-flex flex-col items-start gap-y-2">
-        <div className="p-5 pt-2.5 flex-auto rounded-xl flex flex-col gap-y-2 bg-primary-500/[.04]">
-          {message.forwardedFromId && !isDeleted && (
-            <span className="inline-flex items-center gap-x-1 text-[11px] text-gray-400 italic">
-              <Send03 className="size-3" /> Forwarded
-            </span>
-          )}
+      <div className="group flex flex-col items-start gap-y-2 min-w-0 flex-1">
+        <div className="p-5 pt-2.5 min-w-0 w-full rounded-xl flex flex-col gap-y-2 bg-primary-500/[.04]">
           <div className="flex items-end justify-between">
             <h3 className="text-sm leading-[16.8px] font-bold text-dark-blue-400">
               {senderName}{" "}
@@ -429,25 +631,37 @@ export const YourBubble = ({
               </span>
             </h3>
 
-            <div className="inline-flex transition duration-300 opacity-0 group-hover:opacity-100 items-center gap-x-0.5">
+            <div
+              className={`inline-flex transition duration-300 items-center gap-x-0.5 ${
+                actionMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              }`}
+            >
               <button
                 className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0"
                 onClick={() => onReply?.(message)}
               >
                 <CornerUpLeft className="size-4" />
               </button>
-              <button className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
-                <Smile className="size-4" />
-              </button>
+              <EmojiPicker
+                side="top"
+                align="start"
+                onEmojiSelect={(emoji) =>
+                  onToggleReaction?.(message.id, dataEmojiToChar(emoji))
+                }
+              >
+                <button className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
+                  <Smile className="size-4" />
+                </button>
+              </EmojiPicker>
 
-              <DropdownMenu>
+              <DropdownMenu open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
                 <DropdownMenuTrigger className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
                   <DotsHorizontal className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   side="bottom"
-                  align="start"
-                  className="min-w-[142px]"
+                  align="end"
+                  className="min-w-0 w-auto"
                 >
                   <DropdownMenuItem onSelect={handlePinMessage}>
                     <Edit03 className="h-4 w-4" /> {isPinned ? "Unpin" : "Pin"}
@@ -460,6 +674,19 @@ export const YourBubble = ({
             </div>
           </div>
 
+          {message.forwardedFromId && !isDeleted && (
+            <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">
+              <p className="inline-flex items-center gap-x-1 text-xs font-semibold text-primary-600">
+                <Send03 className="size-3" /> Forwarded
+              </p>
+              {message.quotedContent && (
+                <p className="text-xs text-gray-600 line-clamp-3 mt-0.5">
+                  {message.quotedContent}
+                </p>
+              )}
+            </div>
+          )}
+
           {replyToMessage && !isDeleted && (
             <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">
               <p className="text-xs font-semibold text-primary-600">
@@ -471,14 +698,25 @@ export const YourBubble = ({
             </div>
           )}
 
+          {!isDeleted && message.attachments?.[0] && (
+            <MessageAttachmentView attachment={message.attachments[0]} />
+          )}
+
           {isDeleted ? (
             <div className="text-gray-400 italic flex gap-2 items-center">
               This message was deleted
             </div>
           ) : (
-            <span className="text-sm leading-[16.94px] text-dark-blue-400">
+            <span className="text-sm leading-[16.94px] text-dark-blue-400 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
               {value}
             </span>
+          )}
+          {!isDeleted && (
+            <ReactionChips
+              reactions={message.reactions}
+              myId={currentUser.id}
+              onToggle={(emoji) => onToggleReaction?.(message.id, emoji)}
+            />
           )}
         </div>
 
@@ -496,6 +734,237 @@ export const YourBubble = ({
     </article>
   )
 }
+
+export const YourBubble = memo(YourBubbleImpl)
+YourBubble.displayName = "YourBubble"
+
+// ---------------------------------------------------------------------------
+// Search result rows (per Figma: "Inbox - Search Results - All Messages
+// Panel States"). One component per section so left-sidebar can compose
+// them without inlining JSX.
+// ---------------------------------------------------------------------------
+
+const SearchPeopleRowImpl = ({
+  name,
+  username,
+  avatarUrl,
+  onClick,
+}: {
+  name: string
+  username?: string
+  avatarUrl?: string
+  onClick: () => void
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="flex items-center gap-x-3 px-4 py-2 w-full text-left hover:bg-gray-100"
+  >
+    <Avatar size="md" className="shrink-0">
+      <AvatarImage src={avatarUrl || undefined} alt={name} />
+      <AvatarFallbackIcon />
+    </Avatar>
+    <div className="flex flex-col min-w-0">
+      <span className="text-[13px] font-semibold text-dark-blue-400 truncate">
+        {name}
+      </span>
+      {username && (
+        <span className="text-[11px] text-gray-500 truncate">@{username}</span>
+      )}
+    </div>
+  </button>
+)
+
+export const SearchPeopleRow = memo(SearchPeopleRowImpl)
+SearchPeopleRow.displayName = "SearchPeopleRow"
+
+const SearchMessageRowImpl = ({
+  participantName,
+  participantAvatarUrl,
+  snippet,
+  date,
+  onClick,
+}: {
+  participantName: string
+  participantAvatarUrl?: string
+  snippet: string
+  date: string
+  onClick: () => void
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="flex items-start gap-x-3 px-4 py-3 w-full text-left hover:bg-gray-100 border-b border-gray-100"
+  >
+    <Avatar size="md" className="shrink-0">
+      <AvatarImage
+        src={participantAvatarUrl || undefined}
+        alt={participantName}
+      />
+      <AvatarFallbackIcon />
+    </Avatar>
+    <div className="flex flex-col min-w-0 flex-1 gap-y-0.5">
+      <div className="flex items-center justify-between gap-x-2">
+        <span className="text-[13px] font-semibold text-dark-blue-400 truncate">
+          {participantName}
+        </span>
+        <span className="text-[11px] text-gray-500 shrink-0">{date}</span>
+      </div>
+      <span className="text-[11px] text-gray-600 line-clamp-2 break-words [overflow-wrap:anywhere]">
+        {snippet}
+      </span>
+    </div>
+  </button>
+)
+
+export const SearchMessageRow = memo(SearchMessageRowImpl)
+SearchMessageRow.displayName = "SearchMessageRow"
+
+const SearchLinkRowImpl = ({
+  url,
+  title,
+  senderName,
+  date,
+  onClick,
+}: {
+  url: string
+  title?: string
+  senderName?: string
+  date?: string
+  onClick: () => void
+}) => {
+  const isDrive = /drive\.google\.com/.test(url)
+  return (
+    <div className="px-4 pt-2 pb-1 border-b border-gray-100">
+      {(senderName || date) && (
+        <div className="flex items-center justify-between gap-x-2 pb-1">
+          <span className="text-[12px] font-semibold text-dark-blue-400 truncate">
+            {senderName || ""}
+          </span>
+          {date && (
+            <span className="text-[11px] text-gray-500 shrink-0">{date}</span>
+          )}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex items-center gap-x-3 py-2 w-full text-left rounded hover:bg-gray-100"
+      >
+        <div className="size-10 shrink-0 rounded bg-gray-50 flex items-center justify-center">
+          {isDrive ? (
+            <GoogleDrive1Brand className="size-5" />
+          ) : (
+            <Compass03 className="size-5 text-gray-400" />
+          )}
+        </div>
+        <div className="flex flex-col min-w-0 flex-1 gap-y-0.5">
+          <span className="text-[13px] font-semibold text-dark-blue-400 truncate">
+            {title || url}
+          </span>
+          <span className="text-[11px] text-gray-500 truncate">{url}</span>
+        </div>
+      </button>
+    </div>
+  )
+}
+
+export const SearchLinkRow = memo(SearchLinkRowImpl)
+SearchLinkRow.displayName = "SearchLinkRow"
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// Mid-string ellipsis that preserves the file extension so users can still
+// tell .docx from .png at a glance even after truncation.
+//   UncertaintyPropagation-Pilot Study.docx (39) → Uncertainty…Study.docx (22)
+export function truncateFilenameMiddle(name: string, max = 28): string {
+  if (name.length <= max) return name
+  const dot = name.lastIndexOf(".")
+  if (dot < 0 || name.length - dot > 6) {
+    return name.slice(0, max - 1) + "…"
+  }
+  const ext = name.slice(dot)
+  const headBudget = max - ext.length - 1
+  if (headBudget <= 1) return "…" + ext
+  return name.slice(0, headBudget) + "…" + ext
+}
+
+const SearchFileRowImpl = ({
+  fileName,
+  fileSize,
+  fileType,
+  fileUrl,
+  senderName,
+  date,
+  onClick,
+}: {
+  fileName: string
+  fileSize?: number | null
+  fileType?: string
+  fileUrl?: string
+  senderName?: string
+  date?: string
+  onClick: () => void
+}) => {
+  const isImage = fileType?.startsWith("image/")
+  const ext = fileName.includes(".")
+    ? fileName.split(".").pop()?.slice(0, 4).toUpperCase()
+    : "FILE"
+  return (
+    <div className="px-4 pt-2 pb-1 border-b border-gray-100">
+      {(senderName || date) && (
+        <div className="flex items-center justify-between gap-x-2 pb-1">
+          <span className="text-[12px] font-semibold text-dark-blue-400 truncate">
+            {senderName || ""}
+          </span>
+          {date && (
+            <span className="text-[11px] text-gray-500 shrink-0">{date}</span>
+          )}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex items-center gap-x-3 py-2 w-full text-left rounded hover:bg-gray-100"
+      >
+        <div className="size-10 shrink-0 rounded bg-gray-50 overflow-hidden flex items-center justify-center">
+          {isImage && fileUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={fileUrl}
+              alt={fileName}
+              className="size-full object-cover"
+            />
+          ) : (
+            <span className="text-[10px] font-semibold text-gray-500">
+              {ext}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-col min-w-0 flex-1 gap-y-0.5">
+          <span
+            className="text-[13px] font-semibold text-dark-blue-400 truncate"
+            title={fileName}
+          >
+            {truncateFilenameMiddle(fileName)}
+          </span>
+          {fileSize != null && (
+            <span className="text-[11px] text-gray-500">
+              {formatFileSize(fileSize)}
+            </span>
+          )}
+        </div>
+      </button>
+    </div>
+  )
+}
+
+export const SearchFileRow = memo(SearchFileRowImpl)
+SearchFileRow.displayName = "SearchFileRow"
 
 const dummyConv: Conversation & { participantUsername: string } = {
   id: "conv-1",

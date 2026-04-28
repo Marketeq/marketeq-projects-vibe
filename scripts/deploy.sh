@@ -20,7 +20,7 @@ get_branch() {
   case "$1" in
     dev)     echo "dev-main" ;;
     staging) echo "staging" ;;
-    live)    echo "live/mvp" ;;
+    live)    echo "live-mvp" ;;
     *)       echo "" ;;
   esac
 }

@@ -52,6 +52,13 @@ export const resolveDashboardRole = (
   return undefined
 }
 
+export const hasCompletedOnboarding = (
+  user?: DashboardResolvableUser | null,
+): boolean =>
+  user?.hasCompletedOnboarding === true ||
+  user?.onboardingDismissed === true ||
+  user?.onboardedAt != null
+
 export const resolveDashboardRoute = (
   user?: DashboardResolvableUser | null,
 ): string => {
@@ -69,16 +76,43 @@ export const resolveDashboardRoute = (
   // never be bounced back to /onboarding just because the /me payload is
   // missing role/accountType/userType. Default them to client-dashboard
   // — the account switcher can flip them to talent if needed.
-  const hasCompletedOnboarding =
-    user?.hasCompletedOnboarding === true ||
-    user?.onboardingDismissed === true ||
-    user?.onboardedAt != null
-
-  if (hasCompletedOnboarding) {
+  if (hasCompletedOnboarding(user)) {
     return "/client-dashboard"
   }
 
   return "/onboarding"
+}
+
+export const mergeDashboardUserFields = <
+  T extends Record<string, unknown> | null | undefined,
+>(
+  authUser: T,
+  profileUser: unknown,
+): T => {
+  if (!authUser || !profileUser || typeof profileUser !== "object") {
+    return authUser
+  }
+
+  const merged: Record<string, unknown> = {
+    ...(authUser as Record<string, unknown>),
+    ...(profileUser as Record<string, unknown>),
+  }
+
+  for (const key of [
+    "role",
+    "accountType",
+    "userType",
+    "onboardingDismissed",
+    "hasCompletedOnboarding",
+    "onboardedAt",
+  ] as const) {
+    const authValue = (authUser as Record<string, unknown>)[key]
+    if (merged[key] == null && authValue != null) {
+      merged[key] = authValue
+    }
+  }
+
+  return merged as T
 }
 
 interface AuthContextType {
@@ -177,10 +211,15 @@ function useProvideAuth() {
 
   const logoutHandler = async () => {
     try {
-      await AuthAPI.Logout()
+      const refreshToken = Cookies.get("refresh_token")
+      await AuthAPI.Logout(refreshToken)
       document.cookie =
         "access_token=; Path=/; Max-Age=0; SameSite=None; Secure"
       document.cookie = "accessToken=; Path=/; Max-Age=0; SameSite=None; Secure"
+      Cookies.remove("access_token", { path: "/" })
+      Cookies.remove("accessToken", { path: "/" })
+      Cookies.remove("refresh_token", { path: "/" })
+      Cookies.remove("session_id", { path: "/" })
       try { window.localStorage.removeItem("marketeq-onboarding-dismissed") } catch {}
     } catch (err: any) {
       toast({
@@ -199,6 +238,30 @@ function useProvideAuth() {
   useEffect(() => {
     getUser()
   }, [])
+
+  // Heartbeat: keeps session alive and detects revocation
+  useEffect(() => {
+    const accessToken = Cookies.get("access_token")
+    const sessionId = Cookies.get("session_id")
+    if (!accessToken || !sessionId) return
+
+    const tick = () => {
+      AuthAPI.Heartbeat().catch((err) => {
+        if (err?.response?.status === 401) {
+          Cookies.remove("access_token", { path: "/" })
+          Cookies.remove("refresh_token", { path: "/" })
+          Cookies.remove("session_id", { path: "/" })
+          setUser(null)
+          router.push("/sign-in")
+        }
+      })
+    }
+
+    // First heartbeat immediately so lastActiveAt is fresh
+    tick()
+    const id = setInterval(tick, 60_000)
+    return () => clearInterval(id)
+  }, [user])
 
   return {
     isLoading,

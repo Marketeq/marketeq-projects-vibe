@@ -9,6 +9,7 @@ export interface UserChannelHandlers {
   onThreadStateChanged?: (evt: { threadId: string; patch: ThreadStatePatch }) => void
   onListAssignmentsChanged?: (evt: { threadId: string; listIds: string[] }) => void
   onListsChanged?: () => void
+  onMessageRead?: (evt: { messageId: string }) => void
 }
 
 /**
@@ -33,6 +34,10 @@ export function useUserChannel(handlers: UserChannelHandlers) {
             `/v1/threads/ably-token`,
             { method: "GET", headers: { Authorization: `Bearer ${token}` } }
           )
+          if (!details) {
+            cb("Realtime token unavailable", null)
+            return
+          }
           cb(null, details)
         } catch (err) {
           cb(err instanceof Error ? err.message : String(err), null)
@@ -53,6 +58,9 @@ export function useUserChannel(handlers: UserChannelHandlers) {
           break
         case "thread:lists-changed":
           ref.current.onListsChanged?.()
+          break
+        case "message:read":
+          ref.current.onMessageRead?.(msg.data)
           break
       }
     })

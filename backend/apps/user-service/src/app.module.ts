@@ -45,6 +45,10 @@ import { UserKeysModule } from './user-keys/user-keys.module';
         autoLoadEntities: true,
         // Permanent guardrail: schema changes must go through migrations.
         synchronize: false,
+        // Auto-run pending migrations on service startup in every env,
+        // per docs/md/Database Migrations/database-migrations.md.
+        migrationsRun: true,
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
         logging: process.env.NODE_ENV !== 'production',
         ssl:
           process.env.DATABASE_SSL === 'false'

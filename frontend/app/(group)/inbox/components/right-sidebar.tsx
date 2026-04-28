@@ -2,10 +2,12 @@
 
 import React, { useState } from "react"
 import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { getCurrentUser } from "@/utils/auth"
 import { apiFetch } from "@/src/lib/api"
 import { Conversation } from "@/types/conversation"
 import { UserProfile } from "@/types/user"
+import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import {
   AlertTriangle,
   Archive,
@@ -79,6 +81,8 @@ interface RightSidebarProps {
 const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => {
   const [user, setUser] = useState<UserProfile | null>(null)
   const currentUser = getCurrentUser()
+  const router = useRouter()
+  const { isOnline } = useOnlineUsers()
 
   useEffect(() => {
     setUser(null)
@@ -110,10 +114,7 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
     )
   }
 
-  const fullName =
-    [user.firstName?.trim(), user.lastName?.trim()].filter(Boolean).join(" ") ||
-    user.username ||
-    "Unknown"
+  const fullName = user.firstName?.trim() || user.username || "Unknown"
   const username = user.username || ""
   const avatarUrl = user.avatarUrl
   const initials = fullName.charAt(0).toUpperCase()
@@ -124,7 +125,7 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
   return (
     <div className="w-[300px] bg-white flex flex-col shrink-0 pt-10 pb-6 px-5 border-l border-gray-200">
       <div className="pb-5 flex flex-col items-center border-b border-gray-200">
-        <Avatar size="2xl">
+        <Avatar size="2xl" isOnline={isOnline(user?.id)}>
           <AvatarImage src={avatarUrl || undefined} alt={fullName} />
           <AvatarFallback delayMs={0}>{initials}</AvatarFallback>
         </Avatar>
@@ -229,7 +230,15 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
       )}
 
       <div className="mt-auto flex flex-col gap-y-6">
-        <Button visual="gray" variant="outlined">
+        <Button
+          visual="gray"
+          variant="outlined"
+          disabled={!user?.username}
+          onClick={() => {
+            if (!user?.username) return
+            router.push(`/talent-profile?username=${encodeURIComponent(user.username)}`)
+          }}
+        >
           View Full Profile
         </Button>
 

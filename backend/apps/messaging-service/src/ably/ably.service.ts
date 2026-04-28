@@ -18,6 +18,10 @@ export class AblyService {
     if (!this.client) return null;
     const capability: Record<string, string[]> = {
       [`user:${userId}`]: ['subscribe'],
+      // Global presence channel: every authenticated client can join + observe
+      // who else is online. Drives the avatar dot in inbox left/right sidebars
+      // and the chat header (replacing the previous per-thread-only presence).
+      'presence:online': ['subscribe', 'presence'],
     };
     for (const threadId of threadIds) {
       capability[`chat:thread-${threadId}`] = ['subscribe', 'presence'];
@@ -50,6 +54,13 @@ export class AblyService {
 
   publishMessageRestore(threadId: string, messageId: string) {
     return this.publish(`chat:thread-${threadId}`, 'message:restore', { messageId });
+  }
+
+  publishMessageReaction(
+    threadId: string,
+    data: { messageId: string; reactions: unknown[] },
+  ) {
+    return this.publish(`chat:thread-${threadId}`, 'message:reaction', data);
   }
 
   publishMessageRead(userId: string, messageId: string) {

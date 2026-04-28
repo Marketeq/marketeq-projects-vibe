@@ -2,8 +2,10 @@
 
 import * as React from "react"
 import { SVGProps } from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
+import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import data from "@/public/mock/projects.json"
+import { UserAPI } from "@/service/http/user"
 import { ONE_SECOND } from "@/utils/constants"
 import { cn, getId, getIsEmpty, getIsNotEmpty } from "@/utils/functions"
 import { useEditable } from "@ark-ui/react"
@@ -15,15 +17,14 @@ import {
   Briefcase,
   Check,
   ChevronLeft,
-  CoinStack,
-  CurrencyDollar,
   ChevronRight,
   Clock,
+  CoinStack,
+  CurrencyDollar,
   FileCheck02,
   Home03,
   Mail01,
   MapPin,
-  MoreHorizontal,
   Plus,
   Search,
   Send,
@@ -35,23 +36,24 @@ import {
   UserCircle,
   X,
 } from "@blend-metrics/icons"
-import { InstagramDefault } from "@blend-metrics/icons/social"
 import { GridVertical2 } from "@blend-metrics/icons/special"
 import { AnimatePresence, motion } from "framer-motion"
 import { useMount, useTimeoutFn, useToggle } from "react-use"
 import { Pagination } from "swiper/modules"
 import { Swiper as SwiperRoot, SwiperSlide } from "swiper/react"
 import { Swiper } from "swiper/types"
+import { ROLE } from "@/types/user"
 import { ReorderGroup, ReorderItem } from "@/components/ui/reorder"
-import { Facebook, Linkedin, Logo, Logo3, XIcon } from "@/components/icons"
-import { GridVertical6 } from "@/components/icons/grid-vertical-6"
-import NextImage from "@/components/next-image"
-import NextLink from "@/components/next-link"
-import SecuritySettingsStepper from "@/components/security-settings"
 import {
   ClientAccountSidebar,
   TalentAccountSidebar,
 } from "@/components/account-sidebars"
+import { DashboardFooter } from "@/components/dashboard-footer"
+import { Logo } from "@/components/icons"
+import { GridVertical6 } from "@/components/icons/grid-vertical-6"
+import NextImage from "@/components/next-image"
+import NextLink from "@/components/next-link"
+import SecuritySettingsStepper from "@/components/security-settings"
 import {
   Avatar,
   AvatarFallback,
@@ -81,10 +83,13 @@ import {
   EditablePreview,
   EditableRoot,
 } from "@/components/ui"
-import { useAuth, resolveDashboardRole } from "@/contexts/auth"
-import { ROLE } from "@/types/user"
-import { UserAPI } from "@/service/http/user"
-
+import {
+  type MyListing,
+  formatActivityDate,
+  formatRelativeTime,
+  statusToBadgeVisual,
+  useMyListings,
+} from "@/src/lib/my-listings"
 
 export const MoneyDollarCircleFill = ({
   className,
@@ -168,7 +173,15 @@ export const LeftSidebar = () => {
   return isTalent ? <TalentAccountSidebar /> : <ClientAccountSidebar />
 }
 
-export const RightDrawer = ({ className, onCompleteProfile, profileProgress = 0 }: { className?: string; onCompleteProfile?: () => void; profileProgress?: number }) => {
+export const RightDrawer = ({
+  className,
+  onCompleteProfile,
+  profileProgress = 0,
+}: {
+  className?: string
+  onCompleteProfile?: () => void
+  profileProgress?: number
+}) => {
   const { user } = useAuth()
   return (
     <div
@@ -183,7 +196,12 @@ export const RightDrawer = ({ className, onCompleteProfile, profileProgress = 0 
             href="/talent-profile"
             className="text-base leading-[19.36px] font-bold text-dark-blue-400 hover:text-primary-500 hover:underline"
           >
-            @{user?.username || `${user?.firstName || ""}${user?.lastName || ""}`.toLowerCase().replace(/\s+/g, "") || "my-profile"}
+            @
+            {user?.username ||
+              `${user?.firstName || ""}${user?.lastName || ""}`
+                .toLowerCase()
+                .replace(/\s+/g, "") ||
+              "my-profile"}
           </NextLink>
           <Button
             className="underline text-dark-blue-400 hover:text-primary-500"
@@ -312,7 +330,15 @@ export const RightDrawer = ({ className, onCompleteProfile, profileProgress = 0 
   )
 }
 
-export const RightSidebar = ({ className, onCompleteProfile, profileProgress = 0 }: { className?: string; onCompleteProfile?: () => void; profileProgress?: number }) => {
+export const RightSidebar = ({
+  className,
+  onCompleteProfile,
+  profileProgress = 0,
+}: {
+  className?: string
+  onCompleteProfile?: () => void
+  profileProgress?: number
+}) => {
   const { user } = useAuth()
   return (
     <div
@@ -324,7 +350,12 @@ export const RightSidebar = ({ className, onCompleteProfile, profileProgress = 0
             href="/talent-profile"
             className="text-base leading-[19.36px] font-bold text-dark-blue-400 hover:text-primary-500 hover:underline block"
           >
-            @{user?.username || `${user?.firstName || ""}${user?.lastName || ""}`.toLowerCase().replace(/\s+/g, "") || "my-profile"}
+            @
+            {user?.username ||
+              `${user?.firstName || ""}${user?.lastName || ""}`
+                .toLowerCase()
+                .replace(/\s+/g, "") ||
+              "my-profile"}
           </NextLink>
           <Button
             className="underline text-dark-blue-400 hover:text-primary-500"
@@ -1037,173 +1068,114 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
   )
 }
 
-interface Project {
-  projectName: string
-  team: { image: string; alternativeText: string }[]
-  status: string
-  nextMilestone: string
-}
+const RecentListingsTableRow = ({ listing }: { listing: MyListing }) => {
+  const router = useRouter()
 
-export const TableRow = ({
-  projectName,
-  nextMilestone,
-  status,
-  team,
-}: Project) => {
   return (
-    <tr className="first:pt-3 last:pb-3">
-      <td className="px-6 py-3.5 text-sm leading-5 font-semibold text-dark-blue-400 inline-block truncate">
-        {projectName}
+    <tr
+      className="hover:bg-gray-50 cursor-pointer"
+      onClick={() => router.push("/my-listings")}
+    >
+      <td className="px-6 py-4">
+        <NextLink
+          href="/my-listings"
+          className="text-sm font-semibold text-dark-blue-400 hover:underline"
+        >
+          {listing.title}
+        </NextLink>
       </td>
-      <td className="px-6 py-2">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <AvatarGroup excess size="sm" max={3}>
-                {team.map((member, index) => (
-                  <Avatar
-                    key={index}
-                    className="border-2 border-white hover:ring-0 active:ring-0"
-                    size="sm"
-                  >
-                    <AvatarImage
-                      src={member.image}
-                      alt={member.alternativeText}
-                    />
-                    <AvatarFallback>
-                      {member.alternativeText.slice(0, 1).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                ))}
-              </AvatarGroup>
-            </TooltipTrigger>
-
-            <TooltipContent className="p-0" size="md">
-              <ScrollArea viewportClassName="max-h-[192px]" className="p-3">
-                <div className="space-y-3">
-                  {team.map((member, index) => (
-                    <div className="flex items-center gap-x-2" key={index}>
-                      <Avatar className="hover:ring-0">
-                        <AvatarImage
-                          src={member.image}
-                          alt={member.alternativeText}
-                        />
-                        <AvatarFallback>
-                          {member.alternativeText.slice(0, 1).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-xs font-medium leading-5">
-                        {member.alternativeText}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+      <td className="px-6 py-4">
+        <span className="text-sm capitalize leading-5 text-gray-500">
+          {listing.type}
+        </span>
       </td>
-      <td className="px-6 py-[13px] items-center">
-        {status === "In Progress" ? (
-          <Badge visual="success">{status}</Badge>
-        ) : (
-          <Badge visual="gray">{status}</Badge>
-        )}
+      <td className="px-6 py-4">
+        <Badge size="md" visual={statusToBadgeVisual(listing.status)}>
+          {listing.status}
+        </Badge>
       </td>
-      <td className="pl-6 pr-8 py-3.5">
-        <div className="gap-x-14 flex items-center justify-between">
-          <span className="text-sm whitespace-nowrap leading-5 text-gray-500">
-            {nextMilestone}
+      <td className="px-6 py-4">
+        <div className="flex flex-col">
+          <span className="text-sm leading-5 text-gray-500">
+            {formatActivityDate(listing.updatedAt)}
           </span>
-          <Button
-            className="h-auto px-1.5 py-1 text-dark-blue-400"
-            visual="gray"
-            variant="ghost"
-          >
-            <MoreHorizontal className="size-[15px]" />
-          </Button>
+          {listing.updatedAt ? (
+            <span className="text-xs leading-4 text-gray-400">
+              {formatRelativeTime(listing.updatedAt)}
+            </span>
+          ) : null}
         </div>
       </td>
     </tr>
   )
 }
 
-export const Table = () => {
-  return (
-    <table className="table-auto border-collapse w-full">
-      <thead>
-        <tr>
-          <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-            Project Name
-          </th>
-          <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-            Team
-          </th>
-          <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-            Status
-          </th>
-          <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-            Next Milestone
-          </th>
-        </tr>
-      </thead>
+export const RecentListings = () => {
+  const router = useRouter()
+  const { listings, isLoading } = useMyListings()
+  const recentListings = listings.slice(0, 5)
 
-      <tbody>
-        {data.projects.map((project, index) => (
-          <TableRow {...project} key={index} />
-        ))}
-      </tbody>
-    </table>
-  )
-}
-
-export const RecentProjects = () => {
   return (
     <div className="border bg-white border-gray-200 rounded-lg shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
       <div className="flex justify-between items-start pt-5 px-6">
         <h1 className="text-lg leading-[21.78px] font-bold text-dark-blue-400">
-          Recent Projects
+          Recent Listings
         </h1>
 
         <Button
           className="text-dark-blue-400 xs:max-md:hidden"
           variant="link"
           visual="gray"
+          onClick={() => router.push("/my-listings")}
         >
-          View All Projects <ArrowRight className="size-3.5" />
+          View All Listings <ArrowRight className="size-3.5" />
         </Button>
       </div>
 
-      <Tabs className="mt-1" defaultValue="All Projects">
-        <TabsList className="px-6 w-full justify-start">
-          <TabsTrigger className="pb-[11px]" value="All Projects">
-            All Projects
-          </TabsTrigger>
-          <TabsTrigger className="pb-[11px]" value="Created by Me">
-            Created by Me
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent className="overflow-x-hidden" value="All Projects">
+      {isLoading ? (
+        <div className="px-6 py-10 text-sm text-gray-500">
+          Loading recent listings...
+        </div>
+      ) : (
+        <>
           <div className="overflow-x-auto scrollbar-none">
-            <Table />
+            <table className="table-auto border-collapse w-full">
+              <thead>
+                <tr>
+                  <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
+                    Listing Name
+                  </th>
+                  <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
+                    Type
+                  </th>
+                  <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
+                    Status
+                  </th>
+                  <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
+                    Last Activity
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {recentListings.map((listing) => (
+                  <RecentListingsTableRow key={listing.id} listing={listing} />
+                ))}
+              </tbody>
+            </table>
           </div>
+
           <div className="h-[49px] flex items-center md:hidden justify-center border-t border-gray-200">
-            <Button className="text-dark-blue-400" variant="link">
-              View All Projects <ArrowRight className="size-3.5" />
+            <Button
+              className="text-dark-blue-400"
+              variant="link"
+              onClick={() => router.push("/my-listings")}
+            >
+              View All Listings <ArrowRight className="size-3.5" />
             </Button>
           </div>
-        </TabsContent>
-        <TabsContent className="overflow-x-hidden" value="Created by Me">
-          <div className="overflow-x-auto scrollbar-none">
-            <Table />
-          </div>
-          <div className="h-[49px] flex items-center md:hidden justify-center border-t border-gray-200">
-            <Button className="text-dark-blue-400" variant="link">
-              View All Projects <ArrowRight className="size-3.5" />
-            </Button>
-          </div>
-        </TabsContent>
-      </Tabs>
+        </>
+      )}
     </div>
   )
 }
@@ -1920,47 +1892,5 @@ export const TakeCareersToNextLevel = () => {
 }
 
 export const Footer = () => {
-  return (
-    <div className="px-5 xs:max-md:pt-5 md:px-6 pb-5 flex flex-col md:flex-row items-center gap-5 md:justify-between">
-      <div className="flex md:flex-row flex-col items-center gap-5 md:gap-x-[57px]">
-        <NextLink className="focus-visible:outline-none" href="/">
-          <Logo3 className="shrink-0 w-[120px] h-[17.63px]" />
-        </NextLink>
-        <span className="text-[13px] leading-[15.73px] font-light text-dark-blue-400">
-          © 2011 - 2025 Marketeq Digital Inc. All Rights Reserved.
-        </span>
-      </div>
-
-      <div className="flex items-center gap-x-[16.6px]">
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <Facebook className="fill-dark-blue-400 size-4" />
-        </IconButton>
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <XIcon className="text-dark-blue-400 size-4" />
-        </IconButton>
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <InstagramDefault className="text-dark-blue-400 size-4" />
-        </IconButton>
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <Linkedin className="text-dark-blue-400 size-4" />
-        </IconButton>
-      </div>
-    </div>
-  )
+  return <DashboardFooter className="px-5 xs:max-md:pt-5 pb-5 md:px-6" />
 }
