@@ -25,7 +25,7 @@ export class UsernameNullablePartialUniqueIndex1773400000000
 
     // Enforce uniqueness only for actual usernames; allow multiple NULLs.
     await queryRunner.query(`
-      CREATE UNIQUE INDEX "IDX_users_username_unique_not_null"
+      CREATE UNIQUE INDEX IF NOT EXISTS "IDX_users_username_unique_not_null"
       ON "users" ("username")
       WHERE "username" IS NOT NULL
     `);
@@ -49,7 +49,7 @@ export class UsernameNullablePartialUniqueIndex1773400000000
     `);
 
     await queryRunner.query(`
-      CREATE UNIQUE INDEX "IDX_fe0bb3f6520ee0469504521e71"
+      CREATE UNIQUE INDEX IF NOT EXISTS "IDX_fe0bb3f6520ee0469504521e71"
       ON "users" ("username")
     `);
   }

@@ -4,13 +4,9 @@ export class CreateExperiencesTable1770239203475 implements MigrationInterface {
     name = 'CreateExperiencesTable1770239203475'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        const hasExperiences = await queryRunner.hasTable('experiences');
-
-        if (!hasExperiences) {
-            await queryRunner.query(
-                `CREATE TABLE "experiences" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "title" character varying NOT NULL, "description" character varying, "company" character varying NOT NULL, "location" text, "startDate" TIMESTAMP NOT NULL, "endDate" TIMESTAMP, "isCurrentRole" boolean NOT NULL DEFAULT false, "industryType" character varying, "skills" text, "userId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_884f0913a63882712ea578e7c85" PRIMARY KEY ("id"))`,
-            );
-        }
+        await queryRunner.query(
+            `CREATE TABLE IF NOT EXISTS "experiences" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "title" character varying NOT NULL, "description" character varying, "company" character varying NOT NULL, "location" text, "startDate" TIMESTAMP NOT NULL, "endDate" TIMESTAMP, "isCurrentRole" boolean NOT NULL DEFAULT false, "industryType" character varying, "skills" text, "userId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_884f0913a63882712ea578e7c85" PRIMARY KEY ("id"))`,
+        );
 
         await queryRunner.query(
             `DO $$ BEGIN

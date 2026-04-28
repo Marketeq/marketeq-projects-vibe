@@ -1,3 +1,5 @@
+> STOP. You must read [CONFIDENTIALITY.md](CONFIDENTIALITY.md) before contributing to this repo.
+
 # Contributing to Marketeq Projects Vibe
 
 Welcome. This is a private NestJS + Next.js monorepo for the Marketeq freelance marketplace platform. Every contributor — human or AI agent — must follow the same rules when opening, reviewing, or merging pull requests.

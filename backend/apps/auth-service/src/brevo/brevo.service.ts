@@ -85,6 +85,30 @@ export class BrevoService {
     }
   }
 
+  async sendTwoFactorSms(phone: string, code: string): Promise<void> {
+    try {
+      await this.http.post('/transactionalSMS/sms', {
+        type: 'transactional',
+        unicodeEnabled: false,
+        sender: this.fromName,
+        recipient: phone,
+        content: `Your Marketeq verification code is: ${code}. It expires in 5 minutes.`,
+      });
+    } catch (err) {
+      const data = axios.isAxiosError(err) ? err.response?.data : undefined;
+      const message = data ? JSON.stringify(data) : (err as Error)?.message || 'unknown error';
+      this.logger.error(`Brevo SMS send failed (to=${phone}): ${message}`);
+
+      if (data?.code === 'not_enough_credits') {
+        throw new Error('SMS service is temporarily unavailable. Please try authenticator app instead.');
+      }
+      if (data?.code === 'unauthorized' || err?.response?.status === 401) {
+        throw new Error('SMS service configuration error. Please contact support.');
+      }
+      throw err;
+    }
+  }
+
   async sendPasswordResetEmail(
     to: string,
     params: { firstName?: string; resetUrl: string },

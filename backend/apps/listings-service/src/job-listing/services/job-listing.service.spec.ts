@@ -10,6 +10,7 @@ import { of } from 'rxjs';
 import { JobListingService } from './job-listing.service';
 import { JobListing } from '../entities/job-listing.entity';
 import { TeamMemberRow } from '../entities/job-listing-role-row.entity';
+import { BasicInformation } from '../entities/job-listing-basic-info.entity';
 import { JobListingInviteService } from './job-listing-invite.service';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -20,6 +21,7 @@ const mockRepo = {
 };
 
 const mockRoleRowRepo = {};
+const mockBasicInfoRepo = {};
 
 const mockConfig = {
   get: jest.fn().mockReturnValue('http://contracts-service'),
@@ -44,6 +46,7 @@ describe('JobListingService — JL-10 Existing Contract', () => {
         JobListingService,
         { provide: getRepositoryToken(JobListing),    useValue: mockRepo },
         { provide: getRepositoryToken(TeamMemberRow), useValue: mockRoleRowRepo },
+        { provide: getRepositoryToken(BasicInformation), useValue: mockBasicInfoRepo },
         { provide: ConfigService,                     useValue: mockConfig },
         { provide: HttpService,                       useValue: mockHttp },
         { provide: JobListingInviteService,            useValue: mockInviteService },

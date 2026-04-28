@@ -6,10 +6,6 @@ on:
       - dev-main
       - staging
       - live-mvp
-    paths:
-      - 'frontend/**'
-      - 'package.json'
-      - '.github/workflows/vercel-deploy.yml'
   workflow_dispatch:
     inputs:
       deploy_branch:

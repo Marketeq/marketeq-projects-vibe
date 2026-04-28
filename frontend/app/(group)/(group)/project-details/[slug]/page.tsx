@@ -3422,6 +3422,23 @@ export default function ProjectDetails() {
               */}
               {Array.isArray(project.scope) && project.scope.length > 0 ? (
                 (() => {
+                  const locationToFlag = (location: string | null | undefined): string => {
+                    const v = (location || "").trim().toLowerCase();
+                    if (!v) return "";
+                    // Minimal mapping for current seed/demo data + common markets.
+                    if (v === "united states" || v === "usa" || v === "us") return "🇺🇸";
+                    if (v === "united kingdom" || v === "uk" || v === "u.k.") return "🇬🇧";
+                    if (v === "brazil") return "🇧🇷";
+                    if (v === "canada") return "🇨🇦";
+                    if (v === "australia") return "🇦🇺";
+                    if (v === "india") return "🇮🇳";
+                    if (v === "germany") return "🇩🇪";
+                    if (v === "france") return "🇫🇷";
+                    if (v === "spain") return "🇪🇸";
+                    if (v === "netherlands") return "🇳🇱";
+                    return "";
+                  };
+
                   type ScopeTask = {
                     title: string
                     roleName: string
@@ -3507,6 +3524,7 @@ export default function ProjectDetails() {
                                   <TableRow className="hover:bg-transparent">
                                     <TableHead>Task</TableHead>
                                     <TableHead>Role</TableHead>
+                                    <TableHead>Location</TableHead>
                                     <TableHead>Experience</TableHead>
                                     <TableHead>Duration</TableHead>
                                   </TableRow>
@@ -3522,9 +3540,22 @@ export default function ProjectDetails() {
                                       <TableCell className="py-4 px-6">
                                         <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
                                           {task.roleName}
-                                          {task.location
-                                            ? ` · ${task.location}`
-                                            : ""}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell className="py-4 px-6">
+                                        <span className="text-sm font-extralight text-dark-blue-400">
+                                          {task.location ? (
+                                            <span className="inline-flex items-center gap-x-2">
+                                              {locationToFlag(task.location) ? (
+                                                <span aria-hidden="true">
+                                                  {locationToFlag(task.location)}
+                                                </span>
+                                              ) : null}
+                                              <span>{task.location}</span>
+                                            </span>
+                                          ) : (
+                                            "-"
+                                          )}
                                         </span>
                                       </TableCell>
                                       <TableCell className="py-4 px-6">

@@ -172,9 +172,7 @@ export function ForwardMessageDialog({
             })
 
             const displayName =
-              [user.firstName?.trim(), user.lastName?.trim()].filter(Boolean).join(" ") ||
-              user.username ||
-              "Unknown"
+              user.firstName?.trim() || user.username || "Unknown"
 
             contactList.push({
               userId: otherId,
@@ -372,10 +370,8 @@ export function ForwardMessageDialog({
     ? currentUserProfile
     : receiverUser
   const senderFullName =
-    [senderProfile?.firstName?.trim(), senderProfile?.lastName?.trim()]
-      .filter(Boolean)
-      .join(" ") || (isMyMessage ? "Me" : "Unknown")
-  const senderLabel = isMyMessage ? "Me" : senderFullName.split(" ")[0] || senderFullName
+    senderProfile?.firstName?.trim() || (isMyMessage ? "Me" : "Unknown")
+  const senderLabel = isMyMessage ? "Me" : senderFullName
   const senderUsername = senderProfile?.username || ""
   const senderAvatarUrl = senderProfile?.avatarUrl || undefined
 

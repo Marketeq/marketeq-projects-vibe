@@ -9,7 +9,8 @@ export function useAblyChannel(
   onPinToggled?: (data: { messageId: string; isPinned: boolean }) => void,
   onDelete?: (messageId: string) => void,
   onUndelete?: (messageId: string) => void,
-  onEdit?: (data: any) => void
+  onEdit?: (data: any) => void,
+  onReaction?: (data: { messageId: string; reactions: any[] }) => void
 ) {
   // Stable refs so the effect doesn't tear down on every render
   const onMessageRef = useRef(onMessage)
@@ -17,12 +18,14 @@ export function useAblyChannel(
   const onDeleteRef = useRef(onDelete)
   const onUndeleteRef = useRef(onUndelete)
   const onEditRef = useRef(onEdit)
+  const onReactionRef = useRef(onReaction)
 
   useEffect(() => { onMessageRef.current = onMessage }, [onMessage])
   useEffect(() => { onPinToggledRef.current = onPinToggled }, [onPinToggled])
   useEffect(() => { onDeleteRef.current = onDelete }, [onDelete])
   useEffect(() => { onUndeleteRef.current = onUndelete }, [onUndelete])
   useEffect(() => { onEditRef.current = onEdit }, [onEdit])
+  useEffect(() => { onReactionRef.current = onReaction }, [onReaction])
 
   useEffect(() => {
     if (!threadId) return
@@ -71,6 +74,9 @@ export function useAblyChannel(
       }
       if (msg.name === "message:restore" && onUndeleteRef.current) {
         onUndeleteRef.current(msg.data.messageId)
+      }
+      if (msg.name === "message:reaction" && onReactionRef.current) {
+        onReactionRef.current(msg.data)
       }
     })
 

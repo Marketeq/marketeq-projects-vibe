@@ -1,7 +1,7 @@
+import { type IDBPDatabase, openDB } from "idb"
 import { apiFetch } from "../../src/lib/api"
 import { getAccessToken } from "../../utils/auth"
-import { deriveKEK, encryptWithKEK, decryptWithKEK } from "./backup"
-import { openDB, type IDBPDatabase } from "idb"
+import { decryptWithKEK, deriveKEK, encryptWithKEK } from "./backup"
 
 const DB_NAME = "marketeq-e2ee"
 const DB_VERSION = 1
@@ -138,9 +138,7 @@ export async function loadPrivateKey(
   return pem ? await importPrivateKey(pem) : null
 }
 
-export async function loadPublicKey(
-  userId: string
-): Promise<CryptoKey | null> {
+export async function loadPublicKey(userId: string): Promise<CryptoKey | null> {
   if (!userId) return null
   const pem = await idbGet(publicKeyIdbKey(userId))
   return pem ? await importPublicKey(pem) : null
@@ -206,31 +204,36 @@ export async function ensureEncryptionKeysExist(userId?: string) {
   if (existingPrivatePem && existingPublicPem) {
     // Ensure messaging-service has the public key
     try {
-      await apiFetch("/api/messaging/public-key", {
+      await apiFetch("/messaging/public-key", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: { publicKey: existingPublicPem },
       })
-    } catch { /* messaging-service may already have it */ }
+    } catch {
+      /* messaging-service may already have it */
+    }
 
     // Ensure server has the encrypted backup (one-time migration for existing users).
     // IMPORTANT: only migrate if the server's stored public key matches ours —
     // otherwise we could overwrite a valid backup with a stale/wrong keypair
     // and leave the user unable to unwrap any conversation keys.
     try {
-      const { encryptedPrivateKey } = await apiFetch<{ encryptedPrivateKey: string | null }>(
-        "/api/user-keys/private-key",
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      const { encryptedPrivateKey } = await apiFetch<{
+        encryptedPrivateKey: string | null
+      }>("/user-keys/private-key", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
       if (!encryptedPrivateKey) {
         let serverPub: string | null = null
         try {
           const res = await apiFetch<{ publicKey: string }>(
-            "/api/messaging/get-public-key",
+            "/messaging/get-public-key",
             { headers: { Authorization: `Bearer ${token}` } }
           )
           serverPub = res?.publicKey ?? null
-        } catch { /* no server public key yet — safe to migrate */ }
+        } catch {
+          /* no server public key yet — safe to migrate */
+        }
 
         const normalize = (s: string) => s.replace(/\s+/g, "")
         const publicKeyMatches =
@@ -244,7 +247,7 @@ export async function ensureEncryptionKeysExist(userId?: string) {
           try {
             const kek = await deriveKEK(userId)
             const blob = await encryptWithKEK(existingPrivatePem, kek)
-            await apiFetch("/api/user-keys/private-key", {
+            await apiFetch("/user-keys/private-key", {
               method: "PUT",
               headers: { Authorization: `Bearer ${token}` },
               body: { encryptedPrivateKey: blob, publicKey: existingPublicPem },
@@ -258,7 +261,9 @@ export async function ensureEncryptionKeysExist(userId?: string) {
           }
         }
       }
-    } catch { /* server backup is best-effort */ }
+    } catch {
+      /* server backup is best-effort */
+    }
 
     return
   }
@@ -277,10 +282,11 @@ export async function ensureEncryptionKeysExist(userId?: string) {
   // Try to restore from server backup
   if (kek) {
     try {
-      const { encryptedPrivateKey } = await apiFetch<{ encryptedPrivateKey: string | null }>(
-        "/api/user-keys/private-key",
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      const { encryptedPrivateKey } = await apiFetch<{
+        encryptedPrivateKey: string | null
+      }>("/user-keys/private-key", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
 
       if (encryptedPrivateKey) {
         const privPem = await decryptWithKEK(encryptedPrivateKey, kek)
@@ -289,10 +295,11 @@ export async function ensureEncryptionKeysExist(userId?: string) {
         await savePrivateKeyPem(userId, privPem)
 
         // We can't derive public from private with WebCrypto, so fetch from server
-        const { publicKey: serverPubKey } = await apiFetch<{ publicKey: string }>(
-          "/api/messaging/get-public-key",
-          { headers: { Authorization: `Bearer ${token}` } }
-        )
+        const { publicKey: serverPubKey } = await apiFetch<{
+          publicKey: string
+        }>("/messaging/get-public-key", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
         if (serverPubKey) {
           await importPublicKey(serverPubKey)
           await savePublicKeyPem(userId, serverPubKey)
@@ -302,7 +309,10 @@ export async function ensureEncryptionKeysExist(userId?: string) {
         return
       }
     } catch (err) {
-      console.warn("Could not restore keys from server, will generate new ones", err)
+      console.warn(
+        "Could not restore keys from server, will generate new ones",
+        err
+      )
     }
   }
 
@@ -319,7 +329,7 @@ export async function ensureEncryptionKeysExist(userId?: string) {
   if (kek) {
     try {
       const encryptedBlob = await encryptWithKEK(privPem, kek)
-      await apiFetch("/api/user-keys/private-key", {
+      await apiFetch("/user-keys/private-key", {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}` },
         body: { encryptedPrivateKey: encryptedBlob, publicKey: pubPem },
@@ -332,7 +342,7 @@ export async function ensureEncryptionKeysExist(userId?: string) {
 
   // Register device
   try {
-    const deviceRes = await apiFetch<{ deviceId: string }>("/api/devices", {
+    const deviceRes = await apiFetch<{ deviceId: string }>("/devices", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: { publicKey: pubPem },
@@ -344,7 +354,7 @@ export async function ensureEncryptionKeysExist(userId?: string) {
 
   // Push public key to messaging-service
   try {
-    await apiFetch("/api/messaging/public-key", {
+    await apiFetch("/messaging/public-key", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: { publicKey: pubPem },

@@ -2,9 +2,24 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from '../entities/notification.entity';
-import { UserPreference } from '../entities/user-preference.entity';
+import {
+  CategoryPref,
+  GlobalChannelPrefs,
+  NotificationItemPref,
+  ScopedChannelState,
+  UserPreference,
+} from '../entities/user-preference.entity';
 import { AblyNotificationsService } from '../ably/ably-notifications.service';
-// import { SendgridService } from '../sendgrid/sendgrid.service';
+import {
+  DEFAULT_GLOBAL_CHANNELS,
+  NOTIFICATION_CATALOG,
+  NotificationCatalogCategory,
+  buildDefaultCategoryMap,
+  buildDefaultNotificationMap,
+  getAllCategoryIds,
+  getAllNotificationIds,
+} from '../constants/notification-catalog';
+import { UpdatePreferencesDto } from '../dtos/update-preferences.dto';
 import { BrevoService } from '../brevo/brevo.service';
 
 export interface NotificationPayload {
@@ -18,6 +33,12 @@ export interface NotificationPayload {
   delivery?: { inApp?: boolean; email?: boolean; sms?: boolean };
   recipientEmail?: string;
   origin?: string;
+}
+
+export interface ResolvedPreferences {
+  channels: GlobalChannelPrefs;
+  categories: Record<string, CategoryPref>;
+  notifications: Record<string, NotificationItemPref>;
 }
 
 @Injectable()
@@ -34,6 +55,7 @@ export class NotificationService {
 
   async dispatch(payload: NotificationPayload) {
     const prefs = await this.prefRepo.findOne({ where: { userId: payload.recipientId } });
+    const resolved = this.resolvePreferences(prefs);
 
     const notification = this.notifRepo.create({
       userId: payload.recipientId,
@@ -47,68 +69,79 @@ export class NotificationService {
     });
     const saved = await this.notifRepo.save(notification);
 
-    const inApp = payload.delivery?.inApp !== false && (prefs?.inAppEnabled ?? true);
-    const email = payload.delivery?.email !== false && (prefs?.emailEnabled ?? true);
-    const categoryDisabled = prefs?.disabledCategories?.includes(payload.category);
+    const itemId = payload.event;
+    const item = resolved.notifications[itemId];
+    const categoryPref = resolved.categories[payload.category];
 
-    if (!categoryDisabled) {
-      let ablyDelivered = false;
+    const categoryActive = categoryPref?.enabled ?? true;
+    const itemActive = item?.enabled ?? true;
+    const itemChannels: ScopedChannelState =
+      item?.channels ??
+      categoryPref?.channels ??
+      { inApp: true, email: true, sms: false };
 
-      if (inApp) {
-        if (this.ablyService.isEnabled()) {
-          try {
-            await this.ablyService.sendInApp(payload.recipientId, {
-              id: saved.id,
-              title: saved.title,
-              body: saved.body,
-              link: saved.link,
-              category: saved.category,
-            });
-            const unreadCount = await this.getUnreadCount(payload.recipientId);
-            await this.ablyService.updateBadgeCount(payload.recipientId, unreadCount);
-            ablyDelivered = true;
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            this.logger.warn(
-              `Ably delivery failed for user ${payload.recipientId}; falling back to SMTP. Error: ${errMsg}`,
-            );
-          }
-        } else {
+    const inAppAllowed =
+      payload.delivery?.inApp !== false &&
+      resolved.channels.inApp.enabled &&
+      categoryActive &&
+      itemActive &&
+      itemChannels.inApp;
+
+    const emailAllowed =
+      payload.delivery?.email !== false &&
+      resolved.channels.email.enabled &&
+      categoryActive &&
+      itemActive &&
+      itemChannels.email;
+
+    let ablyDelivered = false;
+
+    if (inAppAllowed) {
+      if (this.ablyService.isEnabled()) {
+        try {
+          await this.ablyService.sendInApp(payload.recipientId, {
+            id: saved.id,
+            title: saved.title,
+            body: saved.body,
+            link: saved.link,
+            category: saved.category,
+          });
+          const unreadCount = await this.getUnreadCount(payload.recipientId);
+          await this.ablyService.updateBadgeCount(payload.recipientId, unreadCount);
+          ablyDelivered = true;
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
           this.logger.warn(
-            `Ably is not configured; falling back to SMTP for user ${payload.recipientId}.`,
+            `Ably delivery failed for user ${payload.recipientId}; falling back to SMTP. Error: ${errMsg}`,
           );
         }
-      }
-
-      const fallbackToSmtp = inApp && !ablyDelivered;
-      const shouldSendEmail = (email || fallbackToSmtp) && !!payload.recipientEmail;
-
-      // --- SendGrid logic (commented out) ---
-      // if (shouldSendEmail && payload.recipientEmail) {
-      //   await this.sendgridService.sendNotificationEmail(
-      //     payload.recipientEmail,
-      //     payload.title,
-      //     payload.body,
-      //     payload.link,
-      //   );
-      // }
-
-      // --- Brevo logic ---
-      if (shouldSendEmail && payload.recipientEmail) {
-        this.logger.log(
-          `Dispatching email via Brevo: to=${payload.recipientEmail} event=${payload.event} category=${payload.category} subject="${payload.title}"`,
-        );
-        await this.brevoService.sendNotificationEmail(
-          payload.recipientEmail,
-          payload.title,
-          payload.body,
-          payload.link,
-        );
       } else {
-        this.logger.log(
-          `Email skipped: shouldSendEmail=${shouldSendEmail} recipientEmail=${payload.recipientEmail ?? 'none'} event=${payload.event}`,
+        this.logger.warn(
+          `Ably is not configured; falling back to SMTP for user ${payload.recipientId}.`,
         );
       }
+    }
+
+    const fallbackToSmtp = inAppAllowed && !ablyDelivered;
+    const recipientAddress =
+      resolved.channels.email.address ?? payload.recipientEmail;
+    const shouldSendEmail =
+      (emailAllowed || fallbackToSmtp) && !!recipientAddress;
+
+    if (shouldSendEmail && recipientAddress) {
+      this.logger.log(
+        `Dispatching email via Brevo: to=${recipientAddress} event=${payload.event} category=${payload.category} subject="${payload.title}"`,
+      );
+      await this.brevoService.sendNotificationEmail(
+        recipientAddress,
+        payload.title,
+        payload.body,
+        payload.link,
+      );
+    } else {
+      this.logger.log(
+        `Email skipped: shouldSendEmail=${shouldSendEmail} recipientEmail=${recipientAddress ?? 'none'} event=${payload.event}`,
+      );
     }
 
     return saved;
@@ -152,15 +185,169 @@ export class NotificationService {
   async getOrCreatePreferences(userId: string): Promise<UserPreference> {
     let prefs = await this.prefRepo.findOne({ where: { userId } });
     if (!prefs) {
-      prefs = this.prefRepo.create({ userId });
+      const fresh = this.prefRepo.create({
+        userId,
+        channels: this.cloneDefaultChannels(),
+        categories: buildDefaultCategoryMap(),
+        notifications: buildDefaultNotificationMap(),
+      });
+      try {
+        prefs = await this.prefRepo.save(fresh);
+      } catch (err: any) {
+        if (err?.code === '23505') {
+          prefs = await this.prefRepo.findOne({ where: { userId } });
+          if (!prefs) throw err;
+        } else {
+          throw err;
+        }
+      }
+      return prefs;
+    }
+
+    const wasIncomplete =
+      !prefs.channels || !prefs.categories || !prefs.notifications;
+    if (wasIncomplete) {
+      prefs.channels = prefs.channels ?? this.cloneDefaultChannels();
+      prefs.categories = prefs.categories ?? buildDefaultCategoryMap();
+      prefs.notifications =
+        prefs.notifications ?? buildDefaultNotificationMap();
       await this.prefRepo.save(prefs);
     }
     return prefs;
   }
 
-  async updatePreferences(userId: string, dto: Partial<UserPreference>) {
-    await this.prefRepo.upsert({ userId, ...dto }, ['userId']);
-    return this.prefRepo.findOne({ where: { userId } });
+  async updatePreferences(
+    userId: string,
+    dto: UpdatePreferencesDto,
+  ): Promise<UserPreference> {
+    const prefs = await this.getOrCreatePreferences(userId);
+    const resolved = this.resolvePreferences(prefs);
+
+    if (dto.channels) {
+      const next: GlobalChannelPrefs = { ...resolved.channels };
+      if (dto.channels.inApp) {
+        next.inApp = { ...next.inApp, ...dto.channels.inApp };
+      }
+      if (dto.channels.email) {
+        next.email = {
+          ...next.email,
+          ...dto.channels.email,
+          address:
+            dto.channels.email.address === undefined
+              ? next.email.address
+              : dto.channels.email.address,
+        };
+      }
+      if (dto.channels.sms) {
+        next.sms = {
+          ...next.sms,
+          ...dto.channels.sms,
+          phone:
+            dto.channels.sms.phone === undefined
+              ? next.sms.phone
+              : dto.channels.sms.phone,
+        };
+      }
+      prefs.channels = next;
+    }
+
+    if (dto.categories) {
+      const validIds = getAllCategoryIds();
+      const nextCategories: Record<string, CategoryPref> = {
+        ...resolved.categories,
+      };
+      for (const [id, value] of Object.entries(dto.categories)) {
+        if (!validIds.has(id)) continue;
+        nextCategories[id] = {
+          enabled: value.enabled ?? nextCategories[id].enabled,
+          channels: {
+            ...nextCategories[id].channels,
+            ...(value.channels ?? {}),
+          },
+        };
+      }
+      prefs.categories = nextCategories;
+    }
+
+    if (dto.notifications) {
+      const validIds = getAllNotificationIds();
+      const nextNotifications: Record<string, NotificationItemPref> = {
+        ...resolved.notifications,
+      };
+      for (const [id, value] of Object.entries(dto.notifications)) {
+        if (!validIds.has(id)) continue;
+        nextNotifications[id] = {
+          enabled: value.enabled ?? nextNotifications[id].enabled,
+          channels: {
+            ...nextNotifications[id].channels,
+            ...(value.channels ?? {}),
+          },
+        };
+      }
+      prefs.notifications = nextNotifications;
+    }
+
+    prefs.inAppEnabled = prefs.channels?.inApp.enabled ?? prefs.inAppEnabled;
+    prefs.emailEnabled = prefs.channels?.email.enabled ?? prefs.emailEnabled;
+    prefs.smsEnabled = prefs.channels?.sms.enabled ?? prefs.smsEnabled;
+
+    await this.prefRepo.save(prefs);
+    return prefs;
+  }
+
+  async resetPreferences(userId: string): Promise<UserPreference> {
+    const prefs = await this.getOrCreatePreferences(userId);
+    prefs.channels = this.cloneDefaultChannels();
+    prefs.categories = buildDefaultCategoryMap();
+    prefs.notifications = buildDefaultNotificationMap();
+    prefs.inAppEnabled = prefs.channels.inApp.enabled;
+    prefs.emailEnabled = prefs.channels.email.enabled;
+    prefs.smsEnabled = prefs.channels.sms.enabled;
+    await this.prefRepo.save(prefs);
+    return prefs;
+  }
+
+  getCatalog(): NotificationCatalogCategory[] {
+    return NOTIFICATION_CATALOG;
+  }
+
+  private resolvePreferences(
+    prefs: UserPreference | null,
+  ): ResolvedPreferences {
+    const channels: GlobalChannelPrefs = prefs?.channels
+      ? this.mergeChannelDefaults(prefs.channels)
+      : this.cloneDefaultChannels();
+
+    const categories: Record<string, CategoryPref> = {
+      ...buildDefaultCategoryMap(),
+      ...(prefs?.categories ?? {}),
+    };
+
+    const notifications: Record<string, NotificationItemPref> = {
+      ...buildDefaultNotificationMap(),
+      ...(prefs?.notifications ?? {}),
+    };
+
+    return { channels, categories, notifications };
+  }
+
+  private mergeChannelDefaults(
+    channels: GlobalChannelPrefs,
+  ): GlobalChannelPrefs {
+    const defaults = DEFAULT_GLOBAL_CHANNELS;
+    return {
+      inApp: { ...defaults.inApp, ...channels.inApp },
+      email: { ...defaults.email, ...channels.email },
+      sms: { ...defaults.sms, ...channels.sms },
+    };
+  }
+
+  private cloneDefaultChannels(): GlobalChannelPrefs {
+    return {
+      inApp: { ...DEFAULT_GLOBAL_CHANNELS.inApp },
+      email: { ...DEFAULT_GLOBAL_CHANNELS.email },
+      sms: { ...DEFAULT_GLOBAL_CHANNELS.sms },
+    };
   }
 
   async sendTeamInvitationEmail(payload: {
