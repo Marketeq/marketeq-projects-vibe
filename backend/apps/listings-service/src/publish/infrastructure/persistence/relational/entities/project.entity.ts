@@ -21,10 +21,6 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   id: string;
 
   @Index()
-  @Column({ type: String, nullable: true, unique: true })
-  cmsId?: string;
-
-  @Index()
   @Column({ type: String, length: 120 })
   title: string;
 
@@ -40,7 +36,6 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   @Column({ type: String, array: true, default: [] })
   subCategories: string[];
 
-  @Column({ type: 'jsonb', default: () => "'[]'" })
   categorySelections: {
     category: string;
     subCategories: string[];

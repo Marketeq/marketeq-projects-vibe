@@ -28,6 +28,8 @@ import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategor
 import { UpdatePhaseDto } from './dto/update-phase.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { Request } from 'express';
+import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
+import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
 
 type AuthenticatedRequest = Request & {
   user: { sub: string; id: string; email: string };
@@ -54,6 +56,49 @@ export class PublishController {
       console.log('err', error);
       throw error;
     }
+  }
+
+  @Post('project/draft')
+  async createProjectDraft(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: UpsertProjectDraftDto,
+  ) {
+    return this.publishService.createProjectDraft(req.user.sub, dto);
+  }
+
+  @Get('project/:projectId')
+  async getProjectDraft(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.publishService.getProjectDraft(req.user.sub, projectId);
+  }
+
+  @Put('project/:projectId')
+  async updateProjectDraft(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() dto: UpsertProjectDraftDto,
+  ) {
+    return this.publishService.updateProjectDraft(req.user.sub, projectId, dto);
+  }
+
+  @Put('project/:projectId/scope')
+  async replaceProjectScope(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() dto: UpsertProjectScopeDto,
+  ) {
+    return this.publishService.replaceProjectScope(
+      req.user.sub,
+      projectId,
+      dto.scope,
+    );
+  }
+
+  @Get('projects/mine')
+  async getMyProjects(@Req() req: AuthenticatedRequest) {
+    return this.publishService.getMyProjects(req.user.sub);
   }
 
   @Post('category/subcategory')

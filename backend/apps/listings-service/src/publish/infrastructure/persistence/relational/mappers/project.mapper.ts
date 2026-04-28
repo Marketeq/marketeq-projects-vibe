@@ -1,11 +1,36 @@
 import { Project } from '../../../../interface/project';
 import { ProjectEntity } from '../entities/project.entity';
 
+const deriveCategorySelections = (
+  categories?: string[] | null,
+  subCategories?: string[] | null,
+) => {
+  const safeCategories = Array.isArray(categories) ? categories.filter(Boolean) : [];
+  const safeSubCategories = Array.isArray(subCategories)
+    ? subCategories.filter(Boolean)
+    : [];
+
+  if (safeCategories.length === 0) return [];
+
+  if (safeCategories.length === 1) {
+    return [
+      {
+        category: safeCategories[0],
+        subCategories: safeSubCategories,
+      },
+    ];
+  }
+
+  return safeCategories.map((category) => ({
+    category,
+    subCategories: [],
+  }));
+};
+
 export class ProjectMapper {
   static toDomain(raw: ProjectEntity): Project {
     const project = new Project();
     project.id = raw.id;
-    project.cmsId = raw.cmsId;
     project.title = raw.title;
     project.subtitle = raw.subtitle;
     project.shortDescription = raw.shortDescription;
@@ -20,7 +45,10 @@ export class ProjectMapper {
     project.skills = raw.skills;
     project.categories = raw.categories;
     project.subCategories = raw.subCategories;
-    project.categorySelections = raw.categorySelections;
+    project.categorySelections =
+      Array.isArray(raw.categorySelections) && raw.categorySelections.length > 0
+        ? raw.categorySelections
+        : deriveCategorySelections(raw.categories, raw.subCategories);
     project.status = raw.status;
     project.projectDatePublished = raw.projectDatePublished;
     project.userId = raw.userId;
@@ -38,7 +66,6 @@ export class ProjectMapper {
       projectEntity.id = project.id;
     }
 
-    projectEntity.cmsId = project.cmsId ?? undefined;
     projectEntity.title = project.title;
     projectEntity.subtitle = project.subtitle!;
     projectEntity.shortDescription = project.shortDescription!;
@@ -53,7 +80,6 @@ export class ProjectMapper {
     projectEntity.skills = project.skills!;
     projectEntity.categories = project.categories!;
     projectEntity.subCategories = project.subCategories!;
-    projectEntity.categorySelections = project.categorySelections ?? [];
     projectEntity.status = project.status ?? undefined;
     projectEntity.projectDatePublished = project.projectDatePublished ?? undefined;
     projectEntity.userId = project.userId;
