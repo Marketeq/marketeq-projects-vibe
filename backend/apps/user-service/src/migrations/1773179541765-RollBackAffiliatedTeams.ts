@@ -22,19 +22,57 @@ export class RollBackAffiliatedTeams1773179541765
       `ALTER TABLE "portfolio" DROP CONSTRAINT IF EXISTS "FK_portfolio_user_repair"`,
     );
     await queryRunner.query(
-      `ALTER TABLE "affiliated_teams" DROP COLUMN IF EXISTS "createdAt"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "affiliated_teams" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP NOT NULL DEFAULT now()`,
+      `DO $$
+      DECLARE
+        created_type text;
+      BEGIN
+        SELECT c.udt_name
+        INTO created_type
+        FROM information_schema.columns c
+        WHERE c.table_schema = 'public'
+          AND c.table_name = 'affiliated_teams'
+          AND c.column_name = 'createdAt';
+
+        IF created_type IS NULL THEN
+          ALTER TABLE "affiliated_teams" ADD COLUMN "createdAt" TIMESTAMP NOT NULL DEFAULT now();
+        ELSIF created_type = 'timestamptz' THEN
+          ALTER TABLE "affiliated_teams"
+          ALTER COLUMN "createdAt" TYPE TIMESTAMP
+          USING ("createdAt" AT TIME ZONE 'UTC');
+        END IF;
+
+        UPDATE "affiliated_teams" SET "createdAt" = now() WHERE "createdAt" IS NULL;
+        ALTER TABLE "affiliated_teams" ALTER COLUMN "createdAt" SET DEFAULT now();
+        ALTER TABLE "affiliated_teams" ALTER COLUMN "createdAt" SET NOT NULL;
+      END $$;`,
     );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "affiliated_teams" DROP COLUMN IF EXISTS "createdAt"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "affiliated_teams" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()`,
+      `DO $$
+      DECLARE
+        created_type text;
+      BEGIN
+        SELECT c.udt_name
+        INTO created_type
+        FROM information_schema.columns c
+        WHERE c.table_schema = 'public'
+          AND c.table_name = 'affiliated_teams'
+          AND c.column_name = 'createdAt';
+
+        IF created_type IS NULL THEN
+          ALTER TABLE "affiliated_teams" ADD COLUMN "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now();
+        ELSIF created_type = 'timestamp' THEN
+          ALTER TABLE "affiliated_teams"
+          ALTER COLUMN "createdAt" TYPE TIMESTAMP WITH TIME ZONE
+          USING ("createdAt" AT TIME ZONE 'UTC');
+        END IF;
+
+        UPDATE "affiliated_teams" SET "createdAt" = now() WHERE "createdAt" IS NULL;
+        ALTER TABLE "affiliated_teams" ALTER COLUMN "createdAt" SET DEFAULT now();
+        ALTER TABLE "affiliated_teams" ALTER COLUMN "createdAt" SET NOT NULL;
+      END $$;`,
     );
     await queryRunner.query(
       `DO $$ BEGIN

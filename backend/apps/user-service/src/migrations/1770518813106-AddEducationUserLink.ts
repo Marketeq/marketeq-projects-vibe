@@ -35,7 +35,7 @@ export class AddEducationUserLink1770518813106 implements MigrationInterface {
                 ALTER TABLE "educations" ADD CONSTRAINT "FK_86e26478ad7a3d8543cfb922358" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
             END IF;
         END $$;`);
-        await queryRunner.query(`ALTER TABLE "educations" DROP COLUMN "updatedAt"`);
+        await queryRunner.query(`ALTER TABLE "educations" DROP COLUMN IF EXISTS "updatedAt"`);
         await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_51cc04701bb431a73aed4f7b49"`);
         await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_ce039c18fc12a6ca744379604a"`);
         await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_f01e0b50926889409e89203874"`);
