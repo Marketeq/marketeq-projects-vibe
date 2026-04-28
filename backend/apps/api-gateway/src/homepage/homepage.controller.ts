@@ -3,12 +3,7 @@ import { Request } from 'express';
 import { HomepageService } from './homepage.service';
 import { HomepagePayload } from './homepage.types';
 
-// Alias routes:
-// - /homepage is the canonical public homepage endpoint
-// - /v1/homepage exists for legacy/frontend callers that assume v1 prefix
-// - /api/homepage keeps compatibility for callers that still hit the
-//   controller through an explicit /api-prefixed path.
-@Controller(['homepage', 'v1/homepage', 'api/homepage'])
+@Controller()
 export class HomepageController {
   constructor(private readonly homepageService: HomepageService) {}
 
@@ -33,13 +28,14 @@ export class HomepageController {
    * Returns 200 with `{ status, redis }` so liveness/readiness can verify
    * the homepage module + Redis dependency without triggering an assembly.
    */
-  @Get('health')
+  @Get('homepage/health')
+  @Get('v1/homepage/health')
+  @Get('api/homepage/health')
   async getHealth() {
     return this.homepageService.healthCheck()
   }
 
-  @Get()
-  async getHomepage(
+  private async buildHomepage(
     @Req() req: Request,
     @Query('preview') preview?: string,
     @Headers('x-preview-token') previewToken?: string,
@@ -61,5 +57,32 @@ export class HomepageController {
       preview: preview === '1',
       previewToken: previewToken || undefined,
     });
+  }
+
+  @Get('homepage')
+  async getHomepage(
+    @Req() req: Request,
+    @Query('preview') preview?: string,
+    @Headers('x-preview-token') previewToken?: string,
+  ): Promise<HomepagePayload> {
+    return this.buildHomepage(req, preview, previewToken)
+  }
+
+  @Get('v1/homepage')
+  async getHomepageV1(
+    @Req() req: Request,
+    @Query('preview') preview?: string,
+    @Headers('x-preview-token') previewToken?: string,
+  ): Promise<HomepagePayload> {
+    return this.buildHomepage(req, preview, previewToken)
+  }
+
+  @Get('api/homepage')
+  async getHomepageApi(
+    @Req() req: Request,
+    @Query('preview') preview?: string,
+    @Headers('x-preview-token') previewToken?: string,
+  ): Promise<HomepagePayload> {
+    return this.buildHomepage(req, preview, previewToken)
   }
 }
