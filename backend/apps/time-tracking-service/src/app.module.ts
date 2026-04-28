@@ -35,6 +35,11 @@ import { Session } from './sessions/session.entity';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const isProd = config.get<string>('NODE_ENV') === 'production';
+        const rawSsl =
+          (config.get<string>('DATABASE_SSL') ??
+            config.get<string>('DATABASE_SSL_ENABLED') ??
+            '').toLowerCase();
+        const useSSL = rawSsl === 'true' ? true : rawSsl === 'false' ? false : isProd;
         return {
           type: 'postgres' as const,
           url: config.get<string>('DATABASE_URL') ?? 'postgres://postgres:password@localhost:5432/marketeq',
@@ -44,8 +49,8 @@ import { Session } from './sessions/session.entity';
           migrations: [__dirname + '/../migrations/*{.ts,.js}'],
           schema: 'time_tracking',
           logging: !isProd,
-          ssl: isProd ? { rejectUnauthorized: false } : undefined,
-          extra: isProd ? { sslmode: 'require' } : undefined,
+          ssl: useSSL ? { rejectUnauthorized: false } : undefined,
+          extra: useSSL ? { sslmode: 'require' } : undefined,
         };
       },
     }),
