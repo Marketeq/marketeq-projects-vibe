@@ -81,12 +81,28 @@ export class DeliverablesAdapterHuggingFace extends DeliverablesAdapter {
       const results: DeliverableGroup[] = [];
       for (let i = 0; i < scope.length; i++) {
         const phase = scope[i];
-        const titles = phase.tasks
-          .map((t) => (typeof t?.title === 'string' ? t.title.trim() : ''))
+        const taskTexts = phase.tasks
+          .map((t) => {
+            const title = typeof t?.title === 'string' ? t.title.trim() : '';
+            if (!title) return '';
+            const role =
+              typeof (t as any)?.roleName === 'string'
+                ? String((t as any).roleName).trim()
+                : '';
+            const desc =
+              typeof (t as any)?.description === 'string'
+                ? String((t as any).description).trim()
+                : '';
+            // Embed richer context (title + role + description) so clustering
+            // better matches “LLM summary based on scope”.
+            return [title, role ? `Role: ${role}` : '', desc ? `Desc: ${desc}` : '']
+              .filter(Boolean)
+              .join(' — ');
+          })
           .filter(Boolean);
-        if (titles.length === 0) continue;
+        if (taskTexts.length === 0) continue;
 
-        const items = await this.mergeSemanticDuplicates(titles);
+        const items = await this.mergeSemanticDuplicates(taskTexts);
         if (items.length === 0) continue;
 
         results.push({
