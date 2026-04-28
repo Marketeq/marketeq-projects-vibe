@@ -1122,14 +1122,14 @@ const HighlightedSuggestion = ({
   )
 }
 
-const LOCATIONIQ_API_KEY =
-  process.env.NEXT_PUBLIC_LOCATIONIQ_API_KEY ||
-  "pk.8d6cd3795ace5efa9a0a3469b55d08cb"
+const LOCATIONIQ_API_KEY = process.env.NEXT_PUBLIC_LOCATIONIQ_API_KEY?.trim()
 
 const reverseGeocodeLocation = async (
   latitude: number,
   longitude: number
 ): Promise<string | null> => {
+  if (!LOCATIONIQ_API_KEY) return null
+
   try {
     const response = await fetch(
       `https://api.locationiq.com/v1/reverse?key=${LOCATIONIQ_API_KEY}&lat=${latitude}&lon=${longitude}&format=json`
@@ -1155,6 +1155,8 @@ const reverseGeocodeLocation = async (
 const geocodeLocation = async (
   location: string
 ): Promise<{ latitude: number; longitude: number } | null> => {
+  if (!LOCATIONIQ_API_KEY) return null
+
   try {
     const response = await fetch(
       `https://api.locationiq.com/v1/search?key=${LOCATIONIQ_API_KEY}&q=${encodeURIComponent(
