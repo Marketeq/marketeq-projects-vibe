@@ -451,7 +451,6 @@ const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
       }
     })
     .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase))
-
 const Empty = ({
   outcome,
   draftId,
