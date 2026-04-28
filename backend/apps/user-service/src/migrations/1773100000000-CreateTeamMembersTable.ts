@@ -7,7 +7,7 @@ export class CreateTeamMembersTable1773100000000
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `CREATE TABLE "team_members" (
+      `CREATE TABLE IF NOT EXISTS "team_members" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(), 
         "teamId" character varying(255) NOT NULL, 
         "userId" character varying(255) NOT NULL, 
@@ -20,17 +20,17 @@ export class CreateTeamMembersTable1773100000000
     );
 
     await queryRunner.query(
-      `CREATE INDEX "IDX_team_members_teamId" ON "team_members" ("teamId")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_team_members_teamId" ON "team_members" ("teamId")`,
     );
 
     await queryRunner.query(
-      `CREATE INDEX "IDX_team_members_userId" ON "team_members" ("userId")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_team_members_userId" ON "team_members" ("userId")`,
     );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX "IDX_team_members_userId"`);
-    await queryRunner.query(`DROP INDEX "IDX_team_members_teamId"`);
-    await queryRunner.query(`DROP TABLE "team_members"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_team_members_userId"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_team_members_teamId"`);
+    await queryRunner.query(`DROP TABLE IF EXISTS "team_members"`);
   }
 }

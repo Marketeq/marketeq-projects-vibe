@@ -4,13 +4,13 @@ export class AddTimelinetoAffiliatedTeamTables1772824521563 implements Migration
     name = 'AddTimelinetoAffiliatedTeamTables1772824521563'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "affiliated_teams" ADD "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()`);
-        await queryRunner.query(`ALTER TABLE "affiliated_teams" ADD "updatedAt" TIMESTAMP NOT NULL DEFAULT now()`);
+        await queryRunner.query(`ALTER TABLE "affiliated_teams" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()`);
+        await queryRunner.query(`ALTER TABLE "affiliated_teams" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP NOT NULL DEFAULT now()`);
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "affiliated_teams" DROP COLUMN "updatedAt"`);
-        await queryRunner.query(`ALTER TABLE "affiliated_teams" DROP COLUMN "createdAt"`);
+        await queryRunner.query(`ALTER TABLE "affiliated_teams" DROP COLUMN IF EXISTS "updatedAt"`);
+        await queryRunner.query(`ALTER TABLE "affiliated_teams" DROP COLUMN IF EXISTS "createdAt"`);
     }
 
 }
