@@ -71,11 +71,20 @@ export class ProxyService {
       if (user.role) headers['x-user-role'] = user.role
     }
 
+    // For multipart/form-data, Express's default body parser leaves the
+    // stream untouched, so we must forward the raw request stream. If we
+    // instead handed axios the parsed `req.body` (an empty object), Multer
+    // on the downstream side errors with "Unexpected end of form".
+    const contentType = (req.headers['content-type'] as string) || ''
+    const isMultipart = contentType.startsWith('multipart/')
+
     const config: AxiosRequestConfig = {
       method: req.method as any,
       url,
       headers,
-      data: req.body,
+      data: isMultipart ? req : req.body,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
       // Query params are already included in the URL path from the proxy controller
       // Do NOT also set params here — that would duplicate them
       validateStatus: () => true,

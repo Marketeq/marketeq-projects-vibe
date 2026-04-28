@@ -3,7 +3,7 @@ import { Request } from 'express';
 import { HomepageService } from './homepage.service';
 import { HomepagePayload } from './homepage.types';
 
-@Controller('homepage')
+@Controller(['homepage', 'api/homepage'])
 export class HomepageController {
   constructor(private readonly homepageService: HomepageService) {}
 

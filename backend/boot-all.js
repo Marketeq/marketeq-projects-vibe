@@ -35,6 +35,7 @@ const SERVICES = [
   { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
   { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service' },
   { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service' },
+  { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service' },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway' };
@@ -43,11 +44,12 @@ const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gatewa
 const gatewayEnv = {
   ...process.env,
   PORT: GATEWAY_PORT,
-  AUTH_SERVICE_URL:         'http://localhost:3001',
-  USER_SERVICE_URL:         'http://localhost:3002',
-  LISTINGS_SERVICE_URL:     'http://localhost:3003',
-  INVITATIONS_SERVICE_URL:  'http://localhost:3013',
-  MODERATION_SERVICE_URL:   'http://localhost:3014',
+  AUTH_SERVICE_URL:             'http://localhost:3001',
+  USER_SERVICE_URL:             'http://localhost:3002',
+  LISTINGS_SERVICE_URL:         'http://localhost:3003',
+  INVITATIONS_SERVICE_URL:      'http://localhost:3013',
+  MODERATION_SERVICE_URL:       'http://localhost:3014',
+  TIME_TRACKING_SERVICE_URL:    'http://localhost:3017',
 };
 
 function launchService(svc, env, isGateway = false) {

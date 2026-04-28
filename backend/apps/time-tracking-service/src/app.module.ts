@@ -26,11 +26,10 @@ import { Session } from './sessions/session.entity';
 
 @Module({
   imports: [
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (ConfigModule.forRoot({
+    ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['apps/time-tracking-service/.env', '.env'],
-    }) as any),
+    }),
 
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],

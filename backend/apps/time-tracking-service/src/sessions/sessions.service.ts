@@ -40,7 +40,6 @@ export class SessionsService {
     if (dto.billableSeconds !== undefined) {
       session.billableSeconds = dto.billableSeconds;
     } else {
-      // compute from start/end if not provided
       const diffMs = new Date(dto.endedAt).getTime() - session.startedAt.getTime();
       session.billableSeconds = Math.max(0, Math.round(diffMs / 1000));
     }
