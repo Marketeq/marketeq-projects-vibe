@@ -212,7 +212,12 @@ export class AddAffiliatedTeamTables1772767311535
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_dc2f8d935eb8e84267b05aabfd4'
         ) THEN
-          ALTER TABLE "industries" ADD CONSTRAINT "FK_dc2f8d935eb8e84267b05aabfd4" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          BEGIN
+            ALTER TABLE "industries" ADD CONSTRAINT "FK_dc2f8d935eb8e84267b05aabfd4" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          EXCEPTION
+            WHEN insufficient_privilege OR object_not_in_prerequisite_state THEN
+              RAISE NOTICE 'Skipping industries foreign key migration due to ownership mismatch';
+          END;
         END IF;
       END $$;`,
     );
@@ -221,7 +226,12 @@ export class AddAffiliatedTeamTables1772767311535
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_8f1b96a30ff66e0cd5c5c2fd797'
         ) THEN
-          ALTER TABLE "languages" ADD CONSTRAINT "FK_8f1b96a30ff66e0cd5c5c2fd797" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          BEGIN
+            ALTER TABLE "languages" ADD CONSTRAINT "FK_8f1b96a30ff66e0cd5c5c2fd797" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          EXCEPTION
+            WHEN insufficient_privilege OR object_not_in_prerequisite_state THEN
+              RAISE NOTICE 'Skipping languages foreign key migration due to ownership mismatch';
+          END;
         END IF;
       END $$;`,
     );
@@ -230,7 +240,12 @@ export class AddAffiliatedTeamTables1772767311535
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_c5d9770c24adc7be0680f9bd963'
         ) THEN
-          ALTER TABLE "certifications" ADD CONSTRAINT "FK_c5d9770c24adc7be0680f9bd963" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          BEGIN
+            ALTER TABLE "certifications" ADD CONSTRAINT "FK_c5d9770c24adc7be0680f9bd963" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          EXCEPTION
+            WHEN insufficient_privilege OR object_not_in_prerequisite_state THEN
+              RAISE NOTICE 'Skipping certifications foreign key migration due to ownership mismatch';
+          END;
         END IF;
       END $$;`,
     );
@@ -239,7 +254,12 @@ export class AddAffiliatedTeamTables1772767311535
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_9d041c43c782a9135df1388ae16'
         ) THEN
-          ALTER TABLE "portfolio" ADD CONSTRAINT "FK_9d041c43c782a9135df1388ae16" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          BEGIN
+            ALTER TABLE "portfolio" ADD CONSTRAINT "FK_9d041c43c782a9135df1388ae16" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          EXCEPTION
+            WHEN insufficient_privilege OR object_not_in_prerequisite_state THEN
+              RAISE NOTICE 'Skipping portfolio foreign key migration due to ownership mismatch';
+          END;
         END IF;
       END $$;`,
     );
@@ -248,7 +268,12 @@ export class AddAffiliatedTeamTables1772767311535
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_2f83b2f81cd02f84dca26794814'
         ) THEN
-          ALTER TABLE "affiliated_teams" ADD CONSTRAINT "FK_2f83b2f81cd02f84dca26794814" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          BEGIN
+            ALTER TABLE "affiliated_teams" ADD CONSTRAINT "FK_2f83b2f81cd02f84dca26794814" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+          EXCEPTION
+            WHEN insufficient_privilege OR object_not_in_prerequisite_state THEN
+              RAISE NOTICE 'Skipping affiliated teams foreign key migration due to ownership mismatch';
+          END;
         END IF;
       END $$;`,
     );
