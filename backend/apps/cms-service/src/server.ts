@@ -12,23 +12,29 @@ const app = express();
 const PORT = Number(process.env.CMS_PORT) || 3020;
 
 async function seedFirstAdminUser() {
-  const existing = await payload.find({
-    collection: "users",
-    limit: 1,
-    pagination: false,
-    overrideAccess: true,
-  });
-
-  if (existing.totalDocs > 0) {
-    return;
-  }
-
   const adminEmail = process.env.CMS_ADMIN_EMAIL;
   const adminPassword = process.env.CMS_ADMIN_PASSWORD;
 
   if (!adminEmail || !adminPassword) {
     payload.logger.warn(
       "No users found, but CMS_ADMIN_EMAIL/CMS_ADMIN_PASSWORD are not set. Skipping first-admin bootstrap.",
+    );
+    return;
+  }
+
+  // Idempotent bootstrap: avoid crashing on unique constraints when the DB
+  // already has a user row (common when iterating on schema).
+  const existingByEmail = await payload.find({
+    collection: "users",
+    where: { email: { equals: adminEmail } } as any,
+    limit: 1,
+    pagination: false,
+    overrideAccess: true,
+  });
+
+  if (existingByEmail.totalDocs > 0) {
+    payload.logger.info(
+      "CMS admin bootstrap: user already exists for CMS_ADMIN_EMAIL; skipping create.",
     );
     return;
   }

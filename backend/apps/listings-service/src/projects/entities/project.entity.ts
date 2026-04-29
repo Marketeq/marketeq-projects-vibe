@@ -85,21 +85,6 @@ export class Project {
   @Column({ nullable: true, type: 'decimal', precision: 10, scale: 2 })
   budget?: number;
 
-  @Column({ name: 'priceMax', nullable: true, type: 'decimal', precision: 10, scale: 2 })
-  priceMax?: number;
-
-  @Column({ name: 'pricingModel', nullable: true, type: 'text' })
-  pricingModel?: string;
-
-  @Column({ name: 'priceViewMode', nullable: true, type: 'text' })
-  priceViewMode?: string;
-
-  @Column({ name: 'projectType', nullable: true, type: 'text' })
-  projectType?: string;
-
-  @Column({ name: 'klarnaEnabled', type: 'boolean', default: false })
-  klarnaEnabled: boolean;
-
   @Column({ nullable: true })
   duration?: string;
 

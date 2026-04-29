@@ -26,7 +26,7 @@ import {
  * from the cms-service package.
  *
  * Required fields on the Projects collection that the listings fixtures
- * don't carry (pricingModel, projectType, deliverables, fullDescription) are filled with sensible
+ * don't carry (deliverables, fullDescription) are filled with sensible
  * defaults so validation passes. Editors can tweak them in admin later.
  *
  * Scoring signals (rating / reviewCount / completionsCount / views90d /
@@ -332,7 +332,7 @@ function pickChildName(
 interface CategoryStack {
   subcategories: string[];
   tags: string[];
-  galleryPool: string[]; // Unsplash photo IDs used for the gallery tab
+  galleryPool: string[]; // Unsplash photo IDs used for Additional Images
   industries: string[];
 }
 
@@ -607,6 +607,14 @@ function buildProjectData(
     childrenByParentId: Map<number, SeededCategoryChild[]>;
   },
 ): Record<string, unknown> {
+  const normalizeTitle = (raw: string): string => {
+    // Projects collection enforces: letters, numbers, spaces, hyphens only.
+    return raw
+      .replace(/[^A-Za-z0-9 -]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+
   let short = (p.shortDescription ?? p.description).trim();
   const shortPad =
     ' Scope covers discovery, delivery, QA, and launch support for buyer confidence.';
@@ -617,6 +625,7 @@ function buildProjectData(
   const stack = stackFor(p);
   const pickedParents = pickThreeParents(seededCategories.parents, p.title);
   const scope = buildScope(p);
+  const title = normalizeTitle(p.title);
 
   const toHours = (task: any): number => {
     const dv = Number(task?.durationValue);
@@ -635,12 +644,12 @@ function buildProjectData(
   }, 0);
 
   return {
-    title: p.title,
-    slug: slugify(p.title),
+    title,
+    slug: slugify(title),
     shortDescription: short,
-    fullDescription: richFullDescription(p),
+    fullDescription: richFullDescription({ ...p, title } as any),
     thumbnail: thumbnailMediaId,
-    gallery: galleryMediaIds.map((id, i) => ({
+    additionalImages: galleryMediaIds.map((id, i) => ({
       image: id,
       caption: `${p.title} — view ${i + 1}`,
     })),
@@ -673,13 +682,6 @@ function buildProjectData(
       { question: 'Do you offer fixed-price engagements for MVPs?' },
     ],
     scope,
-    totalEstimatedHours: totalHours,
-    timelineValue: Math.ceil(totalHours / 10), // Rough estimate: 10h/week
-    timelineUnit: 'weeks',
-    pricingModel: 'biweekly',
-    priceViewMode: 'biweekly',
-    projectType: 'team',
-    klarnaPaymentEnabled: false,
     featured: p.featured ?? false,
     _status: 'published',
     visibility: 'public',
@@ -836,26 +838,39 @@ async function overlayScoringSignals(
 
   let updated = 0;
   for (const [slug, signals] of scoring.entries()) {
-    const res = await pool.query(
-      `UPDATE public.projects SET
-         rating = $1,
-         "reviewCount" = $2,
-         "completionsCount" = $3,
-         "views90d" = $4,
-         "adminBoost" = $5,
-         "createdAt" = COALESCE($6, "createdAt")
-       WHERE slug = $7`,
-      [
-        signals.rating,
-        signals.reviewCount,
-        signals.completionsCount,
-        signals.views90d,
-        signals.adminBoost,
-        signals.createdAt ?? null,
-        slug,
-      ],
-    );
-    if (res.rowCount && res.rowCount > 0) updated++;
+    try {
+      const res = await pool.query(
+        `UPDATE public.projects SET
+           rating = $1,
+           "reviewCount" = $2,
+           "completionsCount" = $3,
+           "views90d" = $4,
+           "adminBoost" = $5,
+           "createdAt" = COALESCE($6, "createdAt")
+         WHERE slug = $7`,
+        [
+          signals.rating,
+          signals.reviewCount,
+          signals.completionsCount,
+          signals.views90d,
+          signals.adminBoost,
+          signals.createdAt ?? null,
+          slug,
+        ],
+      );
+      if (res.rowCount && res.rowCount > 0) updated++;
+    } catch (err) {
+      // Fresh DBs may not have the listings table yet; seeding projects should
+      // still succeed in the CMS even if we can't overlay scoring signals.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('public.projects') && msg.includes('does not exist')) {
+        payload.logger.warn(
+          'projects seed: public.projects table missing — skipping scoring overlay',
+        );
+        return;
+      }
+      throw err;
+    }
   }
   payload.logger.info(
     `projects seed: overlaid scoring signals on ${updated} / ${scoring.size} listings rows`,

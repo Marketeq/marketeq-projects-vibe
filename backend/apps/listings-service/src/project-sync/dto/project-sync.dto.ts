@@ -130,6 +130,26 @@ export class ProjectSyncDto {
   @IsString()
   projectDurationLabel?: string;
 
+  // Computed pricing fields (cms-service computeProjectFields hook).
+  @IsOptional()
+  @IsNumber()
+  startingPriceTotal?: number;
+
+  // Per-period price amount derived from startingPriceTotal + view mode.
+  @IsOptional()
+  @IsNumber()
+  priceViewAmount?: number;
+
+  // Computed team member count proxy.
+  @IsOptional()
+  @IsNumber()
+  teamMemberCount?: number;
+
+  // Computed duration in weeks (numeric).
+  @IsOptional()
+  @IsNumber()
+  projectDurationTotal?: number;
+
   // Scope tree authored in CMS. Drives pricing, duration, deliverables
   // AI, and skills derivation per spec §01 / §08.
   @IsOptional()
@@ -193,42 +213,6 @@ export class ProjectSyncDto {
   @ValidateNested({ each: true })
   @Type(() => CmsValueItem)
   developmentTechnologies?: CmsValueItem[];
-
-  @IsOptional()
-  @IsNumber()
-  totalEstimatedHours?: number;
-
-  @IsOptional()
-  @IsNumber()
-  timelineValue?: number;
-
-  @IsOptional()
-  @IsString()
-  timelineUnit?: string;
-
-  @IsOptional()
-  @IsNumber()
-  priceRangeMin?: number;
-
-  @IsOptional()
-  @IsNumber()
-  priceRangeMax?: number;
-
-  @IsOptional()
-  @IsString()
-  pricingModel?: string;
-
-  @IsOptional()
-  @IsString()
-  priceViewMode?: string;
-
-  @IsOptional()
-  @IsString()
-  projectType?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  klarnaPaymentEnabled?: boolean;
 
   @IsOptional()
   @IsArray()
