@@ -21,6 +21,7 @@
  *   4. Exits if the gateway crashes (Render will restart the container)
  */
 
+const http = require('http');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -96,18 +97,88 @@ function launchService(svc, env, isGateway = false) {
   return child;
 }
 
-// Start internal services first, then the gateway
-console.log('[boot] Launching all services in single container...');
-console.log(`[boot] Gateway will listen on port ${GATEWAY_PORT}`);
+function waitForGatewayReady({ attempts = 30, intervalMs = 1000 } = {}) {
+  return new Promise((resolve, reject) => {
+    let remaining = attempts;
 
-for (const svc of SERVICES) {
-  launchService(svc, { ...process.env, PORT: svc.port, HOST: '127.0.0.1' }, false);
+    const probe = () => {
+      const request = http.get(
+        {
+          hostname: '127.0.0.1',
+          port: Number(GATEWAY_PORT),
+          path: '/health',
+          timeout: 2000,
+        },
+        (response) => {
+          let body = '';
+          response.setEncoding('utf8');
+          response.on('data', (chunk) => {
+            body += chunk;
+          });
+          response.on('end', () => {
+            const looksLikeGateway =
+              response.statusCode === 200 &&
+              body.includes('"service":"api-gateway"') &&
+              body.includes('"status":"ok"');
+
+            if (looksLikeGateway) {
+              resolve();
+              return;
+            }
+
+            if ((remaining -= 1) <= 0) {
+              reject(
+                new Error(
+                  `Gateway probe did not receive api-gateway health payload (status=${response.statusCode}, body=${body})`,
+                ),
+              );
+              return;
+            }
+            setTimeout(probe, intervalMs);
+          });
+        },
+      );
+
+      request.on('timeout', () => {
+        request.destroy(new Error('Gateway probe timed out'));
+      });
+
+      request.on('error', (error) => {
+        if ((remaining -= 1) <= 0) {
+          reject(error);
+          return;
+        }
+        setTimeout(probe, intervalMs);
+      });
+    };
+
+    probe();
+  });
 }
 
-// Give services 2 seconds to start, then launch gateway
-setTimeout(() => {
+async function bootstrapAll() {
+  console.log('[boot] Launching all services in single container...');
+  console.log(`[boot] Gateway will listen on port ${GATEWAY_PORT}`);
+
   launchService(GATEWAY, gatewayEnv, true);
-}, 2000);
+
+  try {
+    await waitForGatewayReady();
+    console.log('[boot] Gateway is healthy; launching internal services...');
+  } catch (error) {
+    console.error(`[boot] Gateway failed to become healthy: ${error.message}`);
+    process.exit(1);
+  }
+
+  for (const svc of SERVICES) {
+    launchService(svc, { ...process.env, PORT: svc.port, HOST: '127.0.0.1' }, false);
+  }
+}
+
+bootstrapAll().catch((error) => {
+  console.error(`[boot] Fatal startup error: ${error.message}`);
+  process.exit(1);
+});
 
 // Forward signals for graceful shutdown
 ['SIGTERM', 'SIGINT'].forEach((sig) => {
