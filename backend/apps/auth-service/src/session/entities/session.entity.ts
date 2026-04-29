@@ -23,19 +23,19 @@ export class Session {
   userAgent: string;
 
   @Column({ type: 'varchar', nullable: true })
-  browserName: string | null;
+  browserName?: string;
 
   @Column({ type: 'varchar', nullable: true })
-  browserVersion: string | null;
+  browserVersion?: string;
 
   @Column({ type: 'varchar', nullable: true })
-  osName: string | null;
+  osName?: string;
 
   @Column({ type: 'varchar', nullable: true })
-  osVersion: string | null;
+  osVersion?: string;
 
   @Column({ type: 'varchar', nullable: true })
-  deviceType: string | null;
+  deviceType?: string;
 
   @Column({ default: '' })
   ipAddress: string;

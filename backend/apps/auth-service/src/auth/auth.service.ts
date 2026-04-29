@@ -1386,10 +1386,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     session.userId = params.userId;
     session.refreshTokenHash = hash;
     session.userAgent = params.userAgent;
-    session.browserName = browser.name ?? null;
-    session.browserVersion = browser.major ?? null;
-    session.osName = os.name ?? null;
-    session.osVersion = os.version ?? null;
+    session.browserName = browser.name ?? undefined;
+    session.browserVersion = browser.major ?? undefined;
+    session.osName = os.name ?? undefined;
+    session.osVersion = os.version ?? undefined;
     session.deviceType = device.type === 'mobile' ? 'mobile'
       : device.type === 'tablet' ? 'tablet'
       : 'desktop';
