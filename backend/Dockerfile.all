@@ -4,6 +4,9 @@ WORKDIR /app
 # Copy everything (workspace structure needed for npm install + nest build)
 COPY . .
 
+# Guard against stale incremental metadata during Render rebuilds.
+RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
+
 # Install ALL deps including devDependencies (need @nestjs/cli for build)
 # Use npm ci to strictly follow the lockfile during Render workspace builds.
 RUN npm ci --include=dev --legacy-peer-deps
