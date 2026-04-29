@@ -21,7 +21,6 @@
  *   4. Exits if the gateway crashes (Render will restart the container)
  */
 
-const http = require('http');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -97,82 +96,21 @@ function launchService(svc, env, isGateway = false) {
   return child;
 }
 
-function waitForGatewayReady({ attempts = 30, intervalMs = 1000 } = {}) {
-  return new Promise((resolve, reject) => {
-    let remaining = attempts;
-
-    const probe = () => {
-      const request = http.get(
-        {
-          hostname: '127.0.0.1',
-          port: Number(GATEWAY_PORT),
-          path: '/health',
-          timeout: 2000,
-        },
-        (response) => {
-          let body = '';
-          response.setEncoding('utf8');
-          response.on('data', (chunk) => {
-            body += chunk;
-          });
-          response.on('end', () => {
-            const looksLikeGateway =
-              response.statusCode === 200 &&
-              body.includes('"service":"api-gateway"') &&
-              body.includes('"status":"ok"');
-
-            if (looksLikeGateway) {
-              resolve();
-              return;
-            }
-
-            if ((remaining -= 1) <= 0) {
-              reject(
-                new Error(
-                  `Gateway probe did not receive api-gateway health payload (status=${response.statusCode}, body=${body})`,
-                ),
-              );
-              return;
-            }
-            setTimeout(probe, intervalMs);
-          });
-        },
-      );
-
-      request.on('timeout', () => {
-        request.destroy(new Error('Gateway probe timed out'));
-      });
-
-      request.on('error', (error) => {
-        if ((remaining -= 1) <= 0) {
-          reject(error);
-          return;
-        }
-        setTimeout(probe, intervalMs);
-      });
-    };
-
-    probe();
-  });
-}
-
 async function bootstrapAll() {
   console.log('[boot] Launching all services in single container...');
   console.log(`[boot] Gateway will listen on port ${GATEWAY_PORT}`);
 
   launchService(GATEWAY, gatewayEnv, true);
 
-  try {
-    await waitForGatewayReady();
-    console.log('[boot] Gateway is healthy; launching internal services...');
-  } catch (error) {
-    console.error(`[boot] Gateway failed to become healthy: ${error.message}`);
-    process.exit(1);
-  }
-
-  for (const svc of SERVICES) {
-    launchService(svc, { ...process.env, PORT: svc.port, HOST: '127.0.0.1' }, false);
-  }
+  // Start the gateway first so Render discovers the public-facing process
+  // before the internal services begin listening. Do not hard-fail if the
+  // gateway takes time to become healthy while RabbitMQ reconnects.
+  setTimeout(() => {
+    console.log('[boot] Launching internal services after gateway head start...');
+    for (const svc of SERVICES) {
+      launchService(svc, { ...process.env, PORT: svc.port, HOST: '127.0.0.1' }, false);
+    }
+  }, 4000);
 }
 
 bootstrapAll().catch((error) => {
