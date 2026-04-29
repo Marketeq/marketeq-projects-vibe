@@ -4,6 +4,38 @@ export class RollBackAffiliatedTeams1773179541765
   implements MigrationInterface
 {
   name = 'RollBackAffiliatedTeams1773179541765';
+  private savepointIndex = 0;
+
+  private isLegacyOwnershipIssue(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /must be owner of table|permission denied|insufficient privilege|object not in prerequisite state/i.test(
+      message,
+    );
+  }
+
+  private async runBestEffort(
+    queryRunner: QueryRunner,
+    sql: string,
+    notice: string,
+  ): Promise<void> {
+    const savepoint = `"${this.name}_best_effort_${this.savepointIndex += 1}"`;
+
+    try {
+      await queryRunner.query(`SAVEPOINT ${savepoint}`);
+      await queryRunner.query(sql);
+      await queryRunner.query(`RELEASE SAVEPOINT ${savepoint}`);
+    } catch (error) {
+      await queryRunner.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+      await queryRunner.query(`RELEASE SAVEPOINT ${savepoint}`);
+
+      if (!this.isLegacyOwnershipIssue(error)) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[${this.name}] ${notice}: ${message}`);
+    }
+  }
 
   private isLegacyOwnershipIssue(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
