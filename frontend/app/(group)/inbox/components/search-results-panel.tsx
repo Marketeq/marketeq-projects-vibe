@@ -7,7 +7,7 @@ import {
   SearchLinkRow,
   SearchMessageRow,
   SearchPeopleRow,
-} from "@/stories/inbox.stories"
+} from "./message-components"
 import type { MessageAttachment } from "@/types/message"
 
 export interface SearchPeopleResult {
@@ -61,16 +61,15 @@ interface SearchResultsPanelProps {
 
 const SectionHeader = ({ label }: { label: string }) => (
   <div className="px-4 py-1.5">
-    <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
-      {label}
-    </span>
+    <span className="text-xs font-medium text-gray-800">{label}</span>
   </div>
 )
 
 const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
+  new Date(iso).toLocaleDateString("en-US", {
+    month: "long",
     day: "numeric",
+    year: "numeric",
   })
 
 export function SearchResultsPanel({
