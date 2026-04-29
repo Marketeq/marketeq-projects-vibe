@@ -175,10 +175,15 @@ export class RepairUserProfileTables1772840000000
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_industries_user_repair'
         ) THEN
-          ALTER TABLE "industries"
-          ADD CONSTRAINT "FK_industries_user_repair"
-          FOREIGN KEY ("userId") REFERENCES "users"("id")
-          ON DELETE CASCADE ON UPDATE NO ACTION;
+          BEGIN
+            ALTER TABLE "industries"
+            ADD CONSTRAINT "FK_industries_user_repair"
+            FOREIGN KEY ("userId") REFERENCES "users"("id")
+            ON DELETE CASCADE ON UPDATE NO ACTION;
+          EXCEPTION
+            WHEN insufficient_privilege OR object_not_in_prerequisite_state THEN
+              RAISE NOTICE 'Skipping industries repair foreign key due to ownership mismatch';
+          END;
         END IF;
       END $$;
     `);
@@ -188,10 +193,15 @@ export class RepairUserProfileTables1772840000000
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_languages_user_repair'
         ) THEN
-          ALTER TABLE "languages"
-          ADD CONSTRAINT "FK_languages_user_repair"
-          FOREIGN KEY ("userId") REFERENCES "users"("id")
-          ON DELETE CASCADE ON UPDATE NO ACTION;
+          BEGIN
+            ALTER TABLE "languages"
+            ADD CONSTRAINT "FK_languages_user_repair"
+            FOREIGN KEY ("userId") REFERENCES "users"("id")
+            ON DELETE CASCADE ON UPDATE NO ACTION;
+          EXCEPTION
+            WHEN insufficient_privilege OR object_not_in_prerequisite_state THEN
+              RAISE NOTICE 'Skipping languages repair foreign key due to ownership mismatch';
+          END;
         END IF;
       END $$;
     `);
@@ -201,10 +211,15 @@ export class RepairUserProfileTables1772840000000
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_certifications_user_repair'
         ) THEN
-          ALTER TABLE "certifications"
-          ADD CONSTRAINT "FK_certifications_user_repair"
-          FOREIGN KEY ("userId") REFERENCES "users"("id")
-          ON DELETE CASCADE ON UPDATE NO ACTION;
+          BEGIN
+            ALTER TABLE "certifications"
+            ADD CONSTRAINT "FK_certifications_user_repair"
+            FOREIGN KEY ("userId") REFERENCES "users"("id")
+            ON DELETE CASCADE ON UPDATE NO ACTION;
+          EXCEPTION
+            WHEN insufficient_privilege OR object_not_in_prerequisite_state THEN
+              RAISE NOTICE 'Skipping certifications repair foreign key due to ownership mismatch';
+          END;
         END IF;
       END $$;
     `);
@@ -214,10 +229,15 @@ export class RepairUserProfileTables1772840000000
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_portfolio_user_repair'
         ) THEN
-          ALTER TABLE "portfolio"
-          ADD CONSTRAINT "FK_portfolio_user_repair"
-          FOREIGN KEY ("userId") REFERENCES "users"("id")
-          ON DELETE CASCADE ON UPDATE NO ACTION;
+          BEGIN
+            ALTER TABLE "portfolio"
+            ADD CONSTRAINT "FK_portfolio_user_repair"
+            FOREIGN KEY ("userId") REFERENCES "users"("id")
+            ON DELETE CASCADE ON UPDATE NO ACTION;
+          EXCEPTION
+            WHEN insufficient_privilege OR object_not_in_prerequisite_state THEN
+              RAISE NOTICE 'Skipping portfolio repair foreign key due to ownership mismatch';
+          END;
         END IF;
       END $$;
     `);
