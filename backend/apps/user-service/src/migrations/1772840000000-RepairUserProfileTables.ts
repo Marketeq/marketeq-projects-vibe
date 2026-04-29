@@ -5,6 +5,30 @@ export class RepairUserProfileTables1772840000000
 {
   name = 'RepairUserProfileTables1772840000000';
 
+  private isLegacyOwnershipIssue(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /must be owner of table|permission denied|insufficient privilege|object not in prerequisite state/i.test(
+      message,
+    );
+  }
+
+  private async runBestEffort(
+    queryRunner: QueryRunner,
+    sql: string,
+    notice: string,
+  ): Promise<void> {
+    try {
+      await queryRunner.query(sql);
+    } catch (error) {
+      if (!this.isLegacyOwnershipIssue(error)) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[${this.name}] ${notice}: ${message}`);
+    }
+  }
+
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
 
@@ -28,21 +52,31 @@ export class RepairUserProfileTables1772840000000
       )
     `);
 
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
       `ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "industryType" character varying`,
+      'Skipping legacy experiences.industryType repair',
     );
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
       `ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "skills" text array`,
+      'Skipping legacy experiences.skills repair',
     );
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
       `ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP NOT NULL DEFAULT now()`,
+      'Skipping legacy experiences.createdAt repair',
     );
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
       `ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP NOT NULL DEFAULT now()`,
+      'Skipping legacy experiences.updatedAt repair',
     );
 
     // Normalize legacy scalar "skills" column to text[] if needed.
-    await queryRunner.query(`
+    await this.runBestEffort(
+      queryRunner,
+      `
       DO $$
       DECLARE
         skills_type text;
@@ -66,10 +100,14 @@ export class RepairUserProfileTables1772840000000
           USING "skills"::text[];
         END IF;
       END $$;
-    `);
+    `,
+      'Skipping legacy experiences.skills type normalization',
+    );
 
     // Normalize legacy timestamp start/end dates to date if needed.
-    await queryRunner.query(`
+    await this.runBestEffort(
+      queryRunner,
+      `
       DO $$
       DECLARE
         start_type text;
@@ -97,7 +135,9 @@ export class RepairUserProfileTables1772840000000
           ALTER COLUMN "endDate" TYPE date USING "endDate"::date;
         END IF;
       END $$;
-    `);
+    `,
+      'Skipping legacy experiences date normalization',
+    );
 
     // Ensure related profile tables exist in environments where prior migrations were partial.
     await queryRunner.query(`
@@ -157,20 +197,31 @@ export class RepairUserProfileTables1772840000000
     `);
 
     // Reconcile foreign keys safely.
-    await queryRunner.query(`
+    await this.runBestEffort(
+      queryRunner,
+      `
       DO $$ BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_experiences_user_repair'
         ) THEN
-          ALTER TABLE "experiences"
-          ADD CONSTRAINT "FK_experiences_user_repair"
-          FOREIGN KEY ("userId") REFERENCES "users"("id")
-          ON DELETE CASCADE ON UPDATE NO ACTION;
+          BEGIN
+            ALTER TABLE "experiences"
+            ADD CONSTRAINT "FK_experiences_user_repair"
+            FOREIGN KEY ("userId") REFERENCES "users"("id")
+            ON DELETE CASCADE ON UPDATE NO ACTION;
+          EXCEPTION
+            WHEN insufficient_privilege OR object_not_in_prerequisite_state THEN
+              RAISE NOTICE 'Skipping experiences repair foreign key due to ownership mismatch';
+          END;
         END IF;
       END $$;
-    `);
+    `,
+      'Skipping experiences foreign-key repair',
+    );
 
-    await queryRunner.query(`
+    await this.runBestEffort(
+      queryRunner,
+      `
       DO $$ BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_industries_user_repair'
@@ -186,9 +237,13 @@ export class RepairUserProfileTables1772840000000
           END;
         END IF;
       END $$;
-    `);
+    `,
+      'Skipping industries foreign-key repair',
+    );
 
-    await queryRunner.query(`
+    await this.runBestEffort(
+      queryRunner,
+      `
       DO $$ BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_languages_user_repair'
@@ -204,9 +259,13 @@ export class RepairUserProfileTables1772840000000
           END;
         END IF;
       END $$;
-    `);
+    `,
+      'Skipping languages foreign-key repair',
+    );
 
-    await queryRunner.query(`
+    await this.runBestEffort(
+      queryRunner,
+      `
       DO $$ BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_certifications_user_repair'
@@ -222,9 +281,13 @@ export class RepairUserProfileTables1772840000000
           END;
         END IF;
       END $$;
-    `);
+    `,
+      'Skipping certifications foreign-key repair',
+    );
 
-    await queryRunner.query(`
+    await this.runBestEffort(
+      queryRunner,
+      `
       DO $$ BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_portfolio_user_repair'
@@ -240,7 +303,9 @@ export class RepairUserProfileTables1772840000000
           END;
         END IF;
       END $$;
-    `);
+    `,
+      'Skipping portfolio foreign-key repair',
+    );
   }
 
   // Forward-only repair migration (no destructive rollback).

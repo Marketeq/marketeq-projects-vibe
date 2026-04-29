@@ -5,9 +5,36 @@ export class AddAffiliatedTeamTables1772767311535
 {
   name = 'AddAffiliatedTeamTables1772767311535';
 
+  private isLegacyOwnershipIssue(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /must be owner of table|permission denied|insufficient privilege|object not in prerequisite state/i.test(
+      message,
+    );
+  }
+
+  private async runBestEffort(
+    queryRunner: QueryRunner,
+    sql: string,
+    notice: string,
+  ): Promise<void> {
+    try {
+      await queryRunner.query(sql);
+    } catch (error) {
+      if (!this.isLegacyOwnershipIssue(error)) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      // Keep legacy staging ownership mismatches from aborting the entire boot.
+      console.warn(`[${this.name}] ${notice}: ${message}`);
+    }
+  }
+
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
       `ALTER TABLE "experiences" DROP CONSTRAINT IF EXISTS "FK_experiences_user"`,
+      'Skipping legacy experiences foreign-key drop',
     );
     await queryRunner.query(
       `CREATE TABLE IF NOT EXISTS "industries" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "industry" character varying NOT NULL, "yearsOfExperience" integer, "description" text, "userId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_f1626dcb2d58142d7dfcca7b8d1" PRIMARY KEY ("id"))`,
@@ -24,13 +51,29 @@ export class AddAffiliatedTeamTables1772767311535
     await queryRunner.query(
       `CREATE TABLE IF NOT EXISTS "affiliated_teams" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "location" character varying NOT NULL, "time" character varying NOT NULL, "userId" uuid NOT NULL, CONSTRAINT "PK_d444bd7ce56cf399f7654b3a624" PRIMARY KEY ("id"))`,
     );
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "dateFormat"`);
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "startOfWeek"`);
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "timeFormat"`);
-    await queryRunner.query(
-      `ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "industryType" character varying`,
+    await this.runBestEffort(
+      queryRunner,
+      `ALTER TABLE "users" DROP COLUMN IF EXISTS "dateFormat"`,
+      'Skipping legacy users.dateFormat drop',
     );
-    await queryRunner.query(`
+    await this.runBestEffort(
+      queryRunner,
+      `ALTER TABLE "users" DROP COLUMN IF EXISTS "startOfWeek"`,
+      'Skipping legacy users.startOfWeek drop',
+    );
+    await this.runBestEffort(
+      queryRunner,
+      `ALTER TABLE "users" DROP COLUMN IF EXISTS "timeFormat"`,
+      'Skipping legacy users.timeFormat drop',
+    );
+    await this.runBestEffort(
+      queryRunner,
+      `ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "industryType" character varying`,
+      'Skipping legacy experiences.industryType alteration',
+    );
+    await this.runBestEffort(
+      queryRunner,
+      `
       DO $$
       DECLARE
         skills_type text;
@@ -56,8 +99,12 @@ export class AddAffiliatedTeamTables1772767311535
           USING "skills"::text[];
         END IF;
       END $$;
-    `);
-    await queryRunner.query(`
+    `,
+      'Skipping legacy experiences.skills normalization',
+    );
+    await this.runBestEffort(
+      queryRunner,
+      `
       DO $$
       DECLARE
         description_type text;
@@ -164,23 +211,37 @@ export class AddAffiliatedTeamTables1772767311535
         ALTER TABLE "experiences" ALTER COLUMN "updatedAt" SET DEFAULT now();
         ALTER TABLE "experiences" ALTER COLUMN "updatedAt" SET NOT NULL;
       END $$;
-    `);
-    await queryRunner.query(
+    `,
+      'Skipping legacy experiences column normalization',
+    );
+    await this.runBestEffort(
+      queryRunner,
       `ALTER TABLE "experiences" ALTER COLUMN "isCurrentRole" SET NOT NULL`,
+      'Skipping legacy experiences.isCurrentRole hardening',
     );
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
       `DROP INDEX IF EXISTS "public"."IDX_97672ac88f789774dd47f7c8be"`,
+      'Skipping legacy users email index drop',
     );
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
       `ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "users_email_key"`,
+      'Skipping legacy users email constraint drop',
     );
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
       `ALTER TABLE "users" ALTER COLUMN "email" TYPE character varying`,
+      'Skipping legacy users.email widening',
     );
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
       `ALTER TABLE "users" ALTER COLUMN "password" DROP DEFAULT`,
+      'Skipping legacy users.password default cleanup',
     );
-    await queryRunner.query(`
+    await this.runBestEffort(
+      queryRunner,
+      `
       DO $$
       DECLARE
         timezone_type text;
@@ -203,11 +264,16 @@ export class AddAffiliatedTeamTables1772767311535
         ALTER TABLE "users" ALTER COLUMN "timezone" DROP DEFAULT;
         ALTER TABLE "users" ALTER COLUMN "timezone" DROP NOT NULL;
       END $$;
-    `);
-    await queryRunner.query(
-      `CREATE UNIQUE INDEX IF NOT EXISTS "IDX_97672ac88f789774dd47f7c8be" ON "users" ("email") `,
+    `,
+      'Skipping legacy users.timezone normalization',
     );
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "IDX_97672ac88f789774dd47f7c8be" ON "users" ("email") `,
+      'Skipping legacy users email index creation',
+    );
+    await this.runBestEffort(
+      queryRunner,
       `DO $$ BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_dc2f8d935eb8e84267b05aabfd4'
@@ -220,8 +286,10 @@ export class AddAffiliatedTeamTables1772767311535
           END;
         END IF;
       END $$;`,
+      'Skipping industries foreign-key migration',
     );
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
       `DO $$ BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_8f1b96a30ff66e0cd5c5c2fd797'
@@ -234,8 +302,10 @@ export class AddAffiliatedTeamTables1772767311535
           END;
         END IF;
       END $$;`,
+      'Skipping languages foreign-key migration',
     );
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
       `DO $$ BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_c5d9770c24adc7be0680f9bd963'
@@ -248,8 +318,10 @@ export class AddAffiliatedTeamTables1772767311535
           END;
         END IF;
       END $$;`,
+      'Skipping certifications foreign-key migration',
     );
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
       `DO $$ BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_9d041c43c782a9135df1388ae16'
@@ -262,8 +334,10 @@ export class AddAffiliatedTeamTables1772767311535
           END;
         END IF;
       END $$;`,
+      'Skipping portfolio foreign-key migration',
     );
-    await queryRunner.query(
+    await this.runBestEffort(
+      queryRunner,
       `DO $$ BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'FK_2f83b2f81cd02f84dca26794814'
@@ -276,6 +350,7 @@ export class AddAffiliatedTeamTables1772767311535
           END;
         END IF;
       END $$;`,
+      'Skipping affiliated teams foreign-key migration',
     );
   }
 
