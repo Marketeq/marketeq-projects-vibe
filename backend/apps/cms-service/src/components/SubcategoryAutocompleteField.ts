@@ -7,10 +7,10 @@ import "./CategoryFields.scss";
 
 const B = "marketeq-categoryField";
 
-const SubcategoryAutocompleteField: React.FC<{ path: string; label?: string }> = ({
-  path,
-  label = "Subcategory",
-}) => {
+const SubcategoryAutocompleteField: React.FC<{
+  path: string;
+  label?: string;
+}> = ({ path, label = "Subcategory" }) => {
   const { value, setValue } = useField<string>({ path });
   const { value: selectedCategoriesValue } = useField<
     Array<{ value?: string }> | undefined
@@ -85,7 +85,7 @@ const SubcategoryAutocompleteField: React.FC<{ path: string; label?: string }> =
   }, [inputValue, selectedCategories]);
 
   const helperText = selectedCategory
-    ? `Suggestions are scoped to "${selectedCategory}" (publish-project parity).`
+    ? `Suggestions are scoped to "${selectedCategory}".`
     : "Pick a category for this row first to get scoped subcategory suggestions.";
 
   return React.createElement(
