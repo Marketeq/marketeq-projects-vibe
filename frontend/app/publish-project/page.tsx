@@ -112,6 +112,7 @@ import {
   SubmitHandler,
   UseFormReturn,
   get,
+  type FieldPath,
   useForm,
   useWatch,
 } from "react-hook-form"
@@ -626,114 +627,6 @@ const meta = {
   ],
 } as const
 
-type ProjectInfoSidebarFieldName = (typeof meta)["Project Info"][number]["name"]
-type MediaSidebarFieldName = (typeof meta)["Media"][number]["name"]
-type ProjectInfoSidebarValues = Partial<
-  Omit<ProjectInfoFormValues, "category"> & {
-    category: Array<{
-      category?: string
-      subCategories?: string[]
-    }>
-  }
->
-type MediaSidebarValues = {
-  featuredImages?: Array<{
-    progress?: number
-    hasError?: boolean
-    meta?: any
-  }>
-  additionalImages?: Array<
-    Array<{
-      progress?: number
-      hasError?: boolean
-      meta?: any
-    }>
-  >
-  featuredVideo?: string
-}
-
-const isProjectInfoFieldComplete = (
-  fieldName: ProjectInfoSidebarFieldName,
-  values: ProjectInfoSidebarValues
-) => {
-  switch (fieldName) {
-    case "title":
-      return projectInfoSchema.shape.title.safeParse(values.title).success
-    case "category":
-      return projectInfoSchema.shape.category.safeParse(values.category).success
-    case "industry":
-      return projectInfoSchema.shape.industry.safeParse(values.industry).success
-    case "shortDescription":
-      return projectInfoSchema.shape.shortDescription.safeParse(
-        values.shortDescription
-      ).success
-    case "fullDescription":
-      return projectInfoSchema.shape.fullDescription.safeParse(
-        values.fullDescription
-      ).success
-    case "tags":
-      return projectInfoSchema.shape.tags.safeParse(values.tags).success
-    case "skills":
-      return projectInfoSchema.shape.skills.safeParse(values.skills).success
-  }
-}
-
-const isMediaFieldComplete = (
-  fieldName: MediaSidebarFieldName,
-  values: MediaSidebarValues
-) => {
-  switch (fieldName) {
-    case "featuredImages": {
-      const featuredImages = values.featuredImages ?? []
-      return (
-        Array.isArray(featuredImages) &&
-        featuredImages.length >= 1 &&
-        featuredImages.every(
-          (image) =>
-            typeof image?.progress === "number" &&
-            image.progress === 100 &&
-            !image.hasError
-        )
-      )
-    }
-    case "additionalImages": {
-      const additionalImages = values.additionalImages ?? []
-      return (
-        Array.isArray(additionalImages) &&
-        additionalImages.every(
-          (group) =>
-            !group ||
-            (Array.isArray(group) &&
-              group.every(
-                (image) =>
-                  typeof image?.progress === "number" &&
-                  image.progress === 100 &&
-                  !image.hasError
-              ))
-        )
-      )
-    }
-    case "featuredVideo": {
-      const rawValue = values.featuredVideo?.trim?.() ?? ""
-      if (!rawValue) return true
-
-      const normalized = /^https?:\/\//i.test(rawValue)
-        ? rawValue
-        : `https://${rawValue.replace(/^\/+/, "")}`
-
-      try {
-        const parsed = new URL(normalized)
-        return (
-          (parsed.protocol === "http:" || parsed.protocol === "https:") &&
-          parsed.hostname.includes(".")
-        )
-      } catch {
-        return false
-      }
-    }
-  }
-}
-
 const plainTextFromRichTextHtml = (value: string) => {
   if (!value) return ""
 
@@ -793,11 +686,8 @@ type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number]
 const taskFormSchema = z.object({
   task: z.string().min(1, "Please enter at least 1 character(s)"),
   role: z.string().min(1, "Please enter/select at least 1 role(s)"),
-  location: z.string().min(1, "Please enter/select at least 1 location(s)"),
-  experience: z.enum(EXPERIENCE_LEVELS, {
-    required_error: "Please enter/select at least 1 experience level",
-    invalid_type_error: "Please enter/select at least 1 experience level",
-  }),
+  location: z.string().optional(),
+  experience: z.enum(EXPERIENCE_LEVELS).optional(),
   duration: z.object({
     value: z.coerce.number({
       invalid_type_error: "Please enter a valid number",
@@ -848,10 +738,6 @@ const Sidebar = () => {
   const projectInfoMethods: UseFormReturn<ProjectInfoFormValues> =
     useProjectInfoContext()
   const mediaMethods = useMediaContext()
-
-  const projectInfoValues = useWatch({ control: projectInfoMethods.control })
-
-  const mediaValues = useWatch({ control: mediaMethods.control })
   const { projectScopeMethods, setTaskSearchDialogOpen } =
     useProjectScopeContext()
   const [phases] = projectScopeMethods
@@ -863,6 +749,27 @@ const Sidebar = () => {
         (p.phaseName?.trim?.() ?? "").length > 0 ||
         (Array.isArray(p.rows) && p.rows.length > 0)
     )
+  const hasProjectInfoFieldError = useCallback(
+    (name: (typeof meta)["Project Info"][number]["name"]) => {
+      if (name === "category") {
+        return Boolean(projectInfoMethods.formState.errors.category)
+      }
+
+      return hookFormHasError({
+        errors: projectInfoMethods.formState.errors,
+        name: name as FieldPath<ProjectInfoFormValues>,
+      })
+    },
+    [projectInfoMethods.formState.errors]
+  )
+  const hasMediaFieldError = useCallback(
+    (name: (typeof meta)["Media"][number]["name"]) =>
+      hookFormHasError({
+        errors: mediaMethods.formState.errors,
+        name: name as FieldPath<MediaFormValues>,
+      }),
+    [mediaMethods.formState.errors]
+  )
 
   return (
     <div className="sticky top-0 py-6 px-[15px] flex h-screen flex-col shrink-0 gap-y-5 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
@@ -913,46 +820,61 @@ const Sidebar = () => {
                 {isActive && (
                   <div className="pl-[25px]">
                     {label === "Project Info" &&
-                      meta[label].map((field, i) => (
-                        <div
-                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
-                          key={i}
-                        >
-                          <span className="text-sm leading-6 text-gray-500">
-                            {field.label}
-                          </span>
+                      meta[label].map((field, i) => {
+                        const isDirty = Boolean(
+                          projectInfoMethods.formState.dirtyFields[field.name]
+                        )
+                        const hasError = hasProjectInfoFieldError(field.name)
+                        const shouldShowStatus = hasError || isDirty
 
-                          {isProjectInfoFieldComplete(
-                            field.name,
-                            projectInfoValues ?? {}
-                          ) ? (
-                            <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                              <Check className="size-3 text-white" />
-                            </div>
-                          ) : (
-                            <AlertCircle className="size-[22px] text-warning-500 shrink-0" />
-                          )}
-                        </div>
-                      ))}
+                        return (
+                          <div
+                            className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                            key={i}
+                          >
+                            <span className="text-sm leading-6 text-gray-500">
+                              {field.label}
+                            </span>
+
+                            {shouldShowStatus &&
+                              (hasError ? (
+                                <AlertCircle className="size-[22px] text-warning-500 shrink-0" />
+                              ) : (
+                                <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                                  <Check className="size-3 text-white" />
+                                </div>
+                              ))}
+                          </div>
+                        )
+                      })}
                     {label === "Media" &&
-                      meta[label].map((field, i) => (
-                        <div
-                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
-                          key={i}
-                        >
-                          <span className="text-sm leading-6 text-gray-500">
-                            {field.label}
-                          </span>
+                      meta[label].map((field, i) => {
+                        const isDirty = Boolean(
+                          mediaMethods.formState.dirtyFields[field.name]
+                        )
+                        const hasError = hasMediaFieldError(field.name)
+                        const shouldShowStatus = hasError || isDirty
 
-                          {isMediaFieldComplete(field.name, mediaValues ?? {}) ? (
-                            <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                              <Check className="size-3 text-white" />
-                            </div>
-                          ) : (
-                            <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
-                          )}
-                        </div>
-                      ))}
+                        return (
+                          <div
+                            className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                            key={i}
+                          >
+                            <span className="text-sm leading-6 text-gray-500">
+                              {field.label}
+                            </span>
+
+                            {shouldShowStatus &&
+                              (hasError ? (
+                                <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
+                              ) : (
+                                <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                                  <Check className="size-3 text-white" />
+                                </div>
+                              ))}
+                          </div>
+                        )
+                      })}
                     {label === "Project Scope" &&
                       meta[label].map((field, i) => (
                         <div
@@ -1652,6 +1574,50 @@ const PROJECT_INFO_PROGRESS_FIELDS: Array<keyof ProjectInfoFormValues> = [
   "skills",
 ]
 
+const PROJECT_INFO_VALIDATION_TARGETS: Array<{
+  name: FieldPath<ProjectInfoFormValues>
+  targetId: string
+}> = [
+  { name: "title", targetId: "publish-project-title-field" },
+  { name: "category.0.category", targetId: "publish-project-category-field" },
+  {
+    name: "category.0.subCategories",
+    targetId: "publish-project-category-field",
+  },
+  { name: "category.1.category", targetId: "publish-project-category-field" },
+  {
+    name: "category.1.subCategories",
+    targetId: "publish-project-category-field",
+  },
+  { name: "category.2.category", targetId: "publish-project-category-field" },
+  {
+    name: "category.2.subCategories",
+    targetId: "publish-project-category-field",
+  },
+  { name: "industry", targetId: "publish-project-industry-field" },
+  {
+    name: "shortDescription",
+    targetId: "publish-project-short-description-field",
+  },
+  {
+    name: "fullDescription",
+    targetId: "publish-project-full-description-field",
+  },
+  { name: "tags", targetId: "publish-project-tags-field" },
+  { name: "skills", targetId: "publish-project-skills-field" },
+]
+
+const scrollToPublishField = (targetId: string) => {
+  if (typeof window === "undefined") return
+
+  window.requestAnimationFrame(() => {
+    document.getElementById(targetId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    })
+  })
+}
+
 const TITLE_MAX_LENGTH = 120
 const SHORT_DESCRIPTION_MAX_LENGTH = 300
 const FULL_DESCRIPTION_MAX_LENGTH = 5000
@@ -2258,7 +2224,10 @@ const ProjectInfo = ({
               Project Info
             </h1>
 
-            <div className="space-y-1.5 mt-6 mb-6">
+            <div
+              id="publish-project-title-field"
+              className="space-y-1.5 mt-6 mb-6"
+            >
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -2339,7 +2308,7 @@ const ProjectInfo = ({
               />
             </div>
 
-            <div className="space-y-6 mt-0">
+            <div id="publish-project-category-field" className="space-y-6 mt-0">
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -2787,7 +2756,10 @@ const ProjectInfo = ({
                 </div>
               </div>
             )}
-            <div className="space-y-1.5 mt-6">
+            <div
+              id="publish-project-industry-field"
+              className="space-y-1.5 mt-6"
+            >
               <Controller
                 name="industry"
                 control={methods.control}
@@ -2880,7 +2852,10 @@ const ProjectInfo = ({
               />
             </div>
 
-            <div className="space-y-1.5 mt-6">
+            <div
+              id="publish-project-short-description-field"
+              className="space-y-1.5 mt-6"
+            >
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -2957,7 +2932,10 @@ const ProjectInfo = ({
               />
             </div>
 
-            <div className="space-y-1.5 mt-6">
+            <div
+              id="publish-project-full-description-field"
+              className="space-y-1.5 mt-6"
+            >
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -3050,7 +3028,10 @@ const ProjectInfo = ({
               />
             </div>
 
-            <div className="space-y-1.5 mt-6">
+            <div
+              id="publish-project-tags-field"
+              className="space-y-1.5 mt-6"
+            >
               <Controller
                 name="tags"
                 control={methods.control}
@@ -3144,7 +3125,10 @@ const ProjectInfo = ({
               />
             </div>
 
-            <div className="space-y-1.5 mt-6">
+            <div
+              id="publish-project-skills-field"
+              className="space-y-1.5 mt-6"
+            >
               <Controller
                 name="skills"
                 control={methods.control}
@@ -3447,6 +3431,18 @@ type MediaFormValues = {
   }[][]
   featuredVideo: string
 }
+
+const MEDIA_VALIDATION_TARGETS: Array<{
+  name: FieldPath<MediaFormValues>
+  targetId: string
+}> = [
+  { name: "featuredImages", targetId: "publish-project-featured-images-field" },
+  {
+    name: "additionalImages",
+    targetId: "publish-project-additional-images-field",
+  },
+  { name: "featuredVideo", targetId: "publish-project-featured-video-field" },
+]
 type MediaProps = {
   setProgress?: (val: number) => void
 }
@@ -3607,7 +3603,10 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
               Media
             </h1>
 
-            <div className="space-y-3 mt-6">
+            <div
+              id="publish-project-featured-images-field"
+              className="space-y-3 mt-6"
+            >
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -3678,7 +3677,10 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
               />
             </div>
 
-            <div className="space-y-3 mt-6">
+            <div
+              id="publish-project-additional-images-field"
+              className="space-y-3 mt-6"
+            >
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -3733,7 +3735,10 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
               />
             </div>
 
-            <div className="space-y-3 mt-6">
+            <div
+              id="publish-project-featured-video-field"
+              className="space-y-3 mt-6"
+            >
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -4652,9 +4657,11 @@ const getPhaseDayRange = (phases: Phase[], phaseIndex: number) => {
 const getPhaseDayRangeLabel = (phases: Phase[], phaseIndex: number) => {
   const { startDay, endDay } = getPhaseDayRange(phases, phaseIndex)
 
-  return typeof endDay === "number"
-    ? `Day ${startDay} - Day ${endDay}`
-    : `Day ${startDay} -`
+  if (typeof endDay !== "number" || endDay === startDay) {
+    return `Day ${startDay}`
+  }
+
+  return `Day ${startDay} - Day ${endDay}`
 }
 
 const getPhaseSearchTargetId = (phaseIndex: number) =>
@@ -4783,7 +4790,9 @@ const columns = [
   columnHelper.accessor("experience", {
     cell: ({ getValue, row: { index }, column: { id }, table }) => {
       // eslint-disable-next-line
-      const [value, setValue] = useUncontrolledState<ExperienceLevel>({
+      const [value, setValue] = useUncontrolledState<
+        ExperienceLevel | undefined
+      >({
         defaultValue: getValue(),
         onChange: (value) => table.options.meta?.updateData(index, id, value),
       })
@@ -6491,12 +6500,36 @@ function PublishProject({
   //  Validate the current step when Next is clicked
   const validateCurrentStep = React.useCallback(async () => {
     if (currentStep === 0) {
-      // Project Info: validate ALL fields, focus first invalid
-      return await projectInfoMethods.trigger(undefined, { shouldFocus: true })
+      const isStepValid = await projectInfoMethods.trigger(undefined, {
+        shouldFocus: true,
+      })
+
+      if (!isStepValid) {
+        const firstInvalidTarget = PROJECT_INFO_VALIDATION_TARGETS.find(
+          ({ name }) => projectInfoMethods.getFieldState(name).invalid
+        )
+        if (firstInvalidTarget) {
+          scrollToPublishField(firstInvalidTarget.targetId)
+        }
+      }
+
+      return isStepValid
     }
     if (currentStep === 1) {
-      // Media: validate all (kept for parity / future)
-      return await mediaMethods.trigger(undefined, { shouldFocus: true })
+      const isStepValid = await mediaMethods.trigger(undefined, {
+        shouldFocus: true,
+      })
+
+      if (!isStepValid) {
+        const firstInvalidTarget = MEDIA_VALIDATION_TARGETS.find(({ name }) =>
+          mediaMethods.getFieldState(name).invalid
+        )
+        if (firstInvalidTarget) {
+          scrollToPublishField(firstInvalidTarget.targetId)
+        }
+      }
+
+      return isStepValid
     }
     // Step 3 uses its own schema checks
     return true
@@ -6529,7 +6562,7 @@ function PublishProject({
       </div>
       <Empty
         outcome={submissionOutcome ?? undefined}
-        draftId={draftIdRef.current}
+        draftId={draftProjectId ?? undefined}
       />
     </div>
   ) : (
