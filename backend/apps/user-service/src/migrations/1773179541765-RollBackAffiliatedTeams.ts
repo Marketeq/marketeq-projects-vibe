@@ -4,6 +4,7 @@ export class RollBackAffiliatedTeams1773179541765
   implements MigrationInterface
 {
   name = 'RollBackAffiliatedTeams1773179541765';
+  private savepointIndex = 0;
 
   private isLegacyOwnershipIssue(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
@@ -17,9 +18,16 @@ export class RollBackAffiliatedTeams1773179541765
     sql: string,
     notice: string,
   ): Promise<void> {
+    const savepoint = `"${this.name}_best_effort_${this.savepointIndex += 1}"`;
+
     try {
+      await queryRunner.query(`SAVEPOINT ${savepoint}`);
       await queryRunner.query(sql);
+      await queryRunner.query(`RELEASE SAVEPOINT ${savepoint}`);
     } catch (error) {
+      await queryRunner.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+      await queryRunner.query(`RELEASE SAVEPOINT ${savepoint}`);
+
       if (!this.isLegacyOwnershipIssue(error)) {
         throw error;
       }
