@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import jobTitles from "@/public/mock/job_titles.json"
 import { useControllableState } from "@/utils/hooks"
 import {
@@ -46,7 +47,7 @@ export const YourJobTitle = ({ value, onValueChange, invalid }: Props) => {
   useEffect(() => {
     const loadJobTitles = async () => {
       try {
-        const apiBase = process.env.NEXT_PUBLIC_API_URL || ""
+        const apiBase = getPublicApiUrl()
         const res = await fetch(
           `${apiBase}/talent/autocomplete?type=job-title`
         )

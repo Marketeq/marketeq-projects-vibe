@@ -16,6 +16,7 @@ import {
   type ProjectStaticContent,
   type ProjectStaticIcon,
 } from "@/lib/project-details/project-static-content-from-api"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -522,7 +523,7 @@ export default function ProjectDetails() {
 
         // Try fetching from listings-service via gateway
         const apiBase =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+          getPublicApiUrl() || "http://localhost:4000"
         let res: Response | null = null
         let slug = rawSlug
         for (const candidate of candidates) {

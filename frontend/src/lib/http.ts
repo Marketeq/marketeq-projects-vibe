@@ -1,3 +1,5 @@
+import { getPublicBackendUrl } from "@/lib/runtime-urls"
+
 export const HL = <T,>(v: T) => v
 
 export type HttpConfig = {
@@ -6,7 +8,7 @@ export type HttpConfig = {
 }
 
 const defaultConfig: HttpConfig = {
-  baseURL: HL(process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3002/api"),
+  baseURL: HL(getPublicBackendUrl() || "http://localhost:3002/api"),
 }
 
 export function createHttp(cfg: HttpConfig = defaultConfig) {

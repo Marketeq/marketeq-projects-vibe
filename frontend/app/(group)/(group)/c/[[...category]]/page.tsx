@@ -18,6 +18,7 @@ import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import { buildProjectUrl, buildServiceUrl } from "@/src/lib/urlHelpers"
 import { ListingCard } from "@/components/listing-card"
 import { type TalentUser, talentToCardProps } from "@/src/lib/api/talent-users"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { parseCategoryParams } from "@/src/lib/urlHelpers"
 import { fromLength } from "@/utils/functions"
 import {
@@ -915,7 +916,7 @@ export default function Projects() {
   }
 
   // Fetch real projects and services from listings-service via gateway
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+  const apiBase = getPublicApiUrl() || "http://localhost:4000"
   useEffect(() => {
     async function fetchListings() {
       try {

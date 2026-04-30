@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useAuth } from "@/contexts/auth"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { UserAPI } from "@/service/http/user"
 import { cn, hookFormHasError } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
@@ -1717,7 +1718,7 @@ export const WorkExperienceDialog = ({
     }
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/autocomplete/search?q=${encodeURIComponent(q)}&type=skill&limit=20`
+        `${getPublicApiUrl()}/autocomplete/search?q=${encodeURIComponent(q)}&type=skill&limit=20`
       )
       if (!res.ok) return
       const data = await res.json()
@@ -2813,7 +2814,7 @@ export const LanguagesDialog = ({
     }
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/autocomplete/search?q=${encodeURIComponent(q)}&type=language&limit=20`
+        `${getPublicApiUrl()}/autocomplete/search?q=${encodeURIComponent(q)}&type=language&limit=20`
       )
       if (!res.ok) return
       const data = await res.json()
@@ -3049,7 +3050,7 @@ export const SkillsDialog = ({
     }
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/autocomplete/search?q=${encodeURIComponent(q)}&type=skill&limit=20`
+        `${getPublicApiUrl()}/autocomplete/search?q=${encodeURIComponent(q)}&type=skill&limit=20`
       )
       if (!res.ok) return
       const data = await res.json()

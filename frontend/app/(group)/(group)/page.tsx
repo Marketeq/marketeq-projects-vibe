@@ -1,11 +1,11 @@
 import { cache } from "react"
 import { cookies } from "next/headers"
 import type { Metadata } from "next"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import type { HomepagePayload } from "@/types/homepage"
 import { HomepageClient } from "./homepage-client"
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+const API_BASE = getPublicApiUrl() || "http://localhost:4000"
 
 const fetchHomepage = cache(async (): Promise<HomepagePayload | null> => {
   try {

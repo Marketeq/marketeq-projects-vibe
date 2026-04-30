@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { getPublicBackendUrl } from "@/lib/runtime-urls"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3002/api';
+const API_BASE_URL = getPublicBackendUrl() || 'http://localhost:3002/api';
 
 export interface BlockItem {
   id: string;

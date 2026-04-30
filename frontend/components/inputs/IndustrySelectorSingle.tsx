@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import industries from "@/public/mock/industries.json"
 import { useControllableState } from "@/utils/hooks"
 import {
@@ -48,7 +49,7 @@ export const IndustrySelectorSingle = ({
   useEffect(() => {
     const loadIndustries = async () => {
       try {
-        const apiBase = process.env.NEXT_PUBLIC_API_URL || ""
+        const apiBase = getPublicApiUrl()
         const res = await fetch(
           `${apiBase}/talent/autocomplete?type=industry`
         )

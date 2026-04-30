@@ -6,9 +6,10 @@ import {
   LoginParams,
   SignUpParams,
 } from "@/types/auth"
+import { getPublicAuthUrl } from "@/lib/runtime-urls"
 import AxiosRequest from ".."
 
-const AUTH_BASE = process.env.NEXT_PUBLIC_AUTH_URL ?? ""
+const AUTH_BASE = getPublicAuthUrl()
 
 export const AuthAPI = {
   SignUpWithEmail: (data: SignUpParams) => {
