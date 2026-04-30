@@ -11,7 +11,7 @@ This document tracks the remaining production-grade DevOps controls for the `mar
 | P0 | Workflow drift detection for the live n8n deploy orchestrator | Implemented in this phase | Detects when the live workflow, pinned runner URL, gist revision, or webhook metadata drift away from the repo-controlled contract | `scripts/devops/check-devops-drift.mjs` |
 | P0 | Repo-controlled deploy topology manifest | Implemented in this phase | Removes hidden project IDs / hook URLs / workflow IDs from tribal memory and makes drift auditable in PRs | `scripts/devops/marketeq-devops.config.json` |
 | P1 | One-command live n8n workflow sync from the repo contract | Implemented in this phase | Makes it possible to reconcile the live workflow to the pinned runner revision without manual dashboard edits | `scripts/devops/sync-n8n-workflow.mjs` |
-| P1 | Full workflow-as-code for the orchestrator source itself | In progress | The orchestration logic should live in the repo, not only in a gist / live n8n node | follow-up |
+| P1 | Full workflow-as-code for the orchestrator source itself | In progress | The orchestration logic should live in the repo, not only in a gist / live n8n node | `scripts/devops/marketeq_orchestrator_node.js`, publish + sync scripts |
 | P1 | Secret externalization from inline n8n Build Command code | Planned | Tokens should come from managed credentials or env injection, not inline code strings | follow-up |
 | P1 | Structured deploy summary / observability artifact | Planned | Every promotion should emit one deploy report tying together SHA, Render, Vercel, smoke, and final visibility state | follow-up |
 | P1 | Automated rollback playbook | Planned | Failures should have a first-class recovery path instead of manual ad-hoc steps | follow-up |
@@ -55,6 +55,16 @@ Rewrites the live workflow `Build Command` node so it points at the configured p
 - Render service ID / URL
 - Vercel team IDs and protected-project deploy hooks
 - required frontend/backend env contract keys
+
+### 4. Repo-controlled orchestrator source
+
+`scripts/devops/marketeq_orchestrator_node.js`
+
+The live orchestrator source now exists in the repo. The gist is no longer the only source copy.
+
+`node scripts/devops/publish-n8n-runner.mjs`
+
+Publishes the repo-controlled runner file to the configured gist, then rewrites `scripts/devops/marketeq-devops.config.json` with the new pinned raw URL so `sync-n8n-workflow.mjs` can push that exact revision into the live n8n workflow.
 
 ## Known remaining gaps
 

@@ -1,12 +1,17 @@
 {
   "repo": "Marketeq/marketeq-projects-vibe",
-  "protectedBranches": ["dev-main", "staging", "live-mvp"],
+  "protectedBranches": [
+    "dev-main",
+    "staging",
+    "live-mvp"
+  ],
   "n8n": {
     "workflowId": "PPUT0GooYV2jbwMC",
     "workflowName": "Marketeq Vercel Staging Orchestrator",
     "webhookId": "c71d70d8-67aa-4391-8011-580b819d0d7e",
     "webhookPath": "marketeq-vibe-deploy",
     "runnerGistId": "9d941b835aebce2651ab892f13f23b6c",
+    "runnerSourcePath": "scripts/devops/marketeq_orchestrator_node.js",
     "runnerRawUrl": "https://gist.githubusercontent.com/CTorres9800/9d941b835aebce2651ab892f13f23b6c/raw/a605e0723149f0210f08908c3103e9d7a73d923b/marketeq_orchestrator_node.js"
   },
   "render": {

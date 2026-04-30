@@ -177,9 +177,10 @@ function getStatusReport() {
 }
 
 async function main() {
-  const repoRunnerPath =
-    process.env.MARKETEQ_ORCHESTRATOR_SOURCE ||
-    "/Users/christorres/vibecoding/Devops/marketeq_orchestrator_node.js"
+  const repoRunnerPath = path.resolve(
+    repoRoot,
+    process.env.MARKETEQ_ORCHESTRATOR_SOURCE || config.n8n.runnerSourcePath,
+  )
   const repoRunnerExists = fs.existsSync(repoRunnerPath)
   const repoRunnerContent = repoRunnerExists ? fs.readFileSync(repoRunnerPath, "utf8") : ""
   const repoRunnerHash = repoRunnerContent ? sha256(repoRunnerContent) : ""
