@@ -637,6 +637,7 @@ Every reviewer must watch for these — they are bugs we have actually hit.
 | `docs/DEVOPS_AND_CODE_REVIEW_SOP.md` | This document — consolidated SOP |
 | `docs/CODE_REVIEW_SOP.md` | Detailed code review rules (original) |
 | `docs/DEVOPS_SOP.md` | Detailed devops rules (original) |
+| `docs/DEVOPS_REMEDIATION_PLAN.md` | Prioritized backlog for remaining production-grade DevOps controls |
 
 ### GitHub Actions Workflows
 | Workflow | File | Type |
@@ -664,6 +665,9 @@ Every reviewer must watch for these — they are bugs we have actually hit.
 |---|---|
 | `scripts/qa-promote-dev-to-staging.sh` | Promote dev-main → staging |
 | `scripts/qa-promote-staging-to-live.sh` | Promote staging → live-mvp (production) |
+| `scripts/devops/check-devops-drift.mjs` | Detect live n8n / gist / env contract drift from the repo-controlled DevOps contract |
+| `scripts/devops/sync-n8n-workflow.mjs` | Re-pin the live n8n Build Command node to the repo-controlled runner URL |
+| `scripts/devops/marketeq-devops.config.json` | Checked-in control-plane manifest for n8n, Vercel, Render, and env contracts |
 
 ### Environment Templates
 | Template | Environment |
