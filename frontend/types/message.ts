@@ -1,3 +1,5 @@
+export type MessageType = "text" | "file" | "gif"
+
 export interface Message {
   id: string
   content: string // decrypted display content
@@ -13,7 +15,7 @@ export interface Message {
   deleted?: boolean
   isDeleted?: boolean // legacy alias for deleted
   status?: string
-  messageType?: string
+  messageType?: MessageType
   edited?: boolean
   starred?: boolean
   replyToMessageId?: string

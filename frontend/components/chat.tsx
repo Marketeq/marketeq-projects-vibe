@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Cookies from "js-cookie"
 import { apiFetch } from "@/src/lib/api"
 import { cn } from "@/utils/functions"
 import { getCurrentUser } from "@/utils/auth"
@@ -136,7 +137,6 @@ export const UserDetail = ({
   //jwt token
   const jwtToken = (() => {
     if (typeof window === "undefined") return null
-    const Cookies = require("js-cookie")
     return Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("token") || null
   })()
 
@@ -193,7 +193,7 @@ export const UserDetail = ({
         >
           <AvatarImage
             src={(conversation as any).participantAvatarUrl || undefined}
-            alt={conversation.participantUsername || "User"}
+            alt={conversation.participantName || conversation.participantUsername || "User"}
           />
           <AvatarFallbackIcon />
         </Avatar>
@@ -217,7 +217,13 @@ export const UserDetail = ({
             "group-data-[state=active]/chat:font-bold text-[13px] leading-[18.88px] text-dark-blue-400 min-w-0 flex-1 truncate",
             conversation.markedUnread ? "font-semibold group-hover/chat:font-bold" : "font-medium"
           )}>
-            {conversation.participantUsername || "Unknown"}
+            {conversation.participantName || conversation.participantUsername || "Unknown"}
+            {conversation.participantUsername &&
+              conversation.participantUsername !== conversation.participantName && (
+              <span className="ml-1 text-xs leading-[14.52px] font-normal text-gray-700">
+                @{conversation.participantUsername}
+              </span>
+            )}
           </h3>
 
           <span className={cn(
@@ -401,7 +407,7 @@ export const Chat = ({
     variant,
     className,
     conversation,
-    name: conversation.participantUsername || "Unknown",
+    name: conversation.participantName || conversation.participantUsername || "Unknown",
   } as const
 
   if (showPinnedIcon) {

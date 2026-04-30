@@ -398,7 +398,7 @@ export function ForwardMessageDialog({
           {/* Search input with inline chips */}
           <div className="px-6 pb-3 relative" ref={searchContainerRef}>
             <div
-              className={`min-h-[44px] px-2 py-1.5 border rounded-lg flex flex-wrap items-center gap-1.5 transition cursor-text ${
+              className={`min-h-11 px-2 py-1.5 border rounded-lg flex flex-wrap items-center gap-1.5 transition cursor-text ${
                 isDropdownOpen
                   ? "border-primary-500 ring-2 ring-primary-100"
                   : "border-gray-300"
@@ -556,7 +556,7 @@ export function ForwardMessageDialog({
 
           {/* Add message textarea */}
           <div className="px-6 pb-3">
-            <div className="border border-gray-300 rounded-lg px-3 py-2 min-h-[96px]">
+            <div className="border border-gray-300 rounded-lg px-3 py-2 min-h-24">
               <textarea
                 className="w-full bg-transparent outline-none border-0 p-0 m-0 focus:ring-0 focus:outline-none resize-none text-sm leading-5 placeholder:text-gray-400"
                 placeholder="Add a message..."

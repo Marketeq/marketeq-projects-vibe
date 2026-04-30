@@ -13,7 +13,6 @@ import { Message } from "@/types/message"
 import { User } from "@/types/user"
 import { ChatsContextProvider } from "@/components/chat"
 import { EditContextProvider } from "@/components/inbox-comps"
-import { EditContextProvider as StoriesEditContextProvider } from "@/stories/inbox.stories"
 import { Chats } from "./components/chats-comp"
 import LeftSidebar from "./components/left-sidebar"
 import RightSidebar from "./components/right-sidebar"
@@ -98,9 +97,7 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
 
   return (
     <EditContextProvider value={editContextValue}>
-      <StoriesEditContextProvider value={editContextValue}>
-        <ChatsContextProvider value={value}>{children}</ChatsContextProvider>
-      </StoriesEditContextProvider>
+      <ChatsContextProvider value={value}>{children}</ChatsContextProvider>
     </EditContextProvider>
   )
 }

@@ -206,7 +206,7 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
         )}
         {user?.clientSuccessRating && (
           <div className="flex items-center gap-x-2">
-            <span className="inline-flex text-dark-blue-400 items-center text-xs leading-[14.52px] font-medium gap-x-1 py-1 px-2 bg-primary-50 rounded-[4px]">
+            <span className="inline-flex text-dark-blue-400 items-center text-xs leading-[14.52px] font-medium gap-x-1 py-1 px-2 bg-primary-50 rounded">
               <Star className="size-3 fill-dark-blue-400" /> {user.clientSuccessRating}
             </span>
             {user.totalProjectsCompleted != null && (

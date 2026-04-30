@@ -35,6 +35,7 @@ import {
   X,
 } from "@blend-metrics/icons"
 import { Spinner } from "@/components/ui/spinner/spinner"
+import { NewMessageDialog } from "./new-message-dialog"
 import {
   DropboxBrand,
   GoogleDrive1Brand,
@@ -92,7 +93,7 @@ import {
   type SearchMessageResult,
   type SearchPeopleResult,
 } from "./search-results-panel"
-import { truncateFilenameMiddle } from "@/stories/inbox.stories"
+import { truncateFilenameMiddle } from "./message-components"
 
 function getOtherParticipantId(
   conv: Conversation,
@@ -173,6 +174,7 @@ const LeftSidebar = ({
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
   const [bulkActionPending, setBulkActionPending] = useState(false)
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
+  const [showNewMessage, setShowNewMessage] = useState(false)
   const threadActions = useThreadActions(token || "")
   const visibleConversations = useMemo(
     () =>
@@ -246,13 +248,13 @@ const LeftSidebar = ({
           `/v1/threads/${conv.id}`,
           { method: "GET", headers: { Authorization: `Bearer ${token}` } }
         )
-        patchConv(conv.id, { participantUsername: group.name } as any)
+        patchConv(conv.id, { participantName: group.name })
       } catch (err) {
         console.warn(
           `[LeftSidebar] failed to fetch group name for ${conv.id}`,
           err
         )
-        patchConv(conv.id, { participantUsername: "Unnamed Group" } as any)
+        patchConv(conv.id, { participantName: "Unnamed Group" })
       }
     }
 
@@ -262,7 +264,7 @@ const LeftSidebar = ({
     ) => {
       const otherId = conv.participantIds?.find((id) => id !== currentUserId)
       if (!otherId) {
-        patchConv(conv.id, { participantUsername: "Unknown User" } as any)
+        patchConv(conv.id, { participantName: "Unknown User" })
         return
       }
 
@@ -278,12 +280,13 @@ const LeftSidebar = ({
         })
         const displayName = user.firstName?.trim() || user.username
         patchConv(conv.id, {
-          participantUsername: displayName,
+          participantName: displayName,
+          participantUsername: user.username,
           participantAvatarUrl: user.avatarUrl,
-        } as any)
+        })
       } catch (err) {
         console.warn(`[LeftSidebar] failed to fetch user for ${otherId}`, err)
-        patchConv(conv.id, { participantUsername: "Unknown User" } as any)
+        patchConv(conv.id, { participantName: "Unknown User" })
         return
       }
 
@@ -393,7 +396,7 @@ const LeftSidebar = ({
           }
           return {
             ...conv,
-            participantUsername: conv.isGroup ? "Group" : "…",
+            participantName: conv.isGroup ? "Group" : "…",
             lastMessagePreview: preview,
           }
         }) as Conversation[]
@@ -505,27 +508,54 @@ const LeftSidebar = ({
           body: { participantIds: [currentUserId, initialParticipantId], isGroup: false },
         })
         if (cancelled) return
-        setConversations((prev) => {
-          const existing = prev.find((c) => c.id === thread.id)
-          if (existing) {
-            if (!existing.isTrashed) {
-              setSelectedConversation(existing)
-            } else {
-              threadActions.untrash(existing.id).catch(() => {})
-              const restored = { ...existing, isTrashed: false }
-              setSelectedConversation(restored)
-              return prev.map((c) => (c.id === restored.id ? restored : c))
-            }
-            return prev
+
+        // setSelectedConversation must NOT be called inside a setConversations
+        // updater — React calls updaters during render and would throw.
+        const existing = conversations.find((c) => c.id === thread.id)
+        if (existing) {
+          if (existing.isTrashed) {
+            threadActions.untrash(existing.id).catch(() => {})
+            const restored = { ...existing, isTrashed: false }
+            setConversations((prev) =>
+              prev.map((c) => (c.id === restored.id ? restored : c))
+            )
+            setSelectedConversation(restored)
+          } else {
+            setSelectedConversation(existing)
+          }
+        } else {
+          let participantName = "…"
+          let participantUsername: string | undefined
+          let participantAvatarUrl: string | undefined
+          try {
+            const u = await apiFetch<{
+              username?: string
+              firstName?: string
+              avatarUrl?: string
+            }>(`/users/${initialParticipantId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+            if (cancelled) return
+            participantName = u.firstName?.trim() || u.username || "…"
+            participantUsername = u.username
+            participantAvatarUrl = u.avatarUrl
+          } catch {
+            // keep fallback
           }
           const placeholder = {
             ...thread,
-            participantUsername: "…",
+            participantName,
+            participantUsername,
+            participantAvatarUrl,
             lastMessagePreview: "",
           } as Conversation
+          setConversations((prev) =>
+            prev.some((c) => c.id === placeholder.id)
+              ? prev
+              : [placeholder, ...prev]
+          )
           setSelectedConversation(placeholder)
-          return [placeholder, ...prev]
-        })
+        }
         router.replace("/inbox", { scroll: false })
       } catch (err) {
         console.error("[LeftSidebar] participantId thread create failed:", err)
@@ -663,7 +693,7 @@ const LeftSidebar = ({
       if (conv.isGroup) continue
       const otherId = conv.participantIds?.find((id) => id !== currentUserId)
       if (!otherId) continue
-      const name = (conv as any).participantName || conv.participantUsername
+      const name = conv.participantName || conv.participantUsername
       const username = conv.participantUsername
       if (!name && !username) continue
       const haystack = `${name ?? ""} ${username ?? ""}`.toLowerCase()
@@ -686,13 +716,24 @@ const LeftSidebar = ({
     // Sorted newest-first so users find their recent activity quickly
     // (matching Slack/Discord/iMessage search behavior).
     const messages: SearchMessageResult[] = searchResults
-      .filter((r) => (r.content || "").trim().length > 0)
+      .filter((r) => {
+        const content = (r.content || "").trim()
+        if (!content) return false
+        const urls = extractUrls(content)
+        if (urls.length > 0) {
+          const remainder = urls
+            .reduce((acc, u) => acc.replace(u, ""), content)
+            .trim()
+          if (remainder.length === 0) return false
+        }
+        return true
+      })
       .map((r) => {
         const conv = convById.get(r.threadId)
         return {
           id: r.id,
           threadId: r.threadId,
-          participantName: conv?.participantUsername || "Conversation",
+          participantName: conv?.participantName || conv?.participantUsername || "Conversation",
           participantAvatarUrl: conv?.participantAvatarUrl,
           snippet: r.content,
           createdAt: r.createdAt,
@@ -709,14 +750,14 @@ const LeftSidebar = ({
     const allDocs = searchIndex?.allDocs ?? []
 
     // Per Figma, Links and Files rows include a small sender-name header
-    // above each card. For 1:1 threads we can derive that from the cached
-    // participantUsername — for the current user we just say "You".
+    // above each card. For 1:1 threads we use the cached display name —
+    // for the current user we just say "You".
     const senderNameFor = (
       senderId: string,
       conv: Conversation | undefined,
     ): string => {
       if (senderId === currentUserId) return "You"
-      return conv?.participantUsername || "Unknown"
+      return conv?.participantName || conv?.participantUsername || "Unknown"
     }
 
     const links: SearchLinkResult[] = []
@@ -750,6 +791,7 @@ const LeftSidebar = ({
         }
         files.push({
           id: a.id,
+          messageId: r.id,
           threadId: r.threadId,
           fileName: fname,
           fileSize: a.fileSize ?? null,
@@ -777,7 +819,7 @@ const LeftSidebar = ({
       <div className="pt-1 p-3 border-b border-gray-200 shrink-0">
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
-            <button className="focus-visible:outline-none w-[157px] h-11 inline-flex items-center justify-center shrink-0 text-base leading-6 font-semibold gap-x-[6px]">
+            <button className="focus-visible:outline-none w-[157px] h-11 inline-flex items-center justify-center shrink-0 text-base leading-6 font-semibold gap-x-1.5">
               {{ all: "All Messages", unread: "Unread", starred: "Starred", sent: "Sent", archived: "Archived", spam: "Spam", trash: "Trash" }[activeFilter] ?? "All Messages"} <ChevronDown className="size-4" />
             </button>
           </DropdownMenuTrigger>
@@ -798,7 +840,7 @@ const LeftSidebar = ({
             ] as const).map(([key, label]) => (
               <DropdownMenuItem
                 key={key}
-                className={`w-[142px] h-[34px] gap-[8px] py-[10px] px-3 ${activeFilter === key ? "font-semibold" : ""}`}
+                className={`w-[142px] h-[34px] gap-2 py-2.5 px-3 ${activeFilter === key ? "font-semibold" : ""}`}
                 onSelect={() => setActiveFilter(key)}
               >
                 {label}
@@ -815,7 +857,7 @@ const LeftSidebar = ({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <IconButton
-                        className="rounded-full size-7 text-gray-400 hover:text-dark-blue-400"
+                        className="rounded-full size-6 text-gray-400 hover:text-dark-blue-400"
                         visual="gray"
                         variant="ghost"
                         onClick={() => clearSelection()}
@@ -826,17 +868,17 @@ const LeftSidebar = ({
                     <TooltipContent side="bottom">Close</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-                <span className="text-[13px] font-semibold leading-[18.88px] text-dark-blue-400">
+                <span className="text-xs font-semibold leading-4 text-dark-blue-400">
                   {checkedChats} selected
                 </span>
               </span>
 
-              <div className="flex items-center gap-x-2">
+              <div className="flex items-center gap-x-1">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <IconButton
-                        className="rounded-full size-7 text-gray-400 hover:text-dark-blue-400"
+                        className="rounded-full size-6 text-gray-400 hover:text-dark-blue-400"
                         visual="gray"
                         variant="ghost"
                         onClick={() => { void bulkAction("mark-unread", { markedUnread: true }) }}
@@ -851,7 +893,7 @@ const LeftSidebar = ({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <IconButton
-                        className="rounded-full size-7 text-gray-400 hover:text-dark-blue-400"
+                        className="rounded-full size-6 text-gray-400 hover:text-dark-blue-400"
                         visual="gray"
                         variant="ghost"
                         onClick={() => { void bulkAction("star", { isStarred: true }) }}
@@ -866,7 +908,7 @@ const LeftSidebar = ({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <IconButton
-                        className="rounded-full size-7 text-gray-400 hover:text-dark-blue-400"
+                        className="rounded-full size-6 text-gray-400 hover:text-dark-blue-400"
                         visual="gray"
                         variant="ghost"
                         onClick={() => { void bulkAction("pin", { isPinned: true }) }}
@@ -881,7 +923,7 @@ const LeftSidebar = ({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <IconButton
-                        className="rounded-full size-7 text-gray-400 hover:text-dark-blue-400"
+                        className="rounded-full size-6 text-gray-400 hover:text-dark-blue-400"
                         visual="gray"
                         variant="ghost"
                         onClick={() => { void bulkAction("archive", { isArchived: true }) }}
@@ -896,7 +938,7 @@ const LeftSidebar = ({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <IconButton
-                        className="rounded-full size-7 text-gray-400 hover:text-dark-blue-400"
+                        className="rounded-full size-6 text-gray-400 hover:text-dark-blue-400"
                         visual="gray"
                         variant="ghost"
                         onClick={() => { void bulkAction("spam", { isSpam: true }) }}
@@ -978,9 +1020,21 @@ const LeftSidebar = ({
               )}
             </InputGroup>
 
-            <IconButton className="size-8 rounded-full" visual="gray" variant="ghost">
-              <Edit05 className="size-4" />
-            </IconButton>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <IconButton
+                    className="size-8 rounded-full"
+                    visual="gray"
+                    variant="ghost"
+                    onClick={() => setShowNewMessage(true)}
+                  >
+                    <Edit05 className="size-4" />
+                  </IconButton>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">New Message</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         )}
       </div>
@@ -1015,7 +1069,9 @@ const LeftSidebar = ({
         </div>
       )}
 
-      <ScrollArea className="flex-1 min-h-0">
+      {/* Force ScrollArea viewport to display:block — Radix's table-display
+          breaks min-w-0 / width:100% on descendants (e.g. link-card images). */}
+      <ScrollArea className="flex-1 min-h-0" viewportClassName="[&>div]:!block">
         <div className="flex flex-col">
           {searching ? (
             <SearchResultsPanel
@@ -1045,10 +1101,7 @@ const LeftSidebar = ({
               visibleConversations.map((conv) => (
                 <Chat
                   key={conv.id}
-                  conversation={{
-                    ...conv,
-                    participantUsername: conv.participantUsername,
-                  }}
+                  conversation={conv}
                   variant={selectedConversation?.id === conv.id ? "active" : "default"}
                   pinned={conv.isPinned}
                   starred={conv.isStarred}
@@ -1056,6 +1109,9 @@ const LeftSidebar = ({
                     setConversations((prev) =>
                       prev.map((c) => c.id === conv.id ? { ...c, isStarred: val } : c)
                     )
+                    if (selectedConversation && selectedConversation.id === conv.id) {
+                      setSelectedConversation({ ...(selectedConversation as any), isStarred: val })
+                    }
                   }}
                   onMarkUnread={() => {
                     const next = !conv.markedUnread
@@ -1103,6 +1159,8 @@ const LeftSidebar = ({
           })()}
         </div>
       </ScrollArea>
+
+      <NewMessageDialog open={showNewMessage} onOpenChange={setShowNewMessage} />
     </div>
   )
 }

@@ -68,6 +68,8 @@ export function useMessages(convId: string, token: string, keyReady?: boolean) {
               ...m,
               content: content ?? m.content ?? "",
               quotedContent,
+              // Backend column is `pinned`; frontend reads `isPinned`. Normalize.
+              isPinned: (m as any).isPinned ?? (m as any).pinned ?? false,
             }
           })
         )

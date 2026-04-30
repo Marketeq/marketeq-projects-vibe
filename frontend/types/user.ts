@@ -32,6 +32,8 @@ export type User = {
   onboardingDismissed: boolean
   gettingStartedStep?: number | null
   customAvailability?: CustomAvailabilityDay[] | null
+  recentJobTitle?: string | null
+  jobTitles?: string[] | null
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null

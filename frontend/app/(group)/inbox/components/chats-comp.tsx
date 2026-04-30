@@ -6,7 +6,7 @@ import { decryptAES, decryptWithPrivateKey } from "@/src/crypto/e2ee"
 import { exportPrivateKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
-import { Bubble, YourBubble } from "@/stories/inbox.stories"
+import { Bubble, YourBubble } from "./message-components"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
@@ -54,7 +54,7 @@ import { Message, MessageAttachment } from "@/types/message"
 import { User } from "@/types/user"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
-import { EmojiPicker } from "@/components/emoji-picker"
+import { EmojiPicker, type Result as TenorGif } from "@/components/emoji-picker"
 import {
   Avatar,
   AvatarFallback,
@@ -223,6 +223,32 @@ export function Chats({
     setTextareaValue((prev) => (prev || "") + emojiChar)
   }, [])
 
+  const handleGifSelect = async (gif: TenorGif) => {
+    if (!selectedConversation) return
+    const url = gif.media?.[0]?.gif?.url
+    if (!url) return
+    try {
+      const saved = await send(selectedConversation.id, url, undefined, "gif")
+      const msg = (saved as any).data ?? saved
+      let displayContent = msg.content
+      try {
+        const key = loadKey(selectedConversation.id)
+        if (key && msg.ciphertext) {
+          displayContent = await decryptAES(msg.ciphertext, key)
+        }
+      } catch {
+        // no key cached
+      }
+      setLocalMsgs((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev
+        return [...prev, { ...msg, content: displayContent ?? url }]
+      })
+      sendTyping(false)
+    } catch (err) {
+      console.error("Send GIF failed", err)
+    }
+  }
+
   // Auto-grow the composer to fit its content (Figma: composer expands as
   // the user types multi-line, then caps at max-height with internal scroll).
   // When empty, clear the inline height so the CSS `min-h-[36px]` rules the
@@ -249,6 +275,10 @@ export function Chats({
     setSelectedFiles([])
     setUploadModalMode(null)
   }, [selectedConversation?.id])
+
+  useEffect(() => {
+    setStarredOverride(null)
+  }, [(selectedConversation as any)?.isStarred])
 
   // Auto mark-read when opening a conversation
   useEffect(() => {
@@ -481,6 +511,10 @@ export function Chats({
     }
     return false
   })
+  const localMessageById = useMemo(
+    () => new Map(localMsgs.map((m) => [m.id, m])),
+    [localMsgs]
+  )
 
   // 3) subscribe to Ably for real-time incoming
   // subscribe to Ably for real-time updates
@@ -979,12 +1013,17 @@ export function Chats({
         try { key = loadKey(convId) } catch { /* no key */ }
         const decrypted = await Promise.all(
           pinned.map(async (m) => {
-            if (!m.ciphertext) return m
-            if (!key) return { ...m, content: "🔒 Encrypted message" }
+            // Backend column is `pinned`; Bubble reads `isPinned`. Normalize.
+            const normalized = {
+              ...m,
+              isPinned: (m as any).isPinned ?? (m as any).pinned ?? false,
+            }
+            if (!m.ciphertext) return normalized
+            if (!key) return { ...normalized, content: "🔒 Encrypted message" }
             try {
-              return { ...m, content: await decryptAES(m.ciphertext, key) }
+              return { ...normalized, content: await decryptAES(m.ciphertext, key) }
             } catch {
-              return { ...m, content: "🔒 Encrypted message" }
+              return { ...normalized, content: "🔒 Encrypted message" }
             }
           })
         )
@@ -1122,10 +1161,15 @@ export function Chats({
           </Avatar>
 
           <div className="flex flex-col gap-y-1">
-            <div className="inline-flex items-center gap-x-1">
+            <div className="inline-flex items-center gap-x-1.5">
               <span className="text-lg font-semibold text-dark-blue-400">
                 {fullName}
               </span>
+              {!selectedConversation?.isGroup && receiverUser.username && (
+                <span className="text-sm font-normal text-gray-600">
+                  @{receiverUser.username}
+                </span>
+              )}
             </div>
             <div className="inline-flex items-center gap-x-2">
               <span className="text-sm text-dark-blue-400">
@@ -1140,14 +1184,13 @@ export function Chats({
                     ? "Active now"
                     : "Offline"}
               </span>
-              {(receiverUser as any).recentJobTitle ||
-              ((receiverUser as any).jobTitles &&
-                (receiverUser as any).jobTitles[0]) ? (
+              {receiverUser.recentJobTitle ||
+              (receiverUser.jobTitles && receiverUser.jobTitles[0]) ? (
                 <>
                   <span className="inline-block h-4 w-px bg-gray-300" />
                   <span className="text-sm text-dark-blue-400">
-                    {(receiverUser as any).recentJobTitle ||
-                      (receiverUser as any).jobTitles[0]}
+                    {receiverUser.recentJobTitle ||
+                      receiverUser.jobTitles?.[0]}
                   </span>
                 </>
               ) : null}
@@ -1157,6 +1200,7 @@ export function Chats({
 
         <div className="flex items-center gap-x-6">
           <ToggleGroupRoot
+            className="bg-gray-50"
             value={selectedTab ? [selectedTab] : undefined}
             onValueChange={(details: { value: string[] }) => {
               const val = details.value?.[0]
@@ -1165,13 +1209,18 @@ export function Chats({
               }
             }}
           >
-            <ToggleGroupItem value="Messages">Messages</ToggleGroupItem>
-            <ToggleGroupItem value="Pinned">
+            {/* Local shadow override: primitive's arbitrary-value shadow is
+                malformed (Tailwind drops it); patching the primitive would
+                regress ~20 other pages where the no-shadow is established. */}
+            <ToggleGroupItem value="Messages" className="data-[state=on]:shadow-sm">
+              Messages
+            </ToggleGroupItem>
+            <ToggleGroupItem value="Pinned" className="data-[state=on]:shadow-sm">
               Pinned
               {(() => {
                 const count = localMsgs.filter((m) => m.pinned || m.isPinned).length
                 return count > 0 ? (
-                  <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] font-semibold bg-gray-300 text-gray-800 rounded-full">
+                  <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] font-semibold bg-gray-200 text-gray-800 rounded-full">
                     {count}
                   </span>
                 ) : null
@@ -1180,47 +1229,72 @@ export function Chats({
           </ToggleGroupRoot>
 
           <div className="flex items-center gap-x-1">
-            <IconButton
-              visual="gray"
-              variant="ghost"
-              size="lg"
-              className="rounded-full"
-              onClick={onToggleRightSidebar}
-            >
-              <Info className="size-[22px]" />
-            </IconButton>
-            <FavoriteRoot
-              value={threadStarred}
-              onValueChange={(next) => {
-                if (!selectedConversation) return
-                setStarredOverride(next)
-                ;(next
-                  ? threadActions.star(selectedConversation.id)
-                  : threadActions.unstar(selectedConversation.id)
-                ).catch((err) => {
-                  console.error("star toggle failed", err)
-                  setStarredOverride(!next)
-                })
-              }}
-            >
-              {() => (
-                <div className="size-11 flex items-center justify-center">
-                  <Favorite className="text-gray-500" />
-                </div>
-              )}
-            </FavoriteRoot>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <IconButton
+                    visual="gray"
+                    variant="ghost"
+                    size="lg"
+                    className="rounded-full"
+                    onClick={onToggleRightSidebar}
+                  >
+                    <Info className="size-[22px]" />
+                  </IconButton>
+                </TooltipTrigger>
+                <TooltipContent>Profile Info</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <FavoriteRoot
+                  value={threadStarred}
+                  onValueChange={(next) => {
+                    if (!selectedConversation) return
+                    setStarredOverride(next)
+                    ;(next
+                      ? threadActions.star(selectedConversation.id)
+                      : threadActions.unstar(selectedConversation.id)
+                    ).catch((err) => {
+                      console.error("star toggle failed", err)
+                      setStarredOverride(!next)
+                    })
+                  }}
+                >
+                  {() => (
+                    // Wrap div, not Favorite — TooltipTrigger's data-state
+                    // would overwrite Toggle's, breaking the active-color rule.
+                    <TooltipTrigger asChild>
+                      <div className="size-11 flex items-center justify-center">
+                        <Favorite className="text-gray-500" />
+                      </div>
+                    </TooltipTrigger>
+                  )}
+                </FavoriteRoot>
+                <TooltipContent>
+                  {threadStarred ? "Remove from Favorites" : "Add to Favorites"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
             <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <IconButton
-                  className="rounded-full text-gray-500"
-                  visual="gray"
-                  variant="ghost"
-                  size="lg"
-                >
-                  <MoreHorizontal className="size-[22px]" />
-                </IconButton>
-              </DropdownMenuTrigger>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <IconButton
+                        className="rounded-full text-gray-500"
+                        visual="gray"
+                        variant="ghost"
+                        size="lg"
+                      >
+                        <MoreHorizontal className="size-[22px]" />
+                      </IconButton>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>More Options</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <DropdownMenuContent align="end" side="bottom">
                 <DropdownMenuItem onSelect={onToggleRightSidebar}>
                   <Info className="size-4" /> Profile Info
@@ -1395,7 +1469,11 @@ export function Chats({
                         onLocalDelete={handleLocalDelete}
                         onLocalRestore={handleLocalRestore}
                         onToggleReaction={handleToggleReaction}
-                        replyToMessage={m.replyToMessageId ? localMsgs.find((r) => r.id === m.replyToMessageId) ?? null : null}
+                        replyToMessage={
+                          m.replyToMessageId
+                            ? localMessageById.get(m.replyToMessageId) ?? null
+                            : null
+                        }
                       />
                     ) : (
                       <YourBubble
@@ -1404,7 +1482,11 @@ export function Chats({
                         onForward={handleOpenForward}
                         onReply={setReplyingTo}
                         onToggleReaction={handleToggleReaction}
-                        replyToMessage={m.replyToMessageId ? localMsgs.find((r) => r.id === m.replyToMessageId) ?? null : null}
+                        replyToMessage={
+                          m.replyToMessageId
+                            ? localMessageById.get(m.replyToMessageId) ?? null
+                            : null
+                        }
                         participantName={fullName}
                         participantUsername={receiverUser.username ?? ""}
                         participantAvatarUrl={receiverUser.avatarUrl ?? undefined}
@@ -1688,7 +1770,7 @@ export function Chats({
         <div className="p-3 flex min-h-[68px] items-end gap-x-3">
         {/* Emoji + File + Upload */}
         <div className="flex items-center gap-x-1">
-          <EmojiPicker onEmojiSelect={handleEmojiSelect}>
+          <EmojiPicker onEmojiSelect={handleEmojiSelect} onGifSelect={handleGifSelect}>
             <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
               <Smile className="size-[22px]" />
             </IconButton>

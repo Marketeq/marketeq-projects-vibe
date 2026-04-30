@@ -29,13 +29,18 @@ export function usePinnedMessages(convId: string, token: string) {
 
         const decrypted = await Promise.all(
           pinned.map(async (m) => {
+            // Backend column is `pinned`; Bubble reads `isPinned`. Normalize.
+            const normalized = {
+              ...m,
+              isPinned: (m as any).isPinned ?? (m as any).pinned ?? false,
+            }
             const ct = (m as any).ciphertext
-            if (!ct) return m // legacy plaintext row
-            if (!key) return { ...m, content: "🔒 Encrypted message" }
+            if (!ct) return normalized // legacy plaintext row
+            if (!key) return { ...normalized, content: "🔒 Encrypted message" }
             try {
-              return { ...m, content: await decryptAES(ct, key) }
+              return { ...normalized, content: await decryptAES(ct, key) }
             } catch {
-              return { ...m, content: "🔒 Encrypted message" }
+              return { ...normalized, content: "🔒 Encrypted message" }
             }
           })
         )
