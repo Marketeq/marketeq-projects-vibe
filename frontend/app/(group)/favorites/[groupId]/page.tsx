@@ -7,6 +7,7 @@ import { buildProjectUrl, buildServiceUrl } from "@/src/lib/urlHelpers"
 import { type Favorite, getFavoritesByGroup, removeFavorite } from "@/src/lib/api/favorites"
 import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import { type TalentCardData, getUsernamesForGroup, userProfileToCardData } from "@/src/lib/data/sample-talents"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { UserAPI } from "@/service/http/user"
 import { getFirstItem } from "@/utils/functions"
 import {
@@ -303,7 +304,7 @@ export default function FavoriteGroupDetailPage() {
   const [sortBy, setSortBy] = useState<DetailSortOption>("recent")
 
   const isTalent = groupType === "talent"
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+  const apiBase = getPublicApiUrl() || "http://localhost:4000"
 
   useEffect(() => {
     async function load() {

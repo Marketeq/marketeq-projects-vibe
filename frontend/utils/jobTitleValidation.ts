@@ -1,6 +1,7 @@
 import leoProfanity from "leo-profanity"
 import { blacklist } from "../utils/blacklist"
 import { categoryRules } from "../utils/blacklist"
+import { getPublicBackendUrl } from "@/lib/runtime-urls"
 
 // Initialize the profanity dictionary once
 leoProfanity.loadDictionary("en")
@@ -87,7 +88,7 @@ async function logRejection(
   reason: string
 ) {
   try {
-    const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/talent/rejected-inputs`
+    const url = `${getPublicBackendUrl()}/talent/rejected-inputs`
     console.log("🔁 Sending rejected input to:", url)
 
     const response = await fetch(url, {
@@ -185,7 +186,7 @@ export async function submitTextToModerationQueue(
   try {
     const endpoint = "/talent/job-titles/queue"
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BACKEND_URL}${endpoint}`,
+      `${getPublicBackendUrl()}${endpoint}`,
       {
         method: "POST",
         headers: {

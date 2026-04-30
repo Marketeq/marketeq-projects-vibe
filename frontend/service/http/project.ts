@@ -1,4 +1,5 @@
 import { CreateProjectType } from "@/types/project"
+import { getPublicListingsUrl } from "@/lib/runtime-urls"
 import AxiosRequest from ".."
 
 type CreatePhaseTaskPayload = {
@@ -31,10 +32,7 @@ type UpdateTaskPayload = Pick<
 // Prefer a dedicated listings URL if set; otherwise fall back to the general
 // API URL so existing Vercel deployments keep working without a new env var.
 const LISTINGS_BASE =
-  process.env.NEXT_PUBLIC_LISTINGS_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.NEXT_PUBLIC_AUTH_URL ||
-  ""
+  getPublicListingsUrl()
 
 export const ProjectAPI = {
   CreateProjectDraft: (

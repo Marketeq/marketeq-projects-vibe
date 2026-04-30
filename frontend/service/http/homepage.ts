@@ -1,8 +1,9 @@
 import AxiosRequest from ".."
+import { getPublicApiUrl, getPublicAuthUrl } from "@/lib/runtime-urls"
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.NEXT_PUBLIC_AUTH_URL ||
+  getPublicApiUrl() ||
+  getPublicAuthUrl() ||
   ""
 
 export const HomepageAPI = {

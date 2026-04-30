@@ -12,6 +12,7 @@ import type {
   HomepagePayload,
   TalentNetworkCta,
 } from "@/types/homepage"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { LinkedinSolid, Logo3 } from "@/components/icons"
 import NextLink from "@/components/next-link"
 import { Button, IconButton } from "@/components/ui"
@@ -84,8 +85,7 @@ const DEFAULT_MARKETPLACE_FOOTER_DATA: MarketplaceFooterData = {
   },
 }
 
-const HOMEPAGE_API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+const HOMEPAGE_API_BASE = getPublicApiUrl() || "http://localhost:4000"
 
 let cachedFooterData: MarketplaceFooterData | null = null
 let footerDataRequest: Promise<MarketplaceFooterData | null> | null = null

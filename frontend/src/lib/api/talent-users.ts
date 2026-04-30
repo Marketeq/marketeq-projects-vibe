@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useState } from "react"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 
 export interface TalentUser {
   id: string
@@ -31,7 +32,7 @@ let cache: Promise<TalentUser[]> | null = null
 
 function fetchTalentUsers(): Promise<TalentUser[]> {
   if (cache) return cache
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+  const apiBase = getPublicApiUrl() || "http://localhost:4000"
   cache = (async () => {
     try {
       const res = await fetch(`${apiBase}/talent/users`)
