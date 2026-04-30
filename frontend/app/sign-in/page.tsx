@@ -7,6 +7,7 @@ import {
   resolveDashboardRoute,
   useAuth,
 } from "@/contexts/auth"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import UnauthenticatedRoute from "@/hoc/UnauthenticatedRoute"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
@@ -546,7 +547,7 @@ export default function SignIn() {
                   onClick={async () => {
                     setIsDevLoading(true)
                     try {
-                      const gateway = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+                      const gateway = getPublicApiUrl() || "http://localhost:4000"
                       const res = await fetch(`${gateway}/auth/dev-login`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },

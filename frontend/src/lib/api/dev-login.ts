@@ -1,6 +1,7 @@
 import Cookies from "js-cookie"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 
-const GATEWAY_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+const GATEWAY_URL = getPublicApiUrl() || "http://localhost:4000"
 const DEV_EMAIL = "harry.torres8@gmail.com"
 
 /**

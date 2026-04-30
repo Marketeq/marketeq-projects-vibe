@@ -1,7 +1,8 @@
 import AxiosRequest from ".."
+import { getPublicApiUrl, getPublicUserUrl } from "@/lib/runtime-urls"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? ""
-const USER_BASE = process.env.NEXT_PUBLIC_USER_URL ?? ""
+const API_BASE = getPublicApiUrl()
+const USER_BASE = getPublicUserUrl()
 const BASE = `${API_BASE}/v1/notifications`
 
 export type ChannelKey = "inApp" | "email" | "sms"

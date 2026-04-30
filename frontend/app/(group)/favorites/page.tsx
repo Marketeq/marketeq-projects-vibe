@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { type Favorite, type FavoriteGroup as FavGroup, getGroups, getAllFavoritesGrouped, getProjectFavorites, getServiceFavorites, getTalentFavorites, removeFavorite as removeFavoriteApi, renameGroup as renameGroupApi, deleteGroup as deleteGroupApi, createGroup as createGroupApi } from "@/src/lib/api/favorites"
 import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import { type TalentCardData, sampleGroups, getUsernamesForGroup, userProfileToCardData } from "@/src/lib/data/sample-talents"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { UserAPI } from "@/service/http/user"
 import { motion } from "framer-motion"
 import { cn, getFirstItem } from "@/utils/functions"
@@ -820,7 +821,7 @@ export default function FavoritesPage() {
   // Map of itemId → { title, slug, mediaUrl } for projects/services
   const [itemMeta, setItemMeta] = useState<Record<string, { title?: string; slug?: string; mediaUrl?: string }>>({})
 
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+  const apiBase = getPublicApiUrl() || "http://localhost:4000"
 
   useEffect(() => {
     async function loadFavorites() {

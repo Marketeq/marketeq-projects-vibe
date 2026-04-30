@@ -1,8 +1,9 @@
 import { CreateClientType } from "@/types/client"
 import AxiosRequest from ".."
 import Cookies from "js-cookie"
+import { getPublicUserUrl } from "@/lib/runtime-urls"
 
-const USER_BASE = process.env.NEXT_PUBLIC_USER_URL ?? ""
+const USER_BASE = getPublicUserUrl()
 
 export const ClientAPI = {
   CreateClient: (data: CreateClientType) => {

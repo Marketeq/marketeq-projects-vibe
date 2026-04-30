@@ -1,5 +1,6 @@
 "use client"
 
+import { getPublicBackendUrl } from "@/lib/runtime-urls"
 import { encryptAES } from "@/src/crypto/e2ee"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
@@ -36,8 +37,7 @@ interface FileUploadResponse {
 }
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
+  getPublicBackendUrl() ||
   "http://localhost:3002/api"
 
 export function useFileUpload(
