@@ -126,26 +126,30 @@ const formatConversationDate = (isoDateStr: string) => {
   return format(date, "MMM dd yyyy, hh:mm a") // e.g., Dec 5 2024, 5:01 PM
 }
 
-const handlePinMessage = async (messageId: string) => {
-  const jwtToken = getJwtToken()
-  try {
-    await apiFetch<{ message: string }>(
-      `/v1/messages/${messageId}/pin`,
-      {
-        method: "POST",
-        headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
-      }
-    )
-  } catch (err) {
-    console.error("Failed to pin message:", err)
-  }
-}
-
 const formatAttachmentSize = (bytes?: number | null) => {
   if (!bytes && bytes !== 0) return ""
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const toSafeHttpUrl = (value?: string | null): string | null => {
+  if (!value) return null
+  try {
+    const parsed = /^https?:\/\//i.test(value)
+      ? new URL(value)
+      : value.startsWith("/")
+        ? new URL(
+            value,
+            typeof window !== "undefined" ? window.location.origin : "https://localhost"
+          )
+        : null
+    if (!parsed) return null
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null
+    return parsed.toString()
+  } catch {
+    return null
+  }
 }
 
 const MessageAttachmentView = ({
@@ -160,8 +164,9 @@ const MessageAttachmentView = ({
   }
 }) => {
   const [lightboxOpen, setLightboxOpen] = useState(false)
+  const safeAttachmentUrl = toSafeHttpUrl(attachment.fileUrl)
   const isImage = attachment.fileType?.startsWith("image/")
-  if (isImage) {
+  if (isImage && safeAttachmentUrl) {
     return (
       <div className="flex flex-col gap-y-1">
         {/* Image preview frame matches storybook's `BubbleWithPicture`:
@@ -174,7 +179,7 @@ const MessageAttachmentView = ({
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={attachment.fileUrl}
+            src={safeAttachmentUrl}
             alt={attachment.fileName || "image"}
             className="size-full object-cover"
           />
@@ -200,13 +205,13 @@ const MessageAttachmentView = ({
           >
             <div className="relative flex items-center justify-center">
               <img
-                src={attachment.fileUrl}
+                src={safeAttachmentUrl}
                 alt={attachment.fileName || "image"}
                 className="max-h-[92vh] max-w-[92vw] rounded-md object-contain"
               />
               <div className="absolute right-3 top-3 flex items-center gap-x-2">
                 <a
-                  href={attachment.fileUrl}
+                  href={safeAttachmentUrl}
                   download={attachment.fileName || true}
                   target="_blank"
                   rel="noreferrer"
@@ -228,9 +233,17 @@ const MessageAttachmentView = ({
       </div>
     )
   }
+  if (!safeAttachmentUrl) {
+    return (
+      <span className="inline-flex items-center gap-x-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500 max-w-[300px]">
+        <Download02 className="size-4 shrink-0 text-gray-400" />
+        <span className="truncate">{attachment.fileName || "Attachment unavailable"}</span>
+      </span>
+    )
+  }
   return (
     <a
-      href={attachment.fileUrl}
+      href={safeAttachmentUrl}
       target="_blank"
       rel="noreferrer"
       className="inline-flex items-center gap-x-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 hover:border-gray-300 max-w-[300px]"
@@ -1027,6 +1040,7 @@ const SearchFileRowImpl = ({
   onClick: () => void
 }) => {
   const isImage = fileType?.startsWith("image/")
+  const safeFileUrl = toSafeHttpUrl(fileUrl)
   const ext = fileName.includes(".")
     ? fileName.split(".").pop()?.slice(0, 4).toUpperCase()
     : "FILE"
@@ -1050,11 +1064,11 @@ const SearchFileRowImpl = ({
         onClick={onClick}
         className="flex items-center gap-x-3 p-2 w-full text-left rounded-lg border border-gray-200 hover:bg-gray-50 transition"
       >
-        {isImage && fileUrl && !imgFailed ? (
+        {isImage && safeFileUrl && !imgFailed ? (
           <div className="w-20 h-16 shrink-0 rounded border border-gray-200 overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={fileUrl}
+              src={safeFileUrl}
               alt={fileName}
               className="size-full min-w-0 object-cover"
               onError={() => setImgFailed(true)}

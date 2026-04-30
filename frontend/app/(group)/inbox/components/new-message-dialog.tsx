@@ -137,7 +137,7 @@ export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) 
   // the create logic here.
   const handleSelect = (user: UserPickerItem) => {
     onOpenChange(false)
-    router.push(`/inbox?participantId=${user.id}`)
+    router.push(`/inbox?participantId=${encodeURIComponent(user.id)}`)
   }
 
   const getInitials = (item: UserPickerItem) =>

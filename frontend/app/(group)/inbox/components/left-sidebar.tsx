@@ -791,6 +791,7 @@ const LeftSidebar = ({
         }
         files.push({
           id: a.id,
+          messageId: r.id,
           threadId: r.threadId,
           fileName: fname,
           fileSize: a.fileSize ?? null,

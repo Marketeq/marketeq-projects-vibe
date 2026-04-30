@@ -38,6 +38,7 @@ export interface SearchLinkResult {
 
 export interface SearchFileResult {
   id: string
+  messageId: string
   threadId: string
   fileName: string
   fileSize?: number | null
@@ -176,7 +177,7 @@ export function SearchResultsPanel({
               fileUrl={f.fileUrl}
               senderName={f.senderName}
               date={f.createdAt ? formatDate(f.createdAt) : undefined}
-              onClick={() => onOpenThread(f.threadId, f.id)}
+              onClick={() => onOpenThread(f.threadId, f.messageId)}
             />
           ))}
         </>

@@ -511,6 +511,10 @@ export function Chats({
     }
     return false
   })
+  const localMessageById = useMemo(
+    () => new Map(localMsgs.map((m) => [m.id, m])),
+    [localMsgs]
+  )
 
   // 3) subscribe to Ably for real-time incoming
   // subscribe to Ably for real-time updates
@@ -1465,7 +1469,11 @@ export function Chats({
                         onLocalDelete={handleLocalDelete}
                         onLocalRestore={handleLocalRestore}
                         onToggleReaction={handleToggleReaction}
-                        replyToMessage={m.replyToMessageId ? localMsgs.find((r) => r.id === m.replyToMessageId) ?? null : null}
+                        replyToMessage={
+                          m.replyToMessageId
+                            ? localMessageById.get(m.replyToMessageId) ?? null
+                            : null
+                        }
                       />
                     ) : (
                       <YourBubble
@@ -1474,7 +1482,11 @@ export function Chats({
                         onForward={handleOpenForward}
                         onReply={setReplyingTo}
                         onToggleReaction={handleToggleReaction}
-                        replyToMessage={m.replyToMessageId ? localMsgs.find((r) => r.id === m.replyToMessageId) ?? null : null}
+                        replyToMessage={
+                          m.replyToMessageId
+                            ? localMessageById.get(m.replyToMessageId) ?? null
+                            : null
+                        }
                         participantName={fullName}
                         participantUsername={receiverUser.username ?? ""}
                         participantAvatarUrl={receiverUser.avatarUrl ?? undefined}
