@@ -6,6 +6,8 @@ const RETIRED_BACKEND_HOSTS: Record<string, string> = {
 const firstNonEmpty = (...values: Array<string | undefined | null>): string =>
   values.find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? ""
 
+const stripApiSuffix = (value: string): string => value.replace(/\/api\/?$/i, "")
+
 export const normalizePublicUrl = (rawValue?: string | null): string => {
   const value = rawValue?.trim() ?? ""
   if (!value) {
@@ -67,6 +69,17 @@ export const getPublicBackendUrl = (): string =>
       process.env.NEXT_PUBLIC_AUTH_URL,
     ),
   )
+
+export const getPublicHomepageUrl = (): string => {
+  const homepageBase = firstNonEmpty(
+    process.env.NEXT_PUBLIC_BACKEND_URL,
+    process.env.NEXT_PUBLIC_API_BASE_URL,
+    process.env.NEXT_PUBLIC_API_URL,
+    process.env.NEXT_PUBLIC_AUTH_URL,
+  )
+
+  return normalizePublicUrl(stripApiSuffix(homepageBase))
+}
 
 export const getPublicListingsUrl = (): string =>
   normalizePublicUrl(
