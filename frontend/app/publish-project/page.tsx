@@ -109,10 +109,10 @@ import {
 import { Steps } from "headless-stepper"
 import {
   Controller,
+  type FieldPath,
   SubmitHandler,
   UseFormReturn,
   get,
-  type FieldPath,
   useForm,
   useWatch,
 } from "react-hook-form"
@@ -327,7 +327,9 @@ const buildPersistedMediaFile = (url: string, fallbackName: string) => {
     }
   })()
   const derivedName = pathname.split("/").pop() || fallbackName
-  const file = new File([""], derivedName, { type: "image/jpeg" }) as PersistedMediaFile
+  const file = new File([""], derivedName, {
+    type: "image/jpeg",
+  }) as PersistedMediaFile
   file.__persistedUrl = url
   return file
 }
@@ -686,8 +688,11 @@ type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number]
 const taskFormSchema = z.object({
   task: z.string().min(1, "Please enter at least 1 character(s)"),
   role: z.string().min(1, "Please enter/select at least 1 role(s)"),
-  location: z.string().optional(),
-  experience: z.enum(EXPERIENCE_LEVELS).optional(),
+  location: z.string().min(1, "Please enter/select at least 1 location(s)"),
+  experience: z.enum(EXPERIENCE_LEVELS, {
+    required_error: "Please enter/select at least 1 experience level",
+    invalid_type_error: "Please enter/select at least 1 experience level",
+  }),
   duration: z.object({
     value: z.coerce.number({
       invalid_type_error: "Please enter a valid number",
@@ -1025,7 +1030,10 @@ const BottomBar = ({
           ? response.data
           : []
         const categoryNodesByName = indexCategoryTreeByName(nodes)
-        const creations = new Map<string, { name: string; parentUuid?: string }>()
+        const creations = new Map<
+          string,
+          { name: string; parentUuid?: string }
+        >()
 
         ;(projectInfo.category ?? []).forEach((entry) => {
           const categoryName = entry?.category?.trim()
@@ -1048,10 +1056,13 @@ const BottomBar = ({
               return
             }
 
-            creations.set(`${categoryNode.uuid}:${trimmedSubCategory.toLowerCase()}`, {
-              name: trimmedSubCategory,
-              parentUuid: categoryNode.uuid,
-            })
+            creations.set(
+              `${categoryNode.uuid}:${trimmedSubCategory.toLowerCase()}`,
+              {
+                name: trimmedSubCategory,
+                parentUuid: categoryNode.uuid,
+              }
+            )
           })
         })
 
@@ -1086,7 +1097,10 @@ const BottomBar = ({
       let createProjectResponse
 
       if (projectId) {
-        createProjectResponse = await ProjectAPI.UpdateProjectDraft(projectId, payload)
+        createProjectResponse = await ProjectAPI.UpdateProjectDraft(
+          projectId,
+          payload
+        )
       } else {
         createProjectResponse = await ProjectAPI.CreateProjectDraft(payload)
         projectId =
@@ -1181,7 +1195,11 @@ const BottomBar = ({
         const isImageViolation = errorType === "image_rejection"
         const isContentModerationRejection = errorType === "content_rejection"
 
-        if (!isVideoViolation && !isImageViolation && !isContentModerationRejection) {
+        if (
+          !isVideoViolation &&
+          !isImageViolation &&
+          !isContentModerationRejection
+        ) {
           toast({
             title:
               mediaUploadErrorMsg || "Media upload failed. Please try again.",
@@ -1328,7 +1346,11 @@ const BottomBar = ({
       const isImageViolation = errorType === "image_rejection"
       const isContentModerationRejection = errorType === "content_rejection"
 
-      if (isVideoViolation || isImageViolation || isContentModerationRejection) {
+      if (
+        isVideoViolation ||
+        isImageViolation ||
+        isContentModerationRejection
+      ) {
         await waitForReviewWindow()
         setSubmissionOutcome({
           status: "needs_update",
@@ -1442,8 +1464,8 @@ const ProjectInfoTip = ({
         <div className="mt-3">
           <span className="text-sm leading-normal text-gray-500">
             Name the deliverable, who it helps, and the result it creates. If
-            someone only reads the first two lines, they should still
-            understand the value.
+            someone only reads the first two lines, they should still understand
+            the value.
           </span>
         </div>
       </div>
@@ -1490,8 +1512,8 @@ const projectInfoSchema = z.object({
         })
         .superRefine((value, ctx) => {
           const selectedCategory = value.category.trim()
-          const selectedSubCategories = value.subCategories.filter((subCategory) =>
-            subCategory.trim()
+          const selectedSubCategories = value.subCategories.filter(
+            (subCategory) => subCategory.trim()
           )
 
           if (!selectedCategory) {
@@ -1507,7 +1529,8 @@ const projectInfoSchema = z.object({
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               path: ["subCategories"],
-              message: "Please select at least 1 sub-category for this category",
+              message:
+                "Please select at least 1 sub-category for this category",
             })
           }
         })
@@ -1523,31 +1546,29 @@ const projectInfoSchema = z.object({
     .string()
     .min(50, "Please enter at least 50 character(s)")
     .max(300, "Please do not enter more than 300 character(s)"),
-  fullDescription: z
-    .string()
-    .superRefine((value, ctx) => {
-      const contentLength = getRichTextCharacterCount(value)
+  fullDescription: z.string().superRefine((value, ctx) => {
+    const contentLength = getRichTextCharacterCount(value)
 
-      if (contentLength < 100) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.too_small,
-          minimum: 100,
-          type: "string",
-          inclusive: true,
-          message: "Please enter at least 100 character(s)",
-        })
-      }
+    if (contentLength < 100) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.too_small,
+        minimum: 100,
+        type: "string",
+        inclusive: true,
+        message: "Please enter at least 100 character(s)",
+      })
+    }
 
-      if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.too_big,
-          maximum: FULL_DESCRIPTION_MAX_LENGTH,
-          type: "string",
-          inclusive: true,
-          message: "Please do not enter more than 5,000 character(s)",
-        })
-      }
-    }),
+    if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.too_big,
+        maximum: FULL_DESCRIPTION_MAX_LENGTH,
+        type: "string",
+        inclusive: true,
+        message: "Please do not enter more than 5,000 character(s)",
+      })
+    }
+  }),
   tags: z
     .array(z.string(), {
       required_error: "Please add at least three tags",
@@ -1708,7 +1729,9 @@ const DEFAULT_SUGGESTED_CATEGORIES: SuggestedCategoryOption[] = [
 
 const isActiveCategoryNode = (node: CategoryTreeNode) => node.approved
 
-const collectCategoryDescendants = (node?: CategoryTreeNode): CategoryTreeNode[] => {
+const collectCategoryDescendants = (
+  node?: CategoryTreeNode
+): CategoryTreeNode[] => {
   if (!node?.children?.length) return []
 
   return node.children.flatMap((child) => {
@@ -1794,7 +1817,8 @@ const ProjectInfo = ({
 
   const onSubmit: SubmitHandler<ProjectInfoFormValues> = (values) => {}
   const projectInfoValues = useWatch({ control: methods.control })
-  const isProjectInfoValid = projectInfoSchema.safeParse(projectInfoValues).success
+  const isProjectInfoValid =
+    projectInfoSchema.safeParse(projectInfoValues).success
   useIsomorphicLayoutEffect(() => {
     toggleValidation(isProjectInfoValid)
   }, [isProjectInfoValid])
@@ -1811,20 +1835,27 @@ const ProjectInfo = ({
 
       const normalizedQuery = query.trim().toLowerCase()
       const activeNode = categoryNodesByName.get(categoryName)
-      const sourceNodes = activeNode ? collectCategoryDescendants(activeNode) : []
+      const sourceNodes = activeNode
+        ? collectCategoryDescendants(activeNode)
+        : []
 
       return getUniqueOptions(
         sourceNodes
           .map((node) => node.name)
           .filter((name) =>
-            normalizedQuery ? name.toLowerCase().includes(normalizedQuery) : true
+            normalizedQuery
+              ? name.toLowerCase().includes(normalizedQuery)
+              : true
           )
       )
     },
     [categoryNodesByName, categoryTree]
   )
   const handleSubCategoryChange = useCallback(
-    (fieldName: `category.${0 | 1 | 2}.subCategories`, onChange: (value: string[]) => void) =>
+    (
+      fieldName: `category.${0 | 1 | 2}.subCategories`,
+      onChange: (value: string[]) => void
+    ) =>
       (details: { value: string[] }) => {
         if (details.value.length > MAX_SUBCATEGORIES_PER_CATEGORY) {
           methods.setError(fieldName, {
@@ -1849,7 +1880,8 @@ const ProjectInfo = ({
       onChange(categoryName)
       setActiveCategoryIndex(index)
 
-      const availableSubCategories = getSubCategoryOptionsForCategory(categoryName)
+      const availableSubCategories =
+        getSubCategoryOptionsForCategory(categoryName)
       setSubCategoryOptions(availableSubCategories)
 
       const fieldName = `category.${index}.subCategories` as const
@@ -1874,8 +1906,9 @@ const ProjectInfo = ({
 
   const completedProjectInfoFields = PROJECT_INFO_PROGRESS_FIELDS.filter(
     (fieldName) =>
-      projectInfoSchema.shape[fieldName]
-        .safeParse(projectInfoValues?.[fieldName]).success
+      projectInfoSchema.shape[fieldName].safeParse(
+        projectInfoValues?.[fieldName]
+      ).success
   ).length
   const progressValue = Math.max(
     0,
@@ -1930,7 +1963,8 @@ const ProjectInfo = ({
       const selectionLength =
         event.currentTarget.selectionEnd !== null &&
         event.currentTarget.selectionStart !== null
-          ? event.currentTarget.selectionEnd - event.currentTarget.selectionStart
+          ? event.currentTarget.selectionEnd -
+            event.currentTarget.selectionStart
           : 0
 
       if ("key" in event) {
@@ -1959,7 +1993,8 @@ const ProjectInfo = ({
       const activeCategoryName = Array.isArray(categoryValues)
         ? categoryValues[index]?.category
         : undefined
-      const fallbackOptions = getSubCategoryOptionsForCategory(activeCategoryName)
+      const fallbackOptions =
+        getSubCategoryOptionsForCategory(activeCategoryName)
 
       if (!activeCategoryName) {
         setSubCategoryOptions([])
@@ -2007,7 +2042,10 @@ const ProjectInfo = ({
           setSubCategoryOptions(
             getIsNotEmpty(matchingSubCategories)
               ? matchingSubCategories
-              : getSubCategoryOptionsForCategory(activeCategoryName, trimmedQuery)
+              : getSubCategoryOptionsForCategory(
+                  activeCategoryName,
+                  trimmedQuery
+                )
           )
         } catch (error) {
           setSubCategoryOptions(
@@ -2065,9 +2103,7 @@ const ProjectInfo = ({
         const nextSuggested = selectableCategories
           .map((node) => {
             const subCategory = findSuggestedSubCategory(node)
-            return subCategory
-              ? { category: node.name, subCategory }
-              : null
+            return subCategory ? { category: node.name, subCategory } : null
           })
           .filter((value): value is SuggestedCategoryOption => value !== null)
 
@@ -2121,12 +2157,14 @@ const ProjectInfo = ({
               itemIndex === index ? null : item?.category?.trim()
             )
             .filter(
-              (item): item is string => typeof item === "string" && item.length > 0
+              (item): item is string =>
+                typeof item === "string" && item.length > 0
             )
         : []
 
       return categoryOptions.filter(
-        (category) => category === currentValue || !selectedCategories.includes(category)
+        (category) =>
+          category === currentValue || !selectedCategories.includes(category)
       )
     },
     [categoryOptions, categoryValues]
@@ -2134,14 +2172,13 @@ const ProjectInfo = ({
   const selectedSuggestedPairs = useMemo(
     () =>
       new Set(
-        (Array.isArray(categoryValues) ? categoryValues : [])
-          .flatMap((item) =>
-            item?.category && Array.isArray(item.subCategories)
-              ? item.subCategories.map(
-                  (subCategory) => `${item.category}::${subCategory}`
-                )
-              : []
-          )
+        (Array.isArray(categoryValues) ? categoryValues : []).flatMap((item) =>
+          item?.category && Array.isArray(item.subCategories)
+            ? item.subCategories.map(
+                (subCategory) => `${item.category}::${subCategory}`
+              )
+            : []
+        )
       ),
     [categoryValues]
   )
@@ -2264,10 +2301,7 @@ const ProjectInfo = ({
                       shouldValidate: false,
                     }
                   )
-                  if (
-                    titleHasError &&
-                    get(errors, "title.type") === "manual"
-                  ) {
+                  if (titleHasError && get(errors, "title.type") === "manual") {
                     methods.clearErrors("title")
                   }
                 }}
@@ -2355,11 +2389,13 @@ const ProjectInfo = ({
                             )}
                           </ListboxButton>
                           <ListboxOptions>
-                            {getAvailableCategoriesForIndex(0, value).map((category) => (
-                              <ListboxOption key={category} value={category}>
-                                {category}
-                              </ListboxOption>
-                            ))}
+                            {getAvailableCategoriesForIndex(0, value).map(
+                              (category) => (
+                                <ListboxOption key={category} value={category}>
+                                  {category}
+                                </ListboxOption>
+                              )
+                            )}
                           </ListboxOptions>
                         </Listbox>
                       )}
@@ -2477,11 +2513,13 @@ const ProjectInfo = ({
                             )}
                           </ListboxButton>
                           <ListboxOptions>
-                            {getAvailableCategoriesForIndex(1, value).map((category) => (
-                              <ListboxOption key={category} value={category}>
-                                {category}
-                              </ListboxOption>
-                            ))}
+                            {getAvailableCategoriesForIndex(1, value).map(
+                              (category) => (
+                                <ListboxOption key={category} value={category}>
+                                  {category}
+                                </ListboxOption>
+                              )
+                            )}
                           </ListboxOptions>
                         </Listbox>
                       )}
@@ -2604,11 +2642,13 @@ const ProjectInfo = ({
                             )}
                           </ListboxButton>
                           <ListboxOptions>
-                            {getAvailableCategoriesForIndex(2, value).map((category) => (
-                              <ListboxOption key={category} value={category}>
-                                {category}
-                              </ListboxOption>
-                            ))}
+                            {getAvailableCategoriesForIndex(2, value).map(
+                              (category) => (
+                                <ListboxOption key={category} value={category}>
+                                  {category}
+                                </ListboxOption>
+                              )
+                            )}
                           </ListboxOptions>
                         </Listbox>
                       )}
@@ -2709,50 +2749,48 @@ const ProjectInfo = ({
                 </span>
 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
-                  {suggestedForDisplay.map(
-                    ({ category, subCategory }) => (
-                      <Badge
-                        size="md"
-                        className="pr-2 focus-visible:outline-none text-primary-500 bg-primary-50"
-                        visual="primary"
-                        asChild
-                        key={category}
+                  {suggestedForDisplay.map(({ category, subCategory }) => (
+                    <Badge
+                      size="md"
+                      className="pr-2 focus-visible:outline-none text-primary-500 bg-primary-50"
+                      visual="primary"
+                      asChild
+                      key={category}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const indexToUpdate = activeCategoryIndex
+
+                          // write values and mark as user-driven so Sidebar shows the checkmark
+                          setValue(
+                            `category.${indexToUpdate}.category`,
+                            category,
+                            {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            }
+                          )
+                          setValue(
+                            `category.${indexToUpdate}.subCategories`,
+                            [subCategory],
+                            {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            }
+                          )
+
+                          // validate that slot
+                          trigger(`category.${indexToUpdate}`)
+
+                          // keep suggestions visible for subsequent category slots
+                        }}
                       >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const indexToUpdate = activeCategoryIndex
-
-                            // write values and mark as user-driven so Sidebar shows the checkmark
-                            setValue(
-                              `category.${indexToUpdate}.category`,
-                              category,
-                              {
-                                shouldDirty: true,
-                                shouldValidate: true,
-                              }
-                            )
-                            setValue(
-                              `category.${indexToUpdate}.subCategories`,
-                              [subCategory],
-                              {
-                                shouldDirty: true,
-                                shouldValidate: true,
-                              }
-                            )
-
-                            // validate that slot
-                            trigger(`category.${indexToUpdate}`)
-
-                            // keep suggestions visible for subsequent category slots
-                          }}
-                        >
-                          {category} / {subCategory}
-                          <Plus2 className="size-3 opacity-50 hover:opacity-100" />
-                        </button>
-                      </Badge>
-                    )
-                  )}
+                        {category} / {subCategory}
+                        <Plus2 className="size-3 opacity-50 hover:opacity-100" />
+                      </button>
+                    </Badge>
+                  ))}
                 </div>
               </div>
             )}
@@ -3028,10 +3066,7 @@ const ProjectInfo = ({
               />
             </div>
 
-            <div
-              id="publish-project-tags-field"
-              className="space-y-1.5 mt-6"
-            >
+            <div id="publish-project-tags-field" className="space-y-1.5 mt-6">
               <Controller
                 name="tags"
                 control={methods.control}
@@ -3125,10 +3160,7 @@ const ProjectInfo = ({
               />
             </div>
 
-            <div
-              id="publish-project-skills-field"
-              className="space-y-1.5 mt-6"
-            >
+            <div id="publish-project-skills-field" className="space-y-1.5 mt-6">
               <Controller
                 name="skills"
                 control={methods.control}
@@ -4156,7 +4188,9 @@ const TaskDialog = ({
                           {formatDurationUnit(
                             Number(taskDurationValue) || 0,
                             format
-                          ).replace(/^./, (character) => character.toUpperCase())}
+                          ).replace(/^./, (character) =>
+                            character.toUpperCase()
+                          )}
                         </ListboxOption>
                       ))}
                     </ListboxOptions>
@@ -4671,10 +4705,7 @@ const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
   `project-scope-phase-${phaseIndex}-task-${rowIndex}`
 
 const normalizeSearchText = (value?: string) =>
-  (value ?? "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim()
+  (value ?? "").toLowerCase().replace(/\s+/g, " ").trim()
 interface PhaseTableRowProps {
   row: Row<PhaseRow>
 }
@@ -6267,11 +6298,11 @@ function PublishProject({
                       task: task?.taskName ?? "",
                       role: task?.role ?? "",
                       location: Array.isArray(task?.location)
-                        ? task.location[0] ?? ""
+                        ? (task.location[0] ?? "")
                         : "",
                       experience: Array.isArray(task?.experience)
-                        ? task.experience[0] ?? task?.experienceLevel ?? ""
-                        : task?.experienceLevel ?? "",
+                        ? (task.experience[0] ?? task?.experienceLevel ?? "")
+                        : (task?.experienceLevel ?? ""),
                       duration: {
                         value: Number(durationValue) || 0,
                         type:
@@ -6348,7 +6379,10 @@ function PublishProject({
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
 
     const saveScope = async () => {
-      const payload = buildScopeDraftPayload(draftProjectId, projectScopeMethods[0])
+      const payload = buildScopeDraftPayload(
+        draftProjectId,
+        projectScopeMethods[0]
+      )
       const serializedPayload = JSON.stringify(payload)
 
       if (serializedPayload === lastScopePayloadRef.current) return
@@ -6381,15 +6415,18 @@ function PublishProject({
       const mediaValues = mediaMethods.getValues()
       const featuredMeta = mediaValues.featuredImages?.[0]?.meta
       const additionalMeta =
-        mediaValues.additionalImages?.flat().map((item) => item?.meta).filter(Boolean) ?? []
+        mediaValues.additionalImages
+          ?.flat()
+          .map((item) => item?.meta)
+          .filter(Boolean) ?? []
       const videoUrl = mediaValues.featuredVideo?.trim() ?? ""
 
       const signature = JSON.stringify({
         featuredImage: isPersistedMediaFile(featuredMeta)
           ? featuredMeta.__persistedUrl
-          : featuredMeta?.name ?? "",
+          : (featuredMeta?.name ?? ""),
         additionalImages: additionalMeta.map((item: any) =>
-          isPersistedMediaFile(item) ? item.__persistedUrl : item?.name ?? ""
+          isPersistedMediaFile(item) ? item.__persistedUrl : (item?.name ?? "")
         ),
         featuredVideo: videoUrl,
       })
@@ -6418,13 +6455,19 @@ function PublishProject({
       }
 
       if (videoUrl) {
-        formData.append("videoUrl", videoUrl.replace(/^(https?:\/\/)+/i, "https://"))
+        formData.append(
+          "videoUrl",
+          videoUrl.replace(/^(https?:\/\/)+/i, "https://")
+        )
       }
 
       try {
         const response = await ProjectAPI.UploadMedia(formData)
         const nextMedia = {
-          featuredImage: response?.data?.featuredImage ?? persistedMediaRef.current?.featuredImage ?? "",
+          featuredImage:
+            response?.data?.featuredImage ??
+            persistedMediaRef.current?.featuredImage ??
+            "",
           additionalImages:
             response?.data?.additionalImages ??
             persistedMediaRef.current?.additionalImages ??
@@ -6451,13 +6494,15 @@ function PublishProject({
                 },
               ]
             : [],
-          additionalImages: (nextMedia.additionalImages ?? []).map((url: string) => [
-            {
-              meta: buildPersistedMediaFile(url, "additional-image.jpg"),
-              progress: 100,
-              hasError: false,
-            },
-          ]),
+          additionalImages: (nextMedia.additionalImages ?? []).map(
+            (url: string) => [
+              {
+                meta: buildPersistedMediaFile(url, "additional-image.jpg"),
+                progress: 100,
+                hasError: false,
+              },
+            ]
+          ),
           featuredVideo: nextMedia.featuredVideo ?? "",
         })
       } catch (error) {
@@ -6470,12 +6515,7 @@ function PublishProject({
     }, 2000)
 
     return () => clearInterval(interval)
-  }, [
-    draftProjectId,
-    isDraftBootstrapping,
-    isProjectSubmitted,
-    mediaMethods,
-  ])
+  }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted, mediaMethods])
 
   const projectScopeValue = useMemo(
     () => ({
@@ -6521,8 +6561,8 @@ function PublishProject({
       })
 
       if (!isStepValid) {
-        const firstInvalidTarget = MEDIA_VALIDATION_TARGETS.find(({ name }) =>
-          mediaMethods.getFieldState(name).invalid
+        const firstInvalidTarget = MEDIA_VALIDATION_TARGETS.find(
+          ({ name }) => mediaMethods.getFieldState(name).invalid
         )
         if (firstInvalidTarget) {
           scrollToPublishField(firstInvalidTarget.targetId)
@@ -6548,10 +6588,7 @@ function PublishProject({
   const handleSaveExit = React.useCallback(() => {
     toggleIsSaveExitDialogOpen(false)
     router.push("/my-listings")
-  }, [
-    toggleIsSaveExitDialogOpen,
-    router,
-  ])
+  }, [toggleIsSaveExitDialogOpen, router])
 
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">
