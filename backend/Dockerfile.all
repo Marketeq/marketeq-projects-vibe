@@ -19,6 +19,7 @@ RUN npx nest build api-gateway \
  && npx nest build auth-service \
  && npx nest build user-service
 RUN npx nest build listings-service \
+ && npx nest build notification-service \
  && npx nest build invitations-service \
  && npx nest build content-moderation-service
 
