@@ -41,6 +41,21 @@ export interface ResolvedPreferences {
   notifications: Record<string, NotificationItemPref>;
 }
 
+function normalizePositiveInt(
+  value: number | string | undefined,
+  fallback: number,
+  { min = 1, max = Number.MAX_SAFE_INTEGER } = {},
+) {
+  const parsed =
+    typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(parsed, min), max);
+}
+
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
@@ -148,6 +163,8 @@ export class NotificationService {
   }
 
   async getPaginatedNotifications(userId: string, page = 1, limit = 20, category?: string, unread?: string) {
+    const resolvedPage = normalizePositiveInt(page, 1);
+    const resolvedLimit = normalizePositiveInt(limit, 20, { max: 100 });
     const where: any = { userId, isArchived: false };
     if (category) where.category = category;
     if (unread === 'true') where.isRead = false;
@@ -155,11 +172,14 @@ export class NotificationService {
     const [data, total] = await this.notifRepo.findAndCount({
       where,
       order: { createdAt: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
+      skip: (resolvedPage - 1) * resolvedLimit,
+      take: resolvedLimit,
     });
 
-    return { data, meta: { page, limit, total } };
+    return {
+      data,
+      meta: { page: resolvedPage, limit: resolvedLimit, total },
+    };
   }
 
   async markAsRead(userId: string, id: string) {
