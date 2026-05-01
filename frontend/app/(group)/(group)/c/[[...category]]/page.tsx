@@ -2507,81 +2507,83 @@ export default function Projects() {
             </div>
           </div>
 
-          <div className="mt-[50px]">
-            <Tabs defaultValue={subcategories[0]?.name || "All"}>
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                {pageKind === "show-all" ? `Newest ${currentName} Talent` : "Top Talent"}
-              </h1>
-              <SwiperRoot>
-                <div className="mt-6 flex justify-between items-center">
-                  <TabsList className="flex items-center gap-x-3">
-                    {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
-                      <Badge key={sub.name} variant="circular" visual="gray" size="lg" className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400" asChild>
-                        <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
-                      </Badge>
-                    ))}
-                  </TabsList>
-                  <div className="flex items-center gap-x-8">
-                    <Button variant="link" visual="gray" size="lg" className="underline hover:text-dark-blue-400">Explore More Talent</Button>
-                    <div className="flex items-center gap-x-3">
-                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
-                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+          {pageKind === "show-all" && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue={subcategories[0]?.name || "All"}>
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  {`Newest ${currentName} Talent`}
+                </h1>
+                <SwiperRoot>
+                  <div className="mt-6 flex justify-between items-center">
+                    <TabsList className="flex items-center gap-x-3">
+                      {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                        <Badge key={sub.name} variant="circular" visual="gray" size="lg" className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400" asChild>
+                          <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
+                        </Badge>
+                      ))}
+                    </TabsList>
+                    <div className="flex items-center gap-x-8">
+                      <Button variant="link" visual="gray" size="lg" className="underline hover:text-dark-blue-400">Explore More Talent</Button>
+                      <div className="flex items-center gap-x-3">
+                        <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
+                        <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="mt-6">
-                  {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
-                    <TabsContent key={sub.name} value={sub.name}>
-                      <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        <SwiperSlide className="w-[355px] h-auto">
-                          <article
-                            className="h-full min-h-[440px] rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
-                            style={{ backgroundColor: "#027A48" }}
-                          >
-                            <div className="pt-6">
-                              <h1 className="text-4xl font-bold leading-[1.1] text-white tracking-tight">
-                                New {currentName} Talent
-                              </h1>
-                              <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
-                                Discover the newest {currentName.toLowerCase()} experts joining our community.
-                              </p>
-                            </div>
-                            <div className="flex flex-col gap-y-4">
-                              <Button asChild className="rounded-full bg-white text-[#027A48] hover:bg-white/90 px-6 h-12 text-base font-semibold transition-all duration-300" size="lg">
-                                <NextLink href={listingHref("talent")}>
-                                  Explore More <ArrowRight className="size-[15px] ml-2" />
-                                </NextLink>
-                              </Button>
-                            </div>
-                          </article>
-                        </SwiperSlide>
-                        {(talentUsers.length > 0 ? talentUsers.slice(0, 8) : fromLength(8)).map((u: any, idx: number) => (
-                          <SwiperSlide className="w-[355px]" key={u?.id ?? idx}>
-                            {talentUsers.length > 0 ? (
-                              <ListingCard kind="talent" {...talentToCardProps(u, idx)} />
-                            ) : (
-                              <ListingCard
-                                kind="talent"
-                                id={`mock-${idx}`}
-                                username={`expert-${idx}`}
-                                name="Expert Freelancer"
-                                role={`${currentName} Specialist`}
-                                photo="/woman.jpg"
-                                rate="$75/hr"
-                                rating={4.9}
-                                projects={12}
-                                skills={["React", "TypeScript", "Node.js"]}
-                              />
-                            )}
+                  <div className="mt-6">
+                    {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                      <TabsContent key={sub.name} value={sub.name}>
+                        <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                          <SwiperSlide className="w-[355px] h-auto">
+                            <article
+                              className="h-full min-h-[440px] rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
+                              style={{ backgroundColor: "#027A48" }}
+                            >
+                              <div className="pt-6">
+                                <h1 className="text-4xl font-bold leading-[1.1] text-white tracking-tight">
+                                  New {currentName} Talent
+                                </h1>
+                                <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
+                                  Discover the newest {currentName.toLowerCase()} experts joining our community.
+                                </p>
+                              </div>
+                              <div className="flex flex-col gap-y-4">
+                                <Button asChild className="rounded-full bg-white text-[#027A48] hover:bg-white/90 px-6 h-12 text-base font-semibold transition-all duration-300" size="lg">
+                                  <NextLink href={listingHref("talent")}>
+                                    Explore More <ArrowRight className="size-[15px] ml-2" />
+                                  </NextLink>
+                                </Button>
+                              </div>
+                            </article>
                           </SwiperSlide>
-                        ))}
-                      </SwiperContent>
-                    </TabsContent>
-                  ))}
-                </div>
-              </SwiperRoot>
-            </Tabs>
-          </div>
+                          {(talentUsers.length > 0 ? talentUsers.slice(0, 8) : fromLength(8)).map((u: any, idx: number) => (
+                            <SwiperSlide className="w-[355px]" key={u?.id ?? idx}>
+                              {talentUsers.length > 0 ? (
+                                <ListingCard kind="talent" {...talentToCardProps(u, idx)} />
+                              ) : (
+                                <ListingCard
+                                  kind="talent"
+                                  id={`mock-${idx}`}
+                                  username={`expert-${idx}`}
+                                  name="Expert Freelancer"
+                                  role={`${currentName} Specialist`}
+                                  photo="/woman.jpg"
+                                  rate="$75/hr"
+                                  rating={4.9}
+                                  projects={12}
+                                  skills={["React", "TypeScript", "Node.js"]}
+                                />
+                              )}
+                            </SwiperSlide>
+                          ))}
+                        </SwiperContent>
+                      </TabsContent>
+                    ))}
+                  </div>
+                </SwiperRoot>
+              </Tabs>
+            </div>
+          )}
 
           <div className="mt-[50px]">
             <div className="flex items-center justify-between">
@@ -2625,24 +2627,24 @@ export default function Projects() {
               className="object-cover"
               src="/vr-4.png"
               sizes="100vw"
+              alt={`${currentName} hero`}
               fill
             />
             <div className="absolute inset-0 bg-black/40 p-[50px] flex justify-end items-center">
               <div className="max-w-[750px]">
                 <h1 className="text-white text-4xl font-bold leading-none">
-                  Fueling the Future of Cybersecurity
+                  Fueling the Future of {sectionLabel}
                 </h1>
 
                 <p className="text-xl mt-2 font-light leading-none text-white">
-                  Discover cybersecurity experts and projects that can help protect
-                  your data.
+                  Discover {sectionLabel.toLowerCase()} experts and projects tailored
+                  to your goals.
                 </p>
 
-                <Button
-                  className="rounded-full bg-white text-dark-blue-400 mt-[50px]"
-                  size="lg"
-                >
-                  Explore Cybersecurity <ArrowRight className="size-[15px]" />
+                <Button asChild className="rounded-full bg-white text-dark-blue-400 mt-[50px]" size="lg">
+                  <NextLink href={listingHref("projects")}>
+                    Explore {sectionLabel} <ArrowRight className="size-[15px]" />
+                  </NextLink>
                 </Button>
 
               </div>
@@ -2704,28 +2706,27 @@ export default function Projects() {
                               </div>
                             </article>
                           </SwiperSlide>
-                          {fromLength(8).map((idx) => {
-                            // Cycle through real listings so every card links to a real project detail page.
-                            const project = listingsProjects.length > 0 ? listingsProjects[idx % listingsProjects.length] : null
-                            const href = project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")
+                          {(listingsServices.length > 0 ? listingsServices.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
+                            const service = listingsServices.length > 0 ? item : null
+                            const href = service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")
                             return (
-                              <SwiperSlide key={project?.id ?? idx} className="w-[355px]">
+                              <SwiperSlide key={service?.id ?? idx} className="w-[355px]">
                                 <NextLink href={href} className="block focus-visible:outline-none">
                                   <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                                     <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                                      <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={project?.mediaUrls?.[0] || "/dashboard.png"} alt={project?.title || "Dashboard"} fill sizes="33vw" />
+                                      <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={service?.mediaUrls?.[0] || "/dashboard.png"} alt={service?.title || "Service"} fill sizes="33vw" />
                                     </div>
                                     <div className="mt-3 flex items-start gap-x-3">
-                                      <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{project?.title || "The Ultimate Mobile App Experience"}</span>
+                                      <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{service?.title || `Professional ${currentName} Service`}</span>
                                       <div className="inline-flex items-center gap-x-1">
                                         <Star className="size-[15px] text-primary-500 fill-primary-500" />
                                         <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span>
                                       </div>
                                     </div>
-                                    <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">{project?.description?.slice(0, 140) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}</p>
+                                    <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">{service?.description?.slice(0, 140) || `Brief overview of a high-impact ${currentName.toLowerCase()} service package.`}</p>
                                     <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                      <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from {project?.duration || "12 weeks"}</span></div>
-                                      <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${project?.budget ? Number(project.budget).toLocaleString() : "50,000"} budget</span></div>
+                                      <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from {service?.duration || "12 weeks"}</span></div>
+                                      <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">{service?.priceMin ? `$${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}/month` : "$5,000 - $15,000/month"}</span></div>
                                     </div>
                                     <div className="mt-5 flex items-end justify-between">
                                       <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
