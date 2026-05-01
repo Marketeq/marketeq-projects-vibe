@@ -15,11 +15,14 @@ export class AblyNotificationsService {
     if (!looksValid) {
       this.disabled = true;
       if (isProd) {
-        throw new Error('ABLY_API_KEY is required in production');
+        this.logger.error(
+          'ABLY_API_KEY is missing or invalid in production; realtime notifications are disabled until the key is configured.',
+        );
+      } else {
+        this.logger.warn(
+          'ABLY_API_KEY is missing or a placeholder; realtime notifications are disabled in local/dev mode.',
+        );
       }
-      this.logger.warn(
-        'ABLY_API_KEY is missing or a placeholder; realtime notifications are disabled in local/dev mode.',
-      );
       return;
     }
 
