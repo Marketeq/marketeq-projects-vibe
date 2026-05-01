@@ -8,7 +8,17 @@ export function getRabbitMqUrl(): string {
 }
 
 export function shouldRequireRabbitMq(): boolean {
-  return process.env.NODE_ENV === 'production' || process.env.RABBITMQ_REQUIRED === 'true';
+  const rawRequired = String(process.env.RABBITMQ_REQUIRED ?? '').toLowerCase();
+
+  if (rawRequired === 'true') {
+    return true;
+  }
+
+  if (rawRequired === 'false') {
+    return false;
+  }
+
+  return process.env.NODE_ENV === 'production';
 }
 
 export async function isRabbitMqReachable(urlString: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<boolean> {

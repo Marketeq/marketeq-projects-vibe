@@ -55,6 +55,18 @@ const gatewayEnv = {
   TIME_TRACKING_SERVICE_URL:    'http://localhost:3017',
 };
 
+function buildInternalServiceEnv(port) {
+  return {
+    ...process.env,
+    PORT: port,
+    HOST: '127.0.0.1',
+    // The shared Render container serves HTTP APIs for staging/dev.
+    // It does not run a colocated RabbitMQ broker, so queue consumers
+    // must degrade gracefully instead of crash-looping the service.
+    RABBITMQ_REQUIRED: 'false',
+  };
+}
+
 function launchService(svc, env, isGateway = false) {
   const mainCandidates = [
     path.join(__dirname, 'dist', svc.dir, 'main.js'),
@@ -110,7 +122,7 @@ async function bootstrapAll() {
   setTimeout(() => {
     console.log('[boot] Launching internal services after gateway head start...');
     for (const svc of SERVICES) {
-      launchService(svc, { ...process.env, PORT: svc.port, HOST: '127.0.0.1' }, false);
+      launchService(svc, buildInternalServiceEnv(svc.port), false);
     }
   }, 4000);
 }
