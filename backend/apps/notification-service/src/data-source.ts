@@ -12,6 +12,11 @@ const envPaths = [
 const envPath = envPaths.find((p) => existsSync(p));
 loadEnv(envPath ? { path: envPath } : undefined);
 
+const rawSsl = String(
+  process.env.DATABASE_SSL ?? process.env.DATABASE_SSL_ENABLED ?? '',
+).toLowerCase();
+const useSsl = rawSsl === 'true';
+
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL,
@@ -19,4 +24,5 @@ export const AppDataSource = new DataSource({
   synchronize: false,
   entities: [__dirname + '/**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
+  ssl: useSsl ? { rejectUnauthorized: false } : false,
 });

@@ -11,6 +11,25 @@ import { SendgridService } from './sendgrid/sendgrid.service';
 import { BrevoService } from './brevo/brevo.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
+function resolveDatabaseSsl(config: ConfigService) {
+  const isProd = config.get<string>('NODE_ENV') === 'production';
+  const rawSsl = String(
+    config.get<string>('DATABASE_SSL') ??
+      config.get<string>('DATABASE_SSL_ENABLED') ??
+      '',
+  ).toLowerCase();
+
+  if (rawSsl === 'true') {
+    return { rejectUnauthorized: false };
+  }
+
+  if (rawSsl === 'false') {
+    return false;
+  }
+
+  return isProd ? { rejectUnauthorized: false } : false;
+}
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -28,10 +47,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
         synchronize: config.get('NODE_ENV') !== 'production',
         migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
-        ssl:
-          config.get('NODE_ENV') === 'production'
-            ? { rejectUnauthorized: false }
-            : false,
+        ssl: resolveDatabaseSsl(config),
       }),
     }),
     TypeOrmModule.forFeature([Notification, UserPreference]),
