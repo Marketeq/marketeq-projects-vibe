@@ -27,6 +27,22 @@ interface ResolvedMediaRef {
   filename?: string;
 }
 
+const SYNC_FETCH_TIMEOUT_MS = 5000;
+
+async function fetchWithTimeout(
+  input: Parameters<typeof fetch>[0],
+  init: RequestInit = {},
+  timeoutMs = SYNC_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 type ProjectSyncProjection = {
   id: number | string;
   title: string;
@@ -42,15 +58,6 @@ type ProjectSyncProjection = {
   /** Always [] — marketplace wizard does not collect separate language/framework lists. */
   programmingLanguages?: unknown;
   developmentTechnologies?: unknown;
-  totalEstimatedHours?: number;
-  timelineValue?: number;
-  timelineUnit?: string;
-  priceRangeMin?: number;
-  priceRangeMax?: number;
-  pricingModel?: string;
-  priceViewMode?: string;
-  projectType?: string;
-  klarnaPaymentEnabled?: boolean;
   recentQuestions?: unknown;
   chatEnabled?: boolean;
   reportButtonEnabled?: boolean;
@@ -217,10 +224,15 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
   try {
     const docStatus = (doc as any)._status;
     if (docStatus && docStatus !== "published") {
-      // Keep listings-service aligned with Payload's public visibility:
-      // any transition away from `published` must immediately hide the
+      // Payload drafts autosave can fire afterChange with `_status=draft` even
+      // when a published version exists. Do not archive listings rows for draft
+      // autosaves, or the marketplace will "disappear" intermittently.
+      //
+      // Only hard-archive when explicitly archived/flagged (editor intent).
+      if (docStatus === "draft") return doc;
+
       const url = `${listingsUrl.replace(/\/$/, "")}/internal/project-sync/${encodeURIComponent(String(doc.id))}`;
-      const res = await fetch(url, {
+      const res = await fetchWithTimeout(url, {
         method: "DELETE",
         headers: { authorization: `Bearer ${token}` },
       });
@@ -267,12 +279,16 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       return null;
     };
 
-    const populatedThumbnail = await resolveMedia((doc as any).thumbnail);
-    const populatedGallery = Array.isArray((doc as any).gallery)
+    const populatedThumbnail = await resolveMedia(
+      (doc as any).thumbnail ?? (doc as any)["Featured Image"],
+    );
+    const rawGallery =
+      (doc as any).additionalImages ??
+      (doc as any).gallery ??
+      (doc as any)["Additional Images"];
+    const populatedGallery = Array.isArray(rawGallery)
       ? await Promise.all(
-          (
-            (doc as any).gallery as Array<{ image?: unknown; caption?: string }>
-          ).map(async (g) => ({
+          (rawGallery as Array<{ image?: unknown; caption?: string }>).map(async (g) => ({
             ...g,
             image: await resolveMedia(g?.image),
           })),
@@ -332,15 +348,6 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       projectSkills: (doc as any).projectSkills,
       programmingLanguages: [],
       developmentTechnologies: [],
-      totalEstimatedHours: (doc as any).totalEstimatedHours,
-      timelineValue: (doc as any).timelineValue,
-      timelineUnit: (doc as any).timelineUnit,
-      priceRangeMin: (doc as any).priceRangeMin,
-      priceRangeMax: (doc as any).priceRangeMax,
-      pricingModel: (doc as any).pricingModel,
-      priceViewMode: (doc as any).priceViewMode,
-      projectType: (doc as any).projectType,
-      klarnaPaymentEnabled: (doc as any).klarnaPaymentEnabled,
       recentQuestions: (doc as any).recentQuestions,
       chatEnabled: (doc as any).chatEnabled,
       reportButtonEnabled: (doc as any).reportButtonEnabled,
@@ -370,7 +377,7 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
     };
 
     const url = `${listingsUrl.replace(/\/$/, "")}/internal/project-sync`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -434,7 +441,7 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
     const revalidateSecret = process.env.REVALIDATE_SECRET;
     if (revalidateUrl && revalidateSecret) {
       try {
-        const res = await fetch(revalidateUrl, {
+        const res = await fetchWithTimeout(revalidateUrl, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -485,7 +492,7 @@ export const deleteProjectFromListings: CollectionAfterDeleteHook = async ({
 
   try {
     const url = `${listingsUrl.replace(/\/$/, "")}/internal/project-sync/${encodeURIComponent(String(doc.id))}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "DELETE",
       headers: { authorization: `Bearer ${token}` },
     });
@@ -524,7 +531,7 @@ export const deleteProjectFromListings: CollectionAfterDeleteHook = async ({
     const revalidateSecret = process.env.REVALIDATE_SECRET;
     if (revalidateUrl && revalidateSecret) {
       try {
-        await fetch(revalidateUrl, {
+        await fetchWithTimeout(revalidateUrl, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({

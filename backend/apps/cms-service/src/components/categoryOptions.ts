@@ -23,6 +23,11 @@ type CategoryTreeNode = {
   children?: CategoryTreeNode[];
 };
 
+let categoryTreeCache: CategoryTreeNode[] | null = null;
+let categoryTreeCacheAt = 0;
+let inFlightCategoryTree: Promise<CategoryTreeNode[]> | null = null;
+const CATEGORY_TREE_CACHE_TTL_MS = 30_000;
+
 export type CategoryOption = {
   label: string;
   value: string;
@@ -93,7 +98,23 @@ function collectSelectableCategories(nodes: CategoryTreeNode[]): CategoryTreeNod
     (node.children ?? []).filter(isActiveTreeNode),
   );
 
-  return secondLevelNodes.length ? secondLevelNodes : nodes.filter(isActiveTreeNode);
+  /**
+   * "Category" selections must be nodes that actually have descendants to pick as
+   * subcategories (matches `/publish-project`: pick a bucket, then scoped tags).
+   * Otherwise picking a leaf (e.g. "Blog Writing") makes `subcategories` feel broken.
+   */
+  const withChildren = (
+    candidates: CategoryTreeNode[],
+  ): CategoryTreeNode[] =>
+    candidates.filter((n) => isActiveTreeNode(n) && (n.children?.length ?? 0) > 0);
+
+  const secondSelectable = withChildren(secondLevelNodes);
+  if (secondSelectable.length > 0) {
+    return secondSelectable;
+  }
+
+  const rootsWithChildren = withChildren(nodes);
+  return rootsWithChildren.length ? rootsWithChildren : [];
 }
 
 function findSuggestedSubCategory(node?: CategoryTreeNode): string | null {
@@ -121,59 +142,80 @@ function indexCategoryTreeByName(nodes: CategoryTreeNode[]): Map<string, Categor
 }
 
 async function fetchCategoryTree(): Promise<CategoryTreeNode[]> {
+  const now = Date.now();
+  if (
+    categoryTreeCache &&
+    now - categoryTreeCacheAt < CATEGORY_TREE_CACHE_TTL_MS
+  ) {
+    return categoryTreeCache;
+  }
+  if (inFlightCategoryTree) {
+    return inFlightCategoryTree;
+  }
+
   // IMPORTANT:
   // This runs in the browser (Payload admin). Calling category-service directly
   // is brittle (CORS + env var exposure + port drift). Instead, use the CMS
   // Categories collection as the source of truth for admin selection.
-  const response = await fetch("/api/categories?limit=1000&depth=0");
-  if (!response.ok) throw new Error(`Failed to load categories (${response.status})`);
+  inFlightCategoryTree = (async () => {
+    const response = await fetch("/api/categories?limit=1000&depth=0");
+    if (!response.ok) throw new Error(`Failed to load categories (${response.status})`);
 
-  const data = (await response.json()) as { docs?: CategoryDoc[] } | CategoryDoc[];
-  const docs: CategoryDoc[] = Array.isArray(data) ? data : (data.docs ?? []);
+    const data = (await response.json()) as { docs?: CategoryDoc[] } | CategoryDoc[];
+    const docs: CategoryDoc[] = Array.isArray(data) ? data : (data.docs ?? []);
 
-  const nodesById = new Map<string | number, CategoryTreeNode>();
-  const childrenByParentId = new Map<string | number, CategoryTreeNode[]>();
-  const roots: CategoryTreeNode[] = [];
+    const nodesById = new Map<string | number, CategoryTreeNode>();
+    const childrenByParentId = new Map<string | number, CategoryTreeNode[]>();
+    const roots: CategoryTreeNode[] = [];
 
-  const getParentId = (doc: CategoryDoc): string | number | null => {
-    const p = doc.parent as any;
-    if (p == null) return null;
-    if (typeof p === "string" || typeof p === "number") return p;
-    if (typeof p === "object" && (typeof p.id === "string" || typeof p.id === "number")) return p.id;
-    return null;
-  };
+    const getParentId = (doc: CategoryDoc): string | number | null => {
+      const p = doc.parent as any;
+      if (p == null) return null;
+      if (typeof p === "string" || typeof p === "number") return p;
+      if (typeof p === "object" && (typeof p.id === "string" || typeof p.id === "number")) return p.id;
+      return null;
+    };
 
-  for (const doc of docs) {
-    const id = doc.id;
-    if (id == null) continue;
-    const name = normalizeNodeName(doc.name);
-    if (!name) continue;
-    const approved = (doc.status ?? "active") !== "inactive";
-    nodesById.set(id, { id, uuid: doc.uuid, name, approved, children: [] });
-  }
-
-  for (const doc of docs) {
-    const id = doc.id;
-    if (id == null) continue;
-    const node = nodesById.get(id);
-    if (!node) continue;
-    const parentId = getParentId(doc);
-    if (parentId == null) {
-      roots.push(node);
-      continue;
+    for (const doc of docs) {
+      const id = doc.id;
+      if (id == null) continue;
+      const name = normalizeNodeName(doc.name);
+      if (!name) continue;
+      const approved = (doc.status ?? "active") !== "inactive";
+      nodesById.set(id, { id, uuid: doc.uuid, name, approved, children: [] });
     }
-    const arr = childrenByParentId.get(parentId) ?? [];
-    arr.push(node);
-    childrenByParentId.set(parentId, arr);
-  }
 
-  for (const [parentId, kids] of childrenByParentId.entries()) {
-    const parent = nodesById.get(parentId);
-    if (!parent) continue;
-    parent.children = kids;
-  }
+    for (const doc of docs) {
+      const id = doc.id;
+      if (id == null) continue;
+      const node = nodesById.get(id);
+      if (!node) continue;
+      const parentId = getParentId(doc);
+      if (parentId == null) {
+        roots.push(node);
+        continue;
+      }
+      const arr = childrenByParentId.get(parentId) ?? [];
+      arr.push(node);
+      childrenByParentId.set(parentId, arr);
+    }
 
-  return roots;
+    for (const [parentId, kids] of childrenByParentId.entries()) {
+      const parent = nodesById.get(parentId);
+      if (!parent) continue;
+      parent.children = kids;
+    }
+
+    categoryTreeCache = roots;
+    categoryTreeCacheAt = Date.now();
+    return roots;
+  })();
+
+  try {
+    return await inFlightCategoryTree;
+  } finally {
+    inFlightCategoryTree = null;
+  }
 }
 
 function toCategoryOption(
@@ -196,28 +238,27 @@ function toCategoryOption(
 
 export async function loadCategoryOptions(): Promise<CategoryOption[]> {
   const tree = await fetchCategoryTree();
-  const flattened = flattenTreeOptions(tree);
-
-  if (!flattened.length) {
-    return [];
-  }
-
-  const rootCount = flattened.filter((option) => option.depth === 0).length;
-  const shouldPreferChildren =
-    rootCount > 0 && flattened.some((option) => option.depth > 0);
-
-  const filtered = shouldPreferChildren
-    ? flattened.filter((option) => option.depth > 0)
-    : flattened;
+  const selectableCategories = collectSelectableCategories(tree);
 
   const seen = new Set<string>();
+  const options: CategoryOption[] = [];
 
-  return filtered.filter((option) => {
-    const key = option.path.join(" > ").toLowerCase();
-    if (seen.has(key)) return false;
+  selectableCategories.forEach((node) => {
+    const name = normalizeNodeName(node.name);
+    if (!name) return;
+    const key = name.toLowerCase();
+    if (seen.has(key)) return;
     seen.add(key);
-    return true;
+
+    options.push({
+      label: name,
+      value: name,
+      depth: 0,
+      path: [name],
+    });
   });
+
+  return options;
 }
 
 type AutocompleteCategoryHit = {
