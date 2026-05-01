@@ -27,9 +27,7 @@ function resolveOwnerTargetProtoPath(): string {
 async function bootstrap() {
   const logger = new Logger('ListingsService');
   const app = await NestFactory.create(AppModule);
-  // Intentionally avoid global ValidationPipe here.
-  // Controllers opt into validation explicitly (many endpoints accept evolving
-  // internal payloads and should not hard-fail on extra fields in dev).
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, errorHttpStatusCode: 422 }));
 
   const grpcPort = Number(process.env.LISTINGS_SERVICE_GRPC_PORT ?? 50052);
   // Default gRPC to loopback; set GRPC_HOST=0.0.0.0 only when exposing externally.

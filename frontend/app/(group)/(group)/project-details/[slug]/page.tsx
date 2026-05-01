@@ -4262,25 +4262,17 @@ export default function ProjectDetails() {
 
               <div className="mt-3">
                 <span className="inline-block text-sm leading-none font-medium text-dark-blue-400">
-                  {(() => {
-                    const base =
-                      project.priceMin != null
-                        ? Number(project.priceMin)
-                        : project.budget != null
-                          ? Number(project.budget)
-                          : null
-                    if (base == null)
-                      return "with an initial payment of — to kickoff"
-                    // Matches the prior design: $5,000 → $833 kickoff
-                    const kickoff = Math.round(base / 6)
-                    return `with an initial payment of $${kickoff.toLocaleString()} to kickoff`
-                  })()}
+                  {project.priceMax != null
+                    ? `Up to $${Number(project.priceMax).toLocaleString()} total · ${project.pricingModel || "biweekly"} billing`
+                    : `Billing: ${project.pricingModel || "biweekly"}`}
                 </span>
               </div>
 
               <div className="flex flex-col items-start gap-y-3 mt-6">
                 <span className="inline-block text-xs font-medium text-dark-blue-400">
-                  Current Team
+                  {Array.isArray(project.team) && project.team.length > 1
+                    ? "Current Team"
+                    : "Created By"}
                 </span>
 
                 <TooltipProvider>
@@ -4390,41 +4382,49 @@ export default function ProjectDetails() {
                   <Clock className="size-[18px] text-primary-500" />
                   <span className="text-sm leading-none font-medium text-dark-blue-400">
                     {project.duration
-                      ? `Starting from a ${project.duration} duration`
+                      ? `${project.duration} duration`
                       : "Duration: TBD"}
                   </span>
                 </div>
-                <div className="flex items-center gap-x-[6.4px]">
-                  <Users03 className="size-[18px] text-primary-500" />
-                  <span className="text-sm leading-none font-medium text-dark-blue-400">
-                    Minimum{" "}
-                    {Math.max(
-                      Array.isArray(project.team) ? project.team.length : 0,
-                      2
-                    )}{" "}
-                    team members
-                  </span>
-                </div>
+                {project.estimatedHours != null && (
+                  <div className="flex items-center gap-x-[6.4px]">
+                    <Users03 className="size-[18px] text-primary-500" />
+                    <span className="text-sm leading-none font-medium text-dark-blue-400">
+                      {project.estimatedHours} estimated hours
+                    </span>
+                  </div>
+                )}
               </div>
 
-              <div className="mt-6 flex items-center gap-x-3">
-                <Button
-                  size="lg"
-                  className="flex-1 min-w-0 h-[46px] border-2 border-gray-200 text-dark-blue-400 hover:bg-gray-50"
-                  variant="outlined"
-                  visual="gray"
-                >
-                  <FileText className="size-[16px] mr-2" />
-                  Apply To Join
-                </Button>
-                <IconButton
-                  className="shrink-0 size-[50px] rounded-lg border-2 border-gray-200 text-dark-blue-400 hover:bg-gray-50"
-                  variant="outlined"
-                  visual="gray"
-                >
-                  <Share06 className="size-[18px]" />
-                </IconButton>
-              </div>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    size="lg"
+                    className="mt-6 w-full border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white"
+                    variant="outlined"
+                  >
+                    Start Project
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>
+                      Would you like to customize the project scope before
+                      checkout?
+                    </DialogTitle>
+                  </DialogHeader>
+                  <DialogFooter className="mt-8">
+                    <DialogClose asChild>
+                      <Button variant="outlined" visual="gray">
+                        Edit Scope
+                      </Button>
+                    </DialogClose>
+                    <Button onClick={() => router.push(`/checkout/${params.slug}`)}>
+                      Continue to Checkout
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
               <div className="mt-6 flex items-center gap-x-2">
                 <span className="text-sm font-medium leading-none text-dark-blue-400 whitespace-nowrap">
@@ -4457,26 +4457,32 @@ export default function ProjectDetails() {
             </div>
 
             <div className="h-[50px] rounded-b-lg bg-gray-50 flex items-center justify-evenly">
-              <div className="inline-flex items-center gap-x-2">
-                <Flag className="size-[15px] text-gray-500" />
-                <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                  Report
-                </span>
-              </div>
+              {project.reportButtonEnabled !== false && (
+                <div className="inline-flex items-center gap-x-2">
+                  <Flag className="size-[15px] text-gray-500" />
+                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+                    Report
+                  </span>
+                </div>
+              )}
 
-              <div className="inline-flex items-center gap-x-2">
-                <HelpCircle className="size-[15px] text-gray-500" />
-                <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                  Help
-                </span>
-              </div>
+              {project.helpButtonEnabled === true && (
+                <div className="inline-flex items-center gap-x-2">
+                  <HelpCircle className="size-[15px] text-gray-500" />
+                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+                    Help
+                  </span>
+                </div>
+              )}
 
-              <div className="inline-flex items-center gap-x-2">
-                <Share06 className="size-[15px] text-gray-500" />
-                <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                  Share
-                </span>
-              </div>
+              {project.shareButtonEnabled !== false && (
+                <div className="inline-flex items-center gap-x-2">
+                  <Share06 className="size-[15px] text-gray-500" />
+                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+                    Share
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

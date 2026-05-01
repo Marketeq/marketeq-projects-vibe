@@ -25,6 +25,13 @@ export class ProjectSyncController {
   constructor(private readonly projectSyncService: ProjectSyncService) {}
 
   @Post()
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
+  )
   async syncProject(
     @Body() projectData: ProjectSyncDto,
     @Headers("authorization") authHeader: string,

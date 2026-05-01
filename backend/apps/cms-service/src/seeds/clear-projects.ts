@@ -1,4 +1,27 @@
 import type { Payload } from "payload";
+import {
+  FEATURED_PROJECTS,
+  NEWEST_PROJECTS,
+  POPULAR_TAB_PROJECTS,
+  THEMED_PROJECTS,
+} from "./homepage-fixtures";
+
+const SEED_OWNER_ID = "00000000-0000-0000-0000-000000000000";
+
+function slugify(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+const FIXTURE_SLUGS = Array.from(
+  new Set(
+    [...FEATURED_PROJECTS, ...NEWEST_PROJECTS, ...POPULAR_TAB_PROJECTS, ...THEMED_PROJECTS].map(
+      (p) => slugify(p.title),
+    ),
+  ),
+);
 
 /**
  * Clear all seeded projects from Payload so `seed:projects` can be re-run.
@@ -8,10 +31,15 @@ import type { Payload } from "payload";
  * and avoids depending on a dedicated seed marker field inside the collection.
  */
 export async function clearSeededProjects(payload: Payload): Promise<number> {
-  // If the canonical fixture doesn't exist, treat as already-cleared.
+  // If the canonical fixture doesn't exist for the seed owner, treat as already-cleared.
   const canonical = await payload.find({
     collection: "projects",
-    where: { slug: { equals: "modern-brand-identity-system" } } as any,
+    where: {
+      and: [
+        { slug: { equals: "modern-brand-identity-system" } },
+        { ownerId: { equals: SEED_OWNER_ID } },
+      ],
+    } as any,
     limit: 1,
     overrideAccess: true,
   });
@@ -25,6 +53,12 @@ export async function clearSeededProjects(payload: Payload): Promise<number> {
   while (true) {
     const res = await payload.find({
       collection: "projects",
+      where: {
+        and: [
+          { slug: { in: FIXTURE_SLUGS } },
+          { ownerId: { equals: SEED_OWNER_ID } },
+        ],
+      } as any,
       limit: 100,
       pagination: true,
       overrideAccess: true,
@@ -44,18 +78,8 @@ export async function clearSeededProjects(payload: Payload): Promise<number> {
       });
       deleted += 1;
     }
-
-    // Stop once we've deleted the canonical slug.
-    const stillThere = await payload.find({
-      collection: "projects",
-      where: { slug: { equals: "modern-brand-identity-system" } } as any,
-      limit: 1,
-      overrideAccess: true,
-    });
-    if (!stillThere.totalDocs) break;
   }
 
   payload.logger.info(`clear-projects: deleted ${deleted} project(s)`);
   return deleted;
 }
-
