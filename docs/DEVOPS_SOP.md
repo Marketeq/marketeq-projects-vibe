@@ -280,7 +280,7 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 - CODEOWNERS routing: `.github/CODEOWNERS`
 - PR template: `.github/pull_request_template.md`
 - Promotion scripts: `scripts/qa-promote-dev-to-staging.sh`, `scripts/qa-promote-staging-to-live.sh`
-- DevOps control scripts: `scripts/devops/check-devops-drift.mjs`, `scripts/devops/sync-n8n-workflow.mjs`, `scripts/devops/marketeq-devops.config.json`
+- DevOps control scripts: `scripts/devops/check-devops-drift.mjs`, `scripts/devops/check-runtime-env-drift.mjs`, `scripts/devops/sync-n8n-workflow.mjs`, `scripts/devops/publish-n8n-runner.mjs`, `scripts/devops/install-n8n-runtime-secrets.mjs`, `scripts/devops/rollback-staging.mjs`, `scripts/devops/marketeq-devops.config.json`
 - Env templates: `frontend/.env.{local,staging,production}.example`, `backend/.env.{local,staging,production}.example`
 
 ---

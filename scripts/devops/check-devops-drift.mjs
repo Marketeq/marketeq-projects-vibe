@@ -5,6 +5,11 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import {
+  buildN8nBuildCommand,
+  containsInlineSecret,
+  extractRunnerUrl,
+} from "./build-n8n-build-command.mjs"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, "..", "..")
@@ -80,13 +85,6 @@ function getTemplateReport() {
   }
 }
 
-function extractRunnerUrl(jsCode) {
-  return (
-    jsCode.match(/https:\/\/gist\.githubusercontent\.com\/CTorres9800\/[^"]+\/marketeq_orchestrator_node\.js/)?.[0] ??
-    ""
-  )
-}
-
 async function getN8nReport() {
   const baseUrl = process.env.N8N_BASE_URL
   const apiKey = process.env.N8N_API_KEY
@@ -112,7 +110,12 @@ async function getN8nReport() {
 
   const buildCommandNode = workflow.nodes.find((node) => node.name === "Build Command")
   const webhookNode = workflow.nodes.find((node) => node.name === "Webhook")
-  const runnerUrl = extractRunnerUrl(buildCommandNode?.parameters?.jsCode ?? "")
+  const buildCommandJs = String(buildCommandNode?.parameters?.jsCode ?? "")
+  const expectedBuildCommandJs = buildN8nBuildCommand({
+    runnerRawUrl: config.n8n.runnerRawUrl,
+    runtimeEnvFilePath: config.n8n.runtimeEnvFilePath,
+  })
+  const runnerUrl = extractRunnerUrl(buildCommandJs)
 
   return {
     available: true,
@@ -123,6 +126,9 @@ async function getN8nReport() {
     webhookPath: webhookNode?.parameters?.path ?? "",
     runnerUrl,
     runnerUrlMatchesConfig: runnerUrl === config.n8n.runnerRawUrl,
+    runtimeEnvFileReferenced: buildCommandJs.includes(config.n8n.runtimeEnvFilePath),
+    buildCommandMatchesConfig: buildCommandJs === expectedBuildCommandJs,
+    containsInlineSecret: containsInlineSecret(buildCommandJs),
   }
 }
 
@@ -220,6 +226,15 @@ async function main() {
     }
     if (!n8n.runnerUrlMatchesConfig) {
       failures.push("n8n Build Command runner URL differs from config")
+    }
+    if (!n8n.runtimeEnvFileReferenced) {
+      failures.push("n8n Build Command does not reference the configured runtime env file")
+    }
+    if (!n8n.buildCommandMatchesConfig) {
+      failures.push("n8n Build Command differs from the repo-controlled contract")
+    }
+    if (n8n.containsInlineSecret) {
+      failures.push("n8n Build Command still contains inline secrets")
     }
   }
 

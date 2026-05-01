@@ -666,7 +666,11 @@ Every reviewer must watch for these — they are bugs we have actually hit.
 | `scripts/qa-promote-dev-to-staging.sh` | Promote dev-main → staging |
 | `scripts/qa-promote-staging-to-live.sh` | Promote staging → live-mvp (production) |
 | `scripts/devops/check-devops-drift.mjs` | Detect live n8n / gist / env contract drift from the repo-controlled DevOps contract |
+| `scripts/devops/check-runtime-env-drift.mjs` | Compare repo env templates against live Render env keys and, when auth permits, live Vercel project env keys |
 | `scripts/devops/sync-n8n-workflow.mjs` | Re-pin the live n8n Build Command node to the repo-controlled runner URL |
+| `scripts/devops/publish-n8n-runner.mjs` | Publish the repo-controlled orchestrator source to the pinned gist revision used by n8n |
+| `scripts/devops/install-n8n-runtime-secrets.mjs` | Install and verify the host-side runtime secret env file consumed by the live n8n workflow |
+| `scripts/devops/rollback-staging.mjs` | Find a previous staging rollback candidate and trigger a first-class n8n rollback event for `staging` |
 | `scripts/devops/marketeq-devops.config.json` | Checked-in control-plane manifest for n8n, Vercel, Render, and env contracts |
 
 ### Environment Templates

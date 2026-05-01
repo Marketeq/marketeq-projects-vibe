@@ -11,12 +11,12 @@ This document tracks the remaining production-grade DevOps controls for the `mar
 | P0 | Workflow drift detection for the live n8n deploy orchestrator | Implemented in this phase | Detects when the live workflow, pinned runner URL, gist revision, or webhook metadata drift away from the repo-controlled contract | `scripts/devops/check-devops-drift.mjs` |
 | P0 | Repo-controlled deploy topology manifest | Implemented in this phase | Removes hidden project IDs / hook URLs / workflow IDs from tribal memory and makes drift auditable in PRs | `scripts/devops/marketeq-devops.config.json` |
 | P1 | One-command live n8n workflow sync from the repo contract | Implemented in this phase | Makes it possible to reconcile the live workflow to the pinned runner revision without manual dashboard edits | `scripts/devops/sync-n8n-workflow.mjs` |
-| P1 | Full workflow-as-code for the orchestrator source itself | In progress | The orchestration logic should live in the repo, not only in a gist / live n8n node | `scripts/devops/marketeq_orchestrator_node.js`, publish + sync scripts |
-| P1 | Secret externalization from inline n8n Build Command code | Planned | Tokens should come from managed credentials or env injection, not inline code strings | follow-up |
-| P1 | Structured deploy summary / observability artifact | Planned | Every promotion should emit one deploy report tying together SHA, Render, Vercel, smoke, and final visibility state | follow-up |
-| P1 | Automated rollback playbook | Planned | Failures should have a first-class recovery path instead of manual ad-hoc steps | follow-up |
-| P2 | Concurrency lock / queue hardening at the orchestrator level | Planned | Prevents race conditions during rapid successive pushes | follow-up |
-| P2 | Live env drift reconciliation against Vercel / Render variable sets | Planned | Prevents the repo templates from silently diverging from deployed runtime config | follow-up |
+| P1 | Full workflow-as-code for the orchestrator source itself | Implemented | The orchestration logic now lives in the repo and is published outward to the pinned gist revision | `scripts/devops/marketeq_orchestrator_node.js`, publish + sync scripts |
+| P1 | Secret externalization from inline n8n Build Command code | Implemented in this phase | The live workflow now sources a host-side runtime env file instead of embedding deploy tokens in the Build Command node | `scripts/devops/install-n8n-runtime-secrets.mjs`, `scripts/devops/build-n8n-build-command.mjs` |
+| P1 | Structured deploy summary / observability artifact | Implemented in this phase | Every promotion now emits a single GitHub commit comment summary with SHA, visibility, checks, and machine-readable JSON | live n8n orchestrator |
+| P1 | Automated rollback playbook | In progress | A first-class staging rollback trigger now exists in-repo, but current staging history has no recent smoke-green candidate to validate a full live recovery | `scripts/devops/rollback-staging.mjs`, live n8n orchestrator |
+| P2 | Concurrency lock / queue hardening at the orchestrator level | Implemented in this phase | Prevents overlapping `dev-main` / `staging` promotions from racing each other on the n8n host | live n8n orchestrator |
+| P2 | Live env drift reconciliation against Vercel / Render variable sets | In progress | The repo now has an explicit runtime env drift checker; Render is fully checked and Vercel is currently blocked by missing env-read token scope | `scripts/devops/check-runtime-env-drift.mjs` |
 
 ## What was implemented in this phase
 
@@ -66,17 +66,71 @@ The live orchestrator source now exists in the repo. The gist is no longer the o
 
 Publishes the repo-controlled runner file to the configured gist, then rewrites `scripts/devops/marketeq-devops.config.json` with the new pinned raw URL so `sync-n8n-workflow.mjs` can push that exact revision into the live n8n workflow.
 
+### 5. Runtime secret externalization
+
+`scripts/devops/build-n8n-build-command.mjs`
+
+Generates the exact `Build Command` node contract so the live workflow sources runtime secrets from the n8n host file path pinned in `scripts/devops/marketeq-devops.config.json` instead of embedding token literals inline.
+
+`node scripts/devops/install-n8n-runtime-secrets.mjs`
+
+Creates a short-lived installer workflow on the n8n instance, writes `/home/node/.n8n/marketeq-devops.env` with the required runtime secret keys, verifies the file owner/mode/keyset, then deletes the installer workflow.
+
+### 6. Structured deploy summary artifact
+
+The live orchestrator now upserts one branch-scoped GitHub commit comment per managed SHA using the marker `<!-- marketeq-deploy-summary:<branch> -->`.
+
+Each summary includes:
+- final status
+- mode / reason
+- branch / SHA / event
+- final repo visibility state
+- changed files
+- normalized check results
+- embedded JSON for machine-readable audit trails
+
+### 7. Concurrency lock hardening
+
+The live orchestrator now acquires host-side branch locks under `/home/node/.n8n/marketeq-locks` before it mutates statuses or protected branches.
+
+Lock behavior:
+- `dev-main` promotions lock both `dev-main` and `staging`
+- `staging` promotions lock `staging`
+- stale locks are evicted after 30 minutes
+- lock wait time is emitted into the deploy summary JSON
+
+### 8. Runtime env drift checker
+
+`node scripts/devops/check-runtime-env-drift.mjs`
+
+Compares:
+- `frontend/.env.local.example` against live Vercel `dev-main` project env keys
+- `frontend/.env.staging.example` against live Vercel `staging` project env keys
+- `frontend/.env.production.example` against live Vercel `live-mvp` project env keys
+- `backend/.env.production.example` against live Render backend env keys
+
+Current live result:
+- Render env keys are readable and drift is visible
+- Vercel env-read is blocked by the available token not being accepted for the project env API
+
+### 9. Staging rollback trigger
+
+`node scripts/devops/rollback-staging.mjs --check`
+
+Scans recent `staging` history for the most recent SHA with both:
+- `Vercel – marketeq-projects-staging: success`
+- `Smoke – marketeq-projects-staging: success`
+
+`node scripts/devops/rollback-staging.mjs --apply --to-sha <sha>`
+
+Triggers the live n8n orchestrator with `event=rollback`, which promotes the requested SHA onto `staging` and re-runs the staging deployment path.
+
 ## Known remaining gaps
 
-1. The orchestrator source code is still primarily maintained in the live gist / external working copy instead of being fully versioned under the repo.
-2. The live n8n `Build Command` still contains inline secret injection and should be moved to managed credentials / secret store inputs.
-3. The current smoke gate correctly fails the deploy on broken login, but it does not yet emit a first-class structured deploy summary artifact.
-4. Rollback remains manual.
-5. Runtime env reconciliation against real Vercel / Render env var sets is still a follow-up.
+1. The Vercel-side env reconciliation still needs a Vercel token with env-read permission.
+2. A fully live rollback test still needs a known-good staging candidate SHA with both green Vercel and green Smoke histories.
 
 ## Next recommended implementation order
 
-1. Vendor the orchestrator source into the repo and make the gist a build artifact, not the source of truth.
-2. Remove inline secret injection from the n8n Build Command.
-3. Add structured deploy summary output and rollback automation.
-4. Add live env reconciliation against Vercel and Render.
+1. Finish Vercel env-read auth so the runtime env drift checker can reconcile all three frontend projects.
+2. Validate a live staging rollback against a known-good candidate once one exists or is deliberately selected.

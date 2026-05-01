@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 
+const fs = require("node:fs");
+
 const GH_TOKEN = process.env.GH_TOKEN || "";
 const VERCEL_TOKEN = process.env.VERCEL_TOKEN || "";
 const RENDER_TOKEN = process.env.RENDER_TOKEN || "";
+const SMOKE_USER_EMAIL = process.env.SMOKE_USER_EMAIL || "";
+const SMOKE_USER_PASSWORD = process.env.SMOKE_USER_PASSWORD || "";
 
 const EVENT = process.env.EVENT || "";
 const BRANCH = process.env.BRANCH || "";
@@ -54,9 +58,6 @@ const SMOKE_TARGETS = {
   },
 };
 
-const SMOKE_USER_EMAIL = "deploy-smoke@marketeq.local";
-const SMOKE_USER_PASSWORD = "MarketeqSmoke1!";
-
 const IGNORED_PROMOTION_PATTERNS = [
   /^docs\//,
   /^\.github\//,
@@ -75,6 +76,24 @@ const BACKEND_PROMOTION_PATTERNS = [
 ];
 
 let repoPublic = false;
+const PROTECTED_BRANCHES = ["dev-main", "staging", "live-mvp"];
+const DEPLOY_SUMMARY_PREFIX = "<!-- marketeq-deploy-summary:";
+const LOCK_ROOT = "/home/node/.n8n/marketeq-locks";
+const LOCK_STALE_MS = 30 * 60 * 1000;
+const LOCK_WAIT_MS = 5 * 60 * 1000;
+
+function assertRequiredSecrets() {
+  const missing = [];
+
+  if (!GH_TOKEN) missing.push("GH_TOKEN");
+  if (!VERCEL_TOKEN) missing.push("VERCEL_TOKEN");
+  if (!SMOKE_USER_EMAIL) missing.push("SMOKE_USER_EMAIL");
+  if (!SMOKE_USER_PASSWORD) missing.push("SMOKE_USER_PASSWORD");
+
+  if (missing.length > 0) {
+    throw new Error(`Missing required runtime secrets: ${missing.join(", ")}`);
+  }
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -161,6 +180,249 @@ async function markNonTargetSmokeContexts(sha, targetBranches) {
 
 async function setVisibility(visibility) {
   await ghApi("PATCH", `/repos/${REPO}`, { visibility });
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function safeJsonParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeCheck(check) {
+  if (!check || typeof check !== "object") return null;
+  return {
+    ok: check.ok === true,
+    system: check.system || "",
+    context: check.context || "",
+    branch: check.branch || "",
+    state: check.state || "",
+    url: check.url || "",
+    route: check.route || "",
+    reused: check.reused === true,
+    deployId: check.deployId || "",
+  };
+}
+
+function normalizeSummary(summary) {
+  return {
+    startedAt: summary.startedAt || "",
+    endedAt: summary.endedAt || "",
+    event: summary.event || "",
+    branch: summary.branch || "",
+    sha: summary.sha || "",
+    status: summary.status || "",
+    mode: summary.mode || "",
+    reason: summary.reason || "",
+    repoVisibilityFinal: summary.repoVisibilityFinal || "",
+    targetBranches: Array.isArray(summary.targetBranches) ? summary.targetBranches : [],
+    changedFiles: Array.isArray(summary.changedFiles) ? summary.changedFiles : [],
+    checks: Array.isArray(summary.checks) ? summary.checks.map(normalizeCheck).filter(Boolean) : [],
+    locks: summary.locks || null,
+    error: summary.error || "",
+    commentUrl: summary.commentUrl || "",
+    commentError: summary.commentError || "",
+  };
+}
+
+function buildSummaryCommentBody(summary) {
+  const marker = `${DEPLOY_SUMMARY_PREFIX}${summary.branch} -->`;
+  const normalized = normalizeSummary(summary);
+  const changedFiles = normalized.changedFiles.slice(0, 20);
+  const hiddenCount = Math.max(0, normalized.changedFiles.length - changedFiles.length);
+  const checkLines =
+    normalized.checks.length > 0
+      ? normalized.checks.map((check) => {
+          const parts = [
+            check.system || "check",
+            check.context || check.branch || "",
+            check.state || "",
+            check.ok ? "ok" : "not-ok",
+            check.reused ? "reused" : "",
+            check.route ? `route=${check.route}` : "",
+          ].filter(Boolean);
+          return `- ${parts.join(" | ")}${check.url ? ` | ${check.url}` : ""}`;
+        })
+      : ["- none"];
+
+  const lines = [
+    marker,
+    "## Marketeq Deploy Summary",
+    "",
+    `- Status: \`${normalized.status}\``,
+    `- Mode: \`${normalized.mode || "n/a"}\``,
+    `- Branch: \`${normalized.branch}\``,
+    `- SHA: \`${normalized.sha}\``,
+    `- Event: \`${normalized.event}\``,
+    `- Started: \`${normalized.startedAt}\``,
+    `- Ended: \`${normalized.endedAt}\``,
+    `- Final repo visibility: \`${normalized.repoVisibilityFinal}\``,
+    `- Target branches: ${normalized.targetBranches.length > 0 ? normalized.targetBranches.map((value) => `\`${value}\``).join(", ") : "none"}`,
+  ];
+
+  if (normalized.reason) lines.push(`- Reason: ${normalized.reason}`);
+  if (normalized.error) lines.push(`- Error: ${normalized.error}`);
+  if (normalized.locks?.branches?.length) {
+    lines.push(`- Lock wait: \`${normalized.locks.waitedMs}ms\``);
+  }
+
+  lines.push("", "### Checks", ...checkLines, "", "### Changed Files");
+
+  if (changedFiles.length > 0) {
+    lines.push(...changedFiles.map((file) => `- \`${file}\``));
+    if (hiddenCount > 0) {
+      lines.push(`- ...and ${hiddenCount} more`);
+    }
+  } else {
+    lines.push("- none");
+  }
+
+  lines.push(
+    "",
+    "<details><summary>JSON</summary>",
+    "",
+    "```json",
+    JSON.stringify(normalized, null, 2),
+    "```",
+    "",
+    "</details>",
+  );
+
+  return lines.join("\n");
+}
+
+async function upsertDeploySummaryComment(summary) {
+  if (!summary.sha || !PROTECTED_BRANCHES.includes(summary.branch)) {
+    return null;
+  }
+
+  const marker = `${DEPLOY_SUMMARY_PREFIX}${summary.branch} -->`;
+  const body = buildSummaryCommentBody(summary);
+  const comments = await ghApi("GET", `/repos/${REPO}/commits/${summary.sha}/comments`);
+  const existing = Array.isArray(comments)
+    ? comments.find((comment) => String(comment.body || "").includes(marker))
+    : null;
+
+  if (existing) {
+    const updated = await ghApi("PATCH", `/repos/${REPO}/comments/${existing.id}`, { body });
+    return updated.html_url || "";
+  }
+
+  const created = await ghApi("POST", `/repos/${REPO}/commits/${summary.sha}/comments`, { body });
+  return created.html_url || "";
+}
+
+function mergeErrorIntoSummary(summary, error) {
+  const message =
+    error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error);
+  const structured = safeJsonParse(message);
+
+  if (structured && typeof structured === "object") {
+    if (structured.sha) summary.sha = structured.sha;
+    if (structured.mode) summary.mode = structured.mode;
+    if (structured.status) summary.status = structured.status;
+    if (structured.reason) summary.reason = structured.reason;
+    if (Array.isArray(structured.changedFiles)) summary.changedFiles = structured.changedFiles;
+    if (Array.isArray(structured.checks)) summary.checks = structured.checks.map(normalizeCheck).filter(Boolean);
+  } else {
+    summary.error = message;
+  }
+
+  if (!summary.status || summary.status === "pending") {
+    summary.status = "failed";
+  }
+
+  if (!summary.error) {
+    summary.error = message;
+  }
+}
+
+function getLockDir(branchName) {
+  return `${LOCK_ROOT}/${branchName}`;
+}
+
+function ensureLockRoot() {
+  fs.mkdirSync(LOCK_ROOT, { recursive: true });
+}
+
+function isLockStale(lockDir) {
+  try {
+    const stat = fs.statSync(lockDir);
+    return Date.now() - stat.mtimeMs > LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+
+async function acquireBranchLock(branchName) {
+  ensureLockRoot();
+  const lockDir = getLockDir(branchName);
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt <= LOCK_WAIT_MS) {
+    try {
+      fs.mkdirSync(lockDir);
+      fs.writeFileSync(
+        `${lockDir}/meta.json`,
+        JSON.stringify({ branch: branchName, pid: process.pid, createdAt: nowIso() }, null, 2),
+      );
+
+      return {
+        branch: branchName,
+        lockDir,
+        waitedMs: Date.now() - startedAt,
+        release() {
+          fs.rmSync(lockDir, { recursive: true, force: true });
+        },
+      };
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        throw error;
+      }
+
+      if (isLockStale(lockDir)) {
+        fs.rmSync(lockDir, { recursive: true, force: true });
+        continue;
+      }
+
+      await sleep(2_000);
+    }
+  }
+
+  throw new Error(`Timed out waiting for branch lock: ${branchName}`);
+}
+
+async function acquirePromotionLocks(branchNames) {
+  const releases = [];
+  const waits = [];
+
+  try {
+    for (const branchName of [...new Set(branchNames)].sort()) {
+      const lock = await acquireBranchLock(branchName);
+      releases.push(lock);
+      waits.push({ branch: branchName, waitedMs: lock.waitedMs });
+    }
+
+    return {
+      waitedMs: waits.reduce((sum, entry) => sum + entry.waitedMs, 0),
+      branches: waits,
+      release() {
+        for (const lock of releases.reverse()) {
+          lock.release();
+        }
+      },
+    };
+  } catch (error) {
+    for (const lock of releases.reverse()) {
+      lock.release();
+    }
+    throw error;
+  }
 }
 
 async function ensureRepoPublic() {
@@ -540,41 +802,83 @@ async function triggerVercelDeploy(project, sha) {
 }
 
 async function main() {
-  const protectedBranches = ["dev-main", "staging", "live-mvp"];
-  if (EVENT !== "push" || !protectedBranches.includes(BRANCH)) {
-    console.log(JSON.stringify({ ok: true, status: "skipped", event: EVENT, branch: BRANCH, sha: SHA_INPUT, reason: "event-or-branch-not-managed" }));
-    return;
-  }
-
-  const refs = {
-    "dev-main": await getBranchSha("dev-main"),
-    staging: await getBranchSha("staging"),
-    "live-mvp": await getBranchSha("live-mvp"),
+  assertRequiredSecrets();
+  const isRollback = EVENT === "rollback";
+  const summary = {
+    startedAt: nowIso(),
+    endedAt: "",
+    event: EVENT,
+    branch: BRANCH,
+    sha: SHA_INPUT || "",
+    status: "pending",
+    mode: "",
+    reason: "",
+    repoVisibilityFinal: "private",
+    targetBranches: [],
+    changedFiles: [],
+    checks: [],
+    error: "",
   };
 
-  let targetSha = SHA_INPUT || refs[BRANCH];
-  if (BRANCH === "staging" && targetSha === refs["dev-main"]) {
-    console.log(JSON.stringify({ ok: true, status: "skipped", event: EVENT, branch: BRANCH, sha: targetSha, reason: "staging-sync-handled-by-dev-main" }));
-    return;
-  }
-
-  const targetBranches = BRANCH === "dev-main" ? ["dev-main", "staging"] : [BRANCH];
-
-  await markNonTargetContexts(targetSha, targetBranches);
-  await markNonTargetSmokeContexts(targetSha, targetBranches);
-  await setTargetContexts(targetSha, targetBranches, "pending", "n8n deployment in progress");
+  let fatalError = null;
+  let lockHandle = null;
 
   try {
-    if (BRANCH === "dev-main") {
+    if (!["push", "rollback"].includes(EVENT) || !PROTECTED_BRANCHES.includes(BRANCH)) {
+      summary.status = "skipped";
+      summary.reason = "event-or-branch-not-managed";
+      return;
+    }
+
+    if (isRollback && BRANCH !== "staging") {
+      summary.status = "skipped";
+      summary.reason = "rollback-supported-for-staging-only";
+      return;
+    }
+
+    const refs = {
+      "dev-main": await getBranchSha("dev-main"),
+      staging: await getBranchSha("staging"),
+      "live-mvp": await getBranchSha("live-mvp"),
+    };
+
+    let targetSha = SHA_INPUT || refs[BRANCH];
+    summary.sha = targetSha;
+
+    if (!isRollback && BRANCH === "staging" && targetSha === refs["dev-main"]) {
+      summary.status = "skipped";
+      summary.reason = "staging-sync-handled-by-dev-main";
+      return;
+    }
+
+    const targetBranches = BRANCH === "dev-main" ? ["dev-main", "staging"] : [BRANCH];
+    summary.targetBranches = targetBranches;
+    lockHandle = await acquirePromotionLocks(targetBranches);
+    summary.locks = {
+      waitedMs: lockHandle.waitedMs,
+      branches: lockHandle.branches,
+    };
+
+    await markNonTargetContexts(targetSha, targetBranches);
+    await markNonTargetSmokeContexts(targetSha, targetBranches);
+    await setTargetContexts(targetSha, targetBranches, "pending", "n8n deployment in progress");
+
+    if (!isRollback && BRANCH === "dev-main") {
       targetSha = SHA_INPUT || refs["dev-main"];
+      summary.sha = targetSha;
+
       const compareBaseSha = BASE_SHA_OVERRIDE || refs.staging;
       if (compareBaseSha === targetSha) {
-        console.log(JSON.stringify({ ok: true, status: "skipped", reason: "no-new-code-to-promote", branch: BRANCH, sha: targetSha }));
+        await setTargetContexts(targetSha, targetBranches, "success", "No new code to promote");
+        summary.status = "skipped";
+        summary.reason = "no-new-code-to-promote";
         return;
       }
 
       const changedFiles = await compareFiles(compareBaseSha, targetSha);
       const promotion = classifyPromotionFiles(changedFiles);
+      summary.mode = promotion.mode === "backend" ? "dev-main-to-staging" : promotion.mode;
+      summary.changedFiles = changedFiles;
 
       if (refs.staging !== targetSha) {
         await ghApi("PATCH", `/repos/${REPO}/git/refs/heads/staging`, { sha: targetSha, force: true });
@@ -583,16 +887,8 @@ async function main() {
 
       if (promotion.mode === "none") {
         await setTargetContexts(targetSha, targetBranches, "success", promotion.description);
-        console.log(
-          JSON.stringify({
-            ok: true,
-            status: "skipped",
-            reason: "non-runtime-changes-only",
-            branch: BRANCH,
-            sha: targetSha,
-            changedFiles,
-          }),
-        );
+        summary.status = "skipped";
+        summary.reason = "non-runtime-changes-only";
         return;
       }
 
@@ -617,8 +913,8 @@ async function main() {
 
       await ensureRepoPublic();
 
-      const devStart = await triggerVercelDeploy(PROJECTS["dev-main"], targetSha);
-      const stagingStart = await triggerVercelDeploy(PROJECTS.staging, targetSha);
+      await triggerVercelDeploy(PROJECTS["dev-main"], targetSha);
+      await triggerVercelDeploy(PROJECTS.staging, targetSha);
       await sleep(5_000);
 
       const devResult = await waitForVercelDeployment(PROJECTS["dev-main"], targetSha);
@@ -653,21 +949,20 @@ async function main() {
         throw error;
       }
 
-      console.log(
-        JSON.stringify({
-          ok: true,
-          status: "success",
-          mode: promotion.mode === "backend" ? "dev-main-to-staging" : "frontend-only",
-          branch: BRANCH,
-          sha: targetSha,
-          changedFiles,
-          checks: [renderResult, devResult, stagingResult, devSmoke, stagingSmoke],
-        }),
-      );
+      summary.status = "success";
+      summary.mode = promotion.mode === "backend" ? "dev-main-to-staging" : "frontend-only";
+      summary.checks = [renderResult, devResult, stagingResult, devSmoke, stagingSmoke].map(normalizeCheck).filter(Boolean);
       return;
     }
 
     if (BRANCH === "staging") {
+      summary.mode = isRollback ? "rollback-staging" : "staging";
+
+      if (isRollback && refs.staging !== targetSha) {
+        await ghApi("PATCH", `/repos/${REPO}/git/refs/heads/staging`, { sha: targetSha, force: true });
+        await sleep(3_000);
+      }
+
       const renderResult = await ensureRenderLive(targetSha);
       if (!renderResult.ok) {
         await setTargetContexts(targetSha, targetBranches, "failure", "Blocked: shared Render deploy failed", renderResult.url);
@@ -675,7 +970,7 @@ async function main() {
       }
 
       await ensureRepoPublic();
-      const start = await triggerVercelDeploy(PROJECTS.staging, targetSha);
+      await triggerVercelDeploy(PROJECTS.staging, targetSha);
       await sleep(5_000);
 
       const stagingResult = await waitForVercelDeployment(PROJECTS.staging, targetSha);
@@ -693,12 +988,14 @@ async function main() {
         throw error;
       }
 
-      console.log(JSON.stringify({ ok: true, status: "success", mode: "staging", branch: BRANCH, sha: targetSha, checks: [renderResult, stagingResult, stagingSmoke] }));
+      summary.status = "success";
+      summary.checks = [renderResult, stagingResult, stagingSmoke].map(normalizeCheck).filter(Boolean);
       return;
     }
 
+    summary.mode = BRANCH;
     await ensureRepoPublic();
-    const start = await triggerVercelDeploy(PROJECTS[BRANCH], targetSha);
+    await triggerVercelDeploy(PROJECTS[BRANCH], targetSha);
     await sleep(5_000);
 
     const result = await waitForVercelDeployment(PROJECTS[BRANCH], targetSha);
@@ -706,12 +1003,39 @@ async function main() {
       throw new Error(JSON.stringify({ ok: false, status: "failed", mode: BRANCH, branch: BRANCH, sha: targetSha, checks: [result] }));
     }
 
-    console.log(JSON.stringify({ ok: true, status: "success", mode: BRANCH, branch: BRANCH, sha: targetSha, checks: [result] }));
+    summary.status = "success";
+    summary.checks = [result].map(normalizeCheck).filter(Boolean);
+  } catch (error) {
+    fatalError = error;
+    mergeErrorIntoSummary(summary, error);
   } finally {
-    if (repoPublic) {
-      await setVisibility("private");
-      repoPublic = false;
+    try {
+      if (repoPublic) {
+        await setVisibility("private");
+        repoPublic = false;
+      }
+    } finally {
+      if (lockHandle) {
+        lockHandle.release();
+        lockHandle = null;
+      }
     }
+
+    summary.endedAt = nowIso();
+    summary.repoVisibilityFinal = repoPublic ? "public" : "private";
+
+    try {
+      summary.commentUrl = await upsertDeploySummaryComment(summary);
+    } catch (commentError) {
+      summary.commentError =
+        commentError instanceof Error ? commentError.message : String(commentError);
+    }
+
+    console.log(JSON.stringify(normalizeSummary(summary)));
+  }
+
+  if (fatalError) {
+    throw fatalError;
   }
 }
 
