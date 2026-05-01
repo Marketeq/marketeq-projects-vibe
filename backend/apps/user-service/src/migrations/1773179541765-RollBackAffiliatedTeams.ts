@@ -37,30 +37,6 @@ export class RollBackAffiliatedTeams1773179541765
     }
   }
 
-  private isLegacyOwnershipIssue(error: unknown): boolean {
-    const message = error instanceof Error ? error.message : String(error);
-    return /must be owner of table|permission denied|insufficient privilege|object not in prerequisite state/i.test(
-      message,
-    );
-  }
-
-  private async runBestEffort(
-    queryRunner: QueryRunner,
-    sql: string,
-    notice: string,
-  ): Promise<void> {
-    try {
-      await queryRunner.query(sql);
-    } catch (error) {
-      if (!this.isLegacyOwnershipIssue(error)) {
-        throw error;
-      }
-
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[${this.name}] ${notice}: ${message}`);
-    }
-  }
-
   public async up(queryRunner: QueryRunner): Promise<void> {
     await this.runBestEffort(
       queryRunner,
