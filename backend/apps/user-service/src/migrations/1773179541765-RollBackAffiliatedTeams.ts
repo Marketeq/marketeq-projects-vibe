@@ -21,6 +21,7 @@ export class RollBackAffiliatedTeams1773179541765
     const savepoint = `"${this.name}_best_effort_${this.savepointIndex += 1}"`;
 
     try {
+      // Savepoints keep a single legacy ownership mismatch from aborting the whole rollback.
       await queryRunner.query(`SAVEPOINT ${savepoint}`);
       await queryRunner.query(sql);
       await queryRunner.query(`RELEASE SAVEPOINT ${savepoint}`);
