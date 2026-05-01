@@ -98,6 +98,7 @@ import {
   openGoogleDrivePicker,
 } from "../hooks/use-cloud-picker"
 import { OneDrivePickerDialog } from "./onedrive-picker-dialog"
+import { BlockConfirmDialog } from "./block-confirm-dialog"
 import { addParticipantToGroup } from "../hooks/use-group-encryption"
 import { useEditMessage } from "../hooks/use-edit-message"
 import { useMessages } from "../hooks/use-messages"
@@ -187,6 +188,7 @@ export function Chats({
   const [keyReady, setKeyReady] = useState(false)
   const [keyError, setKeyError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false)
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const [editingMessage, setEditingMessage] = useState<Message | null>(null)
   // Thread-level state is source-of-truth from the server (selectedConversation)
@@ -1368,9 +1370,17 @@ export function Chats({
                 >
                   <AlertTriangle className="size-4" /> {threadSpam ? "Move to Inbox" : "Move to Spam"}
                 </DropdownMenuItem>
-                <DropdownMenuItem className="text-error-500">
-                  <AlertTriangle className="size-4" /> Block / Report
-                </DropdownMenuItem>
+                {!selectedConversation?.isGroup && (
+                  <DropdownMenuItem
+                    className="text-error-500"
+                    onSelect={(e) => {
+                      e.preventDefault()
+                      setShowBlockConfirm(true)
+                    }}
+                  >
+                    <AlertTriangle className="size-4" /> Block / Report
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   className="text-error-500"
                   onSelect={(e) => {
@@ -1839,7 +1849,7 @@ export function Chats({
                   ? "Add a message (optional)..."
                   : "Send message..."
             }
-            className={`w-full resize-none py-1.5 leading-5 h-9 max-h-[120px] overflow-y-auto ${
+            className={`w-full resize-none py-1.5 leading-5 h-9 max-h-32 overflow-y-auto ${
               editingMessage
                 ? "pr-[120px] ring-1 ring-primary-500 border-primary-500 focus:ring-primary-500 focus:border-primary-500"
                 : "pr-11"
@@ -1872,7 +1882,11 @@ export function Chats({
             }}
           />
           <InputRightElement
-            className={editingMessage ? "!w-[120px] justify-end" : "items-center"}
+            className={
+              editingMessage
+                ? "!w-[120px] justify-end items-end pb-2"
+                : "items-end pb-2"
+            }
           >
             {editingMessage ? (
               <div className="flex items-center gap-x-3 pr-3">
@@ -1945,6 +1959,20 @@ export function Chats({
         currentUserProfile={currentUserProfile}
         receiverUser={receiverUser}
         privateKey={privateKey}
+      />
+
+      <BlockConfirmDialog
+        open={showBlockConfirm}
+        onOpenChange={setShowBlockConfirm}
+        targetUserId={
+          selectedConversation && currentUser?.id
+            ? getOtherParticipantId(selectedConversation, currentUser.id) ?? null
+            : null
+        }
+        targetDisplayName={
+          (selectedConversation as any)?.participantName ||
+          (selectedConversation as any)?.participantUsername
+        }
       />
 
       <OneDrivePickerDialog

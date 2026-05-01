@@ -9,6 +9,7 @@ import {
 import { useRouter } from "next/navigation"
 import { useThreadActions, type ThreadBulkAction } from "../hooks/use-thread-actions"
 import { apiFetch } from "@/src/lib/api"
+import { listBlocked } from "@/src/lib/api/blocks"
 import { useUserChannel } from "@/utils/useUserChannel"
 import { getCurrentUser, getAccessToken } from "@/utils/auth"
 import { noop, toPxIfNumber } from "@/utils/functions"
@@ -104,7 +105,7 @@ function getOtherParticipantId(
 
 interface LeftSidebarProps {
   selectedConversation: Conversation | null
-  setSelectedConversation: (conv: Conversation) => void
+  setSelectedConversation: (conv: Conversation | null) => void
   messagesByConversation: Record<string, Message[]>
   initialThreadId?: string | null
   initialParticipantId?: string | null
@@ -564,6 +565,56 @@ const LeftSidebar = ({
     return () => { cancelled = true }
   }, [currentUserId, token, initialParticipantId, isLoading, conversations])
 
+  const skipAutoSelectRef = useRef(false)
+  const [blockedSenderIds, setBlockedSenderIds] = useState<Set<string>>(
+    new Set(),
+  )
+
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    listBlocked()
+      .then((entries) => {
+        if (cancelled) return
+        setBlockedSenderIds(new Set(entries.map((e) => e.blockedId)))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ blockedUserId?: string }>).detail
+      const blockedUserId = detail?.blockedUserId
+      if (!blockedUserId || !currentUserId) return
+      setConversations((prev) =>
+        prev.filter((c) => {
+          if (c.isGroup) return true
+          return getOtherParticipantId(c, currentUserId) !== blockedUserId
+        })
+      )
+      setBlockedSenderIds((prev) => {
+        if (prev.has(blockedUserId)) return prev
+        const next = new Set(prev)
+        next.add(blockedUserId)
+        return next
+      })
+      if (
+        selectedConversation &&
+        !selectedConversation.isGroup &&
+        getOtherParticipantId(selectedConversation, currentUserId) ===
+          blockedUserId
+      ) {
+        skipAutoSelectRef.current = true
+        setSelectedConversation(null)
+      }
+    }
+    window.addEventListener("inbox:user-blocked", handler)
+    return () => window.removeEventListener("inbox:user-blocked", handler)
+  }, [currentUserId, selectedConversation, setSelectedConversation])
+
   // Live-sync: apply server state-change broadcasts (pin/star/archive/...)
   useUserChannel({
     onThreadStateChanged: ({ threadId, patch }) => {
@@ -598,6 +649,11 @@ const LeftSidebar = ({
 
   useEffect(() => {
     if (isLoading || initialParticipantId || searching) return
+
+    if (skipAutoSelectRef.current) {
+      skipAutoSelectRef.current = false
+      return
+    }
 
     const selectedVisible = selectedConversation
       ? visibleConversations.some((c) => c.id === selectedConversation.id)
@@ -717,6 +773,8 @@ const LeftSidebar = ({
     // (matching Slack/Discord/iMessage search behavior).
     const messages: SearchMessageResult[] = searchResults
       .filter((r) => {
+        if (blockedSenderIds.has(r.senderId)) return false
+        if (!convById.has(r.threadId)) return false
         const content = (r.content || "").trim()
         if (!content) return false
         const urls = extractUrls(content)
@@ -762,6 +820,8 @@ const LeftSidebar = ({
 
     const links: SearchLinkResult[] = []
     for (const r of allDocs) {
+      if (blockedSenderIds.has(r.senderId)) continue
+      if (!convById.has(r.threadId)) continue
       const contentLower = (r.content || "").toLowerCase()
       const urls = extractUrls(r.content || "")
       const conv = convById.get(r.threadId)
@@ -781,6 +841,8 @@ const LeftSidebar = ({
 
     const files: SearchFileResult[] = []
     for (const r of allDocs) {
+      if (blockedSenderIds.has(r.senderId)) continue
+      if (!convById.has(r.threadId)) continue
       if (!r.attachments?.length) continue
       const contentLower = (r.content || "").toLowerCase()
       const conv = convById.get(r.threadId)
@@ -812,7 +874,7 @@ const LeftSidebar = ({
     files.sort(byCreatedDesc)
 
     return { people, messages, links, files }
-  }, [searchQuery, searchResults, conversations, currentUserId, searchIndex])
+  }, [searchQuery, searchResults, conversations, currentUserId, searchIndex, blockedSenderIds])
 
   return (
     <div className="w-[322px] shrink-0 border-r bg-white border-gray-200 h-full flex flex-col min-h-0">

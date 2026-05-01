@@ -20,6 +20,7 @@ import { ThreadsController } from './threads/threads.controller';
 import { EncryptionModule } from './encryption/encryption.module';
 import { TrashCleanupService } from './threads/trash-cleanup.service';
 import { StorageModule } from './storage/storage.module';
+import { BlocksModule } from './blocks/blocks.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { StorageModule } from './storage/storage.module';
     TypeOrmModule.forFeature([Thread, ThreadUserState, ThreadList, ThreadListAssignment, Message, Attachment, ConversationKey]),
     EncryptionModule,
     StorageModule,
+    BlocksModule,
   ],
   controllers: [MessagesController, AttachmentsController, ThreadsController],
   providers: [AblyService, MessagesService, ThreadsService, TrashCleanupService],

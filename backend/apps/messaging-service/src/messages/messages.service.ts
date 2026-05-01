@@ -5,6 +5,7 @@ import { Message } from './entities/message.entity';
 import { Attachment } from './entities/attachment.entity';
 import { Thread } from '../threads/entities/thread.entity';
 import { AblyService } from '../ably/ably.service';
+import { BlockEnforcementService } from '../blocks/block-enforcement.service';
 import { R2Service } from '../storage/r2.service';
 
 @Injectable()
@@ -16,15 +17,17 @@ export class MessagesService {
     private readonly ablyService: AblyService,
     private readonly r2Service: R2Service,
     private readonly dataSource: DataSource,
+    private readonly blockEnforcement: BlockEnforcementService,
   ) {}
 
   async getThreadMessages(threadId: string, userId: string) {
-    await this.assertParticipant(threadId, userId);
-    return this.messageRepo.find({
+    const thread = await this.assertParticipant(threadId, userId);
+    const messages = await this.messageRepo.find({
       where: { threadId, deleted: false },
       relations: ['attachments'],
       order: { createdAt: 'ASC' },
     });
+    return this.blockEnforcement.filterMessagesForBlocks(userId, thread, messages);
   }
 
   private async assertParticipant(threadId: string, userId: string): Promise<Thread> {
@@ -42,16 +45,18 @@ export class MessagesService {
     if (!thread.participantIds.includes(dto.senderId)) {
       throw new ForbiddenException('Not a participant of this thread');
     }
+    const { shadow } = await this.blockEnforcement.assertCanSend(dto.senderId, thread);
 
     const message = this.messageRepo.create({ ...dto, status: 'sent' });
     const saved = await this.messageRepo.save(message);
 
-    // Strip plaintext from Ably payload when ciphertext is present
-    if (saved.ciphertext) {
-      const { content: _plaintext, ...ciphertextOnly } = saved;
-      await this.ablyService.publishMessageNew(dto.threadId, ciphertextOnly);
-    } else {
-      await this.ablyService.publishMessageNew(dto.threadId, saved);
+    if (!shadow) {
+      if (saved.ciphertext) {
+        const { content: _plaintext, ...ciphertextOnly } = saved;
+        await this.ablyService.publishMessageNew(dto.threadId, ciphertextOnly);
+      } else {
+        await this.ablyService.publishMessageNew(dto.threadId, saved);
+      }
     }
     return saved;
   }
@@ -64,7 +69,8 @@ export class MessagesService {
   }) {
     const { threadId, senderId, file, ciphertext } = params;
     if (!file) throw new BadRequestException('file is required');
-    await this.assertParticipant(threadId, senderId);
+    const thread = await this.assertParticipant(threadId, senderId);
+    const { shadow } = await this.blockEnforcement.assertCanSend(senderId, thread);
 
     const { key, url: fileUrl } = await this.r2Service.uploadMessageAttachment(
       threadId,
@@ -103,11 +109,13 @@ export class MessagesService {
       ...result.message,
       attachments: [result.attachment],
     } as any;
-    if (result.message.ciphertext) {
-      const { content: _plaintext, ...ciphertextOnly } = payload;
-      await this.ablyService.publishMessageNew(threadId, ciphertextOnly);
-    } else {
-      await this.ablyService.publishMessageNew(threadId, payload);
+    if (!shadow) {
+      if (result.message.ciphertext) {
+        const { content: _plaintext, ...ciphertextOnly } = payload;
+        await this.ablyService.publishMessageNew(threadId, ciphertextOnly);
+      } else {
+        await this.ablyService.publishMessageNew(threadId, payload);
+      }
     }
     return result;
   }
