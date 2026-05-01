@@ -30,6 +30,7 @@ import { ClientModule } from './client/client.module';
 import { OwnerTargetModule } from './owner-target/owner-target.module';
 import { TalentProfileModule } from './talent-profile/talent-profile.module';
 import { UserKeysModule } from './user-keys/user-keys.module';
+import { BlockedUsersModule } from './blocked-users/blocked-users.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -81,6 +82,7 @@ import { UserKeysModule } from './user-keys/user-keys.module';
     OwnerTargetModule,
     TalentProfileModule,
     UserKeysModule,
+    BlockedUsersModule,
   ],
   controllers: [HealthController],
   providers: [

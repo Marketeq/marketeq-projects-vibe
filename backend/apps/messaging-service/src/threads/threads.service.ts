@@ -13,6 +13,7 @@ import { ThreadList } from "./entities/thread-list.entity";
 import { ThreadListAssignment } from "./entities/thread-list-assignment.entity";
 import { ConversationKey } from "../encryption/entities/conversation-key.entity";
 import { AblyService } from "../ably/ably.service";
+import { BlockEnforcementService } from "../blocks/block-enforcement.service";
 import { BulkAction } from "./dtos/thread-list.dto";
 
 type StateFlag =
@@ -37,15 +38,17 @@ export class ThreadsService {
     @InjectRepository(ThreadListAssignment)
     private readonly assignRepo: Repository<ThreadListAssignment>,
     private readonly ably: AblyService,
+    private readonly blockEnforcement: BlockEnforcementService,
   ) {}
 
   async getUserThreads(userId: string) {
-    const threads = await this.repo
+    const allThreads = await this.repo
       .createQueryBuilder("t")
       .where(":userId = ANY(t.participantIds)", { userId })
       .orderBy("t.updatedAt", "DESC")
       .getMany();
 
+    const threads = await this.blockEnforcement.filterThreadsForBlocks(userId, allThreads);
     const threadIds = threads.map((t) => t.id);
     const states = threadIds.length
       ? await this.stateRepo.find({
@@ -115,6 +118,7 @@ export class ThreadsService {
     if (!thread.participantIds.includes(userId)) {
       throw new ForbiddenException("Not a participant of this thread");
     }
+    return thread;
   }
 
   async create(
@@ -141,6 +145,7 @@ export class ThreadsService {
         participantIds[1],
       );
       if (existing) return existing;
+      await this.blockEnforcement.assertCanCreate(participantIds);
     }
 
     const thread = this.repo.create({ participantIds, isGroup, groupName });

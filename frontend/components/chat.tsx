@@ -3,6 +3,7 @@
 import { useState } from "react"
 import Cookies from "js-cookie"
 import { apiFetch } from "@/src/lib/api"
+import { BlockConfirmDialog } from "@/app/(group)/inbox/components/block-confirm-dialog"
 import { cn } from "@/utils/functions"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
@@ -177,6 +178,7 @@ export const UserDetail = ({
     },
   })
   const [open, toggle] = useToggle(false)
+  const [blockOpen, setBlockOpen] = useState(false)
   const showCheckbox = checkedChats > 0
 
   return (
@@ -249,7 +251,7 @@ export const UserDetail = ({
               align="end"
               side="bottom"
               sideOffset={4}
-              avoidCollisions={false}
+              collisionPadding={8}
             >
               <DropdownMenuItem onSelect={() => onMarkUnread?.()}>
                 <EyeOff className="h-4 w-4" /> {conversation.markedUnread ? "Mark as Read" : "Mark Unread"}
@@ -265,9 +267,16 @@ export const UserDetail = ({
               <DropdownMenuItem onSelect={() => onArchive?.()}>
                 <Archive className="h-4 w-4" /> {conversation.isArchived ? "Unarchive" : "Archive"}
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <AlertTriangle className="h-4 w-4" /> Block / Report
-              </DropdownMenuItem>
+              {!conversation.isGroup && otherId && (
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    setBlockOpen(true)
+                  }}
+                >
+                  <AlertTriangle className="h-4 w-4" /> Block / Report
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 visual={conversation.isTrashed ? undefined : "destructive"}
@@ -277,6 +286,15 @@ export const UserDetail = ({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <BlockConfirmDialog
+            open={blockOpen}
+            onOpenChange={setBlockOpen}
+            targetUserId={otherId ?? null}
+            targetDisplayName={
+              conversation.participantName || conversation.participantUsername
+            }
+          />
 
           <Dialog open={open} onOpenChange={toggle}>
             <DialogContent className="max-w-[348px] p-7 rounded-xl">

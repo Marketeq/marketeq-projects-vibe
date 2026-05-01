@@ -187,8 +187,11 @@ const MessageAttachmentView = ({
         {attachment.fileName && (
           <p className="mt-3 flex items-center gap-x-2 text-sm">
             <Download02 className="size-[15px] shrink-0 text-dark-blue-400" />
-            <span className="leading-5 text-dark-blue-400 font-semibold">
-              {attachment.fileName}
+            <span
+              className="leading-5 text-dark-blue-400 font-semibold"
+              title={attachment.fileName}
+            >
+              {truncateFilenameMiddle(attachment.fileName)}
               {attachment.fileSize ? (
                 <span className="font-normal">
                   {" "}
@@ -249,7 +252,11 @@ const MessageAttachmentView = ({
       className="inline-flex items-center gap-x-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 hover:border-gray-300 max-w-[300px]"
     >
       <Download02 className="size-4 shrink-0 text-gray-500" />
-      <span className="truncate">{attachment.fileName || "Attachment"}</span>
+      <span className="truncate" title={attachment.fileName || "Attachment"}>
+        {attachment.fileName
+          ? truncateFilenameMiddle(attachment.fileName)
+          : "Attachment"}
+      </span>
       {attachment.fileSize ? (
         <span className="text-gray-400">
           {formatAttachmentSize(attachment.fileSize)}
@@ -266,6 +273,45 @@ const MessageAttachmentView = ({
 const MESSAGE_URL_REGEX = /https?:\/\/[^\s<>"]+/g
 const extractMessageUrls = (text: string | null | undefined): string[] =>
   text ? text.match(MESSAGE_URL_REGEX) ?? [] : []
+
+const LinkifiedText = ({ text }: { text: string | null | undefined }) => {
+  if (!text) return null
+  const parts: Array<{ type: "text" | "url"; value: string; key: string }> = []
+  let lastIdx = 0
+  let i = 0
+  for (const m of text.matchAll(MESSAGE_URL_REGEX)) {
+    const idx = m.index ?? 0
+    if (idx > lastIdx) {
+      parts.push({ type: "text", value: text.slice(lastIdx, idx), key: `t${i++}` })
+    }
+    parts.push({ type: "url", value: m[0], key: `u${i++}` })
+    lastIdx = idx + m[0].length
+  }
+  if (lastIdx < text.length) {
+    parts.push({ type: "text", value: text.slice(lastIdx), key: `t${i++}` })
+  }
+  return (
+    <>
+      {parts.map((p) =>
+        p.type === "text" ? (
+          <span key={p.key}>{p.value}</span>
+        ) : (
+          <a
+            key={p.key}
+            href={p.value}
+            target="_blank"
+            rel="noreferrer"
+            title={p.value}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-block align-bottom max-w-[220px] truncate underline"
+          >
+            {p.value}
+          </a>
+        )
+      )}
+    </>
+  )
+}
 
 const MessageLinkCard = memo(function MessageLinkCard({ url }: { url: string }) {
   const [imgFailed, setImgFailed] = useState(false)
@@ -576,7 +622,7 @@ const BubbleImpl = ({
           />
         ) : (
           <span className="text-sm leading-[16.94px] text-dark-blue-400 whitespace-pre-line break-words [overflow-wrap:anywhere]">
-            {value}
+            <LinkifiedText text={value} />
           </span>
         )}
         {!isDeleted && message.messageType !== "gif" &&
@@ -596,11 +642,7 @@ const BubbleImpl = ({
         {isPinned && !isDeleted && (
           <Pin02 className="size-3 fill-current shrink-0" />
         )}
-        {message.status === "read" && !isDeleted ? (
-          <span className="font-semibold text-primary-500">Seen</span>
-        ) : (
-          <>Sent</>
-        )}{" "}
+        {message.status === "read" && !isDeleted ? <>Seen</> : <>Sent</>}{" "}
         <span className="font-bold">{formattedTime}</span>
         {message.edited && !isDeleted && (
           <span className="text-gray-400 italic">(edited)</span>
@@ -795,7 +837,7 @@ const YourBubbleImpl = ({
             />
           ) : (
             <span className="text-sm leading-[16.94px] text-dark-blue-400 whitespace-pre-line break-words [overflow-wrap:anywhere]">
-              {value}
+              <LinkifiedText text={value} />
             </span>
           )}
           {!isDeleted && message.messageType !== "gif" &&
