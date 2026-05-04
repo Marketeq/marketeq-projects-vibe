@@ -98,7 +98,7 @@ import {
   openGoogleDrivePicker,
 } from "../hooks/use-cloud-picker"
 import { OneDrivePickerDialog } from "./onedrive-picker-dialog"
-import { BlockConfirmDialog } from "./block-confirm-dialog"
+import { BlockReportDialog } from "./block-report-dialog"
 import { addParticipantToGroup } from "../hooks/use-group-encryption"
 import { useEditMessage } from "../hooks/use-edit-message"
 import { useMessages } from "../hooks/use-messages"
@@ -1961,7 +1961,7 @@ export function Chats({
         privateKey={privateKey}
       />
 
-      <BlockConfirmDialog
+      <BlockReportDialog
         open={showBlockConfirm}
         onOpenChange={setShowBlockConfirm}
         targetUserId={
@@ -1973,6 +1973,7 @@ export function Chats({
           (selectedConversation as any)?.participantName ||
           (selectedConversation as any)?.participantUsername
         }
+        contextThreadId={selectedConversation?.id ?? null}
       />
 
       <OneDrivePickerDialog

@@ -144,6 +144,7 @@ interface LeftSidebarProps {
     }>
   }
   onHighlightMessage?: (messageId: string) => void
+  privateKey: CryptoKey | null
 }
 
 const LeftSidebar = ({
@@ -154,6 +155,7 @@ const LeftSidebar = ({
   initialParticipantId,
   searchIndex,
   onHighlightMessage,
+  privateKey,
 }: LeftSidebarProps) => {
   const { pinnedChats, setPinnedChats, toggleShowPinnedIcon, showPinnedIcon, checkedChats, resetCheckedChats } =
     useChatsContext()
@@ -459,6 +461,47 @@ const LeftSidebar = ({
       cancelled = true
     }
   }, [currentUserId, token, initialThreadId])
+
+  useEffect(() => {
+    if (!privateKey || !token || conversations.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      for (const conv of conversations) {
+        if (cancelled) return
+        const lm = (conv as any).lastMessage
+        if (!lm?.m_ciphertext || lm.m_content) continue
+        const fwd = lm.m_forwardedFromId ? "↪ " : ""
+        if (conv.lastMessagePreview !== `${fwd}Encrypted message`) continue
+
+        try {
+          let key: Uint8Array | null = null
+          try { key = loadKey(conv.id) } catch { /* not cached */ }
+          if (!key) {
+            const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
+              `/api/messaging/conversations/${conv.id}/key?isGroup=${conv.isGroup}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            )
+            const wrapped = Uint8Array.from(atob(encryptedKey), (c) => c.charCodeAt(0))
+            const raw = await window.crypto.subtle.decrypt(
+              { name: "RSA-OAEP" }, privateKey, wrapped
+            )
+            key = new Uint8Array(raw)
+            saveKey(conv.id, btoa(String.fromCharCode(...key)))
+          }
+          const decrypted = await decryptAES(lm.m_ciphertext, key)
+          if (cancelled) return
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === conv.id
+                ? ({ ...c, lastMessagePreview: `${fwd}${decrypted}` } as Conversation)
+                : c
+            )
+          )
+        } catch { /* still can't decrypt — leave placeholder */ }
+      }
+    })()
+    return () => { cancelled = true }
+  }, [privateKey, token, conversations.length])
 
   // Handle ?participantId= independently of the thread-list fetch so it works
   // even when GET /v1/threads is unavailable.

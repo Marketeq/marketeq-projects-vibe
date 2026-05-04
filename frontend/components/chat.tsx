@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Cookies from "js-cookie"
 import { apiFetch } from "@/src/lib/api"
-import { BlockConfirmDialog } from "@/app/(group)/inbox/components/block-confirm-dialog"
+import { BlockReportDialog } from "@/app/(group)/inbox/components/block-report-dialog"
 import { cn } from "@/utils/functions"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
@@ -287,13 +287,14 @@ export const UserDetail = ({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <BlockConfirmDialog
+          <BlockReportDialog
             open={blockOpen}
             onOpenChange={setBlockOpen}
             targetUserId={otherId ?? null}
             targetDisplayName={
               conversation.participantName || conversation.participantUsername
             }
+            contextThreadId={conversation.id}
           />
 
           <Dialog open={open} onOpenChange={toggle}>
