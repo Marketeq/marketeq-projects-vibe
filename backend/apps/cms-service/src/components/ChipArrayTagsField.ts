@@ -75,16 +75,26 @@ function normalizeValueRows(raw: unknown): ValueRow[] {
   return out;
 }
 
-function rowsToFormValue(rows: ValueRow[]): Array<{ id?: string; value: string }> {
-  return rows.map((r) => (r.id ? { id: r.id, value: r.value } : { value: r.value }));
+function rowsToFormValue(
+  rows: ValueRow[],
+): Array<{ id?: string; value: string }> {
+  return rows.map((r) =>
+    r.id ? { id: r.id, value: r.value } : { value: r.value },
+  );
 }
 
 export function createChipArrayTagsField(
   config: ChipArrayTagsFieldConfig,
 ): React.FC<FieldProps> {
-  const ChipArrayTagsFieldImpl: React.FC<FieldProps> = ({ path, field, label }) => {
+  const ChipArrayTagsFieldImpl: React.FC<FieldProps> = ({
+    path,
+    field,
+    label,
+  }) => {
     const maxRows =
-      typeof field?.maxRows === "number" ? field.maxRows : config.defaultMaxRows;
+      typeof field?.maxRows === "number"
+        ? field.maxRows
+        : config.defaultMaxRows;
     const displayTitle =
       (typeof label === "string" && label.trim()) ||
       field?.labels?.plural ||
@@ -114,10 +124,14 @@ export function createChipArrayTagsField(
           if (!id) return;
           const pathName =
             typeof window !== "undefined" ? window.location.pathname : "";
-          const match = pathName.match(/\/admin\/collections\/([^/]+)\/([^/]+)/);
+          const match = pathName.match(
+            /\/admin\/collections\/([^/]+)\/([^/]+)/,
+          );
           const collection = match?.[1];
           if (!collection) return;
-          const res = await fetch(`/api/${collection}/${encodeURIComponent(String(id))}?depth=0`);
+          const res = await fetch(
+            `/api/${collection}/${encodeURIComponent(String(id))}?depth=0`,
+          );
           if (!res.ok) return;
           const doc = (await res.json()) as any;
           const nextVal = doc?.[path];
@@ -142,7 +156,9 @@ export function createChipArrayTagsField(
     const [draft, setDraft] = React.useState("");
     const [options, setOptions] = React.useState<string[]>([]);
     const [open, setOpen] = React.useState(false);
-    const [fetchErrorMessage, setFetchErrorMessage] = React.useState<string | null>(null);
+    const [fetchErrorMessage, setFetchErrorMessage] = React.useState<
+      string | null
+    >(null);
     const wrapRef = React.useRef<HTMLDivElement>(null);
 
     const suggested = React.useMemo(
@@ -167,7 +183,10 @@ export function createChipArrayTagsField(
       let cancelled = false;
       const run = async () => {
         try {
-          const loaded = await loadAutocompleteOptions(config.autocompleteType, draft);
+          const loaded = await loadAutocompleteOptions(
+            config.autocompleteType,
+            draft,
+          );
           if (!cancelled) {
             setOptions(loaded);
             setFetchErrorMessage(null);
@@ -188,7 +207,8 @@ export function createChipArrayTagsField(
     }, [draft]);
 
     const filteredOptions = React.useMemo(
-      () => options.filter((o) => !selectedLower.has(o.toLowerCase())).slice(0, 12),
+      () =>
+        options.filter((o) => !selectedLower.has(o.toLowerCase())).slice(0, 12),
       [options, selectedLower],
     );
 
@@ -255,8 +275,15 @@ export function createChipArrayTagsField(
           ...rows.map((row, index) =>
             React.createElement(
               "span",
-              { key: row.id ?? `${row.value}-${index}`, className: `${B}__chip` },
-              React.createElement("span", { className: `${B}__chipText` }, row.value),
+              {
+                key: row.id ?? `${row.value}-${index}`,
+                className: `${B}__chip`,
+              },
+              React.createElement(
+                "span",
+                { className: `${B}__chipText` },
+                row.value,
+              ),
               React.createElement(
                 "button",
                 {
@@ -394,7 +421,7 @@ export const ProjectTagsChipField = createChipArrayTagsField({
   autocompleteType: "search_keywords",
   placeholder: "Add Tags",
   getHelperText: (maxRows) =>
-    `Add up to ${String(maxRows)} tags that best describe your project (publish-project parity).`,
+    `Add up to ${String(maxRows)} tags that best describe your project.`,
   defaultMaxRows: 10,
   suggestedOptions: FALLBACK_TAG_OPTIONS,
   suggestedHeading: "Suggested Tags",
@@ -407,7 +434,7 @@ export const ProjectIndustriesChipField = createChipArrayTagsField({
   autocompleteType: "industries",
   placeholder: "Add Industry",
   getHelperText: (maxRows) =>
-    `Add up to ${String(maxRows)} industries that align with your project (publish-project parity).`,
+    `Add up to ${String(maxRows)} industries that align with your project.`,
   defaultMaxRows: 5,
   suggestedOptions: FALLBACK_INDUSTRY_OPTIONS,
   suggestedHeading: "Suggested Industries",

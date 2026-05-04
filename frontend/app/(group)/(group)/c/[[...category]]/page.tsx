@@ -1526,7 +1526,7 @@ export default function Projects() {
                       ))}
                     </TabsList>
                     <div className="flex items-center gap-x-8">
-                      <Button variant="link" visual="gray" size="lg" className="underline">Explore More Teams</Button>
+                      <Button variant="link" visual="gray" size="lg" className="underline hover:text-dark-blue-400">Explore More Teams</Button>
                       <div className="flex items-center gap-x-3">
                         <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
                         <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
@@ -2121,7 +2121,7 @@ export default function Projects() {
                     ))}
                   </TabsList>
                   <div className="flex items-center gap-x-8">
-                    <Button variant="link" visual="gray" size="lg" className="underline">Explore More Projects</Button>
+                    <Button variant="link" visual="gray" size="lg" className="underline hover:text-dark-blue-400">Explore More Projects</Button>
                     <div className="flex items-center gap-x-3">
                       <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
                       <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
@@ -2181,7 +2181,7 @@ export default function Projects() {
                     ))}
                   </TabsList>
                   <div className="flex items-center gap-x-8">
-                    <Button variant="link" visual="gray" size="lg" className="underline">Explore More Services</Button>
+                    <Button variant="link" visual="gray" size="lg" className="underline hover:text-dark-blue-400">Explore More Services</Button>
                     <div className="flex items-center gap-x-3">
                       <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
                       <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
@@ -2280,7 +2280,7 @@ export default function Projects() {
                   </Badge>
                 </TabsList>
 
-                <Button size="lg" variant="link" visual="gray">
+                <Button size="lg" variant="link" visual="gray" className="hover:text-dark-blue-400">
                   Advanced Filters
                   <ArrowRight className="size-[15px]" />
                 </Button>
@@ -2407,7 +2407,7 @@ export default function Projects() {
                     ))}
                   </TabsList>
                   <div className="flex items-center gap-x-8">
-                    <Button variant="link" visual="gray" size="lg" className="underline">Explore More Talent</Button>
+                    <Button variant="link" visual="gray" size="lg" className="hover:underline hover:text-dark-blue-400">Explore More All Stars</Button>
                     <div className="flex items-center gap-x-3">
                       <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
                       <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
@@ -2419,18 +2419,25 @@ export default function Projects() {
                     <TabsContent key={tabValue} value={tabValue}>
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
                         <SwiperSlide className="w-[355px] h-auto">
-                          <article className="py-[50px] h-full rounded-lg bg-primary-600 flex flex-col items-start justify-end px-6">
-                            <h1 className="text-[28px] font-bold leading-none text-white">
-                              {currentName} Talent
-                            </h1>
-                            <p className="mt-3 text-lg font-light leading-none text-white">
-                              Find {currentName.toLowerCase()} talent to bring your next project to life.
-                            </p>
-                            <Button asChild className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-primary-800 hover:bg-white text-primary-700 mt-8" size="lg">
-                              <NextLink href={listingHref("talent")}>
-                                Explore More <ArrowRight className="size-[15px]" />
-                              </NextLink>
-                            </Button>
+                          <article
+                            className="h-full min-h-[440px] rounded-lg bg-primary-700 p-10 flex flex-col items-start justify-between"
+                            style={{ backgroundColor: "#2459DB" }}
+                          >
+                            <div className="pt-6">
+                              <h1 className="text-4xl font-bold leading-[1.1] text-white tracking-tight">
+                                {currentName} Talent
+                              </h1>
+                              <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
+                                Find {currentName.toLowerCase()} talent to bring your projects to life.
+                              </p>
+                            </div>
+                            <div className="flex flex-col gap-y-4">
+                              <Button asChild className="rounded-full bg-white text-[#2459DB] hover:bg-white/90 px-6 h-12 text-base font-semibold transition-all duration-300" size="lg">
+                                <NextLink href={listingHref("talent")}>
+                                  Explore More <ArrowRight className="size-[15px] ml-2" />
+                                </NextLink>
+                              </Button>
+                            </div>
                           </article>
                         </SwiperSlide>
                         {(talentUsers.length > 0 ? talentUsers.slice(0, 8) : fromLength(8)).map((u: any, idx: number) => (
@@ -2501,6 +2508,84 @@ export default function Projects() {
             </div>
           </div>
 
+          {pageKind === "show-all" && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue={subcategories[0]?.name || "All"}>
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  {`Newest ${currentName} Talent`}
+                </h1>
+                <SwiperRoot>
+                  <div className="mt-6 flex justify-between items-center">
+                    <TabsList className="flex items-center gap-x-3">
+                      {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                        <Badge key={sub.name} variant="circular" visual="gray" size="lg" className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400" asChild>
+                          <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
+                        </Badge>
+                      ))}
+                    </TabsList>
+                    <div className="flex items-center gap-x-8">
+                      <Button variant="link" visual="gray" size="lg" className="underline hover:text-dark-blue-400">Explore More Talent</Button>
+                      <div className="flex items-center gap-x-3">
+                        <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
+                        <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-6">
+                    {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                      <TabsContent key={sub.name} value={sub.name}>
+                        <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                          <SwiperSlide className="w-[355px] h-auto">
+                            <article
+                              className="h-full min-h-[440px] rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
+                              style={{ backgroundColor: "#027A48" }}
+                            >
+                              <div className="pt-6">
+                                <h1 className="text-4xl font-bold leading-[1.1] text-white tracking-tight">
+                                  New {currentName} Talent
+                                </h1>
+                                <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
+                                  Discover the newest {currentName.toLowerCase()} experts joining our community.
+                                </p>
+                              </div>
+                              <div className="flex flex-col gap-y-4">
+                                <Button asChild className="rounded-full bg-white text-[#027A48] hover:bg-white/90 px-6 h-12 text-base font-semibold transition-all duration-300" size="lg">
+                                  <NextLink href={listingHref("talent")}>
+                                    Explore More <ArrowRight className="size-[15px] ml-2" />
+                                  </NextLink>
+                                </Button>
+                              </div>
+                            </article>
+                          </SwiperSlide>
+                          {(talentUsers.length > 0 ? talentUsers.slice(0, 8) : fromLength(8)).map((u: any, idx: number) => (
+                            <SwiperSlide className="w-[355px]" key={u?.id ?? idx}>
+                              {talentUsers.length > 0 ? (
+                                <ListingCard kind="talent" {...talentToCardProps(u, idx)} />
+                              ) : (
+                                <ListingCard
+                                  kind="talent"
+                                  id={`mock-${idx}`}
+                                  username={`expert-${idx}`}
+                                  name="Expert Freelancer"
+                                  role={`${currentName} Specialist`}
+                                  photo="/woman.jpg"
+                                  rate="$75/hr"
+                                  rating={4.9}
+                                  projects={12}
+                                  skills={["React", "TypeScript", "Node.js"]}
+                                />
+                              )}
+                            </SwiperSlide>
+                          ))}
+                        </SwiperContent>
+                      </TabsContent>
+                    ))}
+                  </div>
+                </SwiperRoot>
+              </Tabs>
+            </div>
+          )}
+
           <div className="mt-[50px]">
             <div className="flex items-center justify-between">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -2508,7 +2593,7 @@ export default function Projects() {
               </h1>
 
               <NextLink href="/technologies">
-                <Button size="lg" variant="link" visual="gray">
+                <Button size="lg" variant="link" visual="gray" className="hover:text-dark-blue-400">
                   View All technologies <ArrowRight className="size-[15px]" />
                 </Button>
               </NextLink>
@@ -2538,23 +2623,149 @@ export default function Projects() {
             </div>
           </div>
 
+          <div className="relative overflow-hidden h-[298px] mt-[50px] p-[50px] rounded-lg">
+            <NextImage
+              className="object-cover"
+              src="/vr-4.png"
+              sizes="100vw"
+              alt={`${currentName} hero`}
+              fill
+            />
+            <div className="absolute inset-0 bg-black/40 p-[50px] flex justify-end items-center">
+              <div className="max-w-[750px]">
+                <h1 className="text-white text-4xl font-bold leading-none">
+                  Fueling the Future of {sectionLabel}
+                </h1>
+
+                <p className="text-xl mt-2 font-light leading-none text-white">
+                  Discover {sectionLabel.toLowerCase()} experts and projects tailored
+                  to your goals.
+                </p>
+
+                <Button asChild className="rounded-full bg-white text-dark-blue-400 mt-[50px]" size="lg">
+                  <NextLink href={listingHref("projects")}>
+                    Explore {sectionLabel} <ArrowRight className="size-[15px]" />
+                  </NextLink>
+                </Button>
+
+              </div>
+            </div>
+          </div>
+
+          {pageKind === "show-all" && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue={subcategories[0]?.name || "All"}>
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  In-Demand Services in {sectionLabel}
+                </h1>
+                <SwiperRoot>
+                  <div className="mt-6 flex justify-between items-center">
+                    <TabsList className="flex items-center gap-x-3">
+                      {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                        <Badge
+                          key={sub.name}
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          asChild
+                        >
+                          <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
+                        </Badge>
+                      ))}
+                    </TabsList>
+                    <div className="flex items-center gap-x-3">
+                      <SwiperPrevTrigger asChild>
+                        <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
+                          <ChevronLeft className="size-[18px]" />
+                        </IconButton>
+                      </SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild>
+                        <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
+                          <ChevronRight className="size-[18px]" />
+                        </IconButton>
+                      </SwiperNextTrigger>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                      <TabsContent key={sub.name} value={sub.name}>
+                        <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                          <SwiperSlide className="w-[355px] h-auto">
+                            <article className="py-[50px] h-full rounded-lg bg-error-700 flex flex-col items-start justify-end px-6">
+                              <h1 className="text-[28px] font-bold leading-none text-white">
+                                Cybersecurity Services
+                              </h1>
+                              <p className="mt-3 text-lg font-light leading-none text-white">
+                                Explore cloud computing services tailored to meet your unique business needs.
+                              </p>
+                              <div className="mt-8 flex flex-col gap-y-3">
+                                <Button className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-error-800 hover:bg-white text-error-700" size="lg">
+                                  Explore More <ArrowRight className="size-[15px]" />
+                                </Button>
+                              </div>
+                            </article>
+                          </SwiperSlide>
+                          {(listingsServices.length > 0 ? listingsServices.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
+                            const service = listingsServices.length > 0 ? item : null
+                            const href = service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")
+                            return (
+                              <SwiperSlide key={service?.id ?? idx} className="w-[355px]">
+                                <NextLink href={href} className="block focus-visible:outline-none">
+                                  <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                                    <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                                      <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={service?.mediaUrls?.[0] || "/dashboard.png"} alt={service?.title || "Service"} fill sizes="33vw" />
+                                    </div>
+                                    <div className="mt-3 flex items-start gap-x-3">
+                                      <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{service?.title || `Professional ${currentName} Service`}</span>
+                                      <div className="inline-flex items-center gap-x-1">
+                                        <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                                        <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span>
+                                      </div>
+                                    </div>
+                                    <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">{service?.description?.slice(0, 140) || `Brief overview of a high-impact ${currentName.toLowerCase()} service package.`}</p>
+                                    <div className="mt-[14.5px] flex flex-col gap-y-3">
+                                      <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from {service?.duration || "12 weeks"}</span></div>
+                                      <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">{service?.priceMin ? `$${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}/month` : "$5,000 - $15,000/month"}</span></div>
+                                    </div>
+                                    <div className="mt-5 flex items-end justify-between">
+                                      <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
+                                        {(talentUsers.length > 0 ? talentUsers.slice(0, 6) : fromLength(6)).map((u: any, k: number) => (<Avatar key={u?.id ?? k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src={u?.avatarUrl || "/woman.jpg"} alt={u?.firstName || "Team"} /><AvatarFallback>{u?.firstName?.[0] || "T"}</AvatarFallback></Avatar>))}
+                                      </AvatarGroup>
+                                      <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                                    </div>
+                                  </article>
+                                </NextLink>
+                              </SwiperSlide>
+                            )
+                          })}
+                        </SwiperContent>
+                      </TabsContent>
+                    ))}
+                  </div>
+                </SwiperRoot>
+              </Tabs>
+            </div>
+          )}
+
           <div className="mt-[50px]">
             <div className="flex justify-between items-center">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
                 Guides Related to {sectionLabel}
               </h1>
 
-              <Button size="lg" variant="link" visual="gray">
+              <Button size="lg" variant="link" visual="gray" className="hover:text-dark-blue-400">
                 Visit the Blog <ArrowRight className="size-[15px]" />
               </Button>
             </div>
 
             <div className="grid grid-cols-2 gap-x-8 mt-6">
               <div className="flex flex-col gap-y-8">
-                <article className="flex gap-x-6">
+                <article className="flex gap-x-6 group cursor-pointer">
                   <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
                     <NextImage
-                      className="object-cover"
+                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
                       sizes="25vw"
                       fill
                       src="/artificial-hand.jpeg"
@@ -2587,10 +2798,10 @@ export default function Projects() {
                     </Button>
                   </div>
                 </article>
-                <article className="flex gap-x-6">
+                <article className="flex gap-x-6 group cursor-pointer">
                   <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
                     <NextImage
-                      className="object-cover"
+                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
                       sizes="25vw"
                       fill
                       src="/artificial-hand.jpeg"
@@ -2624,7 +2835,7 @@ export default function Projects() {
                   </div>
                 </article>
               </div>
-              <div className="rounded-lg overflow-hidden relative">
+              <div className="rounded-lg overflow-hidden relative group cursor-pointer">
                 <NextImage
                   className="object-cover"
                   src="/artificial-hand.jpeg"
@@ -2663,6 +2874,103 @@ export default function Projects() {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+      <div className="py-20 px-[50px] bg-white">
+        <h1 className="text-[28px] font-bold text-center text-dark-blue-400">
+          {currentName} FAQ
+        </h1>
+        
+        <div className="mt-10 max-w-[1200px] mx-auto">
+          <Tabs defaultValue="general" className="flex gap-x-20">
+            <TabsList className="flex flex-col items-start gap-y-3 bg-transparent h-auto min-w-[240px]">
+              <TabsTrigger 
+                value="general" 
+                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
+              >
+                General Questions
+                <ArrowRight className="size-3.5 opacity-0 data-[state=active]:opacity-100 group-data-[state=active]:opacity-100 text-primary-600" />
+              </TabsTrigger>
+              <TabsTrigger 
+                value="career" 
+                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
+              >
+                Career Related Questions
+                <ArrowRight className="size-3.5 opacity-0 data-[state=active]:opacity-100 group-data-[state=active]:opacity-100 text-primary-600" />
+              </TabsTrigger>
+              <TabsTrigger 
+                value="technical" 
+                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
+              >
+                Technical Questions
+                <ArrowRight className="size-3.5 opacity-0 data-[state=active]:opacity-100 group-data-[state=active]:opacity-100 text-primary-600" />
+              </TabsTrigger>
+            </TabsList>
+
+            <div className="flex-1">
+              <TabsContent value="general" className="mt-0 border-t border-gray-200">
+                <div className="flex flex-col">
+                  {[
+                    `What is ${currentName.toLowerCase()}?`,
+                    `What are the main stages of ${currentName.toLowerCase()}?`,
+                    `What are the most in-demand ${currentName.toLowerCase()} languages?`,
+                    `What skills are essential for ${currentName.toLowerCase()}?`,
+                    `What are some popular ${currentName.toLowerCase()} methodologies?`,
+                  ].map((q, i) => (
+                    <div key={i} className="py-6 flex items-center justify-between border-b border-gray-200 group cursor-pointer">
+                      <span className="text-base font-semibold text-dark-blue-400 group-hover:text-primary-600 transition-colors">
+                        {q}
+                      </span>
+                      <ArrowRight className="size-3.5 text-dark-blue-400 group-hover:text-primary-600 transition-colors" />
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+              <TabsContent value="career" className="mt-0 border-t border-gray-200">
+                <div className="flex flex-col">
+                  {[
+                    `How to start a career in ${currentName}?`,
+                    `What is the average salary for ${currentName} specialists?`,
+                    `Are there remote opportunities in ${currentName}?`,
+                  ].map((q, i) => (
+                    <div key={i} className="py-6 flex items-center justify-between border-b border-gray-200 group cursor-pointer">
+                      <span className="text-base font-semibold text-dark-blue-400 group-hover:text-primary-600 transition-colors">
+                        {q}
+                      </span>
+                      <ArrowRight className="size-3.5 text-dark-blue-400 group-hover:text-primary-600 transition-colors" />
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+              <TabsContent value="technical" className="mt-0 border-t border-gray-200">
+                <div className="flex flex-col">
+                  {[
+                    `What tools are used in ${currentName}?`,
+                    `Best practices for ${currentName} projects.`,
+                    `How to stay updated with ${currentName} trends?`,
+                  ].map((q, i) => (
+                    <div key={i} className="py-6 flex items-center justify-between border-b border-gray-200 group cursor-pointer">
+                      <span className="text-base font-semibold text-dark-blue-400 group-hover:text-primary-600 transition-colors">
+                        {q}
+                      </span>
+                      <ArrowRight className="size-3.5 text-dark-blue-400 group-hover:text-primary-600 transition-colors" />
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            </div>
+          </Tabs>
+        </div>
+
+        <div className="mt-16 text-center text-sm text-gray-500">
+          Still have some questions? Visit our{" "}
+          <NextLink href="/help" className="text-primary-600 font-medium hover:underline">
+            Help Center
+          </NextLink>{" "}
+          or{" "}
+          <NextLink href="/chat" className="text-primary-600 font-medium hover:underline">
+            Chat with Us
+          </NextLink>
         </div>
       </div>
 

@@ -179,11 +179,6 @@ export class ProjectSyncService {
     project.scope = row.scope;
     project.estimatedHours = row.estimatedHours ?? undefined;
     project.budget = row.budget ?? undefined;
-    project.priceMax = row.priceMax ?? undefined;
-    project.pricingModel = row.pricingModel ?? undefined;
-    project.priceViewMode = row.priceViewMode ?? undefined;
-    project.projectType = row.projectType ?? undefined;
-    project.klarnaEnabled = row.klarnaEnabled ?? false;
     project.duration = row.duration ?? undefined;
     project.recentQuestions = row.recentQuestions ?? [];
     project.relatedProjectIds = row.relatedProjectIds ?? [];
@@ -307,13 +302,10 @@ export class ProjectSyncService {
     // author-declared timelineValue/Unit pair only when scope is empty.
     const duration =
       dto.projectDurationLabel ??
-      (dto.timelineValue && dto.timelineUnit
-        ? `${dto.timelineValue} ${dto.timelineUnit}`
-        : null);
-    // If CMS provided explicit pricing, prefer it; otherwise derive from scope per docs formulas.
+      null;
+    // Budget — prefer CMS computed total (startingPriceTotal), otherwise derive from scope.
     const scopeBudget = this.budgetFromScope(scope);
-    const budget = dto.priceRangeMin ?? scopeBudget.budget ?? null;
-    const priceMax = dto.priceRangeMax ?? null;
+    const budget = dto.startingPriceTotal ?? scopeBudget.budget ?? null;
 
     const recentQuestions = (dto.recentQuestions ?? [])
       .map((q) => ({
@@ -363,16 +355,11 @@ export class ProjectSyncService {
       scope,
       faqs,
       estimatedHours:
-        dto.totalEstimatedHours ?? (scopeBudget.totalHours > 0 ? Math.round(scopeBudget.totalHours) : null),
+        scopeBudget.totalHours > 0 ? Math.round(scopeBudget.totalHours) : null,
       budget,
       duration,
       featured: dto.featured ?? false,
       status,
-      pricingModel: dto.pricingModel ?? null,
-      priceViewMode: dto.priceViewMode ?? null,
-      priceMax,
-      projectType: dto.projectType ?? null,
-      klarnaEnabled: dto.klarnaPaymentEnabled ?? false,
       recentQuestions,
       relatedProjectIds,
       chatEnabled: dto.chatEnabled ?? false,

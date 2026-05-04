@@ -205,10 +205,6 @@ export class ProjectsService {
       project.budget != null && project.budget !== ('' as any)
         ? Number(project.budget)
         : null;
-    const priceMax =
-      project.priceMax != null && project.priceMax !== ('' as any)
-        ? Number(project.priceMax)
-        : null;
     const rating = project.rating != null ? Number(project.rating) : 0;
     const adminBoost = project.adminBoost != null ? Number(project.adminBoost) : 0;
 
@@ -226,11 +222,6 @@ export class ProjectsService {
       updatedAt: project.updatedAt,
       budget,
       priceMin: budget,
-      priceMax,
-      pricingModel: project.pricingModel ?? null,
-      priceViewMode: project.priceViewMode ?? null,
-      projectType: project.projectType ?? null,
-      klarnaEnabled: project.klarnaEnabled ?? false,
       estimatedHours: project.estimatedHours ?? null,
       duration: project.duration ?? null,
       mediaUrls: project.mediaUrls ?? [],

@@ -275,10 +275,12 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 ## 10. Pointers
 
 - Code review rules (seven-point checklist, block comment template, review prompt): `docs/CODE_REVIEW_SOP.md`
+- Remediation backlog and implementation status: `docs/DEVOPS_REMEDIATION_PLAN.md`
 - Automated checks running on every PR: `.github/workflows/sop-check.yml`, `.github/workflows/ai-breakage-check.yml`, `.github/workflows/post-merge-audit.yml`, `.github/workflows/gitleaks.yml`
 - CODEOWNERS routing: `.github/CODEOWNERS`
 - PR template: `.github/pull_request_template.md`
 - Promotion scripts: `scripts/qa-promote-dev-to-staging.sh`, `scripts/qa-promote-staging-to-live.sh`
+- DevOps control scripts: `scripts/devops/check-devops-drift.mjs`, `scripts/devops/check-runtime-env-drift.mjs`, `scripts/devops/sync-n8n-workflow.mjs`, `scripts/devops/publish-n8n-runner.mjs`, `scripts/devops/install-n8n-runtime-secrets.mjs`, `scripts/devops/rollback-staging.mjs`, `scripts/devops/marketeq-devops.config.json`
 - Env templates: `frontend/.env.{local,staging,production}.example`, `backend/.env.{local,staging,production}.example`
 
 ---
