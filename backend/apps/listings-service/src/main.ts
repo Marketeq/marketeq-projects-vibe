@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import 'reflect-metadata'; // <-- must be first
 import { existsSync } from 'fs';
 import { join } from 'path';
