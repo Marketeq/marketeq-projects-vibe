@@ -14,7 +14,7 @@ import React from "react"
 // import ReactPlayer from "react-player"
 import dynamic from "next/dynamic"
 import * as RadixTabs from "@radix-ui/react-tabs"
-import { useRouter } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { Logo3 } from "@/components/icons"
 import NextLink from "@/components/next-link"
@@ -988,8 +988,10 @@ const Sidebar = () => {
 
 const Header = ({
   onClose,
+  slug,
 }: {
   onClose?: () => void
+  slug?: string
 }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200 z-10">
@@ -1002,23 +1004,42 @@ const Header = ({
           <Clock className="size-4" />
           Saved at {new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })}
         </span>
-        <IconButton
-          className="text-gray-500"
-          variant="outlined"
-          visual="gray"
-        >
-          <Eye className="size-4" />
-        </IconButton>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <IconButton
+                className="text-gray-500"
+                variant="outlined"
+                visual="gray"
+                onClick={() => {
+                  if (slug) {
+                    window.open(`/project-details/${slug}`, "_blank")
+                  }
+                }}
+              >
+                <Eye className="size-4" />
+              </IconButton>
+            </TooltipTrigger>
+            <TooltipContent>Preview</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <Button>
           Publish
         </Button>
-        <IconButton
-          variant="ghost"
-          visual="gray"
-          onClick={onClose}
-        >
-          <X className="size-5" />
-        </IconButton>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <IconButton
+                variant="ghost"
+                visual="gray"
+                onClick={onClose}
+              >
+                <X className="size-5" />
+              </IconButton>
+            </TooltipTrigger>
+            <TooltipContent>Close</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </div>
   )
@@ -6680,10 +6701,12 @@ function PublishProject({
   media,
   projectInfo,
   projectScope,
+  slug,
 }: {
   projectInfo?: React.ReactElement<ProgressProps>
   media?: React.ReactElement<ProgressProps>
   projectScope?: React.ReactElement<ProgressProps>
+  slug?: string
 }) {
   const {
     nextStep,
@@ -7182,7 +7205,7 @@ function PublishProject({
               <ProjectScopeProvider value={projectScopeValue}>
                 <Sidebar />
                 <div className="flex-auto bg-white min-w-0 overflow-x-hidden">
-                  <Header onClose={() => router.back()} />
+                  <Header onClose={() => router.back()} slug={slug} />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}
                     onOpenChange={toggleIsSaveExitDialogOpen}
@@ -7232,6 +7255,7 @@ function PublishProject({
 }
 
 export default function PublishRootProject() {
+  const params = useParams<{ slug: string }>()
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
@@ -7239,7 +7263,7 @@ export default function PublishRootProject() {
 
   useEffect(() => {
     if (typeof document !== "undefined") {
-      document.title = "Create a Project | Marketeq"
+      document.title = "Edit Project | Marketeq"
     }
   }, [])
 
@@ -7250,6 +7274,7 @@ export default function PublishRootProject() {
   return (
     <>
       <PublishProject
+        slug={params.slug}
         projectInfo={<ProjectInfo />}
         media={<Media />}
         projectScope={<ProjectScope />}
