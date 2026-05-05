@@ -15,7 +15,7 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-5 sm:bottom-0 sm:left-0 sm:top-auto sm:flex-col md:max-w-[431px]",
+      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse items-start p-5 sm:bottom-0 sm:left-0 sm:top-auto sm:flex-col md:max-w-[431px]",
       className
     )}
     {...props}
@@ -24,14 +24,13 @@ const ToastViewport = React.forwardRef<
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName
 
 const toastVariants = cva(
-  "group pointer-events-auto relative flex w-full items-center space-x-3 overflow-hidden rounded-md border p-4 bg-black transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full",
+  "group pointer-events-auto relative flex w-fit max-w-full items-center space-x-3 overflow-hidden rounded-md border-0 bg-black p-4 transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full",
   {
     variants: {
       variant: {
         default: "text-white",
         destructive: "destructive text-error-500",
-        success:
-          "bg-emerald-500 text-white rounded-[5px] border-0 p-4 min-h-[52px] [&_svg]:text-white",
+        success: "rounded-[5px] bg-black text-white min-h-[52px]",
       },
     },
     defaultVariants: {

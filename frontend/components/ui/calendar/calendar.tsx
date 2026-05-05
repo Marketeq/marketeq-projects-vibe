@@ -76,6 +76,15 @@ function Calendar({
         onFocusedValueChange?.(value)
       }
     },
+    shouldUpdate: (prev, next) => {
+      if (!prev && !next) return false
+      if (!prev || !next) return true
+      return (
+        prev.getFullYear() !== next.getFullYear() ||
+        prev.getMonth() !== next.getMonth() ||
+        prev.getDate() !== next.getDate()
+      )
+    },
   })
   const [state, setState] = useControllableState<Date | undefined>({
     value,
@@ -86,6 +95,15 @@ function Calendar({
       }
     },
     defaultValue: new Date(),
+    shouldUpdate: (prev, next) => {
+      if (!prev && !next) return false
+      if (!prev || !next) return true
+      return (
+        prev.getFullYear() !== next.getFullYear() ||
+        prev.getMonth() !== next.getMonth() ||
+        prev.getDate() !== next.getDate()
+      )
+    },
   })
 
   const onSelectChange = (value: string) => {
@@ -146,12 +164,12 @@ function Calendar({
   }
 
   const onFocusChange = (value: CalendarDate) => {
-    const date = new Date(value.toString())
+    const date = new Date(value.year, value.month - 1, value.day)
     setFocusedValueState(date)
   }
 
   const handleChange = (value: CalendarDate) => {
-    const date = new Date(value.toString())
+    const date = new Date(value.year, value.month - 1, value.day)
     setState(date)
   }
 

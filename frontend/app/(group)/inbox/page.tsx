@@ -109,7 +109,12 @@ export default function InboxRoot() {
   const initialParticipantId = searchParams?.get("participantId") ?? null
 
   const [selectedConversation, setSelectedConversation] =
-    useState<Conversation | null>(null)
+    useState<Conversation | null>(() => {
+      try {
+        const cached = sessionStorage.getItem("inbox_selected_conversation")
+        return cached ? JSON.parse(cached) : null
+      } catch { return null }
+    })
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(
@@ -118,6 +123,17 @@ export default function InboxRoot() {
   const [messagesByConversation, setMessagesByConversation] = useState<
     Record<string, Message[]>
   >({})
+
+  // Persist selected conversation so back-navigation restores it
+  useEffect(() => {
+    try {
+      if (selectedConversation) {
+        sessionStorage.setItem("inbox_selected_conversation", JSON.stringify(selectedConversation))
+      } else {
+        sessionStorage.removeItem("inbox_selected_conversation")
+      }
+    } catch {}
+  }, [selectedConversation])
 
   const [token, setToken] = useState("")
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
