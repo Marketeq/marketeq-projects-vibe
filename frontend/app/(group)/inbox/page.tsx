@@ -194,6 +194,7 @@ export default function InboxRoot() {
           initialParticipantId={initialParticipantId}
           searchIndex={searchIndex}
           onHighlightMessage={setHighlightMessageId}
+          privateKey={privateKey}
         />
 
         {/* pass only the conversation and token into Chats */}
