@@ -1,27 +1,28 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { differenceInCalendarDays, format, subDays } from "date-fns"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
-import { LeftSidebar } from "@/components/talent-dashboard-comps"
-import NextLink from "@/components/next-link"
+import { cn } from "@/utils/functions"
 import { Calendar, ChevronDown } from "@blend-metrics/icons"
+import { differenceInCalendarDays, format, subDays } from "date-fns"
 import {
-  CartesianGrid,
-  Line,
-  LineChart,
   Area,
   AreaChart,
   Bar,
   BarChart,
+  CartesianGrid,
   Cell,
+  Line,
+  LineChart,
   Pie,
   PieChart,
-  ResponsiveContainer,
   Tooltip as RechartsTooltip,
+  ResponsiveContainer,
   XAxis,
   YAxis,
 } from "recharts"
+import NextLink from "@/components/next-link"
+import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Badge,
   Button,
@@ -40,7 +41,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui"
-import { cn } from "@/utils/functions"
 
 type Kpi = {
   label: string
@@ -51,21 +51,65 @@ type Kpi = {
 type RangeKey = "7d" | "30d" | "90d" | "custom"
 type CustomRangeValue = { start: Date; end: Date }
 
-const rangePresets: Array<{ key: Exclude<RangeKey, "custom">; label: string; days: number }> = [
+const rangePresets: Array<{
+  key: Exclude<RangeKey, "custom">
+  label: string
+  days: number
+}> = [
   { key: "7d", label: "Last 7 days", days: 7 },
   { key: "30d", label: "Last 30 days", days: 30 },
   { key: "90d", label: "Last 90 days", days: 90 },
 ]
 
 const overviewMetricConfig = [
-  { label: "Profile Impressions", baseValue: 18240, baseDelta: 12, type: "count" as const },
-  { label: "Profile Views", baseValue: 3180, baseDelta: 8, type: "count" as const },
-  { label: "Profile CTR", baseValue: 17.4, baseDelta: 0.9, type: "percent" as const },
-  { label: "Total Listing Impressions", baseValue: 42610, baseDelta: 6, type: "count" as const },
-  { label: "Total Clicks", baseValue: 6920, baseDelta: 4, type: "count" as const },
-  { label: "Total Inquiries / Messages", baseValue: 118, baseDelta: 10, type: "count" as const },
-  { label: "Job Applications", baseValue: 14, baseDelta: 2, type: "count" as const },
-  { label: "Profile Saves / Shortlists", baseValue: 86, baseDelta: 7, type: "count" as const },
+  {
+    label: "Profile Impressions",
+    baseValue: 18240,
+    baseDelta: 12,
+    type: "count" as const,
+  },
+  {
+    label: "Profile Views",
+    baseValue: 3180,
+    baseDelta: 8,
+    type: "count" as const,
+  },
+  {
+    label: "Profile CTR",
+    baseValue: 17.4,
+    baseDelta: 0.9,
+    type: "percent" as const,
+  },
+  {
+    label: "Total Listing Impressions",
+    baseValue: 42610,
+    baseDelta: 6,
+    type: "count" as const,
+  },
+  {
+    label: "Total Clicks",
+    baseValue: 6920,
+    baseDelta: 4,
+    type: "count" as const,
+  },
+  {
+    label: "Total Inquiries / Messages",
+    baseValue: 118,
+    baseDelta: 10,
+    type: "count" as const,
+  },
+  {
+    label: "Job Applications",
+    baseValue: 14,
+    baseDelta: 2,
+    type: "count" as const,
+  },
+  {
+    label: "Profile Saves / Shortlists",
+    baseValue: 86,
+    baseDelta: 7,
+    type: "count" as const,
+  },
 ] as const
 
 const kpiTrend = {
@@ -139,10 +183,34 @@ const discoveryMix = [
 ]
 
 const listingRows = [
-  { name: "Mobile App Experience (Project)", impressions: 12600, clicks: 2310, ctr: "18.3%", inquiries: 34 },
-  { name: "UI Audit (Service)", impressions: 9200, clicks: 1280, ctr: "13.9%", inquiries: 21 },
-  { name: "Design Sprint (Team)", impressions: 7100, clicks: 140, ctr: "2.0%", inquiries: 2 },
-  { name: "Brand System (Project)", impressions: 3800, clicks: 420, ctr: "11.1%", inquiries: 9 },
+  {
+    name: "Mobile App Experience (Project)",
+    impressions: 12600,
+    clicks: 2310,
+    ctr: "18.3%",
+    inquiries: 34,
+  },
+  {
+    name: "UI Audit (Service)",
+    impressions: 9200,
+    clicks: 1280,
+    ctr: "13.9%",
+    inquiries: 21,
+  },
+  {
+    name: "Design Sprint (Team)",
+    impressions: 7100,
+    clicks: 140,
+    ctr: "2.0%",
+    inquiries: 2,
+  },
+  {
+    name: "Brand System (Project)",
+    impressions: 3800,
+    clicks: 420,
+    ctr: "11.1%",
+    inquiries: 9,
+  },
 ]
 
 const tagRows = [
@@ -167,9 +235,21 @@ const regions = [
 ]
 
 const rateRows = [
-  { label: "Your Avg Hourly Rate", value: "$85/hr", note: "Strong for your CTR" },
-  { label: "Top CTR Rate Range", value: "$70–90/hr", note: "Best click performance" },
-  { label: "Low CTR Rate Range", value: "$120+/hr", note: "Lower inquiry rate" },
+  {
+    label: "Your Avg Hourly Rate",
+    value: "$85/hr",
+    note: "Strong for your CTR",
+  },
+  {
+    label: "Top CTR Rate Range",
+    value: "$70–90/hr",
+    note: "Best click performance",
+  },
+  {
+    label: "Low CTR Rate Range",
+    value: "$120+/hr",
+    note: "Lower inquiry rate",
+  },
 ]
 
 const profileTrend = [
@@ -205,13 +285,17 @@ export default function ReportsPage() {
 
   const rangeDays =
     selectedRange === "custom"
-      ? Math.max(1, differenceInCalendarDays(customRange.end, customRange.start) + 1)
-      : rangePresets.find((preset) => preset.key === selectedRange)?.days ?? 7
+      ? Math.max(
+          1,
+          differenceInCalendarDays(customRange.end, customRange.start) + 1
+        )
+      : (rangePresets.find((preset) => preset.key === selectedRange)?.days ?? 7)
 
   const rangeLabel =
     selectedRange === "custom"
       ? `${format(customRange.start, "LLL d")} - ${format(customRange.end, "LLL d, yyyy")}`
-      : rangePresets.find((preset) => preset.key === selectedRange)?.label ?? "Last 7 days"
+      : (rangePresets.find((preset) => preset.key === selectedRange)?.label ??
+        "Last 7 days")
 
   const scaleFactor = rangeDays / 7
 
@@ -229,14 +313,15 @@ export default function ReportsPage() {
         }
 
         const value = Math.round(metric.baseValue * scaleFactor)
-        const delta = metric.baseDelta + Math.max(0, Math.round((rangeDays - 7) / 23))
+        const delta =
+          metric.baseDelta + Math.max(0, Math.round((rangeDays - 7) / 23))
         return {
           label: metric.label,
           value: number(value),
           delta: `+${delta}%`,
         }
       }),
-    [rangeDays, scaleFactor],
+    [rangeDays, scaleFactor]
   )
 
   const dynamicDiscoveryMix =
@@ -253,16 +338,22 @@ export default function ReportsPage() {
       : trafficSourceBarsByRange[selectedRange]
 
   const dynamicKpiTrend = useMemo(() => {
-    return (Object.entries(kpiTrend) as Array<[keyof typeof kpiTrend, readonly number[]]>).reduce(
+    return (
+      Object.entries(kpiTrend) as Array<
+        [keyof typeof kpiTrend, readonly number[]]
+      >
+    ).reduce(
       (acc, [label, values]) => {
         if (label === "Profile CTR") {
-          acc[label] = values.map((value) => Number((value + (rangeDays - 7) * 0.03).toFixed(1)))
+          acc[label] = values.map((value) =>
+            Number((value + (rangeDays - 7) * 0.03).toFixed(1))
+          )
           return acc
         }
         acc[label] = values.map((value) => Math.round(value * scaleFactor))
         return acc
       },
-      {} as Record<keyof typeof kpiTrend, number[]>,
+      {} as Record<keyof typeof kpiTrend, number[]>
     )
   }, [rangeDays, scaleFactor])
 
@@ -273,7 +364,7 @@ export default function ReportsPage() {
         views: Math.round(point.views * scaleFactor),
         ctr: Number((point.ctr + (rangeDays - 7) * 0.03).toFixed(1)),
       })),
-    [rangeDays, scaleFactor],
+    [rangeDays, scaleFactor]
   )
 
   const funnel = useMemo(() => {
@@ -283,24 +374,40 @@ export default function ReportsPage() {
     const applications = Math.max(1, Math.round(14 * scaleFactor))
     return [
       { label: "Impressions", value: impressions, pct: 100 },
-      { label: "Clicks", value: clicks, pct: Math.round((clicks / impressions) * 100) },
-      { label: "Inquiries", value: inquiries, pct: Math.round((inquiries / impressions) * 100) },
-      { label: "Job Applications", value: applications, pct: Math.round((applications / impressions) * 100) },
+      {
+        label: "Clicks",
+        value: clicks,
+        pct: Math.round((clicks / impressions) * 100),
+      },
+      {
+        label: "Inquiries",
+        value: inquiries,
+        pct: Math.round((inquiries / impressions) * 100),
+      },
+      {
+        label: "Job Applications",
+        value: applications,
+        pct: Math.round((applications / impressions) * 100),
+      },
     ]
   }, [scaleFactor])
 
   const primaryTabs = reportTabs.slice(0, 4)
   const overflowTabs = reportTabs.slice(4)
-  const profileViewsValue = overviewKpis.find((item) => item.label === "Profile Views")?.value ?? "0"
-  const profileCtrValue = overviewKpis.find((item) => item.label === "Profile CTR")?.value ?? "0%"
-  const inquiriesValue = overviewKpis.find((item) => item.label === "Total Inquiries / Messages")?.value ?? "0"
+  const profileViewsValue =
+    overviewKpis.find((item) => item.label === "Profile Views")?.value ?? "0"
+  const profileCtrValue =
+    overviewKpis.find((item) => item.label === "Profile CTR")?.value ?? "0%"
+  const inquiriesValue =
+    overviewKpis.find((item) => item.label === "Total Inquiries / Messages")
+      ?.value ?? "0"
 
   return (
     <AuthenticatedRoute>
       <div className="flex bg-gray-50">
         <LeftSidebar />
 
-        <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
+        <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[338px] min-[1024px]:pr-6 overflow-hidden">
           <div className="flex-auto min-w-0">
             <div className="pb-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -309,7 +416,8 @@ export default function ReportsPage() {
                     Reports
                   </h1>
                   <p className="mt-2 max-w-[760px] text-[14px] font-light leading-normal text-gray-500">
-                    Personal performance analytics for your profile and listings.
+                    Personal performance analytics for your profile and
+                    listings.
                   </p>
                 </div>
 
@@ -318,7 +426,9 @@ export default function ReportsPage() {
                     <Button
                       key={preset.key}
                       size="sm"
-                      variant={selectedRange === preset.key ? "outlined" : "ghost"}
+                      variant={
+                        selectedRange === preset.key ? "outlined" : "ghost"
+                      }
                       visual="gray"
                       onClick={() => setSelectedRange(preset.key)}
                     >
@@ -330,11 +440,16 @@ export default function ReportsPage() {
                     <PopoverTrigger asChild>
                       <Button variant="outlined" visual="gray" size="sm">
                         <Calendar className="size-4" />
-                        {selectedRange === "custom" ? rangeLabel : "Custom Range"}
+                        {selectedRange === "custom"
+                          ? rangeLabel
+                          : "Custom Range"}
                         <ChevronDown className="size-4" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto border-0 bg-transparent p-0 shadow-none" align="end">
+                    <PopoverContent
+                      className="w-auto border-0 bg-transparent p-0 shadow-none"
+                      align="end"
+                    >
                       <DateRangeCalendar
                         value={customRange}
                         onValueChange={(value) => {
@@ -388,7 +503,7 @@ export default function ReportsPage() {
                           "h-auto pb-2 pl-0 pr-0 xl:hidden",
                           overflowTabs.some((tabItem) => tabItem.value === tab)
                             ? "text-primary-500"
-                            : "text-gray-500",
+                            : "text-gray-500"
                         )}
                       >
                         More
@@ -397,7 +512,10 @@ export default function ReportsPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="min-w-[220px]">
                       {overflowTabs.map((tabItem) => (
-                        <DropdownMenuItem key={tabItem.value} onSelect={() => setTab(tabItem.value)}>
+                        <DropdownMenuItem
+                          key={tabItem.value}
+                          onSelect={() => setTab(tabItem.value)}
+                        >
                           {tabItem.label}
                         </DropdownMenuItem>
                       ))}
@@ -422,7 +540,10 @@ export default function ReportsPage() {
                                 {kpi.value}
                               </div>
                               {kpi.delta ? (
-                                <Badge visual="gray" className="border border-gray-200 bg-white">
+                                <Badge
+                                  visual="gray"
+                                  className="border border-gray-200 bg-white"
+                                >
                                   {kpi.delta}
                                 </Badge>
                               ) : null}
@@ -431,11 +552,31 @@ export default function ReportsPage() {
 
                           <div className="h-[44px] w-[92px] shrink-0">
                             <ResponsiveContainer width="100%" height="100%">
-                              <AreaChart data={spark(dynamicKpiTrend[kpi.label as keyof typeof dynamicKpiTrend])}>
+                              <AreaChart
+                                data={spark(
+                                  dynamicKpiTrend[
+                                    kpi.label as keyof typeof dynamicKpiTrend
+                                  ]
+                                )}
+                              >
                                 <defs>
-                                  <linearGradient id={`kpi-${kpiId(kpi.label)}`} x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#2563EB" stopOpacity={0.25} />
-                                    <stop offset="100%" stopColor="#2563EB" stopOpacity={0} />
+                                  <linearGradient
+                                    id={`kpi-${kpiId(kpi.label)}`}
+                                    x1="0"
+                                    y1="0"
+                                    x2="0"
+                                    y2="1"
+                                  >
+                                    <stop
+                                      offset="0%"
+                                      stopColor="#2563EB"
+                                      stopOpacity={0.25}
+                                    />
+                                    <stop
+                                      offset="100%"
+                                      stopColor="#2563EB"
+                                      stopOpacity={0}
+                                    />
                                   </linearGradient>
                                 </defs>
                                 <Area
@@ -466,7 +607,10 @@ export default function ReportsPage() {
                               Where visibility is coming from right now.
                             </div>
                           </div>
-                          <Badge visual="gray" className="border border-gray-200 bg-white">
+                          <Badge
+                            visual="gray"
+                            className="border border-gray-200 bg-white"
+                          >
                             Overview
                           </Badge>
                         </div>
@@ -512,7 +656,7 @@ export default function ReportsPage() {
                             {dynamicDiscoveryMix.map((item) => (
                               <div
                                 key={item.name}
-                              className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-3"
+                                className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-3"
                               >
                                 <div className="flex items-center gap-3">
                                   <span
@@ -538,7 +682,10 @@ export default function ReportsPage() {
                         </div>
                         <div className="mt-4 grid gap-3 md:grid-cols-2">
                           {snapshotInsights.map((row) => (
-                            <div key={row.label} className="rounded-lg border border-gray-200 bg-white p-3">
+                            <div
+                              key={row.label}
+                              className="rounded-lg border border-gray-200 bg-white p-3"
+                            >
                               <div className="text-[12px] font-medium leading-normal text-gray-500">
                                 {row.label}
                               </div>
@@ -561,7 +708,9 @@ export default function ReportsPage() {
                         {funnel.map((step) => (
                           <div key={step.label}>
                             <div className="flex items-center justify-between gap-3 text-[13px] leading-normal">
-                              <span className="font-medium text-gray-500">{step.label}</span>
+                              <span className="font-medium text-gray-500">
+                                {step.label}
+                              </span>
                               <span className="font-semibold text-dark-blue-400">
                                 {number(step.value)}
                               </span>
@@ -595,9 +744,15 @@ export default function ReportsPage() {
                       {[
                         { label: "Profile → Inquiry Rate", value: "3.1%" },
                         { label: "Profile → Message Rate", value: "2.4%" },
-                        { label: "Profile → Hire Me Click Rate", value: "0.4%" },
+                        {
+                          label: "Profile → Hire Me Click Rate",
+                          value: "0.4%",
+                        },
                       ].map((row) => (
-                        <div key={row.label} className="rounded-lg border border-gray-200 bg-white p-4">
+                        <div
+                          key={row.label}
+                          className="rounded-lg border border-gray-200 bg-white p-4"
+                        >
                           <div className="text-[12px] font-medium leading-normal text-gray-500">
                             {row.label}
                           </div>
@@ -617,10 +772,31 @@ export default function ReportsPage() {
                         </div>
                         <div className="mt-3 h-[160px] w-full">
                           <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={dynamicProfileTrend} margin={{ top: 8, right: 12, left: -20, bottom: 0 }}>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                              <XAxis dataKey="day" tick={{ fill: "#667085", fontSize: 12 }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fill: "#667085", fontSize: 12 }} axisLine={false} tickLine={false} />
+                            <LineChart
+                              data={dynamicProfileTrend}
+                              margin={{
+                                top: 8,
+                                right: 12,
+                                left: -20,
+                                bottom: 0,
+                              }}
+                            >
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                vertical={false}
+                                stroke="#E5E7EB"
+                              />
+                              <XAxis
+                                dataKey="day"
+                                tick={{ fill: "#667085", fontSize: 12 }}
+                                axisLine={false}
+                                tickLine={false}
+                              />
+                              <YAxis
+                                tick={{ fill: "#667085", fontSize: 12 }}
+                                axisLine={false}
+                                tickLine={false}
+                              />
                               <RechartsTooltip
                                 contentStyle={{
                                   borderRadius: 12,
@@ -628,7 +804,13 @@ export default function ReportsPage() {
                                   fontSize: 12,
                                 }}
                               />
-                              <Line type="monotone" dataKey="views" stroke="#2563EB" strokeWidth={2} dot={false} />
+                              <Line
+                                type="monotone"
+                                dataKey="views"
+                                stroke="#2563EB"
+                                strokeWidth={2}
+                                dot={false}
+                              />
                             </LineChart>
                           </ResponsiveContainer>
                         </div>
@@ -642,9 +824,26 @@ export default function ReportsPage() {
                         </div>
                         <div className="mt-3 h-[160px] w-full">
                           <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={dynamicProfileTrend} margin={{ top: 8, right: 12, left: -20, bottom: 0 }}>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                              <XAxis dataKey="day" tick={{ fill: "#667085", fontSize: 12 }} axisLine={false} tickLine={false} />
+                            <LineChart
+                              data={dynamicProfileTrend}
+                              margin={{
+                                top: 8,
+                                right: 12,
+                                left: -20,
+                                bottom: 0,
+                              }}
+                            >
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                vertical={false}
+                                stroke="#E5E7EB"
+                              />
+                              <XAxis
+                                dataKey="day"
+                                tick={{ fill: "#667085", fontSize: 12 }}
+                                axisLine={false}
+                                tickLine={false}
+                              />
                               <YAxis
                                 tick={{ fill: "#667085", fontSize: 12 }}
                                 axisLine={false}
@@ -660,7 +859,13 @@ export default function ReportsPage() {
                                   fontSize: 12,
                                 }}
                               />
-                              <Line type="monotone" dataKey="ctr" stroke="#2563EB" strokeWidth={2} dot={false} />
+                              <Line
+                                type="monotone"
+                                dataKey="ctr"
+                                stroke="#2563EB"
+                                strokeWidth={2}
+                                dot={false}
+                              />
                             </LineChart>
                           </ResponsiveContainer>
                         </div>
@@ -676,14 +881,43 @@ export default function ReportsPage() {
                         </div>
                         <div className="mt-3 h-[220px] w-full">
                           <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={dynamicTrafficSourceBars} margin={{ top: 8, right: 0, left: -18, bottom: 0 }}>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                              <XAxis dataKey="source" tick={{ fill: "#667085", fontSize: 12 }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fill: "#667085", fontSize: 12 }} axisLine={false} tickLine={false} />
-                              <RechartsTooltip
-                                contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
+                            <BarChart
+                              data={dynamicTrafficSourceBars}
+                              margin={{
+                                top: 8,
+                                right: 0,
+                                left: -18,
+                                bottom: 0,
+                              }}
+                            >
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                vertical={false}
+                                stroke="#E5E7EB"
                               />
-                              <Bar dataKey="views" radius={[10, 10, 0, 0]} fill="#2563EB" />
+                              <XAxis
+                                dataKey="source"
+                                tick={{ fill: "#667085", fontSize: 12 }}
+                                axisLine={false}
+                                tickLine={false}
+                              />
+                              <YAxis
+                                tick={{ fill: "#667085", fontSize: 12 }}
+                                axisLine={false}
+                                tickLine={false}
+                              />
+                              <RechartsTooltip
+                                contentStyle={{
+                                  borderRadius: 12,
+                                  borderColor: "#E5E7EB",
+                                  fontSize: 12,
+                                }}
+                              />
+                              <Bar
+                                dataKey="views"
+                                radius={[10, 10, 0, 0]}
+                                fill="#2563EB"
+                              />
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
@@ -693,7 +927,10 @@ export default function ReportsPage() {
                     <div className="mt-6">
                       <div className="grid gap-3 md:grid-cols-3">
                         {rateRows.map((row) => (
-                          <div key={row.label} className="rounded-lg border border-gray-200 bg-white p-4">
+                          <div
+                            key={row.label}
+                            className="rounded-lg border border-gray-200 bg-white p-4"
+                          >
                             <div className="text-[12px] font-medium leading-normal text-gray-500">
                               {row.label}
                             </div>
@@ -713,7 +950,8 @@ export default function ReportsPage() {
                         Premium Adds Deeper Breakdowns
                       </div>
                       <div className="mt-1 text-[13px] font-light leading-normal text-gray-500">
-                        Unlock traffic sources, click depth, benchmarks, and conversion correlations.
+                        Unlock traffic sources, click depth, benchmarks, and
+                        conversion correlations.
                       </div>
                       <div className="mt-3">
                         <NextLink href="/billing">
@@ -741,14 +979,33 @@ export default function ReportsPage() {
                       </div>
                       <div className="mt-3 h-[160px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={listingRows} margin={{ top: 8, right: 0, left: -18, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                            <XAxis dataKey="name" hide />
-                            <YAxis tick={{ fill: "#667085", fontSize: 12 }} axisLine={false} tickLine={false} />
-                            <RechartsTooltip
-                              contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
+                          <BarChart
+                            data={listingRows}
+                            margin={{ top: 8, right: 0, left: -18, bottom: 0 }}
+                          >
+                            <CartesianGrid
+                              strokeDasharray="3 3"
+                              vertical={false}
+                              stroke="#E5E7EB"
                             />
-                            <Bar dataKey="clicks" radius={[10, 10, 0, 0]} fill="#2563EB" />
+                            <XAxis dataKey="name" hide />
+                            <YAxis
+                              tick={{ fill: "#667085", fontSize: 12 }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <RechartsTooltip
+                              contentStyle={{
+                                borderRadius: 12,
+                                borderColor: "#E5E7EB",
+                                fontSize: 12,
+                              }}
+                            />
+                            <Bar
+                              dataKey="clicks"
+                              radius={[10, 10, 0, 0]}
+                              fill="#2563EB"
+                            />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
@@ -796,24 +1053,34 @@ export default function ReportsPage() {
 
                       <div className="mt-4 grid gap-3 md:grid-cols-2">
                         {tagRows.map((row) => (
-                          <div key={row.tag} className="rounded-lg border border-gray-200 bg-white p-4">
+                          <div
+                            key={row.tag}
+                            className="rounded-lg border border-gray-200 bg-white p-4"
+                          >
                             <div className="flex items-center justify-between gap-3">
                               <div className="text-[14px] font-semibold leading-normal text-dark-blue-400">
                                 {row.tag}
                               </div>
-                              <Badge visual="gray" className="border border-gray-200 bg-white">
+                              <Badge
+                                visual="gray"
+                                className="border border-gray-200 bg-white"
+                              >
                                 CTR {row.ctr}
                               </Badge>
                             </div>
                             <div className="mt-3 grid grid-cols-2 gap-3 text-[13px]">
                               <div>
-                                <div className="text-[12px] font-medium text-gray-500">Impressions</div>
+                                <div className="text-[12px] font-medium text-gray-500">
+                                  Impressions
+                                </div>
                                 <div className="mt-1 font-semibold text-dark-blue-400">
                                   {number(row.impressions)}
                                 </div>
                               </div>
                               <div>
-                                <div className="text-[12px] font-medium text-gray-500">Clicks</div>
+                                <div className="text-[12px] font-medium text-gray-500">
+                                  Clicks
+                                </div>
                                 <div className="mt-1 font-semibold text-dark-blue-400">
                                   {number(row.clicks)}
                                 </div>
@@ -870,14 +1137,43 @@ export default function ReportsPage() {
                         </div>
                         <div className="mt-3 h-[220px] w-full">
                           <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={regions} margin={{ top: 8, right: 0, left: -18, bottom: 0 }}>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                              <XAxis dataKey="region" tick={{ fill: "#667085", fontSize: 12 }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fill: "#667085", fontSize: 12 }} axisLine={false} tickLine={false} />
-                              <RechartsTooltip
-                                contentStyle={{ borderRadius: 12, borderColor: "#E5E7EB", fontSize: 12 }}
+                            <BarChart
+                              data={regions}
+                              margin={{
+                                top: 8,
+                                right: 0,
+                                left: -18,
+                                bottom: 0,
+                              }}
+                            >
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                vertical={false}
+                                stroke="#E5E7EB"
                               />
-                              <Bar dataKey="clicks" radius={[10, 10, 0, 0]} fill="#2563EB" />
+                              <XAxis
+                                dataKey="region"
+                                tick={{ fill: "#667085", fontSize: 12 }}
+                                axisLine={false}
+                                tickLine={false}
+                              />
+                              <YAxis
+                                tick={{ fill: "#667085", fontSize: 12 }}
+                                axisLine={false}
+                                tickLine={false}
+                              />
+                              <RechartsTooltip
+                                contentStyle={{
+                                  borderRadius: 12,
+                                  borderColor: "#E5E7EB",
+                                  fontSize: 12,
+                                }}
+                              />
+                              <Bar
+                                dataKey="clicks"
+                                radius={[10, 10, 0, 0]}
+                                fill="#2563EB"
+                              />
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
@@ -885,24 +1181,34 @@ export default function ReportsPage() {
 
                       <div className="grid gap-3">
                         {regions.map((row) => (
-                          <div key={row.region} className="rounded-lg border border-gray-200 bg-white p-4">
+                          <div
+                            key={row.region}
+                            className="rounded-lg border border-gray-200 bg-white p-4"
+                          >
                             <div className="flex items-center justify-between gap-3">
                               <div className="text-[14px] font-semibold leading-normal text-dark-blue-400">
                                 {row.region}
                               </div>
-                              <Badge visual="gray" className="border border-gray-200 bg-white">
+                              <Badge
+                                visual="gray"
+                                className="border border-gray-200 bg-white"
+                              >
                                 CTR {row.ctr}
                               </Badge>
                             </div>
                             <div className="mt-3 grid grid-cols-2 gap-3 text-[13px]">
                               <div>
-                                <div className="text-[12px] font-medium text-gray-500">Impressions</div>
+                                <div className="text-[12px] font-medium text-gray-500">
+                                  Impressions
+                                </div>
                                 <div className="mt-1 font-semibold text-dark-blue-400">
                                   {number(row.impressions)}
                                 </div>
                               </div>
                               <div>
-                                <div className="text-[12px] font-medium text-gray-500">Clicks</div>
+                                <div className="text-[12px] font-medium text-gray-500">
+                                  Clicks
+                                </div>
                                 <div className="mt-1 font-semibold text-dark-blue-400">
                                   {number(row.clicks)}
                                 </div>
@@ -930,7 +1236,10 @@ export default function ReportsPage() {
                         { label: "Inquiries Received", value: "42" },
                         { label: "Messages Started", value: "76" },
                       ].map((row) => (
-                        <div key={row.label} className="rounded-lg border border-gray-200 bg-white p-4">
+                        <div
+                          key={row.label}
+                          className="rounded-lg border border-gray-200 bg-white p-4"
+                        >
                           <div className="text-[12px] font-medium leading-normal text-gray-500">
                             {row.label}
                           </div>
@@ -947,18 +1256,27 @@ export default function ReportsPage() {
                       </div>
                       <div className="mt-2 space-y-2 text-[13px] font-light leading-normal text-gray-500">
                         <div>
-                          Listings with <span className="font-semibold text-dark-blue-400">high impressions</span>{" "}
-                          but <span className="font-semibold text-dark-blue-400">low CTR</span> need better titles/tags.
+                          Listings with{" "}
+                          <span className="font-semibold text-dark-blue-400">
+                            high impressions
+                          </span>{" "}
+                          but{" "}
+                          <span className="font-semibold text-dark-blue-400">
+                            low CTR
+                          </span>{" "}
+                          need better titles/tags.
                         </div>
                         <div>
                           If CTR is strong but inquiries are low, your{" "}
-                          <span className="font-semibold text-dark-blue-400">rate or messaging</span> may be the blocker.
+                          <span className="font-semibold text-dark-blue-400">
+                            rate or messaging
+                          </span>{" "}
+                          may be the blocker.
                         </div>
                       </div>
                     </div>
                   </Card>
                 </TabsContent>
-
               </Tabs>
             </div>
           </div>

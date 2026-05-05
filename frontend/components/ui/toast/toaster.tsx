@@ -26,17 +26,17 @@ export function Toaster() {
       }) {
         return (
           <Toast key={id} variant={variant} {...props}>
-            <div className="flex items-center w-full whitespace-nowrap">
+            <div className="flex max-w-full items-center">
               {/* Icon */}
               {variant === "success" ? (
                 <CheckCircle className="size-5 shrink-0 text-success-500" />
               ) : (
-                <HelpCircle className="size-5 shrink-0 text-success-500" />
+                <HelpCircle className="size-5 shrink-0 text-white" />
               )}
 
               {/* Icon → Text = 12px */}
               {title && (
-                <span className="ml-3 font-semibold  text-[14px] leading-[20px] font-inter">
+                <span className="ml-3 max-w-full text-[14px] font-semibold leading-[20px] text-white">
                   {title}
                 </span>
               )}

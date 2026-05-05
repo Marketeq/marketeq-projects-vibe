@@ -4,8 +4,14 @@ import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
-import { ROLE } from "@/types/user"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import { editProjectListingUrl } from "@/src/lib/listing-urls"
+import {
+  MY_LISTINGS_STORAGE_KEY,
+  formatRelativeTime,
+  statusToBadgeVisual,
+  useMyListings,
+} from "@/src/lib/my-listings"
 import {
   Archive,
   Briefcase,
@@ -26,15 +32,10 @@ import {
   Users,
   XCircle,
 } from "@blend-metrics/icons"
+import { ROLE } from "@/types/user"
+import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { DropdownIcon } from "@/components/icons/dropdown-icon"
 import { Grid } from "@/components/icons/grid"
-import { editProjectListingUrl } from "@/src/lib/listing-urls"
-import {
-  MY_LISTINGS_STORAGE_KEY,
-  formatRelativeTime,
-  statusToBadgeVisual,
-  useMyListings,
-} from "@/src/lib/my-listings"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Badge,
@@ -52,10 +53,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui"
-import {
-  ToggleGroupItem,
-  ToggleGroupRoot,
-} from "@/components/ui/toggle-group"
 
 const newListingOptions = [
   {
@@ -156,7 +153,7 @@ export default function MyListingsPage() {
       <div className="flex bg-gray-50 min-h-screen">
         <LeftSidebar />
 
-        <div className="flex-1 p-[32px] min-[1024px]:pl-[248px]">
+        <div className="flex-1 p-[32px] min-[1024px]:pl-[338px]">
           <div className="flex items-center justify-between">
             <h1 className="text-base font-bold text-dark-blue-400">
               My Listings
@@ -380,7 +377,8 @@ export default function MyListingsPage() {
                                   {listing.status}
                                 </Badge>
                                 <span className="text-xs leading-none text-dark-blue-400">
-                                  Updated {formatRelativeTime(listing.updatedAt)}
+                                  Updated{" "}
+                                  {formatRelativeTime(listing.updatedAt)}
                                 </span>
                               </div>
                             </div>
@@ -469,7 +467,10 @@ export default function MyListingsPage() {
           </div>
         </div>
 
-        <Dialog open={showNewListingDialog} onOpenChange={setShowNewListingDialog}>
+        <Dialog
+          open={showNewListingDialog}
+          onOpenChange={setShowNewListingDialog}
+        >
           <DialogContent className="sm:max-w-md p-0 overflow-hidden">
             <div className="p-6 pb-2">
               <h2 className="text-lg font-semibold text-dark-blue-400">
@@ -520,7 +521,9 @@ export default function MyListingsPage() {
                     <p className="text-sm font-medium text-dark-blue-400">
                       {option.label}
                     </p>
-                    <p className="text-xs text-gray-500">{option.description}</p>
+                    <p className="text-xs text-gray-500">
+                      {option.description}
+                    </p>
                   </div>
                   <ChevronRight className="size-4 text-gray-300 group-hover:text-gray-500 flex-none" />
                 </button>

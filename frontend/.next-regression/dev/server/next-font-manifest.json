@@ -1,0 +1,22 @@
+{
+  "app": {
+    "[project]/app/(group)/(group)/page": [
+      "static/media/dc6d2a64e9dbf3bc-s.p.11~i--ovv74c_.woff2"
+    ],
+    "[project]/app/(group)/client-dashboard/page": [
+      "static/media/dc6d2a64e9dbf3bc-s.p.11~i--ovv74c_.woff2"
+    ],
+    "[project]/app/(group)/inbox/page": [
+      "static/media/dc6d2a64e9dbf3bc-s.p.11~i--ovv74c_.woff2"
+    ],
+    "[project]/app/(group)/notifications/page": [
+      "static/media/dc6d2a64e9dbf3bc-s.p.11~i--ovv74c_.woff2"
+    ],
+    "[project]/app/sign-in/page": [
+      "static/media/dc6d2a64e9dbf3bc-s.p.11~i--ovv74c_.woff2"
+    ]
+  },
+  "appUsingSizeAdjust": true,
+  "pages": {},
+  "pagesUsingSizeAdjust": false
+}

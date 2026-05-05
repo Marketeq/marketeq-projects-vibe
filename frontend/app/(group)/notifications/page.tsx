@@ -3,8 +3,8 @@
 import { useState } from "react"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
-import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import { Bell, Check, Mail01, Trash } from "@blend-metrics/icons"
+import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Avatar,
   AvatarFallback,
@@ -74,7 +74,9 @@ export default function NotificationsPage() {
 
   const unreadCount = notifications.filter((n) => !n.read).length
   const filteredNotifications =
-    activeTab === "unread" ? notifications.filter((n) => !n.read) : notifications
+    activeTab === "unread"
+      ? notifications.filter((n) => !n.read)
+      : notifications
 
   const markAllRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
@@ -91,10 +93,12 @@ export default function NotificationsPage() {
       <div className="flex bg-gray-50 min-h-screen">
         <LeftSidebar />
 
-        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[338px] min-[1024px]:pr-6 overflow-hidden">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-dark-blue-400">Notifications</h1>
+              <h1 className="text-2xl font-semibold text-dark-blue-400">
+                Notifications
+              </h1>
               <p className="text-sm text-gray-500 mt-1">
                 {unreadCount > 0
                   ? `You have ${unreadCount} unread notification${unreadCount > 1 ? "s" : ""}`
@@ -102,7 +106,12 @@ export default function NotificationsPage() {
               </p>
             </div>
             {unreadCount > 0 && (
-              <Button variant="outlined" visual="gray" size="sm" onClick={markAllRead}>
+              <Button
+                variant="outlined"
+                visual="gray"
+                size="sm"
+                onClick={markAllRead}
+              >
                 <Check className="size-4 mr-1.5" />
                 Mark all as read
               </Button>
@@ -182,7 +191,9 @@ function NotificationList({
 
           <Avatar size="md">
             <AvatarImage src={notification.avatar} alt={notification.user} />
-            <AvatarFallback>{notification.user[1]?.toUpperCase()}</AvatarFallback>
+            <AvatarFallback>
+              {notification.user[1]?.toUpperCase()}
+            </AvatarFallback>
           </Avatar>
 
           <div className="flex-auto min-w-0">
@@ -192,7 +203,9 @@ function NotificationList({
               </span>
               <span className="text-xs text-gray-400">{notification.time}</span>
             </div>
-            <p className="text-sm text-gray-600 mt-0.5">{notification.message}</p>
+            <p className="text-sm text-gray-600 mt-0.5">
+              {notification.message}
+            </p>
           </div>
         </article>
       ))}

@@ -1,0 +1,7 @@
+{
+  "/(group)/(group)/page": "app/(group)/(group)/page.js",
+  "/(group)/client-dashboard/page": "app/(group)/client-dashboard/page.js",
+  "/(group)/inbox/page": "app/(group)/inbox/page.js",
+  "/(group)/notifications/page": "app/(group)/notifications/page.js",
+  "/sign-in/page": "app/sign-in/page.js"
+}

@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 3, "column": 0}, "map": {"version":3,"sources":["file:///Users/christorres/vibecoding/marketeq-projects-vibe/frontend/public/mock/options.json.%5Bjson%5D.cjs/turbopack%3A/public/mock/options.json"],"sourcesContent":["{\"value\":[\"Artificial Intelligence\",\"Blockchain\",\"Cyber Security\",\"Data & Analytics\",\"Machine Learning\"]}"],"names":[],"mappings":""}}]
+}
