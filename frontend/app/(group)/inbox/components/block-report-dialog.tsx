@@ -163,7 +163,7 @@ export function BlockReportDialog({
                 onChange={(e) => setReason(e.target.value)}
                 maxLength={500}
                 rows={3}
-                placeholder="Tell us why you&apos;re blocking this user"
+                placeholder="Tell us why you're blocking this user"
                 disabled={submitting}
               />
             </div>
