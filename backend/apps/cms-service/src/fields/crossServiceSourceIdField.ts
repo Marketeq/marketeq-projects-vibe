@@ -7,6 +7,8 @@ interface Options {
   unique?: boolean;
   /** Human-facing description of which upstream service owns this id. */
   description: string;
+  /** Optional admin override. */
+  admin?: Field['admin'];
 }
 
 /**
@@ -48,6 +50,8 @@ export function crossServiceSourceIdField(options: Options): Field {
       // empty input is just confusing UX. Shown as a disabled input on
       // edit so admins can read / copy / debug the value.
       condition: (data) => Boolean((data as { id?: unknown } | undefined)?.id),
+      hidden: true,
+      ...(options.admin || {}),
     },
     hooks: {
       beforeValidate: [

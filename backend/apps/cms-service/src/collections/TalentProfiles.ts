@@ -39,16 +39,6 @@ const talentProfileSourceIdField = crossServiceSourceIdField({
   description: talentProfileSourceIdDescription,
 });
 
-(talentProfileUuidField as any).admin = {
-  ...((talentProfileUuidField as any).admin ?? {}),
-  condition: () => false,
-};
-
-(talentProfileSourceIdField as any).admin = {
-  ...((talentProfileSourceIdField as any).admin ?? {}),
-  condition: () => false,
-};
-
 function parseDateValue(value: unknown): Date | null {
   if (value == null || value === "") return null;
   const raw =
