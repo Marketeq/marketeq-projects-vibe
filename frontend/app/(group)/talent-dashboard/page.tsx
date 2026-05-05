@@ -66,7 +66,7 @@ export default function TalentDashboard() {
       <AuthenticatedRoute>
         <div className="flex bg-gray-50">
           <LeftSidebar />
-          <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
+          <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[338px] min-[1024px]:pr-6 overflow-hidden">
             <div className="flex-auto space-y-3 md:space-y-5 min-w-0">
               <Welcome onToggle={() => setIsOpen(true)} />
 
@@ -85,7 +85,10 @@ export default function TalentDashboard() {
               <Footer />
             </div>
 
-            <RightSidebar onCompleteProfile={handleCompleteProfile} profileProgress={profileProgress} />
+            <RightSidebar
+              onCompleteProfile={handleCompleteProfile}
+              profileProgress={profileProgress}
+            />
           </div>
 
           <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -121,7 +124,10 @@ export default function TalentDashboard() {
                 className="w-full h-[calc(theme(size.full)-theme(size.12))]"
                 scrollBar={<ScrollBar className="w-4 p-1" />}
               >
-                <RightDrawer onCompleteProfile={handleCompleteProfile} profileProgress={profileProgress} />
+                <RightDrawer
+                  onCompleteProfile={handleCompleteProfile}
+                  profileProgress={profileProgress}
+                />
               </ScrollArea>
             </DialogContent>
           </Dialog>

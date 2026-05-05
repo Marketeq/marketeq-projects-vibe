@@ -1,24 +1,9 @@
 "use client"
 
-import NextLink from "next/link"
 import { useEffect, useRef, useState } from "react"
+import NextLink from "next/link"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
-import {
-  BillingTabValue,
-  billingTabs,
-  getActiveBillingTab,
-} from "@/components/billing-section-header"
-import { LeftSidebar } from "@/components/talent-dashboard-comps"
-import {
-  BillingInvoicesContent,
-} from "@/app/(group)/invoices/page"
-import {
-  BillingPaymentMethodsContent,
-  BillingPaymentMethodsContentHandle,
-} from "@/app/(group)/payments/page"
-import {
-  BillingTransactionsContent,
-} from "@/components/billing-transactions-content"
+import { cn } from "@/utils/functions"
 import {
   AlertTriangle,
   ArrowRight,
@@ -29,6 +14,13 @@ import {
   Plus,
 } from "@blend-metrics/icons"
 import {
+  BillingTabValue,
+  billingTabs,
+  getActiveBillingTab,
+} from "@/components/billing-section-header"
+import { BillingTransactionsContent } from "@/components/billing-transactions-content"
+import { LeftSidebar } from "@/components/talent-dashboard-comps"
+import {
   Badge,
   Button,
   Tabs,
@@ -36,7 +28,11 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui"
-import { cn } from "@/utils/functions"
+import { BillingInvoicesContent } from "@/app/(group)/invoices/page"
+import {
+  BillingPaymentMethodsContent,
+  BillingPaymentMethodsContentHandle,
+} from "@/app/(group)/payments/page"
 
 const basicPlanFeatures = [
   "Collaborate with 10 members",
@@ -135,7 +131,8 @@ function BillingOverviewContent({
                   size="sm"
                   className={cn(
                     "h-8 rounded-md px-3 text-xs font-semibold shadow-none",
-                    planTab !== "individual" && "text-gray-400 hover:bg-transparent"
+                    planTab !== "individual" &&
+                      "text-gray-400 hover:bg-transparent"
                   )}
                   onClick={() => setPlanTab("individual")}
                 >
@@ -162,7 +159,9 @@ function BillingOverviewContent({
                   <span className="text-3xl font-semibold leading-none">
                     {planTab === "individual" ? "$52" : "$0"}
                   </span>
-                  <span className="pb-0.5 text-base font-medium text-gray-500">/mo</span>
+                  <span className="pb-0.5 text-base font-medium text-gray-500">
+                    /mo
+                  </span>
                 </div>
                 {planTab === "individual" && (
                   <p className="mt-3 text-sm font-medium text-dark-blue-400">
@@ -176,14 +175,21 @@ function BillingOverviewContent({
 
               {planTab === "individual" ? (
                 <div className="flex items-end justify-end">
-                  <p className="text-sm text-gray-500">Last Updated 5/21/2025</p>
+                  <p className="text-sm text-gray-500">
+                    Last Updated 5/21/2025
+                  </p>
                 </div>
               ) : (
                 <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
                   {basicPlanFeatures.map((feature, index) => (
-                    <div key={`${feature}-${index}`} className="flex items-center gap-2.5">
+                    <div
+                      key={`${feature}-${index}`}
+                      className="flex items-center gap-2.5"
+                    >
                       <CheckCircle className="h-4 w-4 shrink-0 text-primary-500" />
-                      <span className="text-sm text-dark-blue-400">{feature}</span>
+                      <span className="text-sm text-dark-blue-400">
+                        {feature}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -195,11 +201,17 @@ function BillingOverviewContent({
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-base font-semibold text-dark-blue-400">Invites</h2>
+                  <h2 className="text-base font-semibold text-dark-blue-400">
+                    Invites
+                  </h2>
                   <span className="mt-0.5 h-2 w-2 rounded-full bg-primary-500" />
                 </div>
                 <p className="mt-4 text-sm text-gray-500">
-                  You have <span className="font-semibold text-dark-blue-400">10 invites</span> remaining
+                  You have{" "}
+                  <span className="font-semibold text-dark-blue-400">
+                    10 invites
+                  </span>{" "}
+                  remaining
                 </p>
               </div>
 
@@ -244,7 +256,9 @@ function BillingOverviewContent({
                     <p
                       className={cn(
                         "text-sm font-semibold",
-                        payment.isCritical ? "text-error-500" : "text-dark-blue-400"
+                        payment.isCritical
+                          ? "text-error-500"
+                          : "text-dark-blue-400"
                       )}
                     >
                       {payment.title}
@@ -263,7 +277,9 @@ function BillingOverviewContent({
                     <p
                       className={cn(
                         "text-sm font-semibold",
-                        payment.isCritical ? "text-error-500" : "text-dark-blue-400"
+                        payment.isCritical
+                          ? "text-error-500"
+                          : "text-dark-blue-400"
                       )}
                     >
                       {payment.status}
@@ -313,7 +329,9 @@ function BillingOverviewContent({
                       <p
                         className={cn(
                           "text-sm font-semibold",
-                          payment.isCritical ? "text-error-500" : "text-dark-blue-400"
+                          payment.isCritical
+                            ? "text-error-500"
+                            : "text-dark-blue-400"
                         )}
                       >
                         {payment.product}
@@ -327,7 +345,9 @@ function BillingOverviewContent({
                     <p
                       className={cn(
                         "mt-1 text-sm font-medium",
-                        payment.isCritical ? "text-error-500" : "text-dark-blue-400"
+                        payment.isCritical
+                          ? "text-error-500"
+                          : "text-dark-blue-400"
                       )}
                     >
                       {payment.amount}
@@ -353,7 +373,9 @@ function BillingOverviewContent({
         <div className="space-y-5">
           <section className="rounded-lg border border-gray-200 bg-white p-5 md:p-6">
             <div>
-              <h3 className="text-base font-semibold text-dark-blue-400">Questions?</h3>
+              <h3 className="text-base font-semibold text-dark-blue-400">
+                Questions?
+              </h3>
               <p className="mt-4 max-w-[220px] text-sm text-dark-blue-400">
                 For more information on billing and membership plans Visit our{" "}
                 <NextLink
@@ -372,7 +394,8 @@ function BillingOverviewContent({
                 Billing Support
               </h3>
               <p className="mt-4 text-sm text-dark-blue-400">
-                Our Support team is here to help with any questions you may have!
+                Our Support team is here to help with any questions you may
+                have!
               </p>
 
               <Button
@@ -392,9 +415,144 @@ function BillingOverviewContent({
   )
 }
 
+function BillingMyPlansContent() {
+  const [planTab, setPlanTab] = useState<"individual" | "team">("individual")
+
+  return (
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="space-y-5">
+        <section className="rounded-lg border border-gray-200 bg-white p-5 md:p-6">
+          <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-dark-blue-400">
+                {planTab === "individual" ? "Premium Plan" : "Basic Plan"}
+              </h2>
+              <p className="mt-2 text-sm text-gray-500">
+                {planTab === "individual"
+                  ? "This plan Renews On March 26, 2025"
+                  : "Everything you need to get started."}
+              </p>
+            </div>
+            <div className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
+              <Button
+                variant={planTab === "individual" ? "outlined" : "ghost"}
+                visual="gray"
+                size="sm"
+                className={cn(
+                  "h-8 rounded-md px-3 text-xs font-semibold shadow-none",
+                  planTab !== "individual" &&
+                    "text-gray-400 hover:bg-transparent"
+                )}
+                onClick={() => setPlanTab("individual")}
+              >
+                Individual
+              </Button>
+              <Button
+                variant={planTab === "team" ? "outlined" : "ghost"}
+                visual="gray"
+                size="sm"
+                className={cn(
+                  "h-8 rounded-md px-3 text-xs font-semibold shadow-none",
+                  planTab !== "team" && "text-gray-400 hover:bg-transparent"
+                )}
+                onClick={() => setPlanTab("team")}
+              >
+                Team
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <div>
+              <div className="flex items-end gap-1 text-dark-blue-400">
+                <span className="text-3xl font-semibold leading-none">
+                  {planTab === "individual" ? "$52" : "$0"}
+                </span>
+                <span className="pb-0.5 text-base font-medium text-gray-500">
+                  /mo
+                </span>
+              </div>
+              {planTab === "individual" && (
+                <p className="mt-3 text-sm font-medium text-dark-blue-400">
+                  Visa ending in 4292
+                </p>
+              )}
+              <Button size="sm" className="mt-5">
+                Upgrade Plan
+              </Button>
+            </div>
+
+            {planTab === "individual" ? (
+              <div className="flex items-end justify-end">
+                <p className="text-sm text-gray-500">Last Updated 5/21/2025</p>
+              </div>
+            ) : (
+              <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+                {basicPlanFeatures.map((feature, index) => (
+                  <div
+                    key={`${feature}-${index}`}
+                    className="flex items-center gap-2.5"
+                  >
+                    <CheckCircle className="h-4 w-4 shrink-0 text-primary-500" />
+                    <span className="text-sm text-dark-blue-400">
+                      {feature}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <div className="space-y-5">
+        <section className="rounded-lg border border-gray-200 bg-white p-5 md:p-6">
+          <div>
+            <h3 className="text-base font-semibold text-dark-blue-400">
+              Questions?
+            </h3>
+            <p className="mt-4 max-w-[220px] text-sm text-dark-blue-400">
+              For more information on billing and membership plans Visit our{" "}
+              <NextLink
+                href="/help-center"
+                className="font-semibold underline underline-offset-2"
+              >
+                Help Center
+              </NextLink>
+            </p>
+          </div>
+
+          <div className="my-5 border-t border-gray-200" />
+
+          <div>
+            <h3 className="text-base font-semibold text-dark-blue-400">
+              Billing Support
+            </h3>
+            <p className="mt-4 text-sm text-dark-blue-400">
+              Our Support team is here to help with any questions you may have!
+            </p>
+
+            <Button
+              size="sm"
+              variant="outlined"
+              visual="gray"
+              className="mt-5"
+              leftIcon={<LifeBuoy className="h-4 w-4" />}
+            >
+              Get Help
+            </Button>
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}
+
 export default function BillingPage() {
   const [activeTab, setActiveTab] = useState<BillingTabValue>("overview")
-  const paymentMethodsRef = useRef<BillingPaymentMethodsContentHandle | null>(null)
+  const paymentMethodsRef = useRef<BillingPaymentMethodsContentHandle | null>(
+    null
+  )
 
   useEffect(() => {
     const syncTabFromLocation = () => {
@@ -421,41 +579,51 @@ export default function BillingPage() {
   const headerActions =
     activeTab === "payment-methods" ? (
       <>
-        <Button variant="ghost" visual="gray" size="sm" leftIcon={<HelpCircle className="size-4" />}>
+        <Button
+          variant="link"
+          visual="gray"
+          size="sm"
+          className="text-gray-500"
+          leftIcon={<HelpCircle className="size-4" />}
+        >
           Get Help
         </Button>
         <Button
-          onClick={() => paymentMethodsRef.current?.openAddPaymentMethodDialog()}
+          onClick={() =>
+            paymentMethodsRef.current?.openAddPaymentMethodDialog()
+          }
           leftIcon={<Plus className="size-4" />}
         >
-          Add payment method
+          Add Payment Method
         </Button>
       </>
     ) : null
 
   return (
     <AuthenticatedRoute>
-      <div className="flex min-h-screen bg-gray-50">
+      <div className="flex h-[100dvh] overflow-hidden bg-gray-50">
         <LeftSidebar />
 
-        <div className="flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6">
-          <div className="mx-auto max-w-[1160px] space-y-5 min-w-0">
+        <div className="flex h-full flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[338px] min-[1024px]:pr-6">
+          <div className="mx-auto flex h-full min-w-0 max-w-[1160px] flex-1 flex-col gap-5 overflow-hidden">
             <Tabs
               value={activeTab}
               layoutId="billing-section-tabs"
-              onValueChange={(value) => handleTabChange(value as BillingTabValue)}
+              onValueChange={(value) =>
+                handleTabChange(value as BillingTabValue)
+              }
+              className="flex h-full min-h-0 flex-col overflow-hidden"
             >
-              <div className="space-y-3">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <h1 className="text-xl font-bold text-dark-blue-400">Billing</h1>
-                    <p className="mt-1 text-sm text-gray-500">
-                      Manage your plan, billing activity, invoices, and payment methods.
-                    </p>
+              <div className="shrink-0 space-y-6">
+                <div className="flex flex-col gap-3 lg:min-h-10 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0">
+                    <h1 className="text-xl font-bold text-dark-blue-400">
+                      Billing
+                    </h1>
                   </div>
 
                   {headerActions ? (
-                    <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex shrink-0 flex-wrap items-center gap-3">
                       {headerActions}
                     </div>
                   ) : null}
@@ -463,27 +631,41 @@ export default function BillingPage() {
 
                 <TabsList className="w-full justify-start gap-x-6 border-b border-gray-200 bg-transparent px-0 pt-0">
                   {billingTabs.map((tab) => (
-                    <TabsTrigger key={tab.value} value={tab.value} className="pb-3">
+                    <TabsTrigger
+                      key={tab.value}
+                      value={tab.value}
+                      className="pb-3"
+                    >
                       {tab.label}
                     </TabsTrigger>
                   ))}
                 </TabsList>
               </div>
 
-              <TabsContent value="overview" className="mt-5">
+              <TabsContent value="overview" className="mt-5 min-h-0">
                 <BillingOverviewContent onNavigateTab={handleTabChange} />
               </TabsContent>
 
-              <TabsContent value="transactions" className="mt-5">
+              <TabsContent value="transactions" className="mt-5 min-h-0">
                 <BillingTransactionsContent />
               </TabsContent>
 
-              <TabsContent value="invoices" className="mt-5">
+              <TabsContent value="invoices" className="mt-5 min-h-0">
                 <BillingInvoicesContent />
               </TabsContent>
 
-              <TabsContent value="payment-methods" className="mt-5 h-[calc(100dvh-230px)] min-h-0">
-                <BillingPaymentMethodsContent ref={paymentMethodsRef} embedded />
+              <TabsContent
+                value="payment-methods"
+                className="mt-5 min-h-0 flex-1 overflow-hidden"
+              >
+                <BillingPaymentMethodsContent
+                  ref={paymentMethodsRef}
+                  embedded
+                />
+              </TabsContent>
+
+              <TabsContent value="my-plans" className="mt-5 min-h-0">
+                <BillingMyPlansContent />
               </TabsContent>
             </Tabs>
           </div>

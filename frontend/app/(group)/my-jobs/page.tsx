@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   ArrowRight,
   Check,
@@ -10,11 +11,10 @@ import {
   Star01,
   X,
 } from "@blend-metrics/icons"
-import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
-import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import { ListingCard } from "@/components/listing-card"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
+import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Avatar,
   AvatarFallback,
@@ -175,14 +175,15 @@ const recentSearches = [
 
 export default function MyJobsPage() {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<(typeof jobTabs)[number]["value"]>("saved")
+  const [activeTab, setActiveTab] =
+    useState<(typeof jobTabs)[number]["value"]>("saved")
 
   return (
     <AuthenticatedRoute>
       <div className="flex min-h-screen bg-gray-50">
         <LeftSidebar />
 
-        <div className="flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6">
+        <div className="flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[338px] min-[1024px]:pr-6">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
             <div className="min-w-0 space-y-6">
               <Card className="overflow-hidden rounded-xl border-primary-100 bg-primary-50">
@@ -192,19 +193,23 @@ export default function MyJobsPage() {
                       <AvatarImage src="/man.jpg" alt="Invited role" />
                       <AvatarFallback>MT</AvatarFallback>
                     </Avatar>
-                    <Badge visual="gray" className="bg-white text-[10px] text-gray-500">
+                    <Badge
+                      visual="gray"
+                      className="bg-white text-[10px] text-gray-500"
+                    >
                       8/9 match
                     </Badge>
                   </div>
 
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold leading-5 text-dark-blue-400">
-                      You&apos;ve Been Invited to Apply to &quot;Project Name&quot;
+                      You&apos;ve Been Invited to Apply to &quot;Project
+                      Name&quot;
                     </p>
                     <p className="mt-1 text-sm font-light leading-5 text-dark-blue-400">
-                      You&apos;re a great match — your skills line up with 7 out of 9 in
-                      the job description. That means you&apos;ve got a strong chance at
-                      landing this role.
+                      You&apos;re a great match — your skills line up with 7 out
+                      of 9 in the job description. That means you&apos;ve got a
+                      strong chance at landing this role.
                     </p>
 
                     <Button
@@ -224,19 +229,30 @@ export default function MyJobsPage() {
 
               <section className="space-y-4">
                 <div className="flex items-center justify-between gap-3">
-                  <h1 className="text-xl font-bold text-dark-blue-400">Job Progress</h1>
+                  <h1 className="text-xl font-bold text-dark-blue-400">
+                    Job Progress
+                  </h1>
                   <Button variant="outlined" visual="gray" size="sm">
                     View all <ArrowRight className="size-4" />
                   </Button>
                 </div>
 
-                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} unanimated>
+                <Tabs
+                  value={activeTab}
+                  onValueChange={(value) =>
+                    setActiveTab(value as typeof activeTab)
+                  }
+                  unanimated
+                >
                   <TabsList className="mb-4 justify-start border-b-0 px-0 pt-0">
                     {jobTabs.map((tab) => (
                       <TabsTrigger key={tab.value} value={tab.value}>
                         {tab.label}
                         {tab.count ? (
-                          <Badge visual="gray" className="ml-2 bg-gray-100 text-[10px] text-gray-500">
+                          <Badge
+                            visual="gray"
+                            className="ml-2 bg-gray-100 text-[10px] text-gray-500"
+                          >
                             {tab.count}
                           </Badge>
                         ) : null}
@@ -247,8 +263,13 @@ export default function MyJobsPage() {
                   {jobTabs.map((tab) => (
                     <TabsContent key={tab.value} value={tab.value}>
                       <div className="space-y-3">
-                        {jobProgressByTab[tab.value as keyof typeof jobProgressByTab].map((job) => (
-                          <Card key={job.id} className="overflow-hidden hover:border-gray-200 hover:ring-0">
+                        {jobProgressByTab[
+                          tab.value as keyof typeof jobProgressByTab
+                        ].map((job) => (
+                          <Card
+                            key={job.id}
+                            className="overflow-hidden hover:border-gray-200 hover:ring-0"
+                          >
                             <div className="w-full p-5">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
@@ -261,16 +282,27 @@ export default function MyJobsPage() {
                                   </Button>
                                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                                     {job.meta.map((item, index) => (
-                                      <span key={item} className="inline-flex items-center gap-2">
-                                        {index === 0 ? <Star01 className="size-3.5" /> : null}
-                                        {index === 2 ? <Check className="size-3.5 text-success-600" /> : null}
+                                      <span
+                                        key={item}
+                                        className="inline-flex items-center gap-2"
+                                      >
+                                        {index === 0 ? (
+                                          <Star01 className="size-3.5" />
+                                        ) : null}
+                                        {index === 2 ? (
+                                          <Check className="size-3.5 text-success-600" />
+                                        ) : null}
                                         <span>{item}</span>
                                       </span>
                                     ))}
                                   </div>
                                 </div>
 
-                                <IconButton variant="ghost" visual="gray" size="sm">
+                                <IconButton
+                                  variant="ghost"
+                                  visual="gray"
+                                  size="sm"
+                                >
                                   <MoreHorizontal className="size-4" />
                                 </IconButton>
                               </div>
@@ -283,10 +315,14 @@ export default function MyJobsPage() {
                                 >
                                   {job.role}
                                 </Button>
-                                <span className="text-gray-500">{job.skillsMatch}</span>
+                                <span className="text-gray-500">
+                                  {job.skillsMatch}
+                                </span>
                                 <span>{job.schedule}</span>
                                 <span>{job.compensation}</span>
-                                <span className="ml-auto text-xs text-gray-500">{job.posted}</span>
+                                <span className="ml-auto text-xs text-gray-500">
+                                  {job.posted}
+                                </span>
                               </div>
                             </div>
                           </Card>
@@ -427,12 +463,18 @@ export default function MyJobsPage() {
                           <p className="text-sm font-semibold text-dark-blue-400">
                             {search.title}
                           </p>
-                          <p className="mt-1 text-xs text-gray-500">{search.meta}</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {search.meta}
+                          </p>
                         </div>
 
                         <div className="flex items-center gap-2">
                           {search.title === "QA / Engine" ? (
-                            <Button variant="link" visual="gray" className="px-0 text-xs text-dark-blue-400">
+                            <Button
+                              variant="link"
+                              visual="gray"
+                              className="px-0 text-xs text-dark-blue-400"
+                            >
                               Remove
                             </Button>
                           ) : null}

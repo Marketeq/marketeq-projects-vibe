@@ -1,0 +1,303 @@
+(globalThis["TURBOPACK"] || (globalThis["TURBOPACK"] = [])).push([typeof document === "object" ? document.currentScript : undefined,
+"[project]/public/mock/projectsnew.json.[json].cjs [app-client] (ecmascript)", ((__turbopack_context__, module, exports) => {
+
+module.exports = [
+    {
+        "label": "Web Application"
+    },
+    {
+        "label": "Mobile Application"
+    },
+    {
+        "label": "E-commerce Platform"
+    },
+    {
+        "label": "Website Design"
+    },
+    {
+        "label": "Content Management"
+    },
+    {
+        "label": "Web API"
+    },
+    {
+        "label": "Web Plugin"
+    },
+    {
+        "label": "Cloud Migration"
+    },
+    {
+        "label": "Blockchain Platform"
+    },
+    {
+        "label": "Cross-Platform App"
+    },
+    {
+        "label": "Native App"
+    },
+    {
+        "label": "Mobile UI/UX"
+    },
+    {
+        "label": "App Prototype"
+    },
+    {
+        "label": "Desktop Software"
+    },
+    {
+        "label": "Desktop Application"
+    },
+    {
+        "label": "System Utility"
+    },
+    {
+        "label": "Desktop Game"
+    },
+    {
+        "label": "Software Installer"
+    },
+    {
+        "label": "Desktop Widget"
+    },
+    {
+        "label": "Cloud Software"
+    },
+    {
+        "label": "Cloud Infrastructure"
+    },
+    {
+        "label": "Serverless Application"
+    },
+    {
+        "label": "Cloud API"
+    },
+    {
+        "label": "Cloud Database"
+    },
+    {
+        "label": "Cloud Native Apps"
+    },
+    {
+        "label": "Machine Learning"
+    },
+    {
+        "label": "Natural Language Processing"
+    },
+    {
+        "label": "Computer Vision"
+    },
+    {
+        "label": "AI Chatbot"
+    },
+    {
+        "label": "Predictive Analytics"
+    },
+    {
+        "label": "AI Integration"
+    },
+    {
+        "label": "Data Visualization"
+    },
+    {
+        "label": "Data Pipeline"
+    },
+    {
+        "label": "Data Warehouse"
+    },
+    {
+        "label": "Statistical Model"
+    },
+    {
+        "label": "Big Data"
+    },
+    {
+        "label": "Analytics Dashboard"
+    },
+    {
+        "label": "Logo Design"
+    },
+    {
+        "label": "Brand Identity"
+    },
+    {
+        "label": "Graphic Illustration"
+    },
+    {
+        "label": "Infographic Design"
+    },
+    {
+        "label": "Print Design"
+    },
+    {
+        "label": "Packaging Design"
+    },
+    {
+        "label": "User Interface"
+    },
+    {
+        "label": "User Experience"
+    },
+    {
+        "label": "Wireframe Design"
+    },
+    {
+        "label": "Prototype Development"
+    },
+    {
+        "label": "Interaction Design"
+    },
+    {
+        "label": "Usability Testing"
+    },
+    {
+        "label": "Animation Design"
+    },
+    {
+        "label": "Video Editing"
+    },
+    {
+        "label": "Motion Graphics"
+    },
+    {
+        "label": "3D Modeling"
+    },
+    {
+        "label": "Visual Effects"
+    },
+    {
+        "label": "Storyboard Creation"
+    },
+    {
+        "label": "Video Game"
+    },
+    {
+        "label": "Game Asset Development"
+    },
+    {
+        "label": "Game Mechanic Design"
+    },
+    {
+        "label": "Virtual Reality"
+    },
+    {
+        "label": "Augmented Reality"
+    },
+    {
+        "label": "Level Design"
+    },
+    {
+        "label": "CI/CD Pipeline"
+    },
+    {
+        "label": "Infrastructure Automation"
+    },
+    {
+        "label": "Containerization Solution"
+    },
+    {
+        "label": "Monitoring System"
+    },
+    {
+        "label": "Deployment Script"
+    },
+    {
+        "label": "Cloud Orchestration"
+    },
+    {
+        "label": "Security Audit"
+    },
+    {
+        "label": "Penetration Testing"
+    },
+    {
+        "label": "Vulnerability Assessment"
+    },
+    {
+        "label": "Security Policy Development"
+    },
+    {
+        "label": "Encryption System"
+    },
+    {
+        "label": "Authentication System"
+    },
+    {
+        "label": "Database Design"
+    },
+    {
+        "label": "Database Optimization"
+    },
+    {
+        "label": "Data Migration"
+    },
+    {
+        "label": "Database Integration"
+    },
+    {
+        "label": "ETL Process"
+    },
+    {
+        "label": "Firmware Development"
+    },
+    {
+        "label": "IoT Application"
+    },
+    {
+        "label": "Embedded Software"
+    },
+    {
+        "label": "Hardware Integration"
+    },
+    {
+        "label": "Sensor Application"
+    },
+    {
+        "label": "Real-Time Systems"
+    },
+    {
+        "label": "API Development"
+    },
+    {
+        "label": "Enterprise Software"
+    },
+    {
+        "label": "Marketing Website"
+    },
+    {
+        "label": "Portfolio Website"
+    },
+    {
+        "label": "Chatbot Development"
+    },
+    {
+        "label": "Financial Software"
+    },
+    {
+        "label": "Healthcare Application"
+    },
+    {
+        "label": "Mobile Game"
+    },
+    {
+        "label": "Smart Contract"
+    },
+    {
+        "label": "Decentralized Application"
+    },
+    {
+        "label": "Crypto Wallet"
+    },
+    {
+        "label": "Blockchain Integration"
+    },
+    {
+        "label": "Token Development"
+    }
+];
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+]);
+
+//# sourceMappingURL=public_mock_projectsnew_json_%5Bjson%5D_cjs_13sptk9._.js.map

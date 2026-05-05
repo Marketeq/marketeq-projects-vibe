@@ -1,23 +1,13 @@
 "use client"
 
-import NextLink from "next/link"
 import { forwardRef, useImperativeHandle, useMemo, useState } from "react"
-import { BillingSectionHeader } from "@/components/billing-section-header"
+import NextLink from "next/link"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
-import { CreditCardInput, getCardType } from "@/components/credit-card-input"
+import { cn } from "@/utils/functions"
 import {
-  ACH,
-  Amex as PaymentAmex,
-  ApplePay1,
-  GPay1,
-  Visa as PaymentVisa,
-} from "@/components/icons/payment-icons"
-import { LeftSidebar } from "@/components/talent-dashboard-comps"
-import { InputRightElement } from "@/components/ui/input/input-element"
-import {
+  AlertCircle,
   ArrowLeft,
   ArrowRight,
-  Bank,
   Check,
   Edit03,
   File02,
@@ -28,6 +18,18 @@ import {
   Trash03,
   X,
 } from "@blend-metrics/icons"
+import { InputRightElement } from "@/components/ui/input/input-element"
+import { BillingSectionHeader } from "@/components/billing-section-header"
+import { CreditCardInput } from "@/components/credit-card-input"
+import {
+  ACH,
+  ApplePay1,
+  GPay1,
+  Amex as PaymentAmex,
+  Visa as PaymentVisa,
+} from "@/components/icons/payment-icons"
+import NextImage from "@/components/next-image"
+import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Badge,
   Button,
@@ -45,13 +47,12 @@ import {
   ListboxOption,
   ListboxOptions,
   RadioGroup,
-  RmDialog,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  useToast,
 } from "@/components/ui"
-import { cn } from "@/utils/functions"
 
 type PaymentMethod = {
   id: string
@@ -65,6 +66,18 @@ type PaymentMethod = {
   kind: "DEBIT" | "SAVINGS"
   last4: string
   default: boolean
+  cardImageSrc: string
+  cardImageActiveSrc: string
+  cardImageWidth: number
+  cardImageHeight: number
+  cardImageActiveWidth: number
+  cardImageActiveHeight: number
+  featuredCardImageSrc: string
+  featuredCardImageActiveSrc: string
+  featuredCardImageWidth: number
+  featuredCardImageHeight: number
+  featuredCardImageActiveWidth: number
+  featuredCardImageActiveHeight: number
   billingAddress: string[]
   plans: { name: string; renews: string }[]
   contracts: { name: string; renews: string }[]
@@ -76,9 +89,56 @@ type NewPaymentMethodOptionValue =
   | "google-pay"
   | "apple-pay"
 
-const INITIAL_PAYMENT_METHODS: PaymentMethod[] = [
+const PAYMENT_METHODS_TOTAL = 21
+
+const CARD_IMAGE_VARIANTS = {
+  white: {
+    cardImageSrc: "/payment-method-cards/compact/card-compact-white.png",
+    cardImageActiveSrc: "/payment-method-cards/compact/card-compact-violet.png",
+    cardImageWidth: 248,
+    cardImageHeight: 160,
+    cardImageActiveWidth: 248,
+    cardImageActiveHeight: 155,
+    featuredCardImageSrc: "/payment-method-cards/card-large-white.png",
+    featuredCardImageActiveSrc: "/payment-method-cards/card-large-violet.png",
+    featuredCardImageWidth: 695,
+    featuredCardImageHeight: 449,
+    featuredCardImageActiveWidth: 695,
+    featuredCardImageActiveHeight: 436,
+  },
+  lilac: {
+    cardImageSrc: "/payment-method-cards/compact/card-compact-lilac.png",
+    cardImageActiveSrc: "/payment-method-cards/compact/card-compact-violet.png",
+    cardImageWidth: 248,
+    cardImageHeight: 160,
+    cardImageActiveWidth: 248,
+    cardImageActiveHeight: 155,
+    featuredCardImageSrc: "/payment-method-cards/card-large-lilac.png",
+    featuredCardImageActiveSrc: "/payment-method-cards/card-large-violet.png",
+    featuredCardImageWidth: 695,
+    featuredCardImageHeight: 449,
+    featuredCardImageActiveWidth: 695,
+    featuredCardImageActiveHeight: 436,
+  },
+  dark: {
+    cardImageSrc: "/payment-method-cards/compact/card-compact-dark.png",
+    cardImageActiveSrc: "/payment-method-cards/compact/card-compact-blue.png",
+    cardImageWidth: 248,
+    cardImageHeight: 160,
+    cardImageActiveWidth: 248,
+    cardImageActiveHeight: 160,
+    featuredCardImageSrc: "/payment-method-cards/card-large-dark.png",
+    featuredCardImageActiveSrc: "/payment-method-cards/card-large-blue.png",
+    featuredCardImageWidth: 695,
+    featuredCardImageHeight: 449,
+    featuredCardImageActiveWidth: 695,
+    featuredCardImageActiveHeight: 449,
+  },
+} as const
+
+const BASE_PAYMENT_METHODS: PaymentMethod[] = [
   {
-    id: "boa-default",
+    id: "boa-one",
     bankName: "Bank of America",
     contractSummary: "No Active Contracts",
     contractCount: 0,
@@ -87,119 +147,210 @@ const INITIAL_PAYMENT_METHODS: PaymentMethod[] = [
     expires: "02/27",
     network: "VISA",
     kind: "DEBIT",
-    last4: "5555",
-    default: true,
+    last4: "1234",
+    default: false,
+    ...CARD_IMAGE_VARIANTS.white,
     billingAddress: ["1010 E32nd St", "Brooklyn, NY 11201", "United States"],
     plans: [
-      { name: "Essentials Agency Plan", renews: "Renews On March 26, 2025" },
-      { name: "Premium Individual Plan", renews: "Renews On March 26, 2025" },
+      { name: "Essentials Agency Plan", renews: "Renews on March 26th, 2025" },
+      { name: "Premium Individual Plan", renews: "Renews on March 26th, 2025" },
     ],
     contracts: [
-      { name: "Installment for Audit Project", renews: "Renews Feb 21" },
-      { name: "Active Contract for Audit Project", renews: "Renews Feb 21" },
-      { name: "Installment for “Chris @uxdesgn”", renews: "Renews Jun 26" },
-      { name: "Installment for “Chris @uxdesgn”", renews: "Renews Jun 26" },
-      { name: "Installment for “Chris @uxdesgn”", renews: "Renews Jun 26" },
-      { name: "Installment for “Chris @uxdesgn”", renews: "Renews Jun 26" },
-      { name: "Active Contract for “Chris @uxdesgn”", renews: "Renews Jun 26" },
+      {
+        name: "Hourly Payment for “Chris @uxdesign_231”",
+        renews: "Renews on Feb 21st",
+      },
+      {
+        name: "Monthly installment for “UX Audit Project”",
+        renews: "April 1, 2025",
+      },
     ],
   },
   {
     id: "boa-two",
     bankName: "Bank of America",
-    contractSummary: "5 Active Contacts",
-    contractCount: 5,
+    contractSummary: "No Active Contracts",
+    contractCount: 0,
     label: "Credit Card ••••1937",
     holder: "John Doe",
     expires: "02/27",
     network: "VISA",
     kind: "DEBIT",
-    last4: "5555",
-    default: false,
+    last4: "1234",
+    default: true,
+    ...CARD_IMAGE_VARIANTS.lilac,
     billingAddress: ["1010 E32nd St", "Brooklyn, NY 11201", "United States"],
-    plans: [{ name: "Essentials Agency Plan", renews: "Renews On March 26, 2025" }],
-    contracts: [
-      { name: "Installment for Audit Project", renews: "Renews Feb 21" },
-      { name: "Active Contract for Audit Project", renews: "Renews Feb 21" },
+    plans: [
+      { name: "Essentials Agency Plan", renews: "Renews on March 26th, 2025" },
     ],
-  },
-  {
-    id: "jpm-ach",
-    bankName: "JP Morgan",
-    contractSummary: "5 Active Contacts",
-    contractCount: 5,
-    label: "Checking ••••1937",
-    holder: "John Doe",
-    expires: "02/27",
-    network: "ACH",
-    kind: "SAVINGS",
-    last4: "5555",
-    default: false,
-    billingAddress: ["420 Park Ave", "New York, NY 10022", "United States"],
-    plans: [{ name: "Agency Banking Plan", renews: "Renews On April 9, 2025" }],
     contracts: [
-      { name: "Monthly retainer for JP Morgan", renews: "Renews Apr 20" },
-      { name: "Installment for Payments Dashboard", renews: "Renews May 18" },
+      {
+        name: "Hourly Payment for “Chris @uxdesign_231”",
+        renews: "Renews on Feb 21st",
+      },
+      {
+        name: "Monthly installment for “UX Audit Project”",
+        renews: "April 1, 2025",
+      },
     ],
   },
   {
     id: "boa-three",
     bankName: "Bank of America",
-    contractSummary: "5 Active Contacts",
-    contractCount: 5,
+    contractSummary: "No Active Contracts",
+    contractCount: 0,
     label: "Credit Card ••••1937",
     holder: "John Doe",
     expires: "02/27",
     network: "VISA",
     kind: "DEBIT",
-    last4: "5555",
+    last4: "1234",
     default: false,
+    ...CARD_IMAGE_VARIANTS.white,
     billingAddress: ["1010 E32nd St", "Brooklyn, NY 11201", "United States"],
-    plans: [{ name: "Premium Individual Plan", renews: "Renews On March 26, 2025" }],
+    plans: [
+      { name: "Premium Individual Plan", renews: "Renews on March 26th, 2025" },
+    ],
     contracts: [
-      { name: "Active Contract for Audit Project", renews: "Renews Feb 21" },
-      { name: "Installment for “Chris @uxdesgn”", renews: "Renews Jun 26" },
+      {
+        name: "Hourly Payment for “Chris @uxdesign_231”",
+        renews: "Renews on Feb 21st",
+      },
+      {
+        name: "Monthly installment for “UX Audit Project”",
+        renews: "April 1, 2025",
+      },
     ],
   },
   {
     id: "boa-four",
     bankName: "Bank of America",
-    contractSummary: "5 Active Contacts",
-    contractCount: 5,
+    contractSummary: "No Active Contracts",
+    contractCount: 0,
     label: "Credit Card ••••1937",
     holder: "John Doe",
     expires: "02/27",
     network: "VISA",
     kind: "DEBIT",
-    last4: "5555",
+    last4: "1234",
     default: false,
+    ...CARD_IMAGE_VARIANTS.dark,
     billingAddress: ["1010 E32nd St", "Brooklyn, NY 11201", "United States"],
-    plans: [{ name: "Premium Individual Plan", renews: "Renews On March 26, 2025" }],
+    plans: [
+      { name: "Premium Individual Plan", renews: "Renews on March 26th, 2025" },
+    ],
     contracts: [
-      { name: "Installment for Audit Project", renews: "Renews Feb 21" },
-      { name: "Installment for “Chris @uxdesgn”", renews: "Renews Jun 26" },
+      {
+        name: "Hourly Payment for “Chris @uxdesign_231”",
+        renews: "Renews on Feb 21st",
+      },
+      {
+        name: "Monthly installment for “UX Audit Project”",
+        renews: "April 1, 2025",
+      },
     ],
   },
   {
     id: "boa-five",
     bankName: "Bank of America",
-    contractSummary: "5 Active Contacts",
-    contractCount: 5,
+    contractSummary: "No Active Contracts",
+    contractCount: 0,
     label: "Credit Card ••••1937",
     holder: "John Doe",
     expires: "02/27",
     network: "VISA",
     kind: "DEBIT",
-    last4: "5555",
+    last4: "1234",
     default: false,
+    ...CARD_IMAGE_VARIANTS.lilac,
     billingAddress: ["1010 E32nd St", "Brooklyn, NY 11201", "United States"],
-    plans: [{ name: "Premium Individual Plan", renews: "Renews On March 26, 2025" }],
+    plans: [
+      { name: "Premium Individual Plan", renews: "Renews on March 26th, 2025" },
+    ],
     contracts: [
-      { name: "Installment for Audit Project", renews: "Renews Feb 21" },
-      { name: "Active Contract for “Chris @uxdesgn”", renews: "Renews Jun 26" },
+      {
+        name: "Hourly Payment for “Chris @uxdesign_231”",
+        renews: "Renews on Feb 21st",
+      },
+      {
+        name: "Monthly installment for “UX Audit Project”",
+        renews: "April 1, 2025",
+      },
+    ],
+  },
+  {
+    id: "boa-six",
+    bankName: "Bank of America",
+    contractSummary: "No Active Contracts",
+    contractCount: 0,
+    label: "Credit Card ••••1937",
+    holder: "John Doe",
+    expires: "02/27",
+    network: "VISA",
+    kind: "DEBIT",
+    last4: "1234",
+    default: false,
+    ...CARD_IMAGE_VARIANTS.white,
+    billingAddress: ["1010 E32nd St", "Brooklyn, NY 11201", "United States"],
+    plans: [
+      { name: "Premium Individual Plan", renews: "Renews on March 26th, 2025" },
+    ],
+    contracts: [
+      {
+        name: "Hourly Payment for “Chris @uxdesign_231”",
+        renews: "Renews on Feb 21st",
+      },
+      {
+        name: "Monthly installment for “UX Audit Project”",
+        renews: "April 1, 2025",
+      },
+    ],
+  },
+  {
+    id: "boa-seven",
+    bankName: "Bank of America",
+    contractSummary: "No Active Contracts",
+    contractCount: 0,
+    label: "Credit Card ••••1937",
+    holder: "John Doe",
+    expires: "02/27",
+    network: "VISA",
+    kind: "DEBIT",
+    last4: "1234",
+    default: false,
+    ...CARD_IMAGE_VARIANTS.lilac,
+    billingAddress: ["1010 E32nd St", "Brooklyn, NY 11201", "United States"],
+    plans: [
+      { name: "Premium Individual Plan", renews: "Renews on March 26th, 2025" },
+    ],
+    contracts: [
+      {
+        name: "Hourly Payment for “Chris @uxdesign_231”",
+        renews: "Renews on Feb 21st",
+      },
+      {
+        name: "Monthly installment for “UX Audit Project”",
+        renews: "April 1, 2025",
+      },
     ],
   },
 ]
+
+const INITIAL_PAYMENT_METHODS: PaymentMethod[] = Array.from(
+  { length: PAYMENT_METHODS_TOTAL },
+  (_, index) => {
+    const method = BASE_PAYMENT_METHODS[index % BASE_PAYMENT_METHODS.length]
+
+    return {
+      ...method,
+      id: `${method.id}-${index + 1}`,
+      default: index === 0,
+      plans: [...method.plans],
+      contracts: [...method.contracts],
+      billingAddress: [...method.billingAddress],
+    }
+  }
+)
 
 const NEW_PAYMENT_METHOD_OPTIONS = [
   {
@@ -228,17 +379,6 @@ const NEW_PAYMENT_METHOD_OPTIONS = [
   },
 ] as const
 
-const getCardBrandName = (cardNumber?: string) => {
-  const kind = getCardType(cardNumber || "")
-
-  if (kind === "visa") return "Visa"
-  if (kind === "amex") return "American Express"
-  if (kind === "discover") return "Discover"
-  if (kind === "mastercard") return "Mastercard"
-
-  return "Credit Card"
-}
-
 const getDialogExpiration = (expires: string) => {
   const [month, year] = expires.split("/")
   if (!month || !year) return ""
@@ -264,53 +404,47 @@ const formatMethodDescription = (method: PaymentMethod) =>
     ? `${method.bankName} ${method.label.replace("••••", "****")}`
     : `${method.bankName} ${method.label.replace("••••", "****")}`
 
+const prioritizeDefaultMethod = (methods: PaymentMethod[]) => {
+  const defaultIndex = methods.findIndex((method) => method.default)
+
+  if (defaultIndex <= 0) return methods
+
+  const nextMethods = [...methods]
+  const [defaultMethod] = nextMethods.splice(defaultIndex, 1)
+
+  return defaultMethod ? [defaultMethod, ...nextMethods] : methods
+}
+
 function PaymentPreview({
-  network,
-  kind,
-  last4,
-  compact = false,
+  imageSrc,
+  bankName,
+  size = "compact",
+  width,
+  height,
 }: {
-  network: PaymentMethod["network"]
-  kind: PaymentMethod["kind"]
-  last4: string
-  compact?: boolean
+  imageSrc: string
+  bankName: string
+  size?: "compact" | "featured"
+  width?: number
+  height?: number
 }) {
+  const isCompact = size === "compact"
+
   return (
     <div
       className={cn(
-        "rounded-lg bg-black text-white shadow-sm",
-        compact ? "h-[98px] w-[176px] p-3.5" : "h-[min(156px,20vh)] w-full max-w-[320px] p-4"
+        "relative",
+        isCompact ? "w-[124px] shrink-0" : "w-full max-w-[272px]"
       )}
     >
-      <div className="flex h-full flex-col justify-between">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-white/70">
-              {kind}
-            </p>
-            <p className={cn("font-semibold", compact ? "mt-1 text-[19px]" : "mt-1 text-[24px] leading-none")}>
-              {network}
-            </p>
-          </div>
-        </div>
-
-        <div>
-          <p className={cn("tracking-[0.16em]", compact ? "text-[11px]" : "text-[18px] leading-none")}>
-            •••• •••• •••• {last4}
-          </p>
-
-          <div className={cn("mt-3 flex items-end justify-between", compact && "mt-2")}>
-            <div>
-              <p className="text-[10px] text-white/70">CardHolder</p>
-              <p className={cn("font-medium", compact ? "text-[10px]" : "text-sm")}>John Doe</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] text-white/70">Expires</p>
-              <p className={cn("font-medium", compact ? "text-[10px]" : "text-sm")}>07/2028</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <NextImage
+        src={imageSrc}
+        alt={`${bankName} payment card`}
+        width={width ?? (isCompact ? 124 : 348)}
+        height={height ?? (isCompact ? 79 : 225)}
+        unoptimized
+        className="block h-auto w-full rounded-[7px]"
+      />
     </div>
   )
 }
@@ -325,14 +459,30 @@ export const BillingPaymentMethodsContent = forwardRef<
     embedded?: boolean
   }
 >(function BillingPaymentMethodsContent({ embedded = false }, ref) {
+  const { toast } = useToast()
   const [methods, setMethods] = useState(INITIAL_PAYMENT_METHODS)
-  const [selectedMethodId, setSelectedMethodId] = useState(INITIAL_PAYMENT_METHODS[0]?.id ?? "")
-  const [selectedNewPaymentMethodType, setSelectedNewPaymentMethodType] = useState("")
-  const [isAddNewPaymentMethodDialogOpen, setIsAddNewPaymentMethodDialogOpen] = useState(false)
-  const [isAddCardPaymentMethodDialogOpen, setIsAddCardPaymentMethodDialogOpen] = useState(false)
-  const [isAddBankPaymentMethodDialogOpen, setIsAddBankPaymentMethodDialogOpen] = useState(false)
+  const [selectedMethodId, setSelectedMethodId] = useState(
+    INITIAL_PAYMENT_METHODS[0]?.id ?? ""
+  )
+  const [selectedNewPaymentMethodType, setSelectedNewPaymentMethodType] =
+    useState("")
+  const [isAddNewPaymentMethodDialogOpen, setIsAddNewPaymentMethodDialogOpen] =
+    useState(false)
+  const [
+    isAddCardPaymentMethodDialogOpen,
+    setIsAddCardPaymentMethodDialogOpen,
+  ] = useState(false)
+  const [
+    isAddBankPaymentMethodDialogOpen,
+    setIsAddBankPaymentMethodDialogOpen,
+  ] = useState(false)
   const [dialogMode, setDialogMode] = useState<"add" | "update">("add")
   const [editingMethodId, setEditingMethodId] = useState<string | null>(null)
+  const [isSetDefaultDialogOpen, setIsSetDefaultDialogOpen] = useState(false)
+  const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false)
+  const [isRemoveSuccessDialogOpen, setIsRemoveSuccessDialogOpen] =
+    useState(false)
+  const [removedMethodLabel, setRemovedMethodLabel] = useState("")
 
   const [cardNumber, setCardNumber] = useState("")
   const [cardName, setCardName] = useState("")
@@ -356,7 +506,10 @@ export const BillingPaymentMethodsContent = forwardRef<
   const [phoneNumber, setPhoneNumber] = useState("+1 (555) 000-0000")
 
   const selectedMethod = useMemo(
-    () => methods.find((method) => method.id === selectedMethodId) ?? methods[0] ?? null,
+    () =>
+      methods.find((method) => method.id === selectedMethodId) ??
+      methods[0] ??
+      null,
     [methods, selectedMethodId]
   )
 
@@ -496,6 +649,7 @@ export const BillingPaymentMethodsContent = forwardRef<
       kind: "DEBIT",
       last4: "5555",
       default: false,
+      ...CARD_IMAGE_VARIANTS.white,
       billingAddress: ["1010 E32nd St", "Brooklyn, NY 11201", "United States"],
       plans: [],
       contracts: [],
@@ -508,11 +662,28 @@ export const BillingPaymentMethodsContent = forwardRef<
 
   const upsertMethod = (nextMethod: PaymentMethod) => {
     setMethods((prev) => {
+      const nextPrev = nextMethod.default
+        ? prev.map((method) => ({
+            ...method,
+            default: false,
+          }))
+        : prev
+
       if (editingMethodId) {
-        return prev.map((method) => (method.id === editingMethodId ? nextMethod : method))
+        const nextMethods = nextPrev.map((method) =>
+          method.id === editingMethodId ? nextMethod : method
+        )
+
+        return nextMethod.default
+          ? prioritizeDefaultMethod(nextMethods)
+          : nextMethods
       }
 
-      return [nextMethod, ...prev]
+      const nextMethods = [nextMethod, ...nextPrev]
+
+      return nextMethod.default
+        ? prioritizeDefaultMethod(nextMethods)
+        : nextMethods
     })
     setSelectedMethodId(nextMethod.id)
   }
@@ -531,11 +702,46 @@ export const BillingPaymentMethodsContent = forwardRef<
       expires:
         expirationDate.length >= 7
           ? `${expirationDate.slice(0, 2)}/${expirationDate.slice(-2)}`
-          : sourceMethod?.expires ?? "02/27",
+          : (sourceMethod?.expires ?? "02/27"),
       network: "VISA",
       kind: sourceMethod?.kind ?? "DEBIT",
       last4: cardNumber.slice(-4),
       default: saveCard,
+      cardImageSrc:
+        sourceMethod?.cardImageSrc ?? CARD_IMAGE_VARIANTS.white.cardImageSrc,
+      cardImageActiveSrc:
+        sourceMethod?.cardImageActiveSrc ??
+        CARD_IMAGE_VARIANTS.white.cardImageActiveSrc,
+      cardImageWidth:
+        sourceMethod?.cardImageWidth ??
+        CARD_IMAGE_VARIANTS.white.cardImageWidth,
+      cardImageHeight:
+        sourceMethod?.cardImageHeight ??
+        CARD_IMAGE_VARIANTS.white.cardImageHeight,
+      cardImageActiveWidth:
+        sourceMethod?.cardImageActiveWidth ??
+        CARD_IMAGE_VARIANTS.white.cardImageActiveWidth,
+      cardImageActiveHeight:
+        sourceMethod?.cardImageActiveHeight ??
+        CARD_IMAGE_VARIANTS.white.cardImageActiveHeight,
+      featuredCardImageSrc:
+        sourceMethod?.featuredCardImageSrc ??
+        CARD_IMAGE_VARIANTS.white.featuredCardImageSrc,
+      featuredCardImageActiveSrc:
+        sourceMethod?.featuredCardImageActiveSrc ??
+        CARD_IMAGE_VARIANTS.white.featuredCardImageActiveSrc,
+      featuredCardImageWidth:
+        sourceMethod?.featuredCardImageWidth ??
+        CARD_IMAGE_VARIANTS.white.featuredCardImageWidth,
+      featuredCardImageHeight:
+        sourceMethod?.featuredCardImageHeight ??
+        CARD_IMAGE_VARIANTS.white.featuredCardImageHeight,
+      featuredCardImageActiveWidth:
+        sourceMethod?.featuredCardImageActiveWidth ??
+        CARD_IMAGE_VARIANTS.white.featuredCardImageActiveWidth,
+      featuredCardImageActiveHeight:
+        sourceMethod?.featuredCardImageActiveHeight ??
+        CARD_IMAGE_VARIANTS.white.featuredCardImageActiveHeight,
       billingAddress: [
         addressLine1 || "1010 E32nd St",
         `${city || "Brooklyn"}, ${billingState || "NY"} ${zipcode || "11201"}`,
@@ -545,20 +751,7 @@ export const BillingPaymentMethodsContent = forwardRef<
       contracts: sourceMethod?.contracts ?? [],
     }
 
-    const normalizedMethod = saveCard
-      ? { ...nextMethod, default: true }
-      : nextMethod
-
-    if (saveCard) {
-      setMethods((prev) =>
-        prev.map((method) => ({
-          ...method,
-          default: false,
-        }))
-      )
-    }
-
-    upsertMethod(normalizedMethod)
+    upsertMethod(saveCard ? { ...nextMethod, default: true } : nextMethod)
     closePaymentMethodDialogs()
     resetCardForm()
   }
@@ -579,25 +772,52 @@ export const BillingPaymentMethodsContent = forwardRef<
       kind: accountType === "Checking" ? "DEBIT" : "SAVINGS",
       last4: accountNumber.slice(-4),
       default: saveBankAccount,
-      billingAddress: sourceMethod?.billingAddress ?? ["1010 E32nd St", "Brooklyn, NY 11201", "United States"],
+      cardImageSrc:
+        sourceMethod?.cardImageSrc ?? CARD_IMAGE_VARIANTS.dark.cardImageSrc,
+      cardImageActiveSrc:
+        sourceMethod?.cardImageActiveSrc ??
+        CARD_IMAGE_VARIANTS.dark.cardImageActiveSrc,
+      cardImageWidth:
+        sourceMethod?.cardImageWidth ?? CARD_IMAGE_VARIANTS.dark.cardImageWidth,
+      cardImageHeight:
+        sourceMethod?.cardImageHeight ??
+        CARD_IMAGE_VARIANTS.dark.cardImageHeight,
+      cardImageActiveWidth:
+        sourceMethod?.cardImageActiveWidth ??
+        CARD_IMAGE_VARIANTS.dark.cardImageActiveWidth,
+      cardImageActiveHeight:
+        sourceMethod?.cardImageActiveHeight ??
+        CARD_IMAGE_VARIANTS.dark.cardImageActiveHeight,
+      featuredCardImageSrc:
+        sourceMethod?.featuredCardImageSrc ??
+        CARD_IMAGE_VARIANTS.dark.featuredCardImageSrc,
+      featuredCardImageActiveSrc:
+        sourceMethod?.featuredCardImageActiveSrc ??
+        CARD_IMAGE_VARIANTS.dark.featuredCardImageActiveSrc,
+      featuredCardImageWidth:
+        sourceMethod?.featuredCardImageWidth ??
+        CARD_IMAGE_VARIANTS.dark.featuredCardImageWidth,
+      featuredCardImageHeight:
+        sourceMethod?.featuredCardImageHeight ??
+        CARD_IMAGE_VARIANTS.dark.featuredCardImageHeight,
+      featuredCardImageActiveWidth:
+        sourceMethod?.featuredCardImageActiveWidth ??
+        CARD_IMAGE_VARIANTS.dark.featuredCardImageActiveWidth,
+      featuredCardImageActiveHeight:
+        sourceMethod?.featuredCardImageActiveHeight ??
+        CARD_IMAGE_VARIANTS.dark.featuredCardImageActiveHeight,
+      billingAddress: sourceMethod?.billingAddress ?? [
+        "1010 E32nd St",
+        "Brooklyn, NY 11201",
+        "United States",
+      ],
       plans: sourceMethod?.plans ?? [],
       contracts: sourceMethod?.contracts ?? [],
     }
 
-    const normalizedMethod = saveBankAccount
-      ? { ...nextMethod, default: true }
-      : nextMethod
-
-    if (saveBankAccount) {
-      setMethods((prev) =>
-        prev.map((method) => ({
-          ...method,
-          default: false,
-        }))
-      )
-    }
-
-    upsertMethod(normalizedMethod)
+    upsertMethod(
+      saveBankAccount ? { ...nextMethod, default: true } : nextMethod
+    )
     closePaymentMethodDialogs()
     resetBankForm()
   }
@@ -606,73 +826,103 @@ export const BillingPaymentMethodsContent = forwardRef<
     if (!selectedMethod) return
 
     setMethods((prev) =>
-      prev.map((method) => ({
-        ...method,
-        default: method.id === selectedMethod.id,
-      }))
+      prioritizeDefaultMethod(
+        prev.map((method) => ({
+          ...method,
+          default: method.id === selectedMethod.id,
+        }))
+      )
     )
+    setIsSetDefaultDialogOpen(false)
+    toast({
+      title: "Default payment method updated",
+      variant: "success",
+    })
   }
 
   const handleRemoveMethod = () => {
     if (!selectedMethod || methods.length <= 1) return
 
-    const remainingMethods = methods.filter((method) => method.id !== selectedMethod.id)
-    setMethods(remainingMethods)
+    const removedLabel =
+      selectedMethod.network === "ACH"
+        ? `${selectedMethod.bankName} ·${selectedMethod.last4}`
+        : `${selectedMethod.network.charAt(0)}${selectedMethod.network.slice(1).toLowerCase()} ·${selectedMethod.last4}`
+
+    const remainingMethods = methods.filter(
+      (method) => method.id !== selectedMethod.id
+    )
+    const nextMethods = selectedMethod.default
+      ? remainingMethods.map((method, index) => ({
+          ...method,
+          default: index === 0,
+        }))
+      : remainingMethods
+
+    setMethods(nextMethods)
     setSelectedMethodId(remainingMethods[0]?.id ?? "")
+    setRemovedMethodLabel(removedLabel)
+    setIsRemoveDialogOpen(false)
+    setIsRemoveSuccessDialogOpen(true)
   }
 
   const content = (
-    <div className="grid min-h-0 flex-1 gap-5 overflow-hidden xl:grid-cols-[540px_minmax(0,1fr)]">
-      <div className="min-h-0 rounded-lg border border-gray-200 bg-white p-2.5">
-        <div className="h-full max-h-full overflow-y-auto pr-1">
-          <div className="space-y-3">
+    <div className="grid h-full min-h-0 gap-5 overflow-hidden xl:grid-cols-[314px_minmax(0,1fr)]">
+      <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(16,24,40,.04)]">
+        <div className="px-6 pb-3 pt-5">
+          <h2 className="text-[17px] font-semibold leading-7 text-dark-blue-400">
+            Payment Methods ({PAYMENT_METHODS_TOTAL})
+          </h2>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-0 pb-0">
+          <div>
             {methods.map((method) => (
               <button
                 key={method.id}
                 type="button"
                 onClick={() => setSelectedMethodId(method.id)}
-                className="w-full text-left transition"
+                className="block w-full text-left focus-visible:outline-none"
               >
                 <div
                   className={cn(
-                    "grid min-h-[118px] grid-cols-[176px_minmax(0,1fr)] items-stretch gap-3 rounded-lg border border-gray-200 bg-white p-3 transition",
+                    "grid grid-cols-[124px_minmax(0,1fr)] items-start gap-3 transition duration-200",
                     method.id === selectedMethodId
-                      ? "border-primary-500 ring-1 ring-primary-500"
-                      : "hover:border-gray-300 hover:bg-gray-25"
+                      ? "rounded-[8px] border-2 border-primary-500 bg-primary-50 p-[10px] shadow-[0px_4px_12px_-6px_rgba(48,108,254,.28)]"
+                      : "border-b border-gray-200 bg-white px-[12px] py-[12px] hover:bg-gray-50"
                   )}
                 >
                   <PaymentPreview
-                    network={method.network}
-                    kind={method.kind}
-                    last4={method.last4}
-                    compact
+                    imageSrc={method.cardImageSrc}
+                    bankName={method.bankName}
+                    size="compact"
+                    width={method.cardImageWidth}
+                    height={method.cardImageHeight}
                   />
 
-                  <div className="flex min-w-0 flex-col justify-between py-1 pr-1.5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <h3 className="truncate text-sm font-semibold leading-5 text-dark-blue-400">
-                          {method.bankName}
-                        </h3>
-                        <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
-                          <span>{method.contractSummary}</span>
-                          {method.contractCount > 0 && (
-                            <HelpCircle className="size-3.5 text-gray-400" />
-                          )}
-                        </div>
-                      </div>
-
-                      {method.default && (
-                        <Badge visual="primary" className="px-2.5">
+                  <div className="min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="truncate text-[14px] font-semibold leading-5 text-dark-blue-400">
+                        {method.bankName}
+                      </h3>
+                      {method.default ? (
+                        <Badge
+                          visual="primary"
+                          size="sm"
+                          className="shrink-0 rounded-[5px] px-2 py-0.5 text-[10px] font-semibold"
+                        >
                           Default
                         </Badge>
-                      )}
+                      ) : null}
                     </div>
-
-                    <div>
-                      <p className="text-sm font-medium text-dark-blue-400">{method.label}</p>
-                      <p className="mt-0.5 text-xs text-gray-500">
-                        {method.holder} • Expires {method.expires}
+                    <p className="text-[10px] leading-4 text-gray-500">
+                      {method.contractSummary}
+                    </p>
+                    <div className="mt-[7px]">
+                      <p className="text-[10px] font-medium leading-4 text-dark-blue-400">
+                        {method.label}
+                      </p>
+                      <p className="text-[8px] leading-3 text-gray-500">
+                        Expires {method.expires}
                       </p>
                     </div>
                   </div>
@@ -681,110 +931,146 @@ export const BillingPaymentMethodsContent = forwardRef<
             ))}
           </div>
         </div>
-      </div>
+      </section>
 
       {selectedMethod ? (
-        <section className="flex h-full min-h-0 flex-col rounded-lg border border-gray-200 bg-white p-3 md:p-3.5">
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_210px]">
-            <div>
+        <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+          <div className="px-4 py-4 md:px-5 md:py-4">
+            <div className="grid items-center gap-6 xl:grid-cols-[272px_minmax(0,1fr)]">
               <PaymentPreview
-                network={selectedMethod.network}
-                kind={selectedMethod.kind}
-                last4={selectedMethod.last4}
+                imageSrc={selectedMethod.featuredCardImageSrc}
+                bankName={selectedMethod.bankName}
+                size="featured"
+                width={selectedMethod.featuredCardImageWidth}
+                height={selectedMethod.featuredCardImageHeight}
               />
-            </div>
 
-            <div className="space-y-3">
-              <div className="flex gap-3">
-                <MapPin className="mt-0.5 size-4 shrink-0 text-gray-400" />
-                <div>
-                  <h3 className="text-sm font-semibold text-dark-blue-400">
-                    Billing address
-                  </h3>
-                  <div className="mt-1 space-y-0.5 text-sm text-dark-blue-400">
-                    {selectedMethod.billingAddress.map((line) => (
-                      <p key={line}>{line}</p>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <File02 className="mt-0.5 size-4 shrink-0 text-gray-400" />
-                <div>
-                  <h3 className="text-sm font-semibold text-dark-blue-400">Your Plans</h3>
-                  <div className="mt-1 space-y-1.5">
-                    {selectedMethod.plans.map((plan) => (
-                      <div key={plan.name}>
-                        <p className="text-sm font-medium text-dark-blue-400">{plan.name}</p>
-                        <p className="text-sm text-gray-500">{plan.renews}</p>
+              <div className="flex h-full items-center">
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div>
+                    <div className="flex items-start gap-2.5">
+                      <MapPin className="mt-0.5 size-4 shrink-0 text-gray-400" />
+                      <div>
+                        <h3 className="text-sm font-semibold text-dark-blue-400">
+                          Billing address
+                        </h3>
+                        <div className="mt-2 space-y-0.5 text-sm leading-5 text-dark-blue-400">
+                          {selectedMethod.billingAddress.map((line) => (
+                            <p key={line}>{line}</p>
+                          ))}
+                        </div>
                       </div>
-                    ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-start gap-2.5">
+                      <File02 className="mt-0.5 size-4 shrink-0 text-gray-400" />
+                      <div>
+                        <h3 className="text-sm font-semibold text-dark-blue-400">
+                          Your Plans
+                        </h3>
+                        <div className="mt-2 space-y-2">
+                          {selectedMethod.plans.map((plan) => (
+                            <div key={plan.name}>
+                              <p className="text-sm font-semibold leading-5 text-dark-blue-400">
+                                {plan.name}
+                              </p>
+                              <p className="text-sm leading-5 text-gray-500">
+                                {plan.renews}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+
+            <div className="mt-4 grid gap-2 md:grid-cols-3">
+              <Button
+                size="sm"
+                variant="outlined"
+                visual="gray"
+                className="bg-white text-dark-blue-400"
+                leftIcon={<Edit03 className="size-4" />}
+                onClick={openUpdateDialog}
+              >
+                Update card
+              </Button>
+              <Button
+                size="sm"
+                variant="outlined"
+                visual={selectedMethod.default ? "primary" : "gray"}
+                className={cn(
+                  selectedMethod.default
+                    ? "bg-primary-50 text-primary-600 hover:bg-primary-50"
+                    : "bg-white text-dark-blue-400"
+                )}
+                leftIcon={<Check className="size-4" />}
+                onClick={() => {
+                  if (!selectedMethod || selectedMethod.default) return
+                  setIsSetDefaultDialogOpen(true)
+                }}
+                disabled={selectedMethod.default}
+              >
+                {selectedMethod.default ? "Default Card" : "Set as Default"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outlined"
+                visual="gray"
+                className="bg-white text-error-500 hover:bg-error-50"
+                leftIcon={<Trash03 className="size-4" />}
+                onClick={() => setIsRemoveDialogOpen(true)}
+                disabled={methods.length <= 1}
+              >
+                Remove card
+              </Button>
+            </div>
           </div>
 
-          <div className="mt-3 grid gap-2 md:grid-cols-3">
-            <Button
-              size="sm"
-              variant="outlined"
-              visual="gray"
-              leftIcon={<Edit03 className="size-4" />}
-              onClick={openUpdateDialog}
-            >
-              Update card
-            </Button>
-            <Button size="sm" variant="outlined" visual="gray" onClick={handleSetDefault}>
-              Set as Default
-            </Button>
-            <RmDialog
-              title="Remove Payment Method?"
-              description={`Are you sure you want to remove ${formatMethodDescription(selectedMethod)} from your payment methods?`}
-              onRemove={handleRemoveMethod}
-              trigger={() => (
-                <Button size="sm" variant="outlined" visual="error" leftIcon={<Trash03 className="size-4" />}>
-                  Remove card
-                </Button>
-              )}
-            />
-          </div>
-
-          <section className="mt-3 flex min-h-0 flex-1 flex-col rounded-lg border border-gray-200 bg-white p-3">
-            <div className="flex flex-col gap-2 border-b border-gray-200 pb-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2.5">
-                <Bank className="size-4 text-gray-400" />
-                <h3 className="text-sm font-semibold text-dark-blue-400">
-                  Active Contracts
-                </h3>
-              </div>
+          <div className="min-h-0 flex-1 border-t border-gray-200 px-4 py-4 md:px-5">
+            <div className="flex items-center justify-between gap-4">
+              <h3 className="text-sm font-semibold text-dark-blue-400">
+                Active Contracts
+              </h3>
 
               <NextLink href="/my-contracts">
                 <Button
                   variant="link"
                   visual="gray"
                   size="sm"
-                  className="justify-start p-0 text-sm font-semibold text-dark-blue-400 hover:text-primary-500 hover:underline"
+                  className="justify-start text-sm font-semibold text-dark-blue-400 hover:text-primary-500 hover:underline"
                   rightIcon={<ArrowRight className="size-4" />}
                 >
-                  View all contracts
+                  View All Contracts
                 </Button>
               </NextLink>
             </div>
 
-            <div className="divide-y divide-gray-100">
-              {selectedMethod.contracts.map((contract) => (
+            <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
+              {selectedMethod.contracts.map((contract, index) => (
                 <div
                   key={`${selectedMethod.id}-${contract.name}-${contract.renews}`}
-                  className="flex flex-col gap-1 rounded-md px-2 py-2 transition hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between"
+                  className={cn(
+                    "flex flex-col gap-1 bg-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between",
+                    index !== selectedMethod.contracts.length - 1 &&
+                      "border-b border-gray-200"
+                  )}
                 >
-                  <p className="text-sm text-dark-blue-400">{contract.name}</p>
-                  <p className="text-sm text-gray-500">{contract.renews}</p>
+                  <p className="text-sm leading-5 text-dark-blue-400">
+                    {contract.name}
+                  </p>
+                  <p className="text-sm leading-5 text-gray-500">
+                    {contract.renews}
+                  </p>
                 </div>
               ))}
             </div>
-          </section>
+          </div>
         </section>
       ) : null}
     </div>
@@ -797,36 +1083,181 @@ export const BillingPaymentMethodsContent = forwardRef<
           <div className="flex h-[100dvh] overflow-hidden bg-gray-50">
             <LeftSidebar />
 
-            <div className="min-[1024px]:pl-[248px] min-[1024px]:pr-6 min-[1024px]:py-8 flex h-full flex-auto overflow-hidden p-3.5 md:p-6">
+            <div className="min-[1024px]:pl-[338px] min-[1024px]:pr-6 min-[1024px]:py-8 flex h-full flex-auto overflow-hidden p-3.5 md:p-6">
               <div className="mx-auto flex h-full max-h-full w-full max-w-[1160px] flex-col gap-5 overflow-hidden">
                 <BillingSectionHeader
                   title="Billing"
-                  description="Manage your plan, billing activity, invoices, and payment methods."
+                  description=""
                   actions={
                     <>
                       <Button
-                        variant="ghost"
+                        variant="link"
                         visual="gray"
                         size="sm"
+                        className="text-gray-500"
                         leftIcon={<HelpCircle className="size-4" />}
                       >
                         Get Help
                       </Button>
-                      <Button onClick={openAddNewPaymentMethodDialog} leftIcon={<Plus className="size-4" />}>
-                        Add payment method
+                      <Button
+                        onClick={openAddNewPaymentMethodDialog}
+                        leftIcon={<Plus className="size-4" />}
+                      >
+                        Add Payment Method
                       </Button>
                     </>
                   }
                 />
 
-                {content}
+                <div className="flex h-full min-h-0 flex-col overflow-hidden">
+                  {content}
+                </div>
               </div>
             </div>
           </div>
         </AuthenticatedRoute>
       ) : (
-        content
+        <div className="flex h-full min-h-0 flex-col overflow-hidden">
+          {content}
+        </div>
       )}
+
+      <Dialog
+        open={isSetDefaultDialogOpen}
+        onOpenChange={setIsSetDefaultDialogOpen}
+      >
+        <DialogContent className="max-w-[420px] p-0">
+          <div className="border-b border-gray-200 px-5 py-4">
+            <h2 className="text-lg font-semibold leading-7 text-dark-blue-400">
+              Set Default Payment Method?
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-gray-500">
+              {selectedMethod
+                ? `Use ${formatMethodDescription(selectedMethod)} as your default payment method?`
+                : "Use this payment method as your default?"}
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 px-5 py-4">
+            <DialogClose asChild>
+              <Button variant="outlined" visual="gray">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button onClick={handleSetDefault}>Set as Default</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isRemoveDialogOpen} onOpenChange={setIsRemoveDialogOpen}>
+        <DialogContent className="max-w-[548px] p-0">
+          <div className="flex items-start justify-between border-b border-gray-200 px-5 py-4">
+            <div>
+              <h2 className="text-[18px] font-semibold leading-7 text-dark-blue-400">
+                Remove payment method?
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-gray-500">
+                This payment method will be removed from your account.
+              </p>
+            </div>
+
+            <DialogClose asChild>
+              <IconButton
+                className="text-gray-500"
+                variant="ghost"
+                visual="gray"
+                size="md"
+              >
+                <X className="size-5" />
+              </IconButton>
+            </DialogClose>
+          </div>
+
+          {selectedMethod ? (
+            <div className="px-5 py-5">
+              <div className="rounded-lg border border-gray-200 bg-white px-4 py-4">
+                <div className="flex items-center gap-4">
+                  <NextImage
+                    src={selectedMethod.cardImageSrc}
+                    alt={`${selectedMethod.bankName} payment card`}
+                    width={56}
+                    height={36}
+                    unoptimized
+                    className="h-[36px] w-[56px] rounded-[4px]"
+                  />
+
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                      {formatMethodDescription(selectedMethod)}
+                    </p>
+                    <p className="mt-1 text-xs leading-4 text-gray-500">
+                      {selectedMethod.holder} • Expires {selectedMethod.expires}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center gap-2 rounded-[4px] bg-gray-100 px-3 py-3">
+                <AlertCircle className="size-[18px] shrink-0 text-dark-blue-400/60" />
+                <p className="text-xs leading-5 text-gray-500">
+                  Any payment in progress will complete before this method is
+                  removed.
+                </p>
+              </div>
+
+              <div className="mt-5 flex items-center justify-end gap-3">
+                <DialogClose asChild>
+                  <Button variant="outlined" visual="gray">
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button visual="error" onClick={handleRemoveMethod}>
+                  Remove
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isRemoveSuccessDialogOpen}
+        onOpenChange={setIsRemoveSuccessDialogOpen}
+      >
+        <DialogContent className="max-w-[580px] p-0">
+          <div className="flex justify-end px-5 pt-5">
+            <DialogClose asChild>
+              <IconButton
+                className="text-gray-500"
+                variant="ghost"
+                visual="gray"
+                size="md"
+              >
+                <X className="size-5" />
+              </IconButton>
+            </DialogClose>
+          </div>
+
+          <div className="px-6 pb-7 pt-2 text-center">
+            <div className="mx-auto flex size-[64px] items-center justify-center rounded-full bg-black text-white">
+              <Check className="size-9" />
+            </div>
+
+            <h2 className="mt-8 text-[18px] font-semibold leading-7 text-dark-blue-400">
+              {removedMethodLabel || "Payment method"} has been removed
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-gray-500">
+              This payment method was successfully removed from your account.
+            </p>
+
+            <div className="mt-6 flex justify-center">
+              <DialogClose asChild>
+                <Button className="min-w-[100px]">Done</Button>
+              </DialogClose>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={isAddNewPaymentMethodDialogOpen}
@@ -840,7 +1271,12 @@ export const BillingPaymentMethodsContent = forwardRef<
               </h2>
             </div>
             <DialogClose asChild>
-              <IconButton className="text-gray-500" variant="ghost" visual="gray" size="md">
+              <IconButton
+                className="text-gray-500"
+                variant="ghost"
+                visual="gray"
+                size="md"
+              >
                 <X className="size-5" />
               </IconButton>
             </DialogClose>
@@ -850,7 +1286,9 @@ export const BillingPaymentMethodsContent = forwardRef<
             <RadioGroup
               value={selectedNewPaymentMethodType}
               onValueChange={(value) =>
-                handleOpenPaymentMethodType(value as NewPaymentMethodOptionValue)
+                handleOpenPaymentMethodType(
+                  value as NewPaymentMethodOptionValue
+                )
               }
               className="grid grid-cols-2 gap-3"
             >
@@ -903,7 +1341,12 @@ export const BillingPaymentMethodsContent = forwardRef<
               </h2>
             </div>
             <DialogClose asChild>
-              <IconButton className="text-gray-500" variant="ghost" visual="gray" size="md">
+              <IconButton
+                className="text-gray-500"
+                variant="ghost"
+                visual="gray"
+                size="md"
+              >
                 <X className="size-5" />
               </IconButton>
             </DialogClose>
@@ -911,12 +1354,15 @@ export const BillingPaymentMethodsContent = forwardRef<
 
           <div className="p-6">
             <p className="flex items-center gap-x-1 text-xs leading-none text-gray-500">
-              <Lock className="size-4" /> Your payment is secure. Your card details will not be shared.
+              <Lock className="size-4" /> Your payment is secure. Your card
+              details will not be shared.
             </p>
 
             <div className="mt-6 space-y-3">
               <div className="space-y-1.5">
-                <Label size="sm" htmlFor="payment-method-card-number">Card Number</Label>
+                <Label size="sm" htmlFor="payment-method-card-number">
+                  Card Number
+                </Label>
                 <CreditCardInput
                   id="payment-method-card-number"
                   value={cardNumber}
@@ -925,7 +1371,9 @@ export const BillingPaymentMethodsContent = forwardRef<
               </div>
 
               <div className="space-y-1.5">
-                <Label size="sm" htmlFor="payment-method-card-name">Name On Card</Label>
+                <Label size="sm" htmlFor="payment-method-card-name">
+                  Name On Card
+                </Label>
                 <Input
                   id="payment-method-card-name"
                   type="text"
@@ -937,7 +1385,9 @@ export const BillingPaymentMethodsContent = forwardRef<
 
               <div className="grid grid-cols-2 gap-x-3">
                 <div className="space-y-1.5">
-                  <Label size="sm" htmlFor="payment-method-expiration-date">Expiration Date</Label>
+                  <Label size="sm" htmlFor="payment-method-expiration-date">
+                    Expiration Date
+                  </Label>
                   <Input
                     id="payment-method-expiration-date"
                     type="text"
@@ -946,7 +1396,9 @@ export const BillingPaymentMethodsContent = forwardRef<
                     onChange={(event) => {
                       const sanitized = event.target.value.replace(/[^\d]/g, "")
                       if (sanitized.length >= 2) {
-                        setExpirationDate(`${sanitized.slice(0, 2)}/${sanitized.slice(2, 6)}`)
+                        setExpirationDate(
+                          `${sanitized.slice(0, 2)}/${sanitized.slice(2, 6)}`
+                        )
                         return
                       }
                       setExpirationDate(sanitized)
@@ -955,7 +1407,9 @@ export const BillingPaymentMethodsContent = forwardRef<
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label size="sm" htmlFor="payment-method-cvv-cvc">CVV / CVC</Label>
+                  <Label size="sm" htmlFor="payment-method-cvv-cvc">
+                    CVV / CVC
+                  </Label>
                   <InputGroup>
                     <Input
                       id="payment-method-cvv-cvc"
@@ -974,7 +1428,10 @@ export const BillingPaymentMethodsContent = forwardRef<
                           <TooltipTrigger className="focus-visible:outline-none">
                             <HelpCircle className="h-4 w-4 text-gray-500" />
                           </TooltipTrigger>
-                          <TooltipContent className="max-w-[139px]" visual="gray">
+                          <TooltipContent
+                            className="max-w-[139px]"
+                            visual="gray"
+                          >
                             3-4 digit code on the back of your card
                           </TooltipContent>
                         </Tooltip>
@@ -1071,7 +1528,12 @@ export const BillingPaymentMethodsContent = forwardRef<
               </h2>
             </div>
             <DialogClose asChild>
-              <IconButton className="text-gray-500" variant="ghost" visual="gray" size="md">
+              <IconButton
+                className="text-gray-500"
+                variant="ghost"
+                visual="gray"
+                size="md"
+              >
                 <X className="size-5" />
               </IconButton>
             </DialogClose>
@@ -1080,7 +1542,9 @@ export const BillingPaymentMethodsContent = forwardRef<
           <div className="p-6">
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label size="sm" htmlFor="payment-method-account-type">Account Type</Label>
+                <Label size="sm" htmlFor="payment-method-account-type">
+                  Account Type
+                </Label>
                 <Listbox value={accountType} onChange={setAccountType}>
                   <ListboxButton placeholder="Select" />
                   <ListboxOptions>
@@ -1094,7 +1558,9 @@ export const BillingPaymentMethodsContent = forwardRef<
               </div>
 
               <div className="space-y-1.5">
-                <Label size="sm" htmlFor="payment-method-account-holder-name">Account Holder Name</Label>
+                <Label size="sm" htmlFor="payment-method-account-holder-name">
+                  Account Holder Name
+                </Label>
                 <Input
                   id="payment-method-account-holder-name"
                   type="text"
@@ -1105,7 +1571,9 @@ export const BillingPaymentMethodsContent = forwardRef<
               </div>
 
               <div className="space-y-1.5">
-                <Label size="sm" htmlFor="payment-method-bank-routing-number">Bank Routing Number</Label>
+                <Label size="sm" htmlFor="payment-method-bank-routing-number">
+                  Bank Routing Number
+                </Label>
                 <Input
                   id="payment-method-bank-routing-number"
                   type="text"
@@ -1117,7 +1585,9 @@ export const BillingPaymentMethodsContent = forwardRef<
 
               <div className="grid grid-cols-2 gap-x-3">
                 <div className="space-y-1.5">
-                  <Label size="sm" htmlFor="payment-method-account-number">Account Number</Label>
+                  <Label size="sm" htmlFor="payment-method-account-number">
+                    Account Number
+                  </Label>
                   <Input
                     id="payment-method-account-number"
                     type="text"
@@ -1128,13 +1598,20 @@ export const BillingPaymentMethodsContent = forwardRef<
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label size="sm" htmlFor="payment-method-confirm-account-number">Re-Enter Account Number</Label>
+                  <Label
+                    size="sm"
+                    htmlFor="payment-method-confirm-account-number"
+                  >
+                    Re-Enter Account Number
+                  </Label>
                   <Input
                     id="payment-method-confirm-account-number"
                     type="text"
                     placeholder="Up to 17 digits"
                     value={confirmAccountNumber}
-                    onChange={(event) => setConfirmAccountNumber(event.target.value)}
+                    onChange={(event) =>
+                      setConfirmAccountNumber(event.target.value)
+                    }
                   />
                 </div>
               </div>
