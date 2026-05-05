@@ -51,7 +51,7 @@ export function crossServiceSourceIdField(options: Options): Field {
       // edit so admins can read / copy / debug the value.
       condition: (data) => Boolean((data as { id?: unknown } | undefined)?.id),
       hidden: true,
-      ...(options.admin || {}),
+      ...(options.admin as any),
     },
     hooks: {
       beforeValidate: [
