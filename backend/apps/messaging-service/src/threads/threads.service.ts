@@ -12,6 +12,8 @@ import { ThreadUserState } from "./entities/thread-user-state.entity";
 import { ThreadList } from "./entities/thread-list.entity";
 import { ThreadListAssignment } from "./entities/thread-list-assignment.entity";
 import { ConversationKey } from "../encryption/entities/conversation-key.entity";
+import { Message } from "../messages/entities/message.entity";
+import { Attachment } from "../messages/entities/attachment.entity";
 import { AblyService } from "../ably/ably.service";
 import { BlockEnforcementService } from "../blocks/block-enforcement.service";
 import { BulkAction } from "./dtos/thread-list.dto";
@@ -60,7 +62,7 @@ export class ThreadsService {
     const enriched = await Promise.all(
       threads.map(async (t) => {
         const lastMessage = await this.repo.manager
-          .createQueryBuilder("messaging.messages", "m")
+          .createQueryBuilder(Message, "m")
           .where('m."threadId" = :tid', { tid: t.id })
           .andWhere("m.deleted = false")
           .orderBy('m."createdAt"', "DESC")
@@ -72,7 +74,7 @@ export class ThreadsService {
         let lastAttachment: any = null;
         if (lastMessage?.m_id && lastMessage.m_messageType === 'file') {
           lastAttachment = await this.repo.manager
-            .createQueryBuilder('messaging.attachments', 'a')
+            .createQueryBuilder(Attachment, 'a')
             .where('a."messageId" = :mid', { mid: lastMessage.m_id })
             .limit(1)
             .getRawOne();
