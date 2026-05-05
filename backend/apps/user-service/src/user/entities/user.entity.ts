@@ -93,10 +93,7 @@ export class User {
   onboardedAt?: Date;
 
   @Column({ type: 'numeric', nullable: true })
-  rateMin?: number;
-
-  @Column({ type: 'numeric', nullable: true })
-  rateMax?: number;
+  rate?: number;
 
   @Column({ type: 'jsonb', nullable: true })
   jobTitles?: string[];

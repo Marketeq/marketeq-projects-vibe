@@ -26,11 +26,11 @@ export class TalentProfile {
   @Column({ type: 'varchar', length: 180, nullable: true })
   headline: string | null;
 
+  @Column({ type: 'jsonb', nullable: true, default: () => "'[]'" })
+  jobTitles: { headline: string; rate: number }[];
+
   @Column({ type: 'varchar', length: 10, nullable: true })
   availability: string | null;
-
-  @Column({ type: 'boolean', default: true })
-  isAvailable: boolean;
 
   @Column({ type: 'varchar', length: 180, nullable: true })
   location: string | null;
@@ -40,6 +40,9 @@ export class TalentProfile {
 
   @Column({ type: 'varchar', length: 60, nullable: true })
   timezone: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  rate: number | null;
 
   @Column({ type: 'int', nullable: true })
   rateMin: number | null;
@@ -87,6 +90,7 @@ export class TalentProfile {
     title: string;
     url: string | null;
     thumbnailId: number | null;
+    thumbnailUrl: string | null;
     description: string | null;
   }[];
 

@@ -16,7 +16,12 @@ async function upsertByWhere(
   where: any,
   data: any,
 ): Promise<void> {
-  const existing = await payload.find({ collection, where, limit: 1, overrideAccess: true });
+  const existing = await payload.find({
+    collection,
+    where,
+    limit: 1,
+    overrideAccess: true,
+  });
   if (existing.totalDocs > 0) {
     await payload.update({
       collection,
@@ -35,7 +40,11 @@ async function upsertByWhere(
 }
 
 async function ensureUser(payload: Payload): Promise<number | null> {
-  const users = await payload.find({ collection: "users", limit: 1, overrideAccess: true });
+  const users = await payload.find({
+    collection: "users",
+    limit: 1,
+    overrideAccess: true,
+  });
   if (users.totalDocs > 0) return users.docs[0].id as number;
 
   // Users collection is auth-enabled => requires email/password.
@@ -65,9 +74,24 @@ export async function seedAll(payload: Payload): Promise<void> {
 
   // Feature Flags
   for (const ff of [
-    { key: "projects.enabled", enabled: true, rolloutPercentage: 100, description: "Show projects marketplace." },
-    { key: "deliverables.ai.enabled", enabled: true, rolloutPercentage: 100, description: "Enable deliverables generator button." },
-    { key: "cms.seeded", enabled: true, rolloutPercentage: 100, description: "Marker flag for local seed runs." },
+    {
+      key: "projects.enabled",
+      enabled: true,
+      rolloutPercentage: 100,
+      description: "Show projects marketplace.",
+    },
+    {
+      key: "deliverables.ai.enabled",
+      enabled: true,
+      rolloutPercentage: 100,
+      description: "Enable deliverables generator button.",
+    },
+    {
+      key: "cms.seeded",
+      enabled: true,
+      rolloutPercentage: 100,
+      description: "Marker flag for local seed runs.",
+    },
   ]) {
     const existing = await payload.find({
       collection: "feature-flags",
@@ -93,64 +117,97 @@ export async function seedAll(payload: Payload): Promise<void> {
   }
 
   // Announcements (published banner)
-  await upsertByWhere(payload, "announcements", { title: { equals: "Welcome to Marketeq (local)" } }, {
-    title: "Welcome to Marketeq (local)",
-    message: lexicalText("This environment is seeded with sample content for CMS + marketplace testing.") as any,
-    audience: "all",
-    priority: 10,
-    status: "published",
-  });
+  await upsertByWhere(
+    payload,
+    "announcements",
+    { title: { equals: "Welcome to Marketeq (local)" } },
+    {
+      title: "Welcome to Marketeq (local)",
+      message: lexicalText(
+        "This environment is seeded with sample content for CMS + marketplace testing.",
+      ) as any,
+      audience: "all",
+      priority: 10,
+      status: "published",
+    },
+  );
 
   // Testimonials
   const testimonialAuthors = ["Ava Johnson", "Noah Chen", "Sophia Martinez"];
   for (const [i, name] of testimonialAuthors.entries()) {
-    await upsertByWhere(payload, "testimonials", { authorName: { equals: name } }, {
-      authorName: name,
-      authorCompany: "Acme Co.",
-      rating: 5,
-      featured: i === 0,
-      status: "published",
-      quote: "High quality work, fast communication, and a clean handoff.",
-      avatar: placeholderMediaId,
-    });
+    await upsertByWhere(
+      payload,
+      "testimonials",
+      { authorName: { equals: name } },
+      {
+        authorName: name,
+        authorCompany: "Acme Co.",
+        rating: 5,
+        featured: i === 0,
+        status: "published",
+        quote: "High quality work, fast communication, and a clean handoff.",
+        avatar: placeholderMediaId,
+      },
+    );
   }
 
   // Landing page
-  await upsertByWhere(payload, "landing-pages", { slug: { equals: "seed-landing" } }, {
-    title: "Hire a team to ship faster",
-    slug: "seed-landing",
-    status: "published",
-    hero: {
-      headline: "Launch in weeks, not months",
-      subheadline: "Browse proven teams and fixed-scope projects.",
-      ctaLabel: "Explore projects",
-      ctaUrl: "/projects",
+  await upsertByWhere(
+    payload,
+    "landing-pages",
+    { slug: { equals: "seed-landing" } },
+    {
+      title: "Hire a team to ship faster",
+      slug: "seed-landing",
+      status: "published",
+      hero: {
+        headline: "Launch in weeks, not months",
+        subheadline: "Browse proven teams and fixed-scope projects.",
+        ctaLabel: "Explore projects",
+        ctaUrl: "/projects",
+      },
+      sections: [],
     },
-    sections: [],
-  });
+  );
 
   // Blog + Help (published)
-  await upsertByWhere(payload, "blog-posts", { slug: { equals: "seed-blog-post" } }, {
-    title: "How Marketeq projects work",
-    slug: "seed-blog-post",
-    status: "published",
-    publishedAt: new Date().toISOString(),
-    author: userId,
-    coverImage: placeholderMediaId,
-    body: lexicalText("This is seeded content. Replace with real editorial copy.") as any,
-    tags: [{ tag: "platform" }, { tag: "projects" }],
-  });
+  await upsertByWhere(
+    payload,
+    "blog-posts",
+    { slug: { equals: "seed-blog-post" } },
+    {
+      title: "How Marketeq projects work",
+      slug: "seed-blog-post",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      author: userId,
+      coverImage: placeholderMediaId,
+      body: lexicalText(
+        "This is seeded content. Replace with real editorial copy.",
+      ) as any,
+      tags: [{ tag: "platform" }, { tag: "projects" }],
+    },
+  );
 
-  await upsertByWhere(payload, "help-articles", { slug: { equals: "seed-help-article" } }, {
-    title: "Getting started",
-    slug: "seed-help-article",
-    status: "published",
-    topic: "getting-started",
-    body: lexicalText("Seeded help content. Add your real FAQ here.") as any,
-  });
+  await upsertByWhere(
+    payload,
+    "help-articles",
+    { slug: { equals: "seed-help-article" } },
+    {
+      title: "Getting started",
+      slug: "seed-help-article",
+      status: "published",
+      topic: "getting-started",
+      body: lexicalText("Seeded help content. Add your real FAQ here.") as any,
+    },
+  );
 
   // Listings (CMS mirror rows, sourceId is required + unique)
-  const listingsExisting = await payload.find({ collection: "listings", limit: 1, overrideAccess: true });
+  const listingsExisting = await payload.find({
+    collection: "listings",
+    limit: 1,
+    overrideAccess: true,
+  });
   if (listingsExisting.totalDocs === 0) {
     await payload.create({
       collection: "listings",
@@ -187,17 +244,20 @@ export async function seedAll(payload: Payload): Promise<void> {
           {
             icon: "shield-zap",
             title: "Refund protection",
-            description: "If the project falls short, you can initiate a dispute for a full refund.",
+            description:
+              "If the project falls short, you can initiate a dispute for a full refund.",
           },
           {
             icon: "rocket",
             title: "Fast resolution",
-            description: "Clear milestones and fast support if anything goes off track.",
+            description:
+              "Clear milestones and fast support if anything goes off track.",
           },
         ],
         highlightedNotice: {
           icon: "shield-dollar",
-          description: "Payments are secured and released only when you approve delivery.",
+          description:
+            "Payments are secured and released only when you approve delivery.",
         },
         policy: {
           prefixText: "We securely process payments and release upon rating.",
@@ -206,9 +266,21 @@ export async function seedAll(payload: Payload): Promise<void> {
         },
         howItWorks: {
           steps: [
-            { stepNumber: "1", title: "Pick a project", description: "Browse proven teams and project templates." },
-            { stepNumber: "2", title: "Customize scope", description: "Tailor deliverables, timeline, and skills." },
-            { stepNumber: "3", title: "Launch", description: "Kick off with a clear plan and weekly progress." },
+            {
+              stepNumber: "1",
+              title: "Pick a project",
+              description: "Browse proven teams and project templates.",
+            },
+            {
+              stepNumber: "2",
+              title: "Customize scope",
+              description: "Tailor deliverables, timeline, and skills.",
+            },
+            {
+              stepNumber: "3",
+              title: "Launch",
+              description: "Kick off with a clear plan and weekly progress.",
+            },
           ],
         },
       } as any,
@@ -240,7 +312,8 @@ export async function seedAll(payload: Payload): Promise<void> {
         },
         hero: {
           title: "Development projects",
-          subtitle: "Browse seeded projects grouped under development-related categories.",
+          subtitle:
+            "Browse seeded projects grouped under development-related categories.",
         },
       } as any,
       overrideAccess: true,
@@ -248,28 +321,243 @@ export async function seedAll(payload: Payload): Promise<void> {
     });
   }
 
-  // Talent profiles (minimal)
-  const tpExisting = await payload.find({ collection: "talent-profiles", limit: 1, overrideAccess: true });
-  if (tpExisting.totalDocs === 0) {
-    await payload.create({
-      collection: "talent-profiles",
-      data: {
-        sourceId: uuid(),
-        username: "seed-talent",
-        name: "Seed Talent",
-        headline: "Full-stack engineer",
-        skills: [{ name: "TypeScript" }, { name: "NestJS" }],
-        industries: [{ name: "SaaS" }],
-        languages: [{ language: "English", proficiency: "native" }],
-        status: "active",
-      } as any,
-      overrideAccess: true,
-      disableVerificationEmail: true,
-    });
+  // Talent profiles (fully seeded fixtures)
+  const talentProfileFixtures = [
+    {
+      sourceId: "11111111-1111-4111-8111-111111111111",
+      username: "seed_talent",
+      name: "Seed Talent",
+      headline: "Full-stack engineer",
+      overview: lexicalText(
+        "Full-stack engineer focused on shipping resilient product experiences, clean APIs, and pragmatic developer tooling.",
+      ) as any,
+      status: "active",
+      availability: "40",
+      rateMin: 55,
+      rateMax: 90,
+      skills: [{ name: "TypeScript" }, { name: "NestJS" }, { name: "React" }],
+      industries: [{ name: "SaaS" }, { name: "Marketplaces" }],
+      languages: [
+        { language: "English", fluency: "native" },
+        { language: "Spanish", fluency: "conversational" },
+      ],
+      certifications: [
+        {
+          title: "AWS Certified Developer",
+          organization: "Amazon Web Services",
+          dateAwarded: "2024-03-12",
+        },
+        {
+          title: "Professional Scrum Master I",
+          organization: "Scrum.org",
+          dateAwarded: "2023-10-08",
+        },
+      ],
+      education: [
+        {
+          institution: "University of Texas at Austin",
+          degree: "B.S. Computer Science",
+          graduationYear: 2019,
+        },
+        {
+          institution: "Austin Community College",
+          degree: "Software Engineering Certificate",
+          graduationYear: 2017,
+        },
+      ],
+      workExperience: [
+        {
+          role: "Senior Full-stack Engineer",
+          company: "Northstar Commerce",
+          startDate: "2022-01-01",
+          endDate: null,
+          description:
+            "Led marketplace platform work across checkout, account management, and admin workflows.",
+        },
+        {
+          role: "Software Engineer",
+          company: "Brightlane Studio",
+          startDate: "2019-07-01",
+          endDate: "2021-12-31",
+          description:
+            "Built customer-facing web apps and internal operations tools for early-stage products.",
+        },
+      ],
+      portfolio: [
+        {
+          title: "Marketplace Rebuild",
+          url: "https://example.com/portfolio/marketplace-rebuild",
+          thumbnail: placeholderMediaId,
+          description:
+            "End-to-end rebuild of a multi-role marketplace with checkout, search, and profile workflows.",
+        },
+        {
+          title: "Ops Dashboard",
+          url: "https://example.com/portfolio/ops-dashboard",
+          thumbnail: placeholderMediaId,
+          description:
+            "Internal dashboard for support, moderation, and reporting teams.",
+        },
+      ],
+    },
+    {
+      sourceId: "22222222-2222-4222-8222-222222222222",
+      username: "seed_product_designer",
+      name: "Maya Chen",
+      headline: "Product designer",
+      overview: lexicalText(
+        "Product designer who turns messy workflows into polished, accessible interfaces with strong UX writing and design systems.",
+      ) as any,
+      status: "active",
+      availability: "30",
+      rateMin: 65,
+      rateMax: 110,
+      skills: ["Figma", "Design Systems", "UX Research"].map((name) => ({
+        name,
+      })),
+      industries: [{ name: "Fintech" }, { name: "B2B SaaS" }],
+      languages: [
+        { language: "English", fluency: "fluent" },
+        { language: "Mandarin", fluency: "native" },
+      ],
+      certifications: [
+        {
+          title: "Google UX Design Certificate",
+          organization: "Coursera",
+          dateAwarded: "2024-01-18",
+        },
+      ],
+      education: [
+        {
+          institution: "Royal College of Art",
+          degree: "M.A. Interaction Design",
+          graduationYear: 2020,
+        },
+      ],
+      workExperience: [
+        {
+          role: "Lead Product Designer",
+          company: "Relay Finance",
+          startDate: "2021-05-01",
+          endDate: null,
+          description:
+            "Owned design systems, onboarding, and transaction flows for a regulated financial product.",
+        },
+        {
+          role: "UI/UX Designer",
+          company: "Atlas Apps",
+          startDate: "2020-02-01",
+          endDate: "2021-04-30",
+          description:
+            "Designed dashboards, user journeys, and lightweight product experiments for SMB SaaS tools.",
+        },
+      ],
+      portfolio: [
+        {
+          title: "Design System Refresh",
+          url: "https://example.com/portfolio/design-system-refresh",
+          thumbnail: placeholderMediaId,
+          description:
+            "Unified components and tokens across a growing product suite.",
+        },
+        {
+          title: "Fintech Onboarding Flow",
+          url: "https://example.com/portfolio/fintech-onboarding",
+          thumbnail: placeholderMediaId,
+          description:
+            "Streamlined compliance-heavy onboarding for new account holders.",
+        },
+      ],
+    },
+    {
+      sourceId: "33333333-3333-4333-8333-333333333333",
+      username: "seed_data_engineer",
+      name: "Jordan Reyes",
+      headline: "Data engineer",
+      overview: lexicalText(
+        "Data engineer specializing in reliable pipelines, analytics instrumentation, and self-serve reporting for product teams.",
+      ) as any,
+      status: "suspended",
+      availability: "20",
+      rateMin: 75,
+      rateMax: 130,
+      skills: [{ name: "Python" }, { name: "dbt" }, { name: "Snowflake" }],
+      industries: [{ name: "Healthcare" }, { name: "Analytics" }],
+      languages: [
+        { language: "English", fluency: "fluent" },
+        { language: "French", fluency: "conversational" },
+      ],
+      certifications: [
+        {
+          title: "SnowPro Core Certification",
+          organization: "Snowflake",
+          dateAwarded: "2023-06-21",
+        },
+        {
+          title: "Certified Analytics Professional",
+          organization: "INFORMS",
+          dateAwarded: "2022-11-14",
+        },
+      ],
+      education: [
+        {
+          institution: "University of Toronto",
+          degree: "B.Sc. Data Science",
+          graduationYear: 2018,
+        },
+      ],
+      workExperience: [
+        {
+          role: "Senior Data Engineer",
+          company: "Northwind Health",
+          startDate: "2022-09-01",
+          endDate: null,
+          description:
+            "Built ingestion, transformation, and data quality pipelines for analytics and ML teams.",
+        },
+        {
+          role: "Analytics Engineer",
+          company: "Cloud Harbor",
+          startDate: "2018-09-01",
+          endDate: "2022-08-31",
+          description:
+            "Maintained dbt models, reporting marts, and product event instrumentation standards.",
+        },
+      ],
+      portfolio: [
+        {
+          title: "Warehouse Modernization",
+          url: "https://example.com/portfolio/warehouse-modernization",
+          thumbnail: placeholderMediaId,
+          description:
+            "Reduced reporting latency by rebuilding the analytics layer and standardizing transformations.",
+        },
+        {
+          title: "Product Analytics Pipeline",
+          url: "https://example.com/portfolio/product-analytics-pipeline",
+          thumbnail: placeholderMediaId,
+          description:
+            "Created an end-to-end pipeline from event collection to stakeholder dashboards.",
+        },
+      ],
+    },
+  ];
+
+  for (const talentProfile of talentProfileFixtures) {
+    await upsertByWhere(
+      payload,
+      "talent-profiles",
+      { username: { equals: talentProfile.username } },
+      talentProfile,
+    );
   }
 
   // Orders (minimal, if we have a user)
-  const ordersExisting = await payload.find({ collection: "orders", limit: 1, overrideAccess: true });
+  const ordersExisting = await payload.find({
+    collection: "orders",
+    limit: 1,
+    overrideAccess: true,
+  });
   if (ordersExisting.totalDocs === 0 && userId != null) {
     await payload.create({
       collection: "orders",
@@ -285,4 +573,3 @@ export async function seedAll(payload: Payload): Promise<void> {
     });
   }
 }
-

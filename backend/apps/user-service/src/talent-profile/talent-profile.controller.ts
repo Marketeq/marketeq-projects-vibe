@@ -43,7 +43,7 @@ export class TalentProfileController {
   ) {
     const take = Math.min(limit, 100);
     const [profiles, total] = await this.repo.findAndCount({
-      where: { status: 'active', isAvailable: true },
+      where: { status: 'active' },
       order: { updatedAt: 'DESC' },
       skip: (page - 1) * take,
       take,

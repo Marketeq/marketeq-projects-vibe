@@ -4,9 +4,10 @@ import { TalentProfile } from './entities/talent-profile.entity';
 import { TalentProfileSyncService } from './talent-profile-sync.service';
 import { TalentProfileSyncConsumer } from './talent-profile-sync.consumer';
 import { TalentProfileController } from './talent-profile.controller';
+import { User } from '../user/entities/user.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([TalentProfile])],
+  imports: [TypeOrmModule.forFeature([TalentProfile, User])],
   controllers: [TalentProfileController, TalentProfileSyncConsumer],
   providers: [TalentProfileSyncService],
   exports: [TalentProfileSyncService],
