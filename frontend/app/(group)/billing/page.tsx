@@ -5,13 +5,19 @@ import NextLink from "next/link"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { cn } from "@/utils/functions"
 import {
+  AlertCircle,
   AlertTriangle,
   ArrowRight,
+  BarChartSquare02,
+  Briefcase,
   CheckCircle,
+  ChevronDown,
   CreditCard02,
   HelpCircle,
   LifeBuoy,
+  Lock01,
   Plus,
+  User,
 } from "@blend-metrics/icons"
 import {
   BillingTabValue,
@@ -21,8 +27,19 @@ import {
 import { BillingTransactionsContent } from "@/components/billing-transactions-content"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+  Alert,
+  AlertContent,
+  AlertDescription,
+  AlertIcon,
+  AlertTitle,
   Badge,
   Button,
+  Progress,
+  Switch,
   Tabs,
   TabsContent,
   TabsList,
@@ -81,6 +98,93 @@ const upcomingPayments = [
     isCritical: false,
   },
 ]
+
+const myPlanFeatureRows = [
+  { label: "Project posting", status: "active" as const, icon: Briefcase },
+  { label: "Invites (20/mo)", status: "active" as const, icon: CheckCircle },
+  {
+    label: "Basic analytics",
+    status: "active" as const,
+    icon: BarChartSquare02,
+  },
+  { label: "Team collaboration", status: "active" as const, icon: User },
+  { label: "Ad management", status: "premium" as const, icon: Lock01 },
+  { label: "Custom analytics", status: "premium" as const, icon: Lock01 },
+]
+
+const inviteThresholdOptions = ["5 Invites", "10 Invites", "15 Invites"]
+
+const inviteTopUpOptions = [
+  "+10 invites for $20",
+  "+20 invites for $20",
+  "+30 invites for $45",
+]
+
+const managedAdFeatures = [
+  "10x more visibility",
+  "Lower fees",
+  "Performance analytics",
+  "Audience targeting & optimization",
+  "Campaign setup",
+  "Budget management",
+  "Premium agency plan",
+  "Monthly reporting & insights",
+]
+
+const faqColumns = [
+  [
+    {
+      id: "carry-over-left",
+      question: "What happens to my invites if I upgrade?",
+      answer:
+        "Unused invites from your current plan will carry over when you upgrade to a higher plan.",
+    },
+    {
+      id: "renewal-left",
+      question: "What happens to my invites if I upgrade?",
+      answer:
+        "Any invite add-ons stay available on your account and continue to apply before new monthly invite limits reset.",
+    },
+    {
+      id: "switch-left",
+      question: "Can I switch between Individual and Team billing?",
+      answer:
+        "Yes. You can change billing types from your plan settings and we’ll confirm the new billing cycle before the update takes effect.",
+    },
+    {
+      id: "resources-left",
+      question: "How do I access exclusive resources as a premium member?",
+      answer:
+        "Premium resources unlock automatically on your account after upgrade and stay available while your plan remains active.",
+    },
+  ],
+  [
+    {
+      id: "carry-over-right",
+      question: "What happens to my invites if I upgrade?",
+      answer:
+        "Unused invites from your current plan will carry over when you upgrade to a higher plan.",
+    },
+    {
+      id: "ad-management-right",
+      question: "What is Ad Management and how does it work?",
+      answer:
+        "Managed Ad Campaigns gives you a hands-on team for setup, optimization, and reporting so your campaign budget is spent more effectively.",
+    },
+    {
+      id: "switch-right",
+      question: "Can I switch between Individual and Team billing?",
+      answer:
+        "Yes. You can move between billing types as your workflow changes, and your next renewal will reflect the selected billing setup.",
+    },
+    {
+      id: "resources-right",
+      question: "How do I access exclusive resources as a premium member?",
+      answer:
+        "Premium members get access inside the billing area along with any linked support resources available to the upgraded plan.",
+    },
+  ],
+] as const
 
 function BillingOverviewContent({
   onNavigateTab,
@@ -416,33 +520,32 @@ function BillingOverviewContent({
 }
 
 function BillingMyPlansContent() {
-  const [planTab, setPlanTab] = useState<"individual" | "team">("individual")
+  const [planTab, setPlanTab] = useState<"individual" | "team">("team")
+  const [inviteThreshold, setInviteThreshold] = useState(
+    inviteThresholdOptions[0]
+  )
+  const [inviteTopUp, setInviteTopUp] = useState(inviteTopUpOptions[0])
+  const [autoReplenish, setAutoReplenish] = useState(true)
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
-      <div className="space-y-5">
-        <section className="rounded-lg border border-gray-200 bg-white p-5 md:p-6">
+    <div className="space-y-5 pb-2">
+      <section className="rounded-lg border border-gray-200 bg-white p-5 md:p-6">
+        <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-base font-semibold text-dark-blue-400">
-                {planTab === "individual" ? "Premium Plan" : "Basic Plan"}
+                Premium Plan
               </h2>
               <p className="mt-2 text-sm text-gray-500">
-                {planTab === "individual"
-                  ? "This plan Renews On March 26, 2025"
-                  : "Everything you need to get started."}
+                This plan renews on March 26, 2025
               </p>
             </div>
+
             <div className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
               <Button
                 variant={planTab === "individual" ? "outlined" : "ghost"}
                 visual="gray"
                 size="sm"
-                className={cn(
-                  "h-8 rounded-md px-3 text-xs font-semibold shadow-none",
-                  planTab !== "individual" &&
-                    "text-gray-400 hover:bg-transparent"
-                )}
                 onClick={() => setPlanTab("individual")}
               >
                 Individual
@@ -451,10 +554,6 @@ function BillingMyPlansContent() {
                 variant={planTab === "team" ? "outlined" : "ghost"}
                 visual="gray"
                 size="sm"
-                className={cn(
-                  "h-8 rounded-md px-3 text-xs font-semibold shadow-none",
-                  planTab !== "team" && "text-gray-400 hover:bg-transparent"
-                )}
                 onClick={() => setPlanTab("team")}
               >
                 Team
@@ -462,88 +561,345 @@ function BillingMyPlansContent() {
             </div>
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <div className="flex items-end gap-1 text-dark-blue-400">
                 <span className="text-3xl font-semibold leading-none">
-                  {planTab === "individual" ? "$52" : "$0"}
+                  $200
                 </span>
                 <span className="pb-0.5 text-base font-medium text-gray-500">
                   /mo
                 </span>
               </div>
-              {planTab === "individual" && (
-                <p className="mt-3 text-sm font-medium text-dark-blue-400">
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                <p className="text-sm font-medium text-dark-blue-400">
                   Visa ending in 4292
                 </p>
-              )}
-              <Button size="sm" className="mt-5">
-                Upgrade Plan
-              </Button>
+                <Button variant="link" visual="gray" size="sm">
+                  Edit
+                </Button>
+              </div>
+              <div className="mt-5">
+                <Button size="sm">Change Plan</Button>
+              </div>
             </div>
 
-            {planTab === "individual" ? (
-              <div className="flex items-end justify-end">
-                <p className="text-sm text-gray-500">Last Updated 5/21/2025</p>
-              </div>
-            ) : (
-              <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
-                {basicPlanFeatures.map((feature, index) => (
-                  <div
-                    key={`${feature}-${index}`}
-                    className="flex items-center gap-2.5"
-                  >
-                    <CheckCircle className="h-4 w-4 shrink-0 text-primary-500" />
-                    <span className="text-sm text-dark-blue-400">
-                      {feature}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <p className="text-sm text-gray-500">Last Updated 5/21/2025</p>
           </div>
-        </section>
-      </div>
+        </div>
 
-      <div className="space-y-5">
-        <section className="rounded-lg border border-gray-200 bg-white p-5 md:p-6">
-          <div>
-            <h3 className="text-base font-semibold text-dark-blue-400">
-              Questions?
-            </h3>
-            <p className="mt-4 max-w-[220px] text-sm text-dark-blue-400">
-              For more information on billing and membership plans Visit our{" "}
-              <NextLink
-                href="/help-center"
-                className="font-semibold underline underline-offset-2"
+        <div className="my-6 border-t border-gray-200" />
+
+        <div>
+          <h3 className="text-base font-semibold text-dark-blue-400">
+            Plan Usage
+          </h3>
+          <p className="mt-2 text-sm text-gray-500">
+            Usage limits reset in 18 days
+          </p>
+
+          <div className="mt-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex items-center gap-2">
+                <h4 className="text-base font-semibold text-dark-blue-400">
+                  Invites
+                </h4>
+                <HelpCircle className="size-4 text-gray-400" />
+              </div>
+              <p className="text-sm text-gray-500">10 of 25 invites sent</p>
+            </div>
+
+            <div className="mt-3">
+              <Progress value={40} bubble={false} />
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-lg border border-error-300 bg-error-25 p-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-error-500" />
+                <div>
+                  <p className="text-sm font-semibold text-error-700">
+                    5 invites left this month.
+                  </p>
+                  <p className="mt-1 text-sm text-error-700">
+                    Upgrade to Premium for unlimited invites and advanced
+                    analytics.
+                  </p>
+                </div>
+              </div>
+
+              <Button variant="outlined" visual="error" size="sm">
+                Upgrade Now
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-5 md:p-6">
+        <div className="grid gap-4 lg:grid-cols-2">
+          {myPlanFeatureRows.map((feature) => {
+            const Icon = feature.icon
+
+            return (
+              <section
+                key={feature.label}
+                className="rounded-lg border border-gray-200 bg-white px-4 py-4"
               >
-                Help Center
-              </NextLink>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+                      <Icon className="size-5" />
+                    </div>
+                    <p className="text-sm font-medium capitalize text-dark-blue-400">
+                      {feature.label}
+                    </p>
+                  </div>
+
+                  {feature.status === "active" ? (
+                    <Badge visual="success" size="sm">
+                      Active
+                    </Badge>
+                  ) : (
+                    <Badge visual="gray" size="sm">
+                      <Lock01 className="size-3.5" />
+                      Premium
+                    </Badge>
+                  )}
+                </div>
+              </section>
+            )
+          })}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-5 md:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold text-dark-blue-400">
+                Top Up Your Invites
+              </h3>
+              <HelpCircle className="size-4 text-gray-400" />
+            </div>
+            <p className="mt-2 text-sm text-gray-500">
+              You have{" "}
+              <span className="font-semibold text-dark-blue-400">
+                15 invites
+              </span>{" "}
+              remaining. You can contact more contractors directly with
+              additional invites. Choose a package below.
             </p>
           </div>
 
-          <div className="my-5 border-t border-gray-200" />
+          <Button size="sm">Add Invites</Button>
+        </div>
 
+        <div className="mt-5 rounded-lg border border-gray-200 bg-white p-5">
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h4 className="text-base font-semibold text-dark-blue-400">
+                  Auto-Replenish Invites
+                </h4>
+                <p className="mt-1 text-sm text-gray-500">
+                  Tops up automatically when invites become low
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-dark-blue-400">
+                  On
+                </span>
+                <Switch
+                  checked={autoReplenish}
+                  onCheckedChange={setAutoReplenish}
+                  visual="blue"
+                  size="sm"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+              <div>
+                <p className="text-sm font-medium text-dark-blue-400">
+                  Top up when below:
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  {inviteThresholdOptions.map((option) => (
+                    <Button
+                      key={option}
+                      size="sm"
+                      visual={inviteThreshold === option ? "primary" : "gray"}
+                      variant={
+                        inviteThreshold === option ? "filled" : "outlined"
+                      }
+                      onClick={() => setInviteThreshold(option)}
+                    >
+                      {option}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-dark-blue-400">
+                  Add How Many:
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  {inviteTopUpOptions.map((option) => (
+                    <Button
+                      key={option}
+                      size="sm"
+                      visual={inviteTopUp === option ? "primary" : "gray"}
+                      variant={inviteTopUp === option ? "filled" : "outlined"}
+                      onClick={() => setInviteTopUp(option)}
+                    >
+                      {option}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <Alert>
+              <AlertIcon>
+                <AlertCircle className="h-5 w-5" />
+              </AlertIcon>
+              <AlertContent>
+                <AlertDescription>
+                  <span className="font-semibold text-dark-blue-400">
+                    You stay in control:
+                  </span>{" "}
+                  we&apos;ll charge VISA 4292. You get an email receipt each
+                  time. Auto-replenish pauses if your card declines. Turn off
+                  any time.
+                </AlertDescription>
+              </AlertContent>
+            </Alert>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-5 md:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h3 className="text-base font-semibold text-dark-blue-400">
-              Billing Support
+              Grow Your Agency with Managed Ad Campaigns
             </h3>
-            <p className="mt-4 text-sm text-dark-blue-400">
-              Our Support team is here to help with any questions you may have!
+            <p className="mt-2 text-sm text-gray-500">
+              Let us manage your ads on the platform. You focus on the work, we
+              handle the visibility.
             </p>
+          </div>
+
+          <Button size="sm" leftIcon={<LifeBuoy className="size-4" />}>
+            Talk to sales
+          </Button>
+        </div>
+
+        <div className="mt-6 flex flex-col gap-3 border-t border-gray-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm font-medium text-dark-blue-400">
+            Included in this service
+          </p>
+          <NextLink
+            href="/help-center"
+            className="text-sm font-semibold text-dark-blue-400 underline-offset-2 hover:underline"
+          >
+            Learn More
+          </NextLink>
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {managedAdFeatures.map((feature) => (
+            <div key={feature} className="flex items-center gap-2.5">
+              <CheckCircle className="size-5 shrink-0 text-success-500" />
+              <span className="text-sm font-medium capitalize text-dark-blue-400">
+                {feature}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <p className="mt-8 text-3xl font-semibold leading-none text-dark-blue-400">
+          $1,500
+          <span className="ml-1 text-base font-medium text-gray-500">/mo</span>
+          <span className="ml-2 text-sm font-medium text-dark-blue-400">
+            + Your Ad Budget
+          </span>
+        </p>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-5 md:p-6">
+        <div>
+          <h3 className="text-base font-semibold text-dark-blue-400">
+            Frequently Asked Questions
+          </h3>
+          <p className="mt-2 text-sm text-gray-500">
+            Quick answers about invites, billing changes, and premium plan
+            access.
+          </p>
+        </div>
+
+        <div className="mt-8 grid gap-8 lg:grid-cols-2">
+          {faqColumns.map((column, columnIndex) => (
+            <div key={`faq-column-${columnIndex}`} className="space-y-3">
+              {column.map((item) => (
+                <div
+                  key={item.id}
+                  className="overflow-hidden rounded-lg border border-gray-200 bg-white"
+                >
+                  <Accordion
+                    type="single"
+                    collapsible
+                    defaultValue={
+                      item.id === column[0].id ? item.id : undefined
+                    }
+                  >
+                    <AccordionItem value={item.id}>
+                      <AccordionTrigger>
+                        <div className="flex w-full items-start justify-between gap-4 px-5 py-4 text-left">
+                          <span className="text-sm font-semibold text-dark-blue-400">
+                            {item.question}
+                          </span>
+                          <ChevronDown className="mt-0.5 size-5 shrink-0 text-gray-500" />
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <p className="text-sm text-gray-500">{item.answer}</p>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-8 rounded-lg border border-gray-200 bg-gray-25 px-5 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-dark-blue-400">
+                Still have questions about plans?
+              </p>
+              <p className="mt-1 text-sm text-gray-500">
+                Our support team can help with billing, upgrades, and invite
+                limits.
+              </p>
+            </div>
 
             <Button
-              size="sm"
               variant="outlined"
               visual="gray"
-              className="mt-5"
-              leftIcon={<LifeBuoy className="h-4 w-4" />}
+              size="sm"
+              leftIcon={<HelpCircle className="size-4" />}
             >
-              Get Help
+              Contact Support
             </Button>
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
     </div>
   )
 }
@@ -642,15 +998,24 @@ export default function BillingPage() {
                 </TabsList>
               </div>
 
-              <TabsContent value="overview" className="mt-5 min-h-0">
+              <TabsContent
+                value="overview"
+                className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1"
+              >
                 <BillingOverviewContent onNavigateTab={handleTabChange} />
               </TabsContent>
 
-              <TabsContent value="transactions" className="mt-5 min-h-0">
+              <TabsContent
+                value="transactions"
+                className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1"
+              >
                 <BillingTransactionsContent />
               </TabsContent>
 
-              <TabsContent value="invoices" className="mt-5 min-h-0">
+              <TabsContent
+                value="invoices"
+                className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1"
+              >
                 <BillingInvoicesContent />
               </TabsContent>
 
@@ -664,7 +1029,10 @@ export default function BillingPage() {
                 />
               </TabsContent>
 
-              <TabsContent value="my-plans" className="mt-5 min-h-0">
+              <TabsContent
+                value="my-plans"
+                className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1"
+              >
                 <BillingMyPlansContent />
               </TabsContent>
             </Tabs>
