@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { cn } from "@/utils/functions"
-import { Calendar, ChevronDown } from "@blend-metrics/icons"
+import { BarChartSquare02, Calendar, ChevronDown } from "@blend-metrics/icons"
 import { differenceInCalendarDays, format, subDays } from "date-fns"
 import {
   Area,
@@ -24,6 +24,12 @@ import {
 import NextLink from "@/components/next-link"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
+  Alert,
+  AlertContent,
+  AlertIcon,
+  AlertTitle,
+  AlertDescription,
+  CloseButton,
   Badge,
   Button,
   Card,
@@ -409,6 +415,17 @@ export default function ReportsPage() {
 
         <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
           <div className="flex-auto min-w-0">
+            <Alert variant="primary" className="mb-6">
+              <AlertIcon>
+                <BarChartSquare02 className="size-5" />
+              </AlertIcon>
+              <AlertContent>
+                <AlertTitle>{`Your profile got ${profileViewsValue} views in ${rangeLabel.toLowerCase()}.`}</AlertTitle>
+                <AlertDescription>{`CTR is ${profileCtrValue}, and you turned visibility into ${inquiriesValue} inquiries or messages during this range.`}</AlertDescription>
+              </AlertContent>
+              <CloseButton />
+            </Alert>
+
             <div className="pb-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -463,14 +480,6 @@ export default function ReportsPage() {
                 </div>
               </div>
 
-              <div className="mt-6 max-w-[920px]">
-                <div className="text-[30px] font-bold leading-[1.1] text-dark-blue-400">
-                  {`Your profile got ${profileViewsValue} views in ${rangeLabel.toLowerCase()}.`}
-                </div>
-                <p className="mt-3 text-[14px] font-light leading-normal text-gray-500">
-                  {`CTR is ${profileCtrValue}, and you turned visibility into ${inquiriesValue} inquiries or messages during this range.`}
-                </p>
-              </div>
             </div>
 
             <div className="mt-6">
