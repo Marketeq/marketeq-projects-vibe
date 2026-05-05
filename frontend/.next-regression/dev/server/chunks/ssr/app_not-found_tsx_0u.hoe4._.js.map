@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///Users/christorres/vibecoding/marketeq-projects-vibe/frontend/app/not-found.tsx"],"sourcesContent":["export default function NotFound() {\n  return (\n    <div style={{ padding: \"4rem\", textAlign: \"center\" }}>\n      <h1 style={{ fontSize: \"2rem\", fontWeight: 700 }}>404 — Page not found</h1>\n      <p style={{ marginTop: \"0.75rem\", color: \"#555\" }}>\n        The page you are looking for does not exist.\n      </p>\n    </div>\n  )\n}\n"],"names":["NotFound","style","padding","textAlign","fontSize","fontWeight","marginTop","color"],"mappings":";;;;;;AAAe,SAASA;IACtB,qBACE,8OAAC;QAAIC,OAAO;YAAEC,SAAS;YAAQC,WAAW;QAAS;;0BACjD,8OAAC;gBAAGF,OAAO;oBAAEG,UAAU;oBAAQC,YAAY;gBAAI;0BAAG;;;;;;0BAClD,8OAAC;gBAAEJ,OAAO;oBAAEK,WAAW;oBAAWC,OAAO;gBAAO;0BAAG;;;;;;;;;;;;AAKzD"}}]
-}

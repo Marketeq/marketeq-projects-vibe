@@ -15,7 +15,11 @@ app/(group)/inbox/figma-refs/
 
 # next.js
 /.next/
+/.next-regression/
 /out/
+
+# test artifacts
+/test-results/
 
 # production
 /build
