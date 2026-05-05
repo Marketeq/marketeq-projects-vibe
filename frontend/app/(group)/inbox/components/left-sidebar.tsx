@@ -166,8 +166,23 @@ const LeftSidebar = ({
   const token = getAccessToken()
 
   const router = useRouter()
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const CACHE_KEY = `inbox_conversations_${currentUserId}`
+  const [conversations, setConversations] = useState<Conversation[]>(() => {
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY)
+      return cached ? JSON.parse(cached) : []
+    } catch { return [] }
+  })
+  const [isLoading, setIsLoading] = useState(() => {
+    try { return !sessionStorage.getItem(CACHE_KEY) } catch { return true }
+  })
+
+  // Persist conversations to sessionStorage so back-navigation restores instantly
+  useEffect(() => {
+    if (conversations.length > 0) {
+      try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(conversations)) } catch {}
+    }
+  }, [conversations, CACHE_KEY])
   const [activeFilter, setActiveFilter] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<

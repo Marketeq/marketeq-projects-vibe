@@ -4,6 +4,23 @@ export class AddUniqueIndexOneToOneThread1776800000000 implements MigrationInter
   name = "AddUniqueIndexOneToOneThread1776800000000";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Check if the threads table exists yet (it may not on first boot when
+    // synchronize creates tables AFTER migrations run).
+    const [tableCheck] = await queryRunner.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'messaging' AND table_name = 'threads'
+      ) AS table_exists
+    `);
+    const tableExists =
+      tableCheck?.table_exists === true ||
+      tableCheck?.table_exists === 'true' ||
+      tableCheck?.table_exists === 't';
+    if (!tableExists) {
+      // Table will be created by synchronize; index will be added on next restart.
+      return;
+    }
+
     // Avoid blocking boot on environments that already contain duplicate 1:1
     // threads. The application layer already reuses an existing thread, so we
     // only add the unique index when the data is clean enough to accept it.
