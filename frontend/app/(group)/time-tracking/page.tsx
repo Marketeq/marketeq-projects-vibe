@@ -2313,7 +2313,7 @@ export default function TimeTrackingPage() {
       <div className="flex bg-gray-50 min-h-screen">
         <LeftSidebar />
 
-        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[338px] min-[1024px]:pr-6 overflow-hidden">
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
           {/* ── Header ── */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">

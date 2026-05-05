@@ -407,7 +407,7 @@ export default function ReportsPage() {
       <div className="flex bg-gray-50">
         <LeftSidebar />
 
-        <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[338px] min-[1024px]:pr-6 overflow-hidden">
+        <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
           <div className="flex-auto min-w-0">
             <div className="pb-4">
               <div className="flex flex-wrap items-start justify-between gap-4">

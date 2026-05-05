@@ -183,7 +183,7 @@ export default function MyJobsPage() {
       <div className="flex min-h-screen bg-gray-50">
         <LeftSidebar />
 
-        <div className="flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[338px] min-[1024px]:pr-6">
+        <div className="flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
             <div className="min-w-0 space-y-6">
               <Card className="overflow-hidden rounded-xl border-primary-100 bg-primary-50">

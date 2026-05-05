@@ -33,7 +33,7 @@ type SidebarSection = {
 }
 
 const sidebarFrameClass =
-  "w-[314px] shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r space-y-6 border-gray-200 p-[15px]"
+  "w-[224px] shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r space-y-6 border-gray-200 p-[15px]"
 
 const renderSections = (sections: SidebarSection[], pathname: string) => {
   const linkClass = (href: string) =>
