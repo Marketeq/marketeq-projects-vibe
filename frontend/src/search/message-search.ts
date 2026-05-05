@@ -190,8 +190,8 @@ export async function buildSearchIndex(opts: BuildOptions): Promise<{
       let aesKey: Uint8Array | null = null
       if (privateKey) aesKey = await unwrapAesKey(thread, token, privateKey)
 
-      const messages = await apiFetch<Message[]>(
-        `/v1/messages/thread/${thread.id}`,
+      const { messages } = await apiFetch<{ messages: Message[] }>(
+        `/v1/messages/thread/${thread.id}?all=true`,
         {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },

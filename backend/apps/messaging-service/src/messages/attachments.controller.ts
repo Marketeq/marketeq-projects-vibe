@@ -14,7 +14,7 @@ import { memoryStorage } from 'multer';
 import { MessagesService } from './messages.service';
 import { GatewayAuthGuard } from '../guards/gateway-auth.guard';
 
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 
 const ALLOWED_MIME = new Set([
   // Images

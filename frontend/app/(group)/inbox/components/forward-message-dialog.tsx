@@ -290,7 +290,7 @@ export function ForwardMessageDialog({
           throw new Error("Encryption key unavailable for source message.")
         }
         originalText = await decryptAES(message.ciphertext, sourceKey)
-      } else if (originalText.trim() === "🔒 Encrypted message") {
+      } else if (originalText.trim() === "Unable to decrypt this message") {
         throw new Error("Source message is encrypted and unavailable for forwarding.")
       }
 

@@ -1,25 +1,68 @@
 // src/hooks/useMessaging.ts
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { decryptAES } from "@/src/crypto/e2ee"
 import { loadKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
 import type { Message } from "@/types/message"
 
-// src/hooks/useMessages.ts
+const PAGE_SIZE = 50
 
-/**
- * Hook that fetches ciphertexts for a conversation and returns
- * an array of decrypted plaintext messages.
- *
- * @param convId the conversation UUID
- * @param token  your JWT for Authorization
- */
+interface MessagesPageResponse {
+  messages: Message[]
+  hasMore: boolean
+  nextCursor: string | null
+}
+
+async function decryptPage(convId: string, rows: Message[] | undefined | null): Promise<Message[]> {
+  if (!rows || rows.length === 0) return []
+  let key: Uint8Array | null = null
+  try {
+    key = loadKey(convId)
+  } catch {
+    // no AES key cached yet
+  }
+
+  return Promise.all(
+    rows.map(async (m) => {
+      const decryptIfNeeded = async (cipher?: string | null) => {
+        if (!cipher) return null
+        if (!key) return "Unable to decrypt this message"
+        try {
+          return await decryptAES(cipher, key)
+        } catch {
+          return "Unable to decrypt this message"
+        }
+      }
+      const [content, quotedContent] = await Promise.all([
+        decryptIfNeeded(m.ciphertext),
+        decryptIfNeeded(m.quotedCiphertext),
+      ])
+      return {
+        ...m,
+        content: content ?? m.content ?? "",
+        quotedContent,
+        // Backend column is `pinned`; frontend reads `isPinned`. Normalize.
+        isPinned: (m as any).isPinned ?? (m as any).pinned ?? false,
+      }
+    })
+  )
+}
+
 export function useMessages(convId: string, token: string, keyReady?: boolean) {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const cursorRef = useRef<string | null>(null)
+  const inFlightOlderRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     setMessages([])
+    setHasMore(false)
+    cursorRef.current = null
+    inFlightOlderRef.current?.abort()
+    inFlightOlderRef.current = null
+
     if (!convId || !token) {
       setLoading(false)
       return
@@ -32,8 +75,8 @@ export function useMessages(convId: string, token: string, keyReady?: boolean) {
     const ac = new AbortController()
     ;(async () => {
       try {
-        const data = await apiFetch<Message[]>(
-          `/v1/messages/thread/${convId}`,
+        const data = await apiFetch<MessagesPageResponse>(
+          `/v1/messages/thread/${convId}?limit=${PAGE_SIZE}`,
           {
             method: "GET",
             headers: { Authorization: `Bearer ${token}` },
@@ -42,40 +85,12 @@ export function useMessages(convId: string, token: string, keyReady?: boolean) {
         )
         if (ac.signal.aborted) return
 
-        let key: Uint8Array | null = null
-        try {
-          key = loadKey(convId)
-        } catch {
-          // no AES key cached yet
-        }
-
-        const decrypted = await Promise.all(
-          data.map(async (m) => {
-            const decryptIfNeeded = async (cipher?: string | null) => {
-              if (!cipher) return null
-              if (!key) return "🔒 Encrypted message"
-              try {
-                return await decryptAES(cipher, key)
-              } catch {
-                return "🔒 Encrypted message"
-              }
-            }
-            const [content, quotedContent] = await Promise.all([
-              decryptIfNeeded(m.ciphertext),
-              decryptIfNeeded(m.quotedCiphertext),
-            ])
-            return {
-              ...m,
-              content: content ?? m.content ?? "",
-              quotedContent,
-              // Backend column is `pinned`; frontend reads `isPinned`. Normalize.
-              isPinned: (m as any).isPinned ?? (m as any).pinned ?? false,
-            }
-          })
-        )
-
+        const decrypted = await decryptPage(convId, data.messages)
         if (ac.signal.aborted) return
+
         setMessages(decrypted)
+        setHasMore(data.hasMore)
+        cursorRef.current = data.nextCursor
       } catch (err: any) {
         if (err?.name === "AbortError") return
         console.error("useMessages error:", err)
@@ -86,5 +101,38 @@ export function useMessages(convId: string, token: string, keyReady?: boolean) {
     return () => ac.abort()
   }, [convId, token, keyReady])
 
-  return { messages, loading }
+  const loadOlder = useCallback(async () => {
+    if (!convId || !token) return
+    if (!cursorRef.current || !hasMore) return
+    if (inFlightOlderRef.current) return
+    const ac = new AbortController()
+    inFlightOlderRef.current = ac
+    setLoadingOlder(true)
+    try {
+      const data = await apiFetch<MessagesPageResponse>(
+        `/v1/messages/thread/${convId}?limit=${PAGE_SIZE}&before=${cursorRef.current}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+          signal: ac.signal,
+        }
+      )
+      if (ac.signal.aborted) return
+
+      const decrypted = await decryptPage(convId, data.messages)
+      if (ac.signal.aborted) return
+
+      setMessages((prev) => [...decrypted, ...prev])
+      setHasMore(data.hasMore)
+      cursorRef.current = data.nextCursor
+    } catch (err: any) {
+      if (err?.name === "AbortError") return
+      console.error("useMessages loadOlder error:", err)
+    } finally {
+      if (inFlightOlderRef.current === ac) inFlightOlderRef.current = null
+      if (!ac.signal.aborted) setLoadingOlder(false)
+    }
+  }, [convId, token, hasMore])
+
+  return { messages, loading, loadingOlder, hasMore, loadOlder }
 }

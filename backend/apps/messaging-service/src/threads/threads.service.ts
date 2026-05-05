@@ -78,6 +78,20 @@ export class ThreadsService {
             .getRawOne();
         }
         const s = stateByThread.get(t.id);
+
+        const unreadQb = this.repo.manager
+          .createQueryBuilder('messaging.messages', 'm')
+          .where('m."threadId" = :tid', { tid: t.id })
+          .andWhere('m.deleted = false')
+          .andWhere('m."senderId" != :userId', { userId });
+        if (s?.lastReadAt) {
+          unreadQb.andWhere(
+            `(m."createdAt" AT TIME ZONE 'UTC') > :lastReadAt`,
+            { lastReadAt: s.lastReadAt },
+          );
+        }
+        const unreadCount = await unreadQb.getCount();
+
         return {
           ...t,
           lastMessage: lastMessage
@@ -91,6 +105,7 @@ export class ThreadsService {
           isTrashed: s?.isTrashed ?? false,
           markedUnread: s?.markedUnread ?? false,
           lastReadAt: s?.lastReadAt ?? null,
+          unreadCount,
         };
       }),
     );

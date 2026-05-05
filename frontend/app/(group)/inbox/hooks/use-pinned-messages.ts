@@ -13,8 +13,8 @@ export function usePinnedMessages(convId: string, token: string) {
     ;(async () => {
       try {
         // 1) Fetch all messages and filter pinned
-        const data = await apiFetch<Message[]>(
-          `/v1/messages/thread/${convId}`,
+        const { messages: data } = await apiFetch<{ messages: Message[] }>(
+          `/v1/messages/thread/${convId}?all=true`,
           {
             method: "GET",
             headers: { Authorization: `Bearer ${token}` },
@@ -36,11 +36,11 @@ export function usePinnedMessages(convId: string, token: string) {
             }
             const ct = (m as any).ciphertext
             if (!ct) return normalized // legacy plaintext row
-            if (!key) return { ...normalized, content: "🔒 Encrypted message" }
+            if (!key) return { ...normalized, content: "Unable to decrypt this message" }
             try {
               return { ...normalized, content: await decryptAES(ct, key) }
             } catch {
-              return { ...normalized, content: "🔒 Encrypted message" }
+              return { ...normalized, content: "Unable to decrypt this message" }
             }
           })
         )

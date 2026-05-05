@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useCallback, useMemo, useRef, useState } from "react"
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useEffect } from "react"
 import { decryptAES, decryptWithPrivateKey } from "@/src/crypto/e2ee"
 import { exportPrivateKey } from "@/src/crypto/keys"
@@ -92,6 +92,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui"
 import { Spinner } from "@/components/ui/spinner/spinner"
+import { toast } from "@/components/ui/toast/use-toast"
 import { useFileUpload } from "../hooks/use-file-upload"
 import {
   openDropboxChooser,
@@ -127,6 +128,50 @@ interface ChatsProps {
     createdAt: string
     attachments?: Message["attachments"]
   }) => void
+}
+
+const COMPOSER_MAX_CHARS = 8000
+
+const MAX_FILE_BYTES = 500 * 1024 * 1024
+
+const ALLOWED_MIME = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/csv",
+  "application/zip",
+  "video/mp4",
+  "video/quicktime",
+])
+
+const ALLOWED_TYPES_LABEL =
+  "PNG, JPG, GIF, WEBP, SVG, PDF, DOC(X), XLS(X), PPT(X), TXT, CSV, ZIP, MP4, MOV"
+
+interface RejectedFile {
+  id: string
+  name: string
+  size: number
+  error: string
+}
+
+const validateFile = (file: File): string | null => {
+  if (file.size > MAX_FILE_BYTES) {
+    return `File exceeds ${Math.round(MAX_FILE_BYTES / (1024 * 1024))}MB limit`
+  }
+  if (!ALLOWED_MIME.has(file.type)) {
+    return `Unsupported file type. Allowed: ${ALLOWED_TYPES_LABEL}`
+  }
+  return null
 }
 
 interface UploadedAttachmentResult {
@@ -170,6 +215,7 @@ export function Chats({
 }: ChatsProps) {
   const [textareaValue, setTextareaValue] = useState("")
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  const messagesScrollRef = useRef<HTMLDivElement>(null)
   const [uploadModalMode, setUploadModalMode] = useState<
     "image" | "file" | null
   >(null)
@@ -181,6 +227,7 @@ export function Chats({
   const [pinnedMsgs, setPinnedMsgs] = useState<Message[]>([])
   const pinnedFetchRef = useRef<AbortController | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [rejectedFiles, setRejectedFiles] = useState<RejectedFile[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [forwardOpen, setForwardOpen] = useState(false)
@@ -188,6 +235,7 @@ export function Chats({
   const [keyReady, setKeyReady] = useState(false)
   const [keyError, setKeyError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showEditDeleteConfirm, setShowEditDeleteConfirm] = useState(false)
   const [showBlockConfirm, setShowBlockConfirm] = useState(false)
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const [editingMessage, setEditingMessage] = useState<Message | null>(null)
@@ -275,6 +323,7 @@ export function Chats({
     setEditingMessage(null)
     setTextareaValue("")
     setSelectedFiles([])
+    setRejectedFiles([])
     setUploadModalMode(null)
   }, [selectedConversation?.id])
 
@@ -285,7 +334,13 @@ export function Chats({
   // Auto mark-read when opening a conversation
   useEffect(() => {
     if (!selectedConversation) return
-    threadActions.markRead(selectedConversation.id).catch(() => {})
+    const threadId = selectedConversation.id
+    threadActions.markRead(threadId).catch(() => {})
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("inbox:thread-read", { detail: { threadId } })
+      )
+    }
   }, [selectedConversation?.id])
 
   // 1) unwrap the AES key once per conversation
@@ -341,19 +396,41 @@ export function Chats({
     }
   }
 
-  // File selection handler
+  const addFiles = (files: File[]) => {
+    if (files.length === 0) return
+    const valid: File[] = []
+    const rejected: RejectedFile[] = []
+    for (const f of files) {
+      const error = validateFile(f)
+      if (error) {
+        rejected.push({
+          id: `${f.name}-${f.size}-${f.lastModified}-${Math.random()}`,
+          name: f.name,
+          size: f.size,
+          error,
+        })
+      } else {
+        valid.push(f)
+      }
+    }
+    if (valid.length) setSelectedFiles((prev) => [...prev, ...valid])
+    if (rejected.length) setRejectedFiles((prev) => [...prev, ...rejected])
+  }
+
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
     if (files.length > 0) {
-      setSelectedFiles((prev) => [...prev, ...files])
-      // Reset the input value to allow selecting the same file again
+      addFiles(files)
       event.target.value = ""
     }
   }
 
-  // Remove selected file
   const removeSelectedFile = (index: number) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const removeRejectedFile = (id: string) => {
+    setRejectedFiles((prev) => prev.filter((r) => r.id !== id))
   }
 
   const [cloudFetching, setCloudFetching] = useState<{
@@ -376,7 +453,7 @@ export function Chats({
         provider === "google-drive" ? openGoogleDrivePicker : openDropboxChooser
       const files = await picker((count) => setCloudFetching({ provider, count }))
       if (files.length > 0) {
-        setSelectedFiles((prev) => [...prev, ...files])
+        addFiles(files)
       }
     } catch (err) {
       console.error(`Cloud picker (${provider}) failed:`, err)
@@ -401,7 +478,13 @@ export function Chats({
   const [bottomRef, { height }] = useMeasure<HTMLDivElement>()
 
   // 2) fetch & decrypt messages
-  const { messages: fetchedMsgs, loading: messagesLoading } = useMessages(
+  const {
+    messages: fetchedMsgs,
+    loading: messagesLoading,
+    loadingOlder,
+    hasMore,
+    loadOlder,
+  } = useMessages(
     selectedConversation ? selectedConversation.id : "",
     jwtToken,
     keyReady
@@ -420,11 +503,55 @@ export function Chats({
 
   // 2.1) local messages state for optimistic updates
   const [localMsgs, setLocalMsgs] = useState<Message[]>([])
+  const preLoadOlderHeightRef = useRef<{
+    scrollHeight: number
+    scrollTop: number
+  } | null>(null)
   useEffect(() => {
     if (fetchedMsgs) {
       setLocalMsgs(fetchedMsgs)
     }
   }, [fetchedMsgs])
+
+  const isNearBottomRef = useRef(true)
+  useEffect(() => {
+    const viewport = messagesScrollRef.current?.querySelector(
+      "[data-radix-scroll-area-viewport]"
+    ) as HTMLElement | null
+    if (!viewport) return
+    const onScroll = () => {
+      const distanceFromBottom =
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
+      isNearBottomRef.current = distanceFromBottom < 120
+      if (viewport.scrollTop < 120 && hasMore && !loadingOlder) {
+        preLoadOlderHeightRef.current = {
+          scrollHeight: viewport.scrollHeight,
+          scrollTop: viewport.scrollTop,
+        }
+        loadOlder()
+      }
+    }
+    viewport.addEventListener("scroll", onScroll, { passive: true })
+    onScroll()
+    return () => viewport.removeEventListener("scroll", onScroll)
+  }, [hasMore, loadingOlder, loadOlder])
+
+  useLayoutEffect(() => {
+    if (!preLoadOlderHeightRef.current) return
+    if (loadingOlder) return
+    const viewport = messagesScrollRef.current?.querySelector(
+      "[data-radix-scroll-area-viewport]"
+    ) as HTMLElement | null
+    if (!viewport) {
+      preLoadOlderHeightRef.current = null
+      return
+    }
+    const { scrollHeight: prevHeight, scrollTop: prevTop } =
+      preLoadOlderHeightRef.current
+    const delta = viewport.scrollHeight - prevHeight
+    if (delta > 0) viewport.scrollTop = prevTop + delta
+    preLoadOlderHeightRef.current = null
+  }, [loadingOlder, localMsgs.length])
 
   // Hoist decrypted messages up so the sidebar can search over them
   // client-side. Required because backend search only matches plaintext
@@ -564,7 +691,7 @@ export function Chats({
           quotedPlain = await decryptAES(incoming.quotedCiphertext, key)
         } catch (err) {
           console.error("Failed to decrypt quoted content:", err)
-          quotedPlain = "🔒 Encrypted message"
+          quotedPlain = "Unable to decrypt this message"
         }
       }
       setLocalMsgs((prev) => {
@@ -631,7 +758,7 @@ export function Chats({
         }
       } catch (err) {
         console.error("Failed to decrypt edited message:", err)
-        plain = "🔒 Encrypted message"
+        plain = "Unable to decrypt this message"
       }
       updateMessage(incoming.id, {
         content: plain,
@@ -721,7 +848,7 @@ export function Chats({
       } catch (err) {
         console.error("Failed to decrypt uploaded attachment caption:", err)
         if (result.message.ciphertext) {
-          displayContent = "🔒 Encrypted message"
+          displayContent = "Unable to decrypt this message"
         }
       }
 
@@ -760,8 +887,17 @@ export function Chats({
 
   // 4) scroll to bottom on new messages
   const scrollRef = useRef<HTMLDivElement>(null)
+  const lastBottomIdRef = useRef<string | null>(null)
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" })
+    const last = localMsgs[localMsgs.length - 1]
+    const currentLastId = last?.id ?? null
+    if (!currentLastId || currentLastId === lastBottomIdRef.current) return
+    const isOwn = last?.senderId === currentUser?.id
+    const wasFirstLoad = lastBottomIdRef.current === null
+    lastBottomIdRef.current = currentLastId
+    if (wasFirstLoad || isOwn || isNearBottomRef.current) {
+      scrollRef.current?.scrollIntoView({ behavior: "smooth" })
+    }
   }, [localMsgs])
 
   // 5) load receiver's profile
@@ -807,6 +943,7 @@ export function Chats({
           await appendUploadedMessage(uploaded)
         }
         setSelectedFiles([])
+        setRejectedFiles([])
         setTextareaValue("")
         sendTyping(false)
         setReplyingTo(null)
@@ -881,7 +1018,10 @@ export function Chats({
   const handleSaveEdit = async () => {
     if (!editingMessage || !selectedConversation) return
     const newContent = textareaValue.trim()
-    if (!newContent) return
+    if (!newContent) {
+      setShowEditDeleteConfirm(true)
+      return
+    }
     if (newContent === (editingMessage.content || "").trim()) {
       // no change — just exit edit mode
       handleCancelEdit()
@@ -905,6 +1045,24 @@ export function Chats({
         content: prevContent,
         edited: !!editingSnapshot.edited,
       })
+    }
+  }
+
+  const handleConfirmEditDelete = async () => {
+    if (!editingMessage) return
+    const messageId = editingMessage.id
+    setShowEditDeleteConfirm(false)
+    handleLocalDelete(messageId)
+    setEditingMessage(null)
+    setTextareaValue("")
+    try {
+      await apiFetch(`/v1/messages/${messageId}`, {
+        method: "DELETE",
+        headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
+      })
+    } catch (err) {
+      console.error("Delete from edit failed", err)
+      handleLocalRestore(messageId)
     }
   }
 
@@ -1001,13 +1159,12 @@ export function Chats({
       const convId = selectedConversation.id
       setPinnedMsgs([])
       try {
-        const allMsgs = await apiFetch<Message[]>(
-          `/v1/messages/thread/${convId}`,
-          {
-            headers: { Authorization: `Bearer ${jwtToken}` },
-            signal: ac.signal,
-          }
-        )
+        const { messages: allMsgs } = await apiFetch<{
+          messages: Message[]
+        }>(`/v1/messages/thread/${convId}?all=true`, {
+          headers: { Authorization: `Bearer ${jwtToken}` },
+          signal: ac.signal,
+        })
         if (ac.signal.aborted) return
         const pinned = allMsgs.filter((m) => m.pinned || m.isPinned)
 
@@ -1021,11 +1178,11 @@ export function Chats({
               isPinned: (m as any).isPinned ?? (m as any).pinned ?? false,
             }
             if (!m.ciphertext) return normalized
-            if (!key) return { ...normalized, content: "🔒 Encrypted message" }
+            if (!key) return { ...normalized, content: "Unable to decrypt this message" }
             try {
               return { ...normalized, content: await decryptAES(m.ciphertext, key) }
             } catch {
-              return { ...normalized, content: "🔒 Encrypted message" }
+              return { ...normalized, content: "Unable to decrypt this message" }
             }
           })
         )
@@ -1417,6 +1574,28 @@ export function Chats({
                 </div>
               </DialogContent>
             </Dialog>
+
+            <Dialog
+              open={showEditDeleteConfirm}
+              onOpenChange={setShowEditDeleteConfirm}
+            >
+              <DialogContent className="max-w-[348px] p-7 rounded-xl">
+                <DialogTitle>Delete this message?</DialogTitle>
+                <DialogDescription className="mt-2">
+                  Saving an empty message will delete it for everyone.
+                </DialogDescription>
+                <div className="mt-8 grid grid-cols-2 gap-x-3">
+                  <DialogClose asChild>
+                    <Button visual="gray" variant="outlined">
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                  <Button onClick={handleConfirmEditDelete}>
+                    Yes, Delete
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </div>
@@ -1427,11 +1606,21 @@ export function Chats({
         style={{ ...({ "--h": toPxIfNumber(height) } as any) }}
       >
         <ScrollArea
+          ref={messagesScrollRef}
           className="h-full"
           viewportClassName="h-full"
           scrollBar={<ScrollBar className="w-4 p-1" />}
         >
           <div className="p-8 grid gap-y-6">
+            {hasMore && (
+              <div className="flex items-center justify-center py-3 text-gray-400">
+                {loadingOlder ? (
+                  <Spinner size={20} strokeWidth={3} />
+                ) : (
+                  <span className="text-xs">Scroll up for older messages</span>
+                )}
+              </div>
+            )}
             {isSwitching && (
               <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
                 <Spinner size={24} strokeWidth={3} />
@@ -1607,7 +1796,7 @@ export function Chats({
                 e.preventDefault()
                 const files = Array.from(e.dataTransfer.files || [])
                 if (files.length > 0) {
-                  setSelectedFiles((prev) => [...prev, ...files])
+                  addFiles(files)
                 }
               }}
             >
@@ -1669,11 +1858,44 @@ export function Chats({
                   </div>
                 )
               })}
+              {rejectedFiles.map((r) => {
+                const sizeLabel =
+                  r.size < 1024
+                    ? `${r.size} B`
+                    : r.size < 1024 * 1024
+                      ? `${(r.size / 1024).toFixed(1)} KB`
+                      : `${(r.size / (1024 * 1024)).toFixed(1)} MB`
+                return (
+                  <div
+                    key={`modal-rejected-${r.id}`}
+                    className="flex items-center gap-x-3 rounded-md border border-error-300 bg-error-25 px-3 py-2"
+                  >
+                    <div className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-error-50 text-error-500">
+                      <AlertTriangle className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-auto">
+                      <p className="truncate text-xs font-semibold text-gray-900">
+                        {r.name}
+                      </p>
+                      <p className="text-[11px] text-error-600">
+                        {sizeLabel} • {r.error}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-semibold text-gray-500 hover:text-gray-700"
+                      onClick={() => removeRejectedFile(r.id)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )
+              })}
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
               {uploadModalMode === "image"
-                ? "Supported formats: PNG, JPG, GIF, SVG. Max 50 MB per file."
-                : "Supported formats: PDF, DOC, JPG, PNG, MP4. Max 50 MB per file."}
+                ? "Supported formats: PNG, JPG, GIF, SVG. Max 500 MB per file."
+                : "Supported formats: PDF, DOC, JPG, PNG, MP4. Max 500 MB per file."}
             </p>
             <div className="mt-8 grid grid-cols-2 gap-x-3">
               <Button
@@ -1702,6 +1924,7 @@ export function Chats({
                       await appendUploadedMessage(uploaded)
                     }
                     setSelectedFiles([])
+                    setRejectedFiles([])
                     setUploadModalMode(null)
                   } catch (err) {
                     console.error("Attachment upload failed:", err)
@@ -1741,7 +1964,7 @@ export function Chats({
           </div>
         )}
 
-        {selectedFiles.length > 0 && (
+        {(selectedFiles.length > 0 || rejectedFiles.length > 0) && (
           <div className="px-3 pt-2 flex flex-col gap-y-2">
             {selectedFiles.map((f, i) => {
               const sizeLabel =
@@ -1768,6 +1991,39 @@ export function Chats({
                     type="button"
                     className="shrink-0 text-xs font-semibold text-gray-500 hover:text-gray-700"
                     onClick={() => removeSelectedFile(i)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              )
+            })}
+            {rejectedFiles.map((r) => {
+              const sizeLabel =
+                r.size < 1024
+                  ? `${r.size} B`
+                  : r.size < 1024 * 1024
+                    ? `${(r.size / 1024).toFixed(1)} KB`
+                    : `${(r.size / (1024 * 1024)).toFixed(1)} MB`
+              return (
+                <div
+                  key={`rejected-${r.id}`}
+                  className="flex items-center gap-x-3 rounded-md border border-error-300 bg-error-25 px-3 py-2"
+                >
+                  <div className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-error-50 text-error-500">
+                    <AlertTriangle className="size-4" />
+                  </div>
+                  <div className="min-w-0 flex-auto">
+                    <p className="truncate text-xs font-semibold text-gray-900">
+                      {r.name}
+                    </p>
+                    <p className="text-[11px] text-error-600">
+                      {sizeLabel} • {r.error}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="shrink-0 text-xs font-semibold text-gray-500 hover:text-gray-700"
+                    onClick={() => removeRejectedFile(r.id)}
                   >
                     Remove
                   </button>
@@ -1862,7 +2118,31 @@ export function Chats({
               else sendTyping(false)
             }}
             onBlur={() => sendTyping(false)}
+            onPaste={(e) => {
+              const pasted = e.clipboardData.getData("text")
+              if (!pasted) return
+              const target = e.currentTarget
+              const selStart = target.selectionStart ?? textareaValue.length
+              const selEnd = target.selectionEnd ?? textareaValue.length
+              const projected =
+                textareaValue.slice(0, selStart) +
+                pasted +
+                textareaValue.slice(selEnd)
+              if (projected.length <= COMPOSER_MAX_CHARS) return
+              e.preventDefault()
+              const room = COMPOSER_MAX_CHARS - (textareaValue.length - (selEnd - selStart))
+              const truncated = pasted.slice(0, Math.max(0, room))
+              const next =
+                textareaValue.slice(0, selStart) +
+                truncated +
+                textareaValue.slice(selEnd)
+              setTextareaValue(next)
+              toast({
+                title: `Pasted content was truncated to ${COMPOSER_MAX_CHARS.toLocaleString()} characters`,
+              })
+            }}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return
               if (editingMessage) {
                 if (e.key === "Escape") {
                   e.preventDefault()
@@ -1873,8 +2153,6 @@ export function Chats({
                 }
                 return
               }
-              // Standard chat UX: Enter sends, Shift+Enter inserts newline
-              // (so multi-line composing still works for users who want it).
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
                 handleSendMessage()
@@ -1902,7 +2180,6 @@ export function Chats({
                   type="button"
                   onClick={handleSaveEdit}
                   disabled={
-                    !textareaValue.trim() ||
                     !keyReady ||
                     !!keyError ||
                     textareaValue.trim() === (editingMessage.content || "").trim()
@@ -1983,7 +2260,7 @@ export function Chats({
         onConfirm={(files) => {
           setCloudFetching(null)
           if (files.length > 0) {
-            setSelectedFiles((prev) => [...prev, ...files])
+            addFiles(files)
           }
         }}
       />

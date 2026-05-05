@@ -37,6 +37,7 @@ export interface Conversation {
   isTrashed: boolean
   markedUnread: boolean
   lastReadAt: string | null
+  unreadCount?: number
   group?: GroupInfo // only if isGroup is true
   messages?: Message[]
   participantName?: string

@@ -169,6 +169,42 @@ const LeftSidebar = ({
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [activeFilter, setActiveFilter] = useState<string>("all")
+  const [threadsRefetchToken, setThreadsRefetchToken] = useState(0)
+  const threadListScrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        setThreadsRefetchToken((t) => t + 1)
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => document.removeEventListener("visibilitychange", onVisibility)
+  }, [])
+
+  useEffect(() => {
+    const onThreadRead = (e: Event) => {
+      const detail = (e as CustomEvent<{ threadId?: string }>).detail
+      if (!detail?.threadId) return
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === detail.threadId
+            ? { ...c, markedUnread: false, unreadCount: 0 }
+            : c
+        )
+      )
+    }
+    window.addEventListener("inbox:thread-read", onThreadRead)
+    return () => window.removeEventListener("inbox:thread-read", onThreadRead)
+  }, [])
+
+  useEffect(() => {
+    const viewport = threadListScrollRef.current?.querySelector(
+      "[data-radix-scroll-area-viewport]"
+    ) as HTMLElement | null
+    if (viewport) viewport.scrollTop = 0
+  }, [activeFilter])
+
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<
     Array<{ id: string; threadId: string; senderId: string; content: string; createdAt: string }>
@@ -186,7 +222,7 @@ const LeftSidebar = ({
           case "starred":
             return c.isStarred
           case "unread":
-            return c.markedUnread
+            return c.markedUnread || (c.unreadCount ?? 0) > 0
           case "sent":
             return c.lastMessage?.m_senderId === currentUserId
           case "archived":
@@ -461,6 +497,45 @@ const LeftSidebar = ({
       cancelled = true
     }
   }, [currentUserId, token, initialThreadId])
+
+  useEffect(() => {
+    if (threadsRefetchToken === 0) return
+    if (!currentUserId || !token) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const fresh = await apiFetch<Conversation[]>("/v1/threads", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (cancelled) return
+        const byId = new Map(fresh.map((c) => [c.id, c]))
+        setConversations((prev) =>
+          prev.map((c) => {
+            const fresh = byId.get(c.id)
+            if (!fresh) return c
+            return {
+              ...c,
+              unreadCount: (fresh as any).unreadCount ?? c.unreadCount,
+              markedUnread: fresh.markedUnread,
+              lastReadAt: fresh.lastReadAt,
+              isPinned: fresh.isPinned,
+              isStarred: fresh.isStarred,
+              isArchived: fresh.isArchived,
+              isSpam: fresh.isSpam,
+              isMuted: fresh.isMuted,
+              isTrashed: fresh.isTrashed,
+            }
+          })
+        )
+      } catch (err) {
+        console.error("[LeftSidebar] visibility refetch failed", err)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [threadsRefetchToken, currentUserId, token])
 
   useEffect(() => {
     if (!privateKey || !token || conversations.length === 0) return
@@ -1176,7 +1251,11 @@ const LeftSidebar = ({
 
       {/* Force ScrollArea viewport to display:block — Radix's table-display
           breaks min-w-0 / width:100% on descendants (e.g. link-card images). */}
-      <ScrollArea className="flex-1 min-h-0" viewportClassName="[&>div]:!block">
+      <ScrollArea
+        ref={threadListScrollRef}
+        className="flex-1 min-h-0"
+        viewportClassName="[&>div]:!block"
+      >
         <div className="flex flex-col">
           {searching ? (
             <SearchResultsPanel
