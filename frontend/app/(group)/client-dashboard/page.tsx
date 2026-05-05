@@ -915,7 +915,7 @@ export default function ClientDashboard() {
         </div>
       )}
       <AuthenticatedRoute>
-        <LeftSidebar />
+        <LeftSidebar forceRole="CLIENT" />
         <Content profile={profile} />
       </AuthenticatedRoute>
     </>

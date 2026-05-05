@@ -9,7 +9,13 @@ import {
   findFavoriteByItemId,
   removeFavorite,
 } from "@/src/lib/api/favorites"
+import {
+  AutocompleteAPI,
+  type AutocompleteCategorySuggestion,
+} from "@/service/http/autocomplete"
+import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
+import { TagsInputHiddenInput } from "@ark-ui/react"
 import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
 import {
   buildProjectStaticContentFromGateway,
@@ -17,7 +23,7 @@ import {
   type ProjectStaticIcon,
 } from "@/lib/project-details/project-static-content-from-api"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
-import { cn, noop, toPxIfNumber } from "@/utils/functions"
+import { cn, getIsNotEmpty, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
   AlertCircle,
@@ -27,8 +33,12 @@ import {
   Check,
   CheckCircle,
   ChevronDown,
+  ChevronsDown,
+  ChevronsUp,
   Clock,
+  Edit03,
   Expand06,
+  Eye,
   FileText,
   Flag,
   HelpCircle,
@@ -37,9 +47,12 @@ import {
   Info,
   MapPin,
   MessageTextCircle01,
+  MoreHorizontal,
   MessageTextSquare01,
   Plus,
+  Plus2,
   Rocket02,
+  SearchMd,
   Send,
   Share,
   Share06,
@@ -49,9 +62,11 @@ import {
   Smile,
   Star,
   Stars02,
+  Trash2,
   UploadCloud,
   Users03,
   X,
+  X2,
 } from "@blend-metrics/icons"
 import {
   DropboxBrand,
@@ -74,6 +89,9 @@ import {
   ShowMoreLessComp,
   ShowMoreLessRoot,
 } from "@/components/show-more-less"
+import { GripVertical2 } from "@/components/icons/grip-vertical-2"
+import { ScopeBuilder } from "@/components/scope-builder"
+import { useInviteWindowStore } from "@/components/invite-window"
 import { SaveButton, SectionSearchBar } from "@/components/talent-profile-comps"
 import {
   Accordion,
@@ -91,6 +109,7 @@ import {
   AvatarImage,
   Badge,
   Button,
+  Card,
   Carousel,
   CarouselContent,
   CarouselItem,
@@ -116,6 +135,7 @@ import {
   IconButton,
   Input,
   InputGroup,
+  InputLeftElement,
   InputRightElement,
   Label,
   Listbox,
@@ -132,12 +152,22 @@ import {
   RatingGroupRoot,
   ScrollArea,
   ScrollBar,
+  Switch,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
+  TagsInputContext,
+  TagsInputControl,
+  TagsInputInput,
+  TagsInputItem,
+  TagsInputItemDeleteTrigger,
+  TagsInputItemInput,
+  TagsInputItemPreview,
+  TagsInputItemText,
+  TagsInputRoot,
   Tabs,
   TabsContent,
   TabsList,
@@ -149,6 +179,92 @@ import {
   TooltipTrigger,
   useCarousel,
 } from "@/components/ui"
+
+const FALLBACK_CATEGORY_OPTIONS = [
+  "Web Development",
+  "Mobile Development",
+  "UI/UX Design",
+  "Graphic Design",
+  "Software Engineering",
+  "Product Design",
+  "Frontend Development",
+  "Backend Development",
+  "Data Science",
+  "Artificial Intelligence",
+  "Cloud Computing",
+  "Cybersecurity",
+]
+
+const MAX_SUBCATEGORIES_PER_CATEGORY = 5
+
+const PROJECT_TYPE_OPTIONS = [
+  "Website",
+  "Mobile App",
+  "Desktop App",
+  "API / Backend",
+  "Plugin / Extension",
+  "SaaS Platform",
+  "Other",
+]
+
+const isActiveCategoryNode = (node: CategoryTreeNode) => node.approved
+
+const collectCategoryDescendants = (
+  node?: CategoryTreeNode
+): CategoryTreeNode[] => {
+  if (!node?.children?.length) return []
+  return node.children.flatMap((child) => {
+    const descendants = collectCategoryDescendants(child)
+    return isActiveCategoryNode(child) ? [child, ...descendants] : descendants
+  })
+}
+
+const collectSelectableCategories = (nodes: CategoryTreeNode[]) => {
+  const secondLevelNodes = nodes.flatMap((node) =>
+    (node.children ?? []).filter(isActiveCategoryNode)
+  )
+  return secondLevelNodes.length > 0
+    ? secondLevelNodes
+    : nodes.filter(isActiveCategoryNode)
+}
+
+const indexCategoryTreeByName = (nodes: CategoryTreeNode[]) => {
+  const index = new Map<string, CategoryTreeNode>()
+  const visit = (entries: CategoryTreeNode[]) => {
+    entries.forEach((entry) => {
+      if (isActiveCategoryNode(entry)) index.set(entry.name, entry)
+      if (entry.children?.length) visit(entry.children)
+    })
+  }
+  visit(nodes)
+  return index
+}
+
+const findSuggestedSubCategory = (node?: CategoryTreeNode): string | null => {
+  const [firstDescendant] = collectCategoryDescendants(node)
+  return firstDescendant?.name ?? null
+}
+
+const getUniqueOptions = (values: string[]) =>
+  Array.from(
+    new Set(values.map((value) => value.trim()).filter((value) => value.length))
+  )
+
+type SuggestedCategoryOption = {
+  category: string
+  subCategory: string
+}
+
+const DEFAULT_SUGGESTED_CATEGORIES: SuggestedCategoryOption[] = [
+  { category: "Design", subCategory: "UI/UX Design" },
+  { category: "Development", subCategory: "Mobile App" },
+  { category: "Data Science", subCategory: "Machine Learning" },
+]
+
+type CategoryRow = {
+  category: string
+  subCategories: string[]
+}
 
 const Inbox = ({ children }: { children?: React.ReactNode }) => {
   const [pinnedChats, setPinnedChats] = React.useState(0)
@@ -510,6 +626,265 @@ export default function ProjectDetails() {
   const [selected, setSelected] = React.useState<string>("Details")
   const [descDialogOpen, setDescDialogOpen] = React.useState(false)
   const [descDraft, setDescDraft] = React.useState("")
+  const [projectInfoOpen, setProjectInfoOpen] = React.useState(false)
+  const [infoTitle, setInfoTitle] = React.useState("")
+  const [infoSummary, setInfoSummary] = React.useState("")
+  const [infoProjectType, setInfoProjectType] = React.useState("Website")
+  const [infoTab, setInfoTab] = React.useState("Basic Info")
+  const [categoryTree, setCategoryTree] = React.useState<CategoryTreeNode[]>([])
+  const [categoryOptions, setCategoryOptions] = React.useState<string[]>(FALLBACK_CATEGORY_OPTIONS)
+  const [subCategoryOptions, setSubCategoryOptions] = React.useState<string[]>([])
+  const [activeCategoryIndex, setActiveCategoryIndex] = React.useState(0)
+  const [suggested, setSuggested] = React.useState<SuggestedCategoryOption[]>(DEFAULT_SUGGESTED_CATEGORIES)
+  const [infoCategories, setInfoCategories] = React.useState<CategoryRow[]>([
+    { category: "", subCategories: [] },
+    { category: "", subCategories: [] },
+    { category: "", subCategories: [] },
+  ])
+  const [infoCatErrors, setInfoCatErrors] = React.useState<(string | null)[]>([null, null, null])
+  const [detailsDialogOpen, setDetailsDialogOpen] = React.useState(false)
+  const [teamDialogOpen, setTeamDialogOpen] = React.useState(false)
+  const [questionsDialogOpen, setQuestionsDialogOpen] = React.useState(false)
+  const [questionsTab, setQuestionsTab] = React.useState("FAQs")
+  const [recentQTab, setRecentQTab] = React.useState("all")
+  const [openFaqIndex, setOpenFaqIndex] = React.useState<number | null>(null)
+  const [teamTab, setTeamTab] = React.useState("Team Lead")
+  const inviteWindow = useInviteWindowStore()
+  const [detailsLangs, setDetailsLangs] = React.useState<string[]>([])
+  const [detailsTech, setDetailsTech] = React.useState<string[]>([])
+  const [detailsIndustry, setDetailsIndustry] = React.useState<string[]>([])
+  const [detailsTags, setDetailsTags] = React.useState<string[]>([])
+  const [detailsSkills, setDetailsSkills] = React.useState<string[]>([])
+  const [detailsTools, setDetailsTools] = React.useState<string[]>([])
+  const categoryRequestRef = React.useRef(0)
+  const categoryDebounceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Load category tree on mount
+  React.useEffect(() => {
+    const loadCategoryTree = async () => {
+      try {
+        const response = await CategoryAPI.getTree()
+        const nodes: CategoryTreeNode[] = Array.isArray(response?.data)
+          ? response.data
+          : []
+        const selectableCategories = collectSelectableCategories(nodes)
+        const nextCategoryOptions = getUniqueOptions(
+          selectableCategories.map((node) => node.name)
+        )
+        const nextSuggested = selectableCategories
+          .map((node) => {
+            const subCategory = findSuggestedSubCategory(node)
+            return subCategory ? { category: node.name, subCategory } : null
+          })
+          .filter((value): value is SuggestedCategoryOption => value !== null)
+
+        setCategoryTree(nodes)
+        if (getIsNotEmpty(nextCategoryOptions)) {
+          setCategoryOptions(nextCategoryOptions)
+        }
+        if (getIsNotEmpty(nextSuggested)) {
+          setSuggested(nextSuggested)
+        }
+      } catch {
+        // Keep fallback options when category-service is unavailable.
+      }
+    }
+    void loadCategoryTree()
+    return () => {
+      if (categoryDebounceTimerRef.current) {
+        clearTimeout(categoryDebounceTimerRef.current)
+      }
+    }
+  }, [])
+
+  const categoryNodesByName = React.useMemo(
+    () => indexCategoryTreeByName(categoryTree),
+    [categoryTree]
+  )
+
+  const getSubCategoryOptionsForCategory = React.useCallback(
+    (categoryName?: string, query = "") => {
+      if (!categoryName) return []
+      const normalizedQuery = query.trim().toLowerCase()
+      const activeNode = categoryNodesByName.get(categoryName)
+      const sourceNodes = activeNode ? collectCategoryDescendants(activeNode) : []
+      return getUniqueOptions(
+        sourceNodes
+          .map((node) => node.name)
+          .filter((name) =>
+            normalizedQuery ? name.toLowerCase().includes(normalizedQuery) : true
+          )
+      )
+    },
+    [categoryNodesByName, categoryTree]
+  )
+
+  // Keep subCategoryOptions in sync when active category index changes
+  React.useEffect(() => {
+    const activeCategoryName = infoCategories[activeCategoryIndex]?.category
+    setSubCategoryOptions(getSubCategoryOptionsForCategory(activeCategoryName))
+  }, [activeCategoryIndex, infoCategories, getSubCategoryOptionsForCategory])
+
+  const fetchCategoriesAutocomplete = React.useCallback(
+    (index: 0 | 1 | 2, query: string) => {
+      const trimmedQuery = query.trim()
+      setActiveCategoryIndex(index)
+      const activeCategoryName = infoCategories[index]?.category
+      const fallbackOptions = getSubCategoryOptionsForCategory(activeCategoryName)
+
+      if (!activeCategoryName) {
+        setSubCategoryOptions([])
+        return
+      }
+      if (!trimmedQuery) {
+        setSubCategoryOptions(fallbackOptions)
+        return
+      }
+      if (categoryDebounceTimerRef.current) {
+        clearTimeout(categoryDebounceTimerRef.current)
+      }
+      categoryDebounceTimerRef.current = setTimeout(async () => {
+        const currentRequestId = ++categoryRequestRef.current
+        try {
+          const response = await AutocompleteAPI.getCategories(trimmedQuery)
+          if (currentRequestId !== categoryRequestRef.current) return
+          const values: AutocompleteCategorySuggestion[] = Array.isArray(response?.data)
+            ? response.data
+            : []
+          const scopedSubCategoryOptions = getSubCategoryOptionsForCategory(activeCategoryName)
+          const allowedSubCategories = new Set(
+            scopedSubCategoryOptions.map((value) => value.toLowerCase())
+          )
+          const hasScopedSubCategories = allowedSubCategories.size > 0
+          const matchingSubCategories = getUniqueOptions(
+            values
+              .filter((item) => item.type === "subcategory")
+              .map((item) => item.value.trim())
+              .filter((value) =>
+                activeCategoryName && hasScopedSubCategories
+                  ? allowedSubCategories.has(value.toLowerCase())
+                  : true
+              )
+          )
+          setSubCategoryOptions(
+            getIsNotEmpty(matchingSubCategories)
+              ? matchingSubCategories
+              : getSubCategoryOptionsForCategory(activeCategoryName, trimmedQuery)
+          )
+        } catch {
+          setSubCategoryOptions(
+            getSubCategoryOptionsForCategory(activeCategoryName, trimmedQuery)
+          )
+        }
+      }, 250)
+    },
+    [infoCategories, getSubCategoryOptionsForCategory]
+  )
+
+  const getAvailableCategoriesForIndex = React.useCallback(
+    (index: number) => {
+      const selected = infoCategories
+        .map((row, i) => (i === index ? null : row.category.trim()))
+        .filter((c): c is string => !!c && c.length > 0)
+      return categoryOptions.filter(
+        (cat) => cat === infoCategories[index]?.category || !selected.includes(cat)
+      )
+    },
+    [categoryOptions, infoCategories]
+  )
+
+  const handleInfoCategoryChange = React.useCallback(
+    (index: number, categoryName: string) => {
+      setInfoCategories((prev) => {
+        const next = [...prev]
+        const availableSubs = getSubCategoryOptionsForCategory(categoryName)
+        const keptSubs = next[index].subCategories.filter((s) =>
+          availableSubs.includes(s)
+        )
+        next[index] = { category: categoryName, subCategories: keptSubs }
+        return next
+      })
+      setActiveCategoryIndex(index)
+      setSubCategoryOptions(getSubCategoryOptionsForCategory(categoryName))
+      setInfoCatErrors((prev) => {
+        const next = [...prev]
+        next[index] = null
+        return next
+      })
+    },
+    [getSubCategoryOptionsForCategory]
+  )
+
+  const handleInfoSubCategoryChange = React.useCallback(
+    (index: number, values: string[]) => {
+      if (values.length > MAX_SUBCATEGORIES_PER_CATEGORY) {
+        setInfoCatErrors((prev) => {
+          const next = [...prev]
+          next[index] = "You can add a maximum of five (5) sub categories"
+          return next
+        })
+        return
+      }
+      setInfoCatErrors((prev) => {
+        const next = [...prev]
+        next[index] = null
+        return next
+      })
+      setInfoCategories((prev) => {
+        const next = [...prev]
+        next[index] = { ...next[index], subCategories: values }
+        return next
+      })
+    },
+    []
+  )
+
+  const handleSuggestedCategoryClick = React.useCallback(
+    (category: string, subCategory: string) => {
+      const indexToUpdate = activeCategoryIndex
+      setInfoCategories((prev) => {
+        const next = [...prev]
+        next[indexToUpdate] = { category, subCategories: [subCategory] }
+        return next
+      })
+    },
+    [activeCategoryIndex]
+  )
+
+  const selectedSuggestedPairs = React.useMemo(
+    () =>
+      new Set(
+        infoCategories.flatMap((item) =>
+          item.category && item.subCategories.length
+            ? item.subCategories.map((sub) => `${item.category}::${sub}`)
+            : []
+        )
+      ),
+    [infoCategories]
+  )
+
+  const selectedCategoryNames = React.useMemo(
+    () =>
+      new Set(
+        infoCategories
+          .map((item) => item.category.trim())
+          .filter((c) => c.length > 0)
+      ),
+    [infoCategories]
+  )
+
+  const suggestedForDisplay = React.useMemo(
+    () =>
+      suggested
+        .filter(
+          ({ category, subCategory }) =>
+            !selectedCategoryNames.has(category) &&
+            !selectedSuggestedPairs.has(`${category}::${subCategory}`)
+        )
+        .slice(0, 3),
+    [selectedCategoryNames, selectedSuggestedPairs, suggested]
+  )
+
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
 
@@ -704,7 +1079,7 @@ export default function ProjectDetails() {
   }
 
   return (
-    <div className="px-[100px] relative bg-white">
+    <div className="px-[100px] pb-[100px] relative bg-white">
       <div className="max-w-[1240px] flex items-start gap-x-8">
         <div className="max-w-[818px] flex-auto">
           <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
@@ -732,114 +1107,69 @@ export default function ProjectDetails() {
                     /
                   </span>
                   <span className="text-xs leading-6 text-gray-500 font-semibold">
-                    {project.title}
+                    {project.title === "Enter Project Title"
+                      ? `draft-${project.id}`
+                      : project.title}
                   </span>
                 </div>
               </div>
 
               <div className="flex gap-x-[13px] items-start mt-8 relative">
-                <div className="w-[189px] h-[126px] relative overflow-hidden rounded-lg">
-                  <NextImage
-                    src={project.mediaUrls?.[0] || "/dashboard.png"}
-                    alt={project.title}
-                    sizes="25vw"
-                    loading="eager"
-                    priority
-                    fill
-                  />
+                <div className="w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                  {project.mediaUrls?.[0] ? (
+                    <NextImage
+                      src={project.mediaUrls[0]}
+                      alt={project.title}
+                      sizes="25vw"
+                      loading="eager"
+                      priority
+                      fill
+                    />
+                  ) : (
+                    <Image03 className="size-10 text-gray-300" />
+                  )}
                 </div>
 
-                <div className="flex flex-col items-start gap-y-3">
-                  <Badge className="rounded-[5px]" visual="gray">
-                    {project.listingType === "service" ? "Service" : "Project"}
+                <div className="flex flex-col items-start gap-y-3 flex-1">
+                  <Badge className="rounded-[5px] bg-gray-100" visual="gray">
+                    Select Project Type
                   </Badge>
-                  <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  <h1 className="text-[28px] leading-none font-bold text-gray-300">
                     {project.title}
                   </h1>
 
-                  <div className="flex items-center gap-x-2">
-                    <div className="inline-flex items-center gap-x-1.5">
-                      <div className="inline-flex items-center gap-x-0.5">
-                        <Star className="shrink-0 size-4 text-primary-500 fill-primary-500" />
-                        <Star className="shrink-0 size-4 text-primary-500 fill-primary-500" />
-                        <Star className="shrink-0 size-4 text-primary-500 fill-primary-500" />
-                        <Star className="shrink-0 size-4 text-primary-500 fill-primary-500" />
-                        <Star className="shrink-0 size-4 text-primary-500" />
-                      </div>
-                      <span className="text-sm leading-none font-semibold text-dark-blue-400">
-                        {project.rating || "4.9"}{" "}
-                        <span className="font-medium">
-                          ({project.reviewCount || 14} ratings)
-                        </span>
-                      </span>
-                    </div>
-
-                    <span className="size-1 shrink-0 rounded-full bg-dark-blue-400" />
-
-                    <div className="inline-flex items-center gap-x-1.5">
-                      <ShoppingCart className="size-[18px] shrink-0" />
-                      <span className="text-sm leading-none font-semibold text-dark-blue-400">
-                        31 sales
-                      </span>
-                    </div>
-
-                    {/* §13 L59: "Show only if isTopRated is true" */}
-                    {project.isTopRated && (
-                      <>
-                        <span className="size-1 shrink-0 rounded-full bg-dark-blue-400" />
-                        <div className="inline-flex items-center gap-x-1.5">
-                          <ChartBreakoutCircle className="size-[18px] shrink-0" />
-                          <span className="text-sm leading-none font-semibold text-dark-blue-400">
-                            Top Rated
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-x-3">
-                    {(project.categories || []).map(
-                      (cat: string, idx: number) => {
-                        const catSlug = cat
-                          .toLowerCase()
-                          .replace(/&/g, "and")
-                          .replace(/\s+/g, "-")
-                          .replace(/[^a-z0-9-]/g, "")
-                        const cats = project.categories || []
-                        const l1Slug = (cats[0] || "")
-                          .toLowerCase()
-                          .replace(/&/g, "and")
-                          .replace(/\s+/g, "-")
-                          .replace(/[^a-z0-9-]/g, "")
-                        // L1 → /c/l1, L2 → /c/l1/l2, L3 → /c/l1/l2/l3
-                        let href = `/c/${l1Slug}`
-                        if (idx === 1) href = `/c/${l1Slug}/${catSlug}`
-                        if (idx === 2) {
-                          const l2Slug = (cats[1] || "")
-                            .toLowerCase()
-                            .replace(/&/g, "and")
-                            .replace(/\s+/g, "-")
-                            .replace(/[^a-z0-9-]/g, "")
-                          href = `/c/${l1Slug}/${l2Slug}/${catSlug}`
-                        }
-                        return (
-                          <NextLink
-                            key={cat}
-                            href={href}
-                            className="text-sm font-semibold text-gray-500 hover:text-dark-blue-400 hover:underline transition duration-300"
-                          >
-                            {cat}
-                          </NextLink>
-                        )
-                      }
-                    )}
-                  </div>
+                  <button
+                    className="inline-flex items-center gap-x-1.5 text-sm font-semibold text-dark-blue-400 hover:underline transition duration-300"
+                    onClick={() => {
+                      setInfoTitle(project.title === "Enter Project Title" ? "" : project.title || "")
+                      setInfoSummary(project.summary || "")
+                      setInfoTab("Categories")
+                      setProjectInfoOpen(true)
+                    }}
+                  >
+                    <Plus className="size-4" />
+                    Add Categories
+                  </button>
                 </div>
+
+                <IconButton
+                  className="rounded-full text-gray-500 hover:text-gray-800"
+                  variant="ghost"
+                  visual="gray"
+                  onClick={() => {
+                    setInfoTitle(project.title === "Enter Project Title" ? "" : project.title || "")
+                    setInfoSummary(project.summary || "")
+                    setInfoTab("Basic Info")
+                    setProjectInfoOpen(true)
+                  }}
+                >
+                  <Edit03 className="size-4" />
+                </IconButton>
               </div>
 
-              <div className="mt-3 relative">
-                <p className="text-sm font-extralight text-dark-blue-400">
-                  {project.summary}
+              <div className="mt-6 relative">
+                <p className="text-sm font-light text-dark-blue-400">
+                  {project.summary || "Add a short description here to explain your project features and benefits. This will help visitors quickly see the difference between your project and similar projects in the marketplace..."}
                 </p>
               </div>
             </div>
@@ -929,15 +1259,8 @@ export default function ProjectDetails() {
                     if (gallery.length === 0) {
                       return Array.from({ length: 5 }).map((_, index) => (
                         <CarouselItem key={index} className="group basis-1/3">
-                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
-                            <NextImage
-                              className="object-cover"
-                              src="/waves.png"
-                              alt="Waves"
-                              sizes="25vw"
-                              fill
-                            />
-                            <div className="absolute inset-0 transition duration-300" />
+                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-gray-100 flex items-center justify-center">
+                            <Image03 className="size-10 text-gray-300" />
                           </div>
                         </CarouselItem>
                       ))
@@ -1150,9 +1473,9 @@ export default function ProjectDetails() {
                               className="min-h-[140px] resize-none"
                               placeholder="Enter a description..."
                               value={descDraft}
-                              onChange={(e) => {
-                                if (e.target.value.length <= 2000) setDescDraft(e.target.value)
-                              }}
+                              onChange={(e) =>
+                                setDescDraft(e.target.value.slice(0, 2000))
+                              }
                             />
                           </div>
 
@@ -1174,6 +1497,305 @@ export default function ProjectDetails() {
                           </div>
                         </DialogContent>
                       </Dialog>
+
+                      {/* Project Info Modal */}
+                      <Dialog open={projectInfoOpen} onOpenChange={setProjectInfoOpen}>
+                        <DialogContent className="max-w-[700px] rounded-[12px] p-0">
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault()
+                              setProject((prev: any) => ({
+                                ...prev,
+                                title: infoTitle || prev.title,
+                                summary: infoSummary || prev.summary,
+                                listingType: infoProjectType,
+                                categories: infoCategories
+                                  .filter((r) => r.category)
+                                  .map((r) => r.category),
+                              }))
+                              setProjectInfoOpen(false)
+                            }}
+                          >
+                            <div>
+                              <div className="px-6 pt-6">
+                                <div className="flex items-start gap-x-2">
+                                  <div className="flex-auto">
+                                    <h1 className="text-lg text-dark-blue-400 leading-7 font-semibold">
+                                      Project Info
+                                    </h1>
+                                    <p className="text-sm font-light text-dark-blue-400">
+                                      Create a connection and let clients feel like they already know you!
+                                    </p>
+                                  </div>
+                                  <IconButton
+                                    type="button"
+                                    variant="ghost"
+                                    visual="gray"
+                                    onClick={() => setProjectInfoOpen(false)}
+                                  >
+                                    <X className="size-5" />
+                                  </IconButton>
+                                </div>
+                              </div>
+
+                              <Tabs
+                                value={infoTab}
+                                onValueChange={setInfoTab}
+                                className="mt-6"
+                              >
+                                <TabsList className="border-b border-gray-200 px-6">
+                                  <TabsTrigger value="Basic Info">
+                                    Basic Info
+                                  </TabsTrigger>
+                                  <TabsTrigger value="Categories">
+                                    Categories
+                                  </TabsTrigger>
+                                </TabsList>
+
+                                <TabsContent value="Basic Info" className="pt-6 px-6 pb-6 space-y-5">
+                                  <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                      <Label size="sm" className="font-medium">
+                                        Title
+                                      </Label>
+                                      <span className="text-xs text-gray-400">
+                                        {infoTitle.length}/120
+                                      </span>
+                                    </div>
+                                    <Input
+                                      placeholder="Enter project title"
+                                      value={infoTitle}
+                                      onChange={(e) =>
+                                        setInfoTitle(e.target.value.slice(0, 120))
+                                      }
+                                    />
+                                  </div>
+
+                                  <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                      <Label size="sm" className="font-medium">
+                                        Short Description
+                                      </Label>
+                                      <span className="text-xs text-gray-400">
+                                        {infoSummary.length}/300
+                                      </span>
+                                    </div>
+                                    <Textarea
+                                      className="min-h-[100px] resize-none"
+                                      placeholder="Enter a short description..."
+                                      value={infoSummary}
+                                      onChange={(e) =>
+                                        setInfoSummary(e.target.value.slice(0, 300))
+                                      }
+                                    />
+                                  </div>
+
+                                  <div className="space-y-1.5">
+                                    <Label size="sm" className="font-medium">
+                                      Project Type
+                                    </Label>
+                                    <Listbox
+                                      value={infoProjectType}
+                                      onChange={setInfoProjectType}
+                                    >
+                                      <ListboxButton
+                                        placeholder="Select type"
+                                        className="h-[44px] px-[14px] py-[10px] flex items-center justify-start border border-gray-300 rounded-[5px]"
+                                      >
+                                        {({ value }) => (
+                                          <span className="truncate block">
+                                            {value || "Select type"}
+                                          </span>
+                                        )}
+                                      </ListboxButton>
+                                      <ListboxOptions>
+                                        {PROJECT_TYPE_OPTIONS.map((opt) => (
+                                          <ListboxOption key={opt} value={opt}>
+                                            {opt}
+                                          </ListboxOption>
+                                        ))}
+                                      </ListboxOptions>
+                                    </Listbox>
+                                  </div>
+                                </TabsContent>
+
+                                <TabsContent value="Categories" className="pt-6 px-6 pb-6">
+                                  <p className="text-sm font-light text-dark-blue-400 mb-6">
+                                    Select categories that best fit your project scope for easier discovery.
+                                  </p>
+
+                                  <div className="space-y-5">
+                                    {[0, 1, 2].map((index) => (
+                                      <div key={index} className="flex items-start gap-x-1.5">
+                                        <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
+                                          {index + 1}
+                                        </div>
+
+                                        <div className="flex flex-col flex-auto gap-y-2.5">
+                                          <div className="max-w-[202px]">
+                                            <Listbox
+                                              value={infoCategories[index].category}
+                                              onChange={(val) =>
+                                                handleInfoCategoryChange(index, val)
+                                              }
+                                            >
+                                              <ListboxButton
+                                                placeholder="Add Category"
+                                                className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start border border-gray-300 rounded-[5px]"
+                                                onFocus={() => setActiveCategoryIndex(index)}
+                                              >
+                                                {({ value }) => (
+                                                  <span className="truncate block">
+                                                    {value || "Add Category"}
+                                                  </span>
+                                                )}
+                                              </ListboxButton>
+                                              <ListboxOptions>
+                                                {getAvailableCategoriesForIndex(index).map(
+                                                  (category) => (
+                                                    <ListboxOption
+                                                      key={category}
+                                                      value={category}
+                                                    >
+                                                      {category}
+                                                    </ListboxOption>
+                                                  )
+                                                )}
+                                              </ListboxOptions>
+                                            </Listbox>
+                                          </div>
+
+                                          <TagsInputRoot
+                                            value={infoCategories[index].subCategories}
+                                            onValueChange={(details) =>
+                                              handleInfoSubCategoryChange(
+                                                index,
+                                                details.value
+                                              )
+                                            }
+                                            className="space-y-1.5"
+                                          >
+                                            <TagsInputContext>
+                                              {(tagsInput) => (
+                                                <TagsInputControl className="relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left w-full max-w-[679px] h-auto rounded-[5px] border border-gray-300 px-[14px] py-[10px] m-0">
+                                                  {tagsInput.value.map(
+                                                    (value, vi) => (
+                                                      <TagsInputItem
+                                                        key={vi}
+                                                        index={vi}
+                                                        value={value}
+                                                      >
+                                                        <TagsInputItemPreview
+                                                          visual="primary"
+                                                          size="md"
+                                                          className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                                                        >
+                                                          <TagsInputItemText>
+                                                            {value}
+                                                          </TagsInputItemText>
+                                                          <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                                            <X2 className="size-3" />
+                                                          </TagsInputItemDeleteTrigger>
+                                                        </TagsInputItemPreview>
+                                                        <TagsInputItemInput />
+                                                      </TagsInputItem>
+                                                    )
+                                                  )}
+                                                  <TagsInputInput
+                                                    placeholder={
+                                                      tagsInput.value.length
+                                                        ? ""
+                                                        : "Add Sub-Category(s)"
+                                                    }
+                                                    options={
+                                                      activeCategoryIndex === index
+                                                        ? subCategoryOptions
+                                                        : getSubCategoryOptionsForCategory(
+                                                            infoCategories[index].category
+                                                          )
+                                                    }
+                                                    allowCreateOption
+                                                    className="flex-1 min-w-[100px]"
+                                                    onInputValueChange={(value) => {
+                                                      fetchCategoriesAutocomplete(index as 0 | 1 | 2, value)
+                                                    }}
+                                                    onFocus={() => {
+                                                      setActiveCategoryIndex(index)
+                                                      setSubCategoryOptions(
+                                                        getSubCategoryOptionsForCategory(
+                                                          infoCategories[index].category
+                                                        )
+                                                      )
+                                                    }}
+                                                  />
+                                                  <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                                                </TagsInputControl>
+                                              )}
+                                            </TagsInputContext>
+                                            <TagsInputHiddenInput />
+                                          </TagsInputRoot>
+
+                                          {infoCatErrors[index] && (
+                                            <p className="text-xs text-red-500">
+                                              {infoCatErrors[index]}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {suggestedForDisplay.length > 0 && (
+                                    <div className="mt-6 space-y-1.5">
+                                      <span className="block text-xs leading-5 text-dark-blue-400">
+                                        Suggested Categories
+                                      </span>
+                                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
+                                        {suggestedForDisplay.map(({ category, subCategory }) => (
+                                          <Badge
+                                            size="md"
+                                            className="pr-2 focus-visible:outline-none text-primary-500 bg-primary-50"
+                                            visual="primary"
+                                            asChild
+                                            key={category}
+                                          >
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleSuggestedCategoryClick(
+                                                  category,
+                                                  subCategory
+                                                )
+                                              }
+                                            >
+                                              {category} / {subCategory}
+                                              <Plus2 className="size-3 opacity-50 hover:opacity-100" />
+                                            </button>
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </TabsContent>
+                              </Tabs>
+                            </div>
+
+                            <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
+                              <Button
+                                type="button"
+                                variant="link"
+                                visual="gray"
+                                onClick={() => setProjectInfoOpen(false)}
+                              >
+                                <X className="size-[15px]" />
+                                Cancel
+                              </Button>
+                              <Button type="submit">Save</Button>
+                            </div>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+
 
                       {Array.isArray(project.deliverables) && project.deliverables.length > 0 ? (
                       <ShowMoreLessRoot>
@@ -1278,7 +1900,7 @@ export default function ProjectDetails() {
                             Your project deliverables will be displayed here once you add a scope to your offer. These deliverables are automatically generated based on the details in your scope and tasks, they&apos;re not directly editable.
                           </p>
                         </div>
-                        <Button variant="outlined" visual="gray" className="shrink-0 ml-[75px]">
+                        <Button variant="outlined" visual="gray" className="shrink-0 ml-[75px]" onClick={() => { setSelected("View Project Scope"); window.scrollTo({ top: 0, behavior: "smooth" }) }}>
                           <Plus className="size-[15px]" />
                           Add Scope
                         </Button>
@@ -1728,28 +2350,501 @@ export default function ProjectDetails() {
                         )}
                       </div>
                       ) : (
-                      <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6 flex items-start justify-between">
-                        <div>
-                          <h1 className="text-lg font-semibold text-dark-blue-400">
-                            Project Details
-                          </h1>
-                          <p className="mt-1 text-sm font-light text-dark-blue-400">
-                            Your project deliverables will be displayed here once you add a scope to your offer. These deliverables are automatically generated based on the details in your scope and tasks, they&apos;re not directly editable.
-                          </p>
+                      <div className="mt-6 border-2 border-gray-200 bg-gray-25 rounded-lg">
+                        <div className="p-6 border-b border-gray-200 flex items-start justify-between">
+                          <div>
+                            <h1 className="text-lg font-semibold text-dark-blue-400">
+                              Project Details
+                            </h1>
+                            <p className="mt-1 text-sm font-light text-dark-blue-400">
+                              Your project deliverables will be displayed here once you add a scope to your offer. These deliverables are automatically generated based on the details in your scope and tasks, they&apos;re not directly editable.
+                            </p>
+                          </div>
+                          <Button variant="outlined" visual="gray" className="shrink-0 ml-[75px]" onClick={() => setDetailsDialogOpen(true)}>
+                            <Plus className="size-[15px]" />
+                            Add Details
+                          </Button>
                         </div>
-                        <Button variant="outlined" visual="gray" className="shrink-0 ml-[75px]">
-                          <Plus className="size-[15px]" />
-                          Add Details
-                        </Button>
+
+                        {/* About the Team — static fallback */}
+                        <div className="p-6 bg-white rounded-b-lg">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-base leading-none font-semibold text-dark-blue-400">
+                              About the Team
+                            </h3>
+                            <IconButton className="rounded-full text-gray-500 hover:text-gray-800" variant="ghost" visual="gray" onClick={() => { setTeamTab("Team Lead"); setTeamDialogOpen(true) }}>
+                              <Edit03 className="size-4" />
+                            </IconButton>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-x-6 mt-6">
+                            <div className="flex items-start gap-x-3">
+                              <Avatar size="lg">
+                                <AvatarImage src="/man.jpg" alt="Man" />
+                                <AvatarFallback>M</AvatarFallback>
+                              </Avatar>
+
+                              <div className="space-y-1.5">
+                                <Badge
+                                  className="rounded-[4px] bg-primary-50"
+                                  visual="primary"
+                                >
+                                  Project Lead
+                                </Badge>
+
+                                <div className="flex flex-col gap-y-0.5">
+                                  <span className="block text-sm leading-none text-gray-500 font-extralight">
+                                    <span className="text-base font-bold text-dark-blue-400">
+                                      Chris
+                                    </span>{" "}
+                                    @ux23isee
+                                  </span>
+
+                                  <span className="text-sm leading-none font-extralight text-dark-blue-400">
+                                    Full Stack Designer
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="space-y-3">
+                              <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                <MapPin className="size-[18px]" /> Locations
+                              </h3>
+
+                              <div className="gap-1 flex items-center flex-wrap">
+                                <NextLink
+                                  href="#"
+                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                >
+                                  USA,
+                                </NextLink>
+                                <NextLink
+                                  href="#"
+                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                >
+                                  UK,
+                                </NextLink>
+                                <NextLink
+                                  href="#"
+                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                >
+                                  Brazil,
+                                </NextLink>
+                                <NextLink
+                                  href="#"
+                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                >
+                                  and 1 more...
+                                </NextLink>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-6 grid grid-cols-2 gap-x-6">
+                            <div className="space-y-3">
+                              <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                <MessageTextSquare01 className="size-[18px]" />{" "}
+                                Languages
+                              </h3>
+
+                              <div className="gap-1 flex items-center flex-wrap">
+                                <NextLink
+                                  href="#"
+                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                >
+                                  English,
+                                </NextLink>
+                                <NextLink
+                                  href="#"
+                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                >
+                                  Spanish,
+                                </NextLink>
+                                <NextLink
+                                  href="#"
+                                  className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                >
+                                  French
+                                </NextLink>
+                              </div>
+                            </div>
+
+                            <div className="space-y-3">
+                              <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
+                                <Stars02 className="size-[18px]" /> Skills &
+                                Expertise
+                              </h3>
+
+                              <div className="gap-1 flex items-center flex-wrap">
+                                <NextLink
+                                  href="#"
+                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                >
+                                  Performance,
+                                </NextLink>
+                                <NextLink
+                                  href="#"
+                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                >
+                                  Security,
+                                </NextLink>
+                                <NextLink
+                                  href="#"
+                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                >
+                                  Operating Systems,
+                                </NextLink>
+                                <NextLink
+                                  href="#"
+                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                >
+                                  Design,
+                                </NextLink>
+                                <NextLink
+                                  href="#"
+                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                >
+                                  Databases,
+                                </NextLink>
+                                <NextLink
+                                  href="#"
+                                  className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                >
+                                  and 1 more...
+                                </NextLink>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                       )}
+
+                      {/* Project Details Dialog */}
+                      <Dialog open={detailsDialogOpen} onOpenChange={setDetailsDialogOpen}>
+                        <DialogContent className="max-w-[748px] p-0 gap-0">
+                          <div className="px-6 pt-6 pb-4">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <h2 className="text-lg font-bold text-dark-blue-400">Project Details</h2>
+                                <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                  Create a connection and let clients feel like they already know you!
+                                </p>
+                              </div>
+                              <DialogClose asChild>
+                                <IconButton variant="ghost" visual="gray" size="sm">
+                                  <X className="size-5" />
+                                </IconButton>
+                              </DialogClose>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-gray-200 px-6 py-6 space-y-6 max-h-[60vh] overflow-y-auto">
+                            {[
+                              { label: "Programming Languages", desc: "Add up to 10 tags that best describe your template. Use relevant keywords to highlight its features and make it easier to find.", max: 10, value: detailsLangs, onChange: setDetailsLangs, placeholder: "Add Programming Languages" },
+                              { label: "Development Tech", desc: "Add up to 10 technologies that will be used in this project", max: 10, value: detailsTech, onChange: setDetailsTech, placeholder: "Add Technologies" },
+                              { label: "Industry", desc: "Add up to 5 industries that align with your project scope for targeted visibility.", max: 5, value: detailsIndustry, onChange: setDetailsIndustry, placeholder: "Add Industries" },
+                              { label: "Tags", desc: "Add up to 10 tags that align with your project scope for targeted visibility.", max: 10, value: detailsTags, onChange: setDetailsTags, placeholder: "Add Tags" },
+                              { label: "Skills", desc: "List up to 10 key skills or proficiencies required to implement this template effectively.", max: 10, value: detailsSkills, onChange: setDetailsSkills, placeholder: "Add Skills" },
+                              { label: "Tools", desc: "Add up to 10 tools that align with your project scope for targeted visibility.", max: 10, value: detailsTools, onChange: setDetailsTools, placeholder: "Add Tools" },
+                            ].map((field) => (
+                              <div key={field.label}>
+                                <div className="flex items-start justify-between">
+                                  <div>
+                                    <h3 className="text-sm font-bold text-dark-blue-400">{field.label}</h3>
+                                    <p className="mt-0.5 text-xs font-light text-dark-blue-400">{field.desc}</p>
+                                  </div>
+                                  <span className="text-xs text-gray-500 shrink-0 ml-4">{field.value.length}/{field.max}</span>
+                                </div>
+                                <TagsInputRoot
+                                  className="mt-2 space-y-1.5"
+                                  value={field.value}
+                                  onValueChange={(d) => field.onChange(d.value.slice(0, field.max))}
+                                >
+                                  <TagsInputContext>
+                                    {(tagsInput) => (
+                                      <TagsInputControl className="relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left w-full h-auto rounded-[5px] border border-gray-300 focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500 px-[14px] py-[10px] m-0">
+                                        {tagsInput.value.map((value, vi) => (
+                                          <TagsInputItem key={vi} index={vi} value={value}>
+                                            <TagsInputItemPreview
+                                              visual="primary"
+                                              size="md"
+                                              className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                                            >
+                                              <TagsInputItemText>{value}</TagsInputItemText>
+                                              <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                                <X2 className="size-3" />
+                                              </TagsInputItemDeleteTrigger>
+                                            </TagsInputItemPreview>
+                                            <TagsInputItemInput />
+                                          </TagsInputItem>
+                                        ))}
+                                        <TagsInputInput
+                                          placeholder={tagsInput.value.length ? "" : field.placeholder}
+                                          allowCreateOption
+                                          className="flex-1 min-w-[100px]"
+                                        />
+                                      </TagsInputControl>
+                                    )}
+                                  </TagsInputContext>
+                                  <TagsInputHiddenInput />
+                                </TagsInputRoot>
+                              </div>
+                            ))}
+
+                            {/* Sub-Categories */}
+                            <div className="rounded-lg bg-primary-50 p-4">
+                              <div className="flex items-start justify-between">
+                                <div>
+                                  <h3 className="text-sm font-bold text-dark-blue-400">Sub-Categories</h3>
+                                  <p className="mt-0.5 text-xs font-light text-dark-blue-400">
+                                    Here are your current subcategories. Click on &quot;Edit Categories&quot; to update them on the Project Info page.
+                                  </p>
+                                </div>
+                                <Button variant="outlined" visual="gray" className="shrink-0 ml-4 bg-white" onClick={() => { setDetailsDialogOpen(false); setProjectInfoOpen(true); setInfoTab("Categories") }}>
+                                  <Edit03 className="size-[15px]" />
+                                  Edit Categories
+                                </Button>
+                              </div>
+                              {infoCategories.some((c) => c.subCategories.length > 0) && (
+                                <div className="mt-3 flex flex-wrap gap-1.5">
+                                  {infoCategories.flatMap((c) => c.subCategories).slice(0, 4).map((sc, i) => (
+                                    <Badge key={`${sc}-${i}`} visual="primary" className="rounded-[4px] bg-primary-100">
+                                      {sc}
+                                    </Badge>
+                                  ))}
+                                  {infoCategories.flatMap((c) => c.subCategories).length > 4 && (
+                                    <span className="text-sm font-medium text-dark-blue-400">
+                                      + {infoCategories.flatMap((c) => c.subCategories).length - 4} more
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
+                            <Button
+                              type="button"
+                              variant="link"
+                              visual="gray"
+                              onClick={() => setDetailsDialogOpen(false)}
+                            >
+                              <X className="size-[15px]" />
+                              Cancel
+                            </Button>
+                            <Button
+                              disabled={detailsLangs.length === 0 && detailsTech.length === 0 && detailsIndustry.length === 0 && detailsTags.length === 0 && detailsSkills.length === 0 && detailsTools.length === 0}
+                              onClick={() => {
+                              setProject((prev: any) => ({
+                                ...prev,
+                                programmingLanguages: detailsLangs,
+                                developmentTech: detailsTech,
+                                industries: detailsIndustry,
+                                tags: detailsTags,
+                                skills: detailsSkills,
+                                tools: detailsTools,
+                              }))
+                              setDetailsDialogOpen(false)
+                            }}>Save</Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+
+                      {/* About The Team Dialog */}
+                      <Dialog open={teamDialogOpen} onOpenChange={setTeamDialogOpen}>
+                        <DialogContent className="max-w-[748px] p-0 gap-0">
+                          <div className="px-6 pt-6">
+                            <div className="flex items-start justify-between">
+                              <h2 className="text-lg font-bold text-dark-blue-400">About The Team</h2>
+                              <DialogClose asChild>
+                                <IconButton variant="ghost" visual="gray" size="sm">
+                                  <X className="size-5" />
+                                </IconButton>
+                              </DialogClose>
+                            </div>
+
+                            <Tabs value={teamTab} onValueChange={setTeamTab} className="mt-4">
+                              <TabsList className="border-b border-gray-200 w-full justify-start">
+                                <TabsTrigger value="Team Lead">Team Lead</TabsTrigger>
+                                <TabsTrigger value="Team Members">Team Members</TabsTrigger>
+                              </TabsList>
+
+                              <TabsContent value="Team Lead" className="pt-6 pb-6">
+                                <div>
+                                  <span className="text-sm font-semibold text-dark-blue-400">Current Team Lead</span>
+                                  <div className="mt-3 flex items-center justify-between">
+                                    <div className="flex items-center gap-x-3">
+                                      <Avatar size="md">
+                                        <AvatarImage src="/man.jpg" alt="Chris" />
+                                        <AvatarFallback>C</AvatarFallback>
+                                      </Avatar>
+                                      <div>
+                                        <span className="text-sm font-bold text-dark-blue-400">Chris</span>
+                                        <span className="text-sm font-light text-gray-500"> @ux23isee</span>
+                                        <p className="text-xs font-light text-dark-blue-400">Full Stack Designer</p>
+                                      </div>
+                                    </div>
+                                    <Badge visual="primary" className="rounded-[4px] bg-primary-50">
+                                      Account Manager
+                                    </Badge>
+                                  </div>
+                                </div>
+
+                                <div className="mt-8 grid grid-cols-2 gap-x-6">
+                                  <div>
+                                    <span className="text-sm font-semibold text-dark-blue-400">Assign Project Lead</span>
+                                    <InputGroup className="mt-2">
+                                      <Input placeholder="Search team members" />
+                                      <InputLeftElement>
+                                        <SearchMd className="text-gray-500 h-4 w-4" />
+                                      </InputLeftElement>
+                                    </InputGroup>
+                                  </div>
+                                  <div>
+                                    <span className="text-sm font-semibold text-dark-blue-400 inline-flex items-center gap-x-1">
+                                      Select Label
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <HelpCircle className="size-3.5 text-gray-400 cursor-help" />
+                                          </TooltipTrigger>
+                                          <TooltipContent>Assign a role label to the team lead</TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    </span>
+                                    <Listbox defaultValue="">
+                                      <ListboxButton className="mt-2 w-full" placeholder="None selected" />
+                                      <ListboxOptions>
+                                        <ListboxOption value="Project Lead">Project Lead</ListboxOption>
+                                        <ListboxOption value="Account Manager">Account Manager</ListboxOption>
+                                        <ListboxOption value="Technical Lead">Technical Lead</ListboxOption>
+                                        <ListboxOption value="Design Lead">Design Lead</ListboxOption>
+                                      </ListboxOptions>
+                                    </Listbox>
+                                  </div>
+                                </div>
+                              </TabsContent>
+
+                              <TabsContent value="Team Members" className="pt-6 pb-6">
+                                <div className="flex items-start justify-between">
+                                  <div>
+                                    <h3 className="text-sm font-semibold text-dark-blue-400">All assignees (10)</h3>
+                                    <p className="mt-1 text-xs font-light text-dark-blue-400">
+                                      View and manage all users currently assigned to this project below.
+                                    </p>
+                                  </div>
+                                  <Button variant="outlined" visual="gray" onClick={() => inviteWindow.toggle(true, "Invite Team Members")}>
+                                    <Plus className="size-[15px]" />
+                                    Add Team Member
+                                  </Button>
+                                </div>
+
+                                <div className="mt-6 max-h-[40vh] overflow-y-auto">
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow className="hover:bg-transparent">
+                                        <TableHead className="text-xs font-medium text-gray-500">Name</TableHead>
+                                        <TableHead className="text-xs font-medium text-gray-500">Project Role</TableHead>
+                                        <TableHead className="text-xs font-medium text-gray-500">Status</TableHead>
+                                        <TableHead className="w-[40px]" />
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {[
+                                        { name: "Chris", username: "ux23isee", role: "Owner", status: "Active", you: true, avatar: "/man.jpg" },
+                                        { name: "Sarah", username: "ux23isee", role: "Manager", status: "Active", avatar: "/woman.jpg" },
+                                        { name: "Laura", username: "ux23isee", role: "Contributor", status: "Active", avatar: "/woman.jpg" },
+                                        { name: "Tina", username: "ux23isee", role: "Contributor", status: "Inactive", avatar: "/woman.jpg" },
+                                        { name: "Shelly", username: "ux23isee", role: "Contributor", status: "Inactive", avatar: "/woman.jpg" },
+                                      ].map((member, mi) => (
+                                        <TableRow key={mi}>
+                                          <TableCell className="py-4">
+                                            <div className="flex items-center gap-x-3">
+                                              <Avatar size="sm">
+                                                <AvatarImage src={member.avatar} alt={member.name} />
+                                                <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
+                                              </Avatar>
+                                              <div>
+                                                <span className="text-sm font-semibold text-dark-blue-400">
+                                                  {member.name}
+                                                </span>
+                                                <span className="text-sm font-light text-gray-500">
+                                                  {" "}@{member.username}
+                                                </span>
+                                                {member.you && (
+                                                  <span className="text-sm font-semibold text-dark-blue-400"> (You)</span>
+                                                )}
+                                                <p className="text-xs font-light text-dark-blue-400">Full Stack Designer</p>
+                                              </div>
+                                            </div>
+                                          </TableCell>
+                                          <TableCell className="py-4">
+                                            <Listbox defaultValue={member.role}>
+                                              <ListboxButton className="h-[36px] w-[140px] text-sm" placeholder="Select role" />
+                                              <ListboxOptions>
+                                                <ListboxOption value="Owner">Owner</ListboxOption>
+                                                <ListboxOption value="Manager">Manager</ListboxOption>
+                                                <ListboxOption value="Contributor">Contributor</ListboxOption>
+                                              </ListboxOptions>
+                                            </Listbox>
+                                          </TableCell>
+                                          <TableCell className="py-4">
+                                            <span className={cn(
+                                              "text-sm font-semibold",
+                                              member.status === "Active" ? "text-success-500" : "text-gray-500"
+                                            )}>
+                                              {member.status}
+                                            </span>
+                                          </TableCell>
+                                          <TableCell className="py-4">
+                                            <DropdownMenu>
+                                              <DropdownMenuTrigger asChild>
+                                                <IconButton variant="ghost" visual="gray" size="sm">
+                                                  <MoreHorizontal className="size-4" />
+                                                </IconButton>
+                                              </DropdownMenuTrigger>
+                                              <DropdownMenuContent align="end">
+                                                <DropdownMenuItem>View Profile</DropdownMenuItem>
+                                                <DropdownMenuItem>Remove</DropdownMenuItem>
+                                              </DropdownMenuContent>
+                                            </DropdownMenu>
+                                          </TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              </TabsContent>
+                            </Tabs>
+                          </div>
+
+                          <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
+                            <Button
+                              type="button"
+                              variant="link"
+                              visual="gray"
+                              onClick={() => setTeamDialogOpen(false)}
+                            >
+                              <X className="size-[15px]" />
+                              Cancel
+                            </Button>
+                            <Button onClick={() => setTeamDialogOpen(false)}>Save</Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
 
 {/* How It Works section hidden in edit mode */}
 
                       <div className="relative p-6 mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                        <h1 className="text-xl font-bold leading-none text-dark-blue-400">
-                          Questions
-                        </h1>
+                        <div className="flex items-center justify-between">
+                          <h1 className="text-xl font-bold leading-none text-dark-blue-400">
+                            Questions
+                          </h1>
+                          <IconButton className="rounded-full text-gray-500 hover:text-gray-800" variant="ghost" visual="gray" onClick={() => setQuestionsDialogOpen(true)}>
+                            <Edit03 className="size-4" />
+                          </IconButton>
+                        </div>
 
                         {(project.faqs?.length > 0 || project.recentQuestions?.length > 0) && (
                         <>
@@ -1916,7 +3011,7 @@ export default function ProjectDetails() {
                                       Your project deliverables will be displayed here once you add a scope to your offer. These deliverables are automatically generated based on the details in your scope and tasks, they&apos;re not directly editable.
                                     </p>
                                   </div>
-                                  <Button variant="outlined" visual="gray" className="shrink-0 ml-[75px]">
+                                  <Button variant="outlined" visual="gray" className="shrink-0 ml-[75px]" onClick={() => { setQuestionsTab("FAQs"); setQuestionsDialogOpen(true) }}>
                                     <Plus className="size-[15px]" />
                                     Add FAQ&apos;s
                                   </Button>
@@ -2018,19 +3113,13 @@ export default function ProjectDetails() {
                             <TabsContent value="Recently Asked Questions">
                               {!project.recentQuestions ||
                               project.recentQuestions.length === 0 ? (
-                                <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6 flex items-start justify-between">
-                                  <div>
-                                    <h1 className="text-lg font-semibold text-dark-blue-400">
-                                      Recently Asked Questions
-                                    </h1>
-                                    <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                      Your project deliverables will be displayed here once you add a scope to your offer. These deliverables are automatically generated based on the details in your scope and tasks, they&apos;re not directly editable.
-                                    </p>
-                                  </div>
-                                  <Button variant="outlined" visual="gray" className="shrink-0 ml-[75px]">
-                                    <Plus className="size-[15px]" />
-                                    Add FAQ&apos;s
-                                  </Button>
+                                <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6">
+                                  <h1 className="text-lg font-semibold text-dark-blue-400">
+                                    No Recent Questions
+                                  </h1>
+                                  <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                    You will see recent questions here once your project is live in the marketplace and visitors engage in chat with you and your team.
+                                  </p>
                                 </div>
                               ) : (
                                 <Accordion
@@ -2074,6 +3163,292 @@ export default function ProjectDetails() {
                           )}
                         </div>
                       </div>
+
+                      {/* Questions Dialog */}
+                      <Dialog open={questionsDialogOpen} onOpenChange={setQuestionsDialogOpen}>
+                        <DialogContent className="max-w-[748px] p-0 gap-0">
+                          <RadixTabs.Root value={questionsTab} onValueChange={setQuestionsTab}>
+                          <div className="px-6 pt-6 pb-4">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <h2 className="text-lg font-bold text-dark-blue-400">Questions</h2>
+                                <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                  Manage your FAQ&apos;s and recently asked questions.
+                                </p>
+                              </div>
+                              <DialogClose asChild>
+                                <IconButton variant="ghost" visual="gray" size="sm">
+                                  <X className="size-5" />
+                                </IconButton>
+                              </DialogClose>
+                            </div>
+
+                            <RadixTabs.List className="flex items-center gap-x-3 pt-4">
+                              <RadixTabs.Trigger value="FAQs" className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400 text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300">FAQ&apos;s</RadixTabs.Trigger>
+                              <RadixTabs.Trigger value="RecentlyAsked" className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400 text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300">Recently Asked Questions</RadixTabs.Trigger>
+                            </RadixTabs.List>
+                          </div>
+
+                          <div className="border-t border-gray-200 px-6 py-6 max-h-[60vh] overflow-y-auto">
+                              <RadixTabs.Content value="FAQs" className="focus-visible:outline-none">
+                                <p className="text-sm font-light text-dark-blue-400">
+                                  Write a response for each of the question added to this project. Drag and drop FAQ items to reorder them. The order you set here will be reflected on your project&apos;s public FAQ section.
+                                </p>
+
+                                <div className="mt-4 flex items-center gap-3">
+                                  <Button variant="outlined" visual="gray" size="sm">
+                                    <Stars02 className="size-[15px]" />
+                                    Generate With AI
+                                  </Button>
+                                  <Button variant="outlined" visual="gray" size="sm">
+                                    <Plus className="size-[15px]" />
+                                    Add Question
+                                  </Button>
+                                </div>
+
+                                <Accordion
+                                  type="single"
+                                  collapsible
+                                  className="mt-4 space-y-3"
+                                  value={openFaqIndex !== null ? `faq-${openFaqIndex}` : ""}
+                                  onValueChange={(val) => setOpenFaqIndex(val ? Number(val.replace("faq-", "")) : null)}
+                                >
+                                  {[
+                                    { q: "How will you involve me in the process?", a: "We offer a comprehensive range of IT consulting services, including IT strategy development, software development, network infrastructure design and implementation, cybersecurity assessment and solutions, cloud computing solutions, and IT project management." },
+                                    { q: "Can I request changes after the project starts?", a: "" },
+                                    { q: "How do you handle communication during the project?", a: "" },
+                                    { q: "What tools and technologies do you use?", a: "" },
+                                  ].map((faq, idx) => (
+                                    <AccordionItem key={idx} value={`faq-${idx}`} className="rounded-lg border border-gray-200 bg-white">
+                                      <AccordionTrigger className="w-full p-4 flex items-center gap-3 [&[data-state=open]_.closed-icons]:hidden [&[data-state=closed]_.open-icons]:hidden [&[data-state=open]_.closed-text]:hidden [&[data-state=open]_.open-text]:inline">
+                                        <button type="button" className="cursor-grab text-gray-400 hover:text-gray-600" onClick={(e) => e.stopPropagation()}>
+                                          <GripVertical2 />
+                                        </button>
+                                        <div className="min-w-0 flex-1 text-left">
+                                          <span className="text-sm font-bold text-dark-blue-400">Question {idx + 1}<span className="closed-text">:</span></span>
+                                          <span className="closed-text"> </span>
+                                          <span className="closed-text text-sm text-dark-blue-400">{faq.q}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                          <span className="open-icons">
+                                            <IconButton asChild variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800">
+                                              <span><Check className="size-4" /></span>
+                                            </IconButton>
+                                          </span>
+                                          <span className="closed-icons">
+                                            <IconButton asChild variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800">
+                                              <span><Edit03 className="size-4" /></span>
+                                            </IconButton>
+                                          </span>
+                                          <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800" onClick={(e) => e.stopPropagation()}>
+                                            <Trash2 className="size-4" />
+                                          </IconButton>
+                                        </div>
+                                      </AccordionTrigger>
+                                      <DisclosureContent className="px-4 pb-4">
+                                        <p className="text-sm font-light text-dark-blue-400">
+                                          Make this clear and concise, this is what your visitors will see first.
+                                        </p>
+                                        <Input className="mt-2" defaultValue={faq.q} />
+                                        <div className="mt-4 flex items-center justify-between">
+                                          <div>
+                                            <h3 className="text-sm font-bold text-dark-blue-400">Answer</h3>
+                                            <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                              Provide a detailed, helpful response that fully addresses the question
+                                            </p>
+                                          </div>
+                                          <Button variant="outlined" visual="gray" size="sm">
+                                            <Stars02 className="size-[15px]" />
+                                            Answer With AI
+                                          </Button>
+                                        </div>
+                                        <Textarea className="mt-2" rows={4} defaultValue={faq.a} maxLength={300} />
+                                        <p className="mt-1 text-right text-xs text-gray-500">{faq.a.length}/300</p>
+                                      </DisclosureContent>
+                                    </AccordionItem>
+                                  ))}
+                                </Accordion>
+                              </RadixTabs.Content>
+
+                              <RadixTabs.Content value="RecentlyAsked" className="focus-visible:outline-none">
+                                <Tabs value={recentQTab} onValueChange={setRecentQTab} unanimated>
+                                  <TabsList className="justify-start border-b-0 px-0 pt-0 mb-4">
+                                    <TabsTrigger value="all">
+                                      All
+                                      <Badge visual="gray" className="ml-1.5 bg-gray-100 text-[10px] text-gray-500">8</Badge>
+                                    </TabsTrigger>
+                                    <TabsTrigger value="awaiting">
+                                      Awaiting Response
+                                      <Badge visual="gray" className="ml-1.5 bg-gray-100 text-[10px] text-gray-500">5</Badge>
+                                    </TabsTrigger>
+                                    <TabsTrigger value="answered">
+                                      Answered
+                                      <Badge visual="gray" className="ml-1.5 bg-gray-100 text-[10px] text-gray-500">3</Badge>
+                                    </TabsTrigger>
+                                  </TabsList>
+
+                                  <TabsContent value="all">
+                                    <div className="space-y-3">
+                                      <div className="rounded-lg border border-gray-200 bg-white p-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex items-start gap-2 min-w-0">
+                                            <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
+                                            <p className="text-sm font-medium text-dark-blue-400">
+                                              What is the expected timeline for this project?
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <p className="mt-2 ml-6 text-xs text-gray-500">
+                                          Asked by Kevin <span className="text-gray-400">@usernamehere</span> 3 weeks ago
+                                        </p>
+                                        <div className="mt-3 ml-6 flex items-start gap-2">
+                                          <Avatar size="xs">
+                                            <AvatarImage src="/man.jpg" alt="Chris" />
+                                            <AvatarFallback>C</AvatarFallback>
+                                          </Avatar>
+                                          <div className="min-w-0">
+                                            <p className="text-xs font-medium text-dark-blue-400">
+                                              Chris <span className="text-gray-400">@ux23isee</span>
+                                            </p>
+                                            <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                              We typically complete projects within 4-6 weeks depending on scope. We&apos;ll provide a detailed timeline after our initial consultation.
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <div className="mt-3 ml-6 flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-xs text-gray-500">Hide this question</span>
+                                            <Switch />
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="rounded-lg border border-gray-200 bg-white p-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex items-start gap-2 min-w-0">
+                                            <p className="text-sm font-medium text-dark-blue-400">
+                                              Can I request changes after the project starts?
+                                            </p>
+                                          </div>
+                                          <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800">
+                                            <Edit03 className="size-4" />
+                                          </IconButton>
+                                        </div>
+                                        <p className="mt-2 text-xs text-gray-500">
+                                          Asked by Sarah <span className="text-gray-400">@sarahdesigns</span> 2 weeks ago
+                                        </p>
+                                      </div>
+
+                                      <div className="rounded-lg border border-gray-200 bg-white p-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex items-start gap-2 min-w-0">
+                                            <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
+                                            <p className="text-sm font-medium text-dark-blue-400">
+                                              How do you handle communication during the project?
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <p className="mt-2 ml-6 text-xs text-gray-500">
+                                          Asked by Alex <span className="text-gray-400">@alexdev</span> 1 week ago
+                                        </p>
+                                        <div className="mt-3 ml-6 flex items-start gap-2">
+                                          <Avatar size="xs">
+                                            <AvatarImage src="/man.jpg" alt="Chris" />
+                                            <AvatarFallback>C</AvatarFallback>
+                                          </Avatar>
+                                          <div className="min-w-0">
+                                            <p className="text-xs font-medium text-dark-blue-400">
+                                              Chris <span className="text-gray-400">@ux23isee</span>
+                                            </p>
+                                            <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                              We use Slack for daily updates and have weekly video calls to review progress. You&apos;ll always know where things stand.
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <div className="mt-3 ml-6 flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-xs text-gray-500">Hide this question</span>
+                                            <Switch />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </TabsContent>
+
+                                  <TabsContent value="awaiting">
+                                    <div className="space-y-3">
+                                      <div className="rounded-lg border border-gray-200 bg-white p-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                          <p className="text-sm font-medium text-dark-blue-400">
+                                            Can I request changes after the project starts?
+                                          </p>
+                                          <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800">
+                                            <Edit03 className="size-4" />
+                                          </IconButton>
+                                        </div>
+                                        <p className="mt-2 text-xs text-gray-500">
+                                          Asked by Sarah <span className="text-gray-400">@sarahdesigns</span> 2 weeks ago
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </TabsContent>
+
+                                  <TabsContent value="answered">
+                                    <div className="space-y-3">
+                                      <div className="rounded-lg border border-gray-200 bg-white p-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex items-start gap-2 min-w-0">
+                                            <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
+                                            <p className="text-sm font-medium text-dark-blue-400">
+                                              What is the expected timeline for this project?
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <p className="mt-2 ml-6 text-xs text-gray-500">
+                                          Asked by Kevin <span className="text-gray-400">@usernamehere</span> 3 weeks ago
+                                        </p>
+                                        <div className="mt-3 ml-6 flex items-start gap-2">
+                                          <Avatar size="xs">
+                                            <AvatarImage src="/man.jpg" alt="Chris" />
+                                            <AvatarFallback>C</AvatarFallback>
+                                          </Avatar>
+                                          <div className="min-w-0">
+                                            <p className="text-xs font-medium text-dark-blue-400">
+                                              Chris <span className="text-gray-400">@ux23isee</span>
+                                            </p>
+                                            <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                              We typically complete projects within 4-6 weeks depending on scope.
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <div className="mt-3 ml-6 flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-xs text-gray-500">Hide this question</span>
+                                            <Switch />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </TabsContent>
+                                </Tabs>
+                              </RadixTabs.Content>
+                          </div>
+
+                          <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
+                            <Button
+                              type="button"
+                              variant="link"
+                              visual="gray"
+                              onClick={() => setQuestionsDialogOpen(false)}
+                            >
+                              <X className="size-[15px]" />
+                              Cancel
+                            </Button>
+                            <Button onClick={() => setQuestionsDialogOpen(false)}>Save</Button>
+                          </div>
+                          </RadixTabs.Root>
+                        </DialogContent>
+                      </Dialog>
 
                       {project.reviewCount > 0 && (
                       <>
@@ -3538,772 +4913,61 @@ export default function ProjectDetails() {
             </TabsContent>
 
             <TabsContent value="View Project Scope">
-              {/*
-                Project Scope viewer — spec refs:
-                  docs/md/.../creation/Strapi Integration:124-149  (Scope Builder)
-                  docs/md/.../details/08 - DTO and Schema Validation:42-84 (Phase/Task DTOs)
-                  docs/md/.../details/01:209-227 (duration/pricing derivation)
-
-                Data source: project.scope — an ordered array of phases,
-                each with a tasks[] array. Tasks carry title, roleName,
-                experienceLevel, estimatedHours. Duration labels ("Day 1
-                - Day 8") are derived on the fly from accumulated task
-                hours assuming an 8-hour workday, since the spec
-                explicitly forbids authoring duration fields directly
-                ("⛔ Do NOT add editable fields for duration, weeks…").
-
-                Empty-scope fallback keeps the original hardcoded 3-phase
-                block below (no-empty-swap memory rule).
-              */}
-              {Array.isArray(project.scope) && project.scope.length > 0 ? (
-                (() => {
-                  const locationToFlag = (
-                    location: string | null | undefined
-                  ): string => {
-                    const v = (location || "").trim().toLowerCase()
-                    if (!v) return ""
-                    // Minimal mapping for current seed/demo data + common markets.
-                    if (v === "united states" || v === "usa" || v === "us")
-                      return "🇺🇸"
-                    if (v === "united kingdom" || v === "uk" || v === "u.k.")
-                      return "🇬🇧"
-                    if (v === "brazil") return "🇧🇷"
-                    if (v === "canada") return "🇨🇦"
-                    if (v === "australia") return "🇦🇺"
-                    if (v === "india") return "🇮🇳"
-                    if (v === "germany") return "🇩🇪"
-                    if (v === "france") return "🇫🇷"
-                    if (v === "spain") return "🇪🇸"
-                    if (v === "netherlands") return "🇳🇱"
-                    return ""
-                  }
-
-                  type ScopeTask = {
-                    title: string
-                    roleName: string
-                    location?: string | null
-                    experienceLevel: string
-                    estimatedHours: number
-                  }
-                  type ScopePhase = {
-                    phaseName: string
-                    order: number
-                    tasks: ScopeTask[]
-                  }
-                  const phases = (project.scope as ScopePhase[])
-                    .slice()
-                    .sort((a, b) => a.order - b.order)
-                  const phaseLabels = [
-                    "Phase One",
-                    "Phase Two",
-                    "Phase Three",
-                    "Phase Four",
-                    "Phase Five",
-                    "Phase Six",
-                    "Phase Seven",
-                    "Phase Eight",
-                  ]
-                  // Accumulate day ranges across phases so later phases
-                  // start on day (prev end + 1).
-                  let cursor = 1
-                  const withDays = phases.map((phase) => {
-                    const phaseHours = phase.tasks.reduce(
-                      (sum, t) => sum + (t.estimatedHours || 0),
-                      0
-                    )
-                    const days = Math.max(1, Math.ceil(phaseHours / 8))
-                    const start = cursor
-                    const end = cursor + days - 1
-                    cursor = end + 1
-                    return { phase, start, end }
-                  })
-                  return (
-                    <div className="mt-6">
-                      <Accordion
-                        type="single"
-                        defaultValue="scope-0"
-                        className="flex-auto space-y-3"
-                      >
-                        {withDays.map(({ phase, start, end }, pi) => (
-                          <AccordionItem
-                            key={`scope-${pi}`}
-                            value={`scope-${pi}`}
-                            className="rounded-lg border border-gray-200 shadow-sm"
-                          >
-                            <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                              <div className="inline-flex items-center gap-x-3.5">
-                                <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                                  <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                </AccordionTrigger>
-
-                                <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                  {phaseLabels[pi] ?? `Phase ${pi + 1}`}{" "}
-                                  <span className="font-light">
-                                    {phase.phaseName}
-                                  </span>
-                                </span>
-                              </div>
-
-                              <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                  Day {start}
-                                </span>
-                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                  -
-                                </span>
-                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                  Day {end}
-                                </span>
-                              </div>
-                            </div>
-
-                            <DisclosureContent>
-                              <Table>
-                                <TableHeader className="bg-gray-50">
-                                  <TableRow className="hover:bg-transparent">
-                                    <TableHead>Task</TableHead>
-                                    <TableHead>Role</TableHead>
-                                    <TableHead>Location</TableHead>
-                                    <TableHead>Experience</TableHead>
-                                    <TableHead>Duration</TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {phase.tasks.map((task, ti) => (
-                                    <TableRow key={`task-${pi}-${ti}`}>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          {task.title}
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          {task.roleName}
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight text-dark-blue-400">
-                                          {task.location ? (
-                                            <span className="inline-flex items-center gap-x-2">
-                                              {locationToFlag(task.location) ? (
-                                                <span aria-hidden="true">
-                                                  {locationToFlag(
-                                                    task.location
-                                                  )}
-                                                </span>
-                                              ) : null}
-                                              <span>{task.location}</span>
-                                            </span>
-                                          ) : (
-                                            "-"
-                                          )}
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <Badge
-                                          className="rounded-[4px] bg-primary-50"
-                                          visual="primary"
-                                        >
-                                          {task.experienceLevel}
-                                        </Badge>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                          {task.estimatedHours} hours
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            </DisclosureContent>
-                          </AccordionItem>
-                        ))}
-                      </Accordion>
+              <div className="mt-6 space-y-6">
+                {/* Budget Calculator & Duration cards */}
+                <div className="grid grid-cols-2 gap-x-4">
+                  <div className="border border-gray-200 rounded-lg p-6 flex items-start justify-between">
+                    <div>
+                      <span className="text-sm font-semibold text-primary-500 inline-flex items-center gap-x-1.5">
+                        Budget Calculator
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="size-3.5 text-gray-400 cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>Calculated from your scope tasks</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </span>
+                      <div className="mt-2 flex items-baseline gap-x-1.5">
+                        <span className="text-[28px] leading-none font-bold text-dark-blue-400">$0</span>
+                        <span className="text-sm text-dark-blue-400">per</span>
+                        <Badge visual="gray" className="rounded-[5px]">week</Badge>
+                      </div>
                     </div>
-                  )
-                })()
-              ) : (
-                <div className="mt-6">
-                  <Accordion
-                    type="single"
-                    defaultValue="item-1"
-                    className="flex-auto space-y-3"
-                  >
-                    <AccordionItem
-                      value="item-1"
-                      className="rounded-lg border border-gray-200 shadow-sm"
-                    >
-                      <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                        <div className="inline-flex items-center gap-x-3.5">
-                          <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                            <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                          </AccordionTrigger>
+                    <ShieldDollar className="size-10 text-primary-500" />
+                  </div>
 
-                          <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                            Phase One{" "}
-                            <span className="font-light">Research</span>
-                          </span>
-                        </div>
-
-                        <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                            Day 1
-                          </span>
-                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                            -
-                          </span>
-                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                            Day 8
-                          </span>
-                        </div>
+                  <div className="border border-gray-200 rounded-lg p-6 flex items-start justify-between">
+                    <div>
+                      <span className="text-sm font-semibold text-primary-500 inline-flex items-center gap-x-1.5">
+                        Duration
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="size-3.5 text-gray-400 cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>Total duration based on tasks</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </span>
+                      <div className="mt-2">
+                        <span className="text-[28px] leading-none font-bold text-dark-blue-400">1 Day</span>
                       </div>
-
-                      <DisclosureContent>
-                        <Table>
-                          <TableHeader className="bg-gray-50">
-                            <TableRow className="hover:bg-transparent">
-                              <TableHead>Task</TableHead>
-                              <TableHead>Description</TableHead>
-                              <TableHead>Assignee</TableHead>
-                              <TableHead>Duration</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            <TableRow>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                  Consumer Research
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                  Conduct research to understand consumer needs,
-                                  behaviors, and preferences for product
-                                  optimization.
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="inline-flex items-start gap-x-2">
-                                  <Avatar>
-                                    <AvatarImage src="/man.jpg" alt="Man" />
-                                    <AvatarFallback>M</AvatarFallback>
-                                  </Avatar>
-
-                                  <span className="inline-flex flex-col">
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                      Vivek
-                                    </span>
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                      @topdesigner321
-                                    </span>
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                  40 hours
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                  Consumer Research
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                  Conduct research to understand consumer needs,
-                                  behaviors, and preferences for product
-                                  optimization.
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="inline-flex items-start gap-x-2">
-                                  <Avatar>
-                                    <AvatarImage src="/man.jpg" alt="Man" />
-                                    <AvatarFallback>M</AvatarFallback>
-                                  </Avatar>
-
-                                  <span className="inline-flex flex-col">
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                      Vivek
-                                    </span>
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                      @topdesigner321
-                                    </span>
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                  40 hours
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                  Consumer Research
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                  Conduct research to understand consumer needs,
-                                  behaviors, and preferences for product
-                                  optimization.
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="inline-flex items-start gap-x-2">
-                                  <Avatar>
-                                    <AvatarImage src="/man.jpg" alt="Man" />
-                                    <AvatarFallback>M</AvatarFallback>
-                                  </Avatar>
-
-                                  <span className="inline-flex flex-col">
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                      Vivek
-                                    </span>
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                      @topdesigner321
-                                    </span>
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                  40 hours
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                  Consumer Research
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                  Conduct research to understand consumer needs,
-                                  behaviors, and preferences for product
-                                  optimization.
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="inline-flex items-start gap-x-2">
-                                  <Avatar>
-                                    <AvatarImage src="/man.jpg" alt="Man" />
-                                    <AvatarFallback>M</AvatarFallback>
-                                  </Avatar>
-
-                                  <span className="inline-flex flex-col">
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                      Vivek
-                                    </span>
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                      @topdesigner321
-                                    </span>
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                  40 hours
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                          </TableBody>
-                        </Table>
-                      </DisclosureContent>
-                    </AccordionItem>
-                    <AccordionItem
-                      value="item-2"
-                      className="rounded-lg border border-gray-200 shadow-sm"
-                    >
-                      <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                        <div className="inline-flex items-center gap-x-3.5">
-                          <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                            <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                          </AccordionTrigger>
-
-                          <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                            Phase One{" "}
-                            <span className="font-light">Research</span>
-                          </span>
-                        </div>
-
-                        <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                            Day 1
-                          </span>
-                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                            -
-                          </span>
-                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                            Day 8
-                          </span>
-                        </div>
-                      </div>
-
-                      <DisclosureContent>
-                        <Table>
-                          <TableHeader className="bg-gray-50">
-                            <TableRow className="hover:bg-transparent">
-                              <TableHead>Task</TableHead>
-                              <TableHead>Description</TableHead>
-                              <TableHead>Assignee</TableHead>
-                              <TableHead>Duration</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            <TableRow>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                  Consumer Research
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                  Conduct research to understand consumer needs,
-                                  behaviors, and preferences for product
-                                  optimization.
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="inline-flex items-start gap-x-2">
-                                  <Avatar>
-                                    <AvatarImage src="/man.jpg" alt="Man" />
-                                    <AvatarFallback>M</AvatarFallback>
-                                  </Avatar>
-
-                                  <span className="inline-flex flex-col">
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                      Vivek
-                                    </span>
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                      @topdesigner321
-                                    </span>
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                  40 hours
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                  Consumer Research
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                  Conduct research to understand consumer needs,
-                                  behaviors, and preferences for product
-                                  optimization.
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="inline-flex items-start gap-x-2">
-                                  <Avatar>
-                                    <AvatarImage src="/man.jpg" alt="Man" />
-                                    <AvatarFallback>M</AvatarFallback>
-                                  </Avatar>
-
-                                  <span className="inline-flex flex-col">
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                      Vivek
-                                    </span>
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                      @topdesigner321
-                                    </span>
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                  40 hours
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                  Consumer Research
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                  Conduct research to understand consumer needs,
-                                  behaviors, and preferences for product
-                                  optimization.
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="inline-flex items-start gap-x-2">
-                                  <Avatar>
-                                    <AvatarImage src="/man.jpg" alt="Man" />
-                                    <AvatarFallback>M</AvatarFallback>
-                                  </Avatar>
-
-                                  <span className="inline-flex flex-col">
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                      Vivek
-                                    </span>
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                      @topdesigner321
-                                    </span>
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                  40 hours
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                  Consumer Research
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                  Conduct research to understand consumer needs,
-                                  behaviors, and preferences for product
-                                  optimization.
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="inline-flex items-start gap-x-2">
-                                  <Avatar>
-                                    <AvatarImage src="/man.jpg" alt="Man" />
-                                    <AvatarFallback>M</AvatarFallback>
-                                  </Avatar>
-
-                                  <span className="inline-flex flex-col">
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                      Vivek
-                                    </span>
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                      @topdesigner321
-                                    </span>
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                  40 hours
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                          </TableBody>
-                        </Table>
-                      </DisclosureContent>
-                    </AccordionItem>
-                    <AccordionItem
-                      value="item-3"
-                      className="rounded-lg border border-gray-200 shadow-sm"
-                    >
-                      <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                        <div className="inline-flex items-center gap-x-3.5">
-                          <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                            <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                          </AccordionTrigger>
-
-                          <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                            Phase One{" "}
-                            <span className="font-light">Research</span>
-                          </span>
-                        </div>
-
-                        <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                            Day 1
-                          </span>
-                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                            -
-                          </span>
-                          <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                            Day 8
-                          </span>
-                        </div>
-                      </div>
-
-                      <DisclosureContent>
-                        <Table>
-                          <TableHeader className="bg-gray-50">
-                            <TableRow className="hover:bg-transparent">
-                              <TableHead>Task</TableHead>
-                              <TableHead>Description</TableHead>
-                              <TableHead>Assignee</TableHead>
-                              <TableHead>Duration</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            <TableRow>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                  Consumer Research
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                  Conduct research to understand consumer needs,
-                                  behaviors, and preferences for product
-                                  optimization.
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="inline-flex items-start gap-x-2">
-                                  <Avatar>
-                                    <AvatarImage src="/man.jpg" alt="Man" />
-                                    <AvatarFallback>M</AvatarFallback>
-                                  </Avatar>
-
-                                  <span className="inline-flex flex-col">
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                      Vivek
-                                    </span>
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                      @topdesigner321
-                                    </span>
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                  40 hours
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                  Consumer Research
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                  Conduct research to understand consumer needs,
-                                  behaviors, and preferences for product
-                                  optimization.
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="inline-flex items-start gap-x-2">
-                                  <Avatar>
-                                    <AvatarImage src="/man.jpg" alt="Man" />
-                                    <AvatarFallback>M</AvatarFallback>
-                                  </Avatar>
-
-                                  <span className="inline-flex flex-col">
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                      Vivek
-                                    </span>
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                      @topdesigner321
-                                    </span>
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                  40 hours
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                  Consumer Research
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                  Conduct research to understand consumer needs,
-                                  behaviors, and preferences for product
-                                  optimization.
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="inline-flex items-start gap-x-2">
-                                  <Avatar>
-                                    <AvatarImage src="/man.jpg" alt="Man" />
-                                    <AvatarFallback>M</AvatarFallback>
-                                  </Avatar>
-
-                                  <span className="inline-flex flex-col">
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                      Vivek
-                                    </span>
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                      @topdesigner321
-                                    </span>
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                  40 hours
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                  Consumer Research
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                  Conduct research to understand consumer needs,
-                                  behaviors, and preferences for product
-                                  optimization.
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="inline-flex items-start gap-x-2">
-                                  <Avatar>
-                                    <AvatarImage src="/man.jpg" alt="Man" />
-                                    <AvatarFallback>M</AvatarFallback>
-                                  </Avatar>
-
-                                  <span className="inline-flex flex-col">
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                      Vivek
-                                    </span>
-                                    <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                      @topdesigner321
-                                    </span>
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4 px-6">
-                                <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                  40 hours
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                          </TableBody>
-                        </Table>
-                      </DisclosureContent>
-                    </AccordionItem>
-                  </Accordion>
+                    </div>
+                    <ChartBreakoutCircle className="size-10 text-primary-500" />
+                  </div>
                 </div>
-              )}
+
+                <ScopeBuilder embedded />
+              </div>
             </TabsContent>
           </Tabs>
         </div>
 
-        <div className="pt-[51px] sticky top-[65px] pb-8 w-[390px] shrink-0 z-10">
+        <div className="pt-[51px] sticky top-[65px] pb-8 w-[390px] shrink-0 z-10 space-y-6">
           <div className="bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg border border-gray-200">
-            <div className="relative border-b p-6 border-gray-200">
+            <div className="p-6">
               <div className="flex items-start justify-between">
                 <div className="flex items-center">
                   <Badge className="rounded-[5px]" visual="gray">
@@ -4311,11 +4975,7 @@ export default function ProjectDetails() {
                   </Badge>
                   <div className="inline-flex items-center gap-x-1.5 ml-2">
                     <span className="text-2xl leading-none font-bold text-dark-blue-400">
-                      {project.priceMin != null
-                        ? `$${Number(project.priceMin).toLocaleString()}`
-                        : project.budget != null
-                          ? `$${Number(project.budget).toLocaleString()}`
-                          : "—"}
+                      $0
                     </span>
                     <span className="text-sm font-medium leading-none text-dark-blue-400">
                       per
@@ -4323,28 +4983,14 @@ export default function ProjectDetails() {
                   </div>
 
                   <div className="ml-1.5">
-                    <Listbox
-                      defaultValue={(() => {
-                        const m = (project.priceViewMode ||
-                          project.pricingModel ||
-                          "biweekly") as string
-                        const map: Record<string, string> = {
-                          weekly: "Week",
-                          biweekly: "2-week",
-                          monthly: "Month",
-                          quarterly: "Quarter",
-                          yearly: "Year",
-                        }
-                        return map[m] || "2-week"
-                      })()}
-                    >
+                    <Listbox defaultValue="week">
                       <ListboxButton
                         className="text-sm lowercase py-[5px] px-[7px] h-max w-auto"
                         iconClassName="ml-1"
                         placeholder="Select"
                       />
                       <ListboxOptions className="w-[153px]">
-                        {["Week", "2-week", "Month", "Quarter", "Year"].map(
+                        {["week", "2-week", "month", "quarter", "year"].map(
                           (timeline) => (
                             <ListboxOption key={timeline} value={timeline}>
                               {timeline}
@@ -4356,322 +5002,170 @@ export default function ProjectDetails() {
                   </div>
                 </div>
 
-                <FavoriteRoot
-                  value={isFavorited}
-                  onValueChange={handleFavoriteToggle}
-                >
-                  {({ pressed }) => (
-                    <TooltipProvider delayDuration={75}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-block">
-                            <Favorite />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {pressed ? (
-                            <span className="inline-flex items-center gap-x-1">
-                              <Check className="size-[15px] shrink-0 text-green-500" />
-                              Saved
-                            </span>
-                          ) : (
-                            "Save to favorites"
-                          )}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-                </FavoriteRoot>
+                <IconButton variant="ghost" visual="gray" size="sm" onClick={() => router.push(`/edit-listing/${params.slug}`)}>
+                  <Edit03 className="size-4" />
+                </IconButton>
               </div>
 
               <div className="mt-3">
                 <span className="inline-block text-sm leading-none font-medium text-dark-blue-400">
-                  {project.priceMax != null
-                    ? `Up to $${Number(project.priceMax).toLocaleString()} total · ${project.pricingModel || "biweekly"} billing`
-                    : `Billing: ${project.pricingModel || "biweekly"}`}
+                  with an initial payment of $0 to kickoff
                 </span>
               </div>
 
               <div className="flex flex-col items-start gap-y-3 mt-6">
                 <span className="inline-block text-xs font-medium text-dark-blue-400">
-                  {Array.isArray(project.team) && project.team.length > 1
-                    ? "Current Team"
-                    : "Created By"}
+                  Current Team
                 </span>
 
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <AvatarGroup size="sm" excess>
-                        {(Array.isArray(project.team) && project.team.length > 0
-                          ? project.team
-                          : [
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                            ]
-                        ).map((m: any, i: number) => (
-                          <Avatar
-                            key={m.username ?? i}
-                            className="border-2 border-white hover:ring-0 active:ring-0"
-                            size="sm"
-                          >
-                            {m.avatarUrl ? (
-                              <AvatarImage
-                                src={m.avatarUrl}
-                                alt={m.firstName}
-                              />
-                            ) : null}
-                            <AvatarFallback>
-                              {(m.firstName || "?").charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        ))}
-                      </AvatarGroup>
-                    </TooltipTrigger>
-                    <TooltipContent className="p-0" size="md">
-                      <ScrollArea
-                        className="h-[192px] p-3 pr-4"
-                        scrollBar={
-                          <ScrollBar
-                            className="w-4 p-1"
-                            thumbClassName="bg-white/20"
-                          />
-                        }
-                      >
-                        <div className="space-y-3 pr-5">
-                          {(Array.isArray(project.team) &&
-                          project.team.length > 0
-                            ? project.team
-                            : [
-                                {
-                                  firstName: "Sevil",
-                                  username: "designsuperstar23",
-                                  location: null,
-                                  skills: ["Full-stack Developer"],
-                                },
-                                {
-                                  firstName: "Sevil",
-                                  username: "designsuperstar23",
-                                  location: null,
-                                  skills: ["Full-stack Developer"],
-                                },
-                              ]
-                          ).map((m: any, i: number) => (
-                            <div
-                              key={m.username ?? i}
-                              className="flex items-center gap-x-[18px]"
-                            >
-                              <div className="flex items-center gap-x-2 flex-auto">
-                                <Avatar>
-                                  {m.avatarUrl ? (
-                                    <AvatarImage
-                                      src={m.avatarUrl}
-                                      alt={m.firstName}
-                                    />
-                                  ) : null}
-                                  <AvatarFallback>
-                                    {(m.firstName || "?")
-                                      .charAt(0)
-                                      .toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex flex-col flex-auto">
-                                  <div className="flex items-center gap-x-0.5">
-                                    <span className="text-xs leading-5 font-semibold text-white">
-                                      {m.firstName}
-                                    </span>
-                                    <span className="text-[10px] leading-none font-light text-white">
-                                      @{m.username}
-                                    </span>
-                                  </div>
-                                  <span className="text-[10px] font-light text-white">
-                                    {m.location ||
-                                      m.skills?.[0] ||
-                                      "Team Member"}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </ScrollArea>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <Avatar size="sm" className="border-2 border-white">
+                  <AvatarImage src="/woman.jpg" alt="You" />
+                  <AvatarFallback>Y</AvatarFallback>
+                </Avatar>
               </div>
 
               <div className="mt-6 space-y-3">
                 <div className="flex items-center gap-x-[6.4px]">
-                  <Clock className="size-[18px] text-primary-500" />
-                  <span className="text-sm leading-none font-medium text-dark-blue-400">
-                    {project.duration
-                      ? `${project.duration} duration`
-                      : "Duration: TBD"}
+                  <Clock className="size-[18px] text-gray-400" />
+                  <span className="text-sm leading-none font-medium text-gray-500">
+                    Add a scope to see duration
                   </span>
                 </div>
-                {project.estimatedHours != null && (
-                  <div className="flex items-center gap-x-[6.4px]">
-                    <Users03 className="size-[18px] text-primary-500" />
-                    <span className="text-sm leading-none font-medium text-dark-blue-400">
-                      {project.estimatedHours} estimated hours
-                    </span>
-                  </div>
-                )}
+                <div className="flex items-center gap-x-[6.4px]">
+                  <Users03 className="size-[18px] text-gray-400" />
+                  <span className="text-sm leading-none font-medium text-gray-500">
+                    Add a scope to see team members
+                  </span>
+                </div>
               </div>
 
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button
-                    size="lg"
-                    className="mt-6 w-full border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white"
-                    variant="outlined"
-                  >
-                    Start Project
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>
-                      Would you like to customize the project scope before
-                      checkout?
-                    </DialogTitle>
-                  </DialogHeader>
-                  <DialogFooter className="mt-8">
-                    <DialogClose asChild>
-                      <Button variant="outlined" visual="gray">
-                        Edit Scope
-                      </Button>
-                    </DialogClose>
-                    <Button onClick={() => router.push(`/checkout/${params.slug}`)}>
-                      Continue to Checkout
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-
-              <div className="mt-6 flex items-center gap-x-2">
-                <span className="text-sm font-medium leading-none text-dark-blue-400 whitespace-nowrap">
-                  Additional payment plans available with
-                </span>
-
-                <div className="flex items-center gap-x-2">
-                  <span
-                    className="inline-flex items-center rounded-[6px] px-2 py-1 text-xs font-bold leading-none text-dark-blue-400"
-                    style={{ backgroundColor: "#FFB3C7" }}
-                  >
-                    Klarna
-                  </span>
-
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger className="focus-visible:outline-none text-gray-500">
-                        <Info className="size-[17px]" />
-                      </TooltipTrigger>
-
-                      <TooltipContent className="max-w-[286px]" visual="gray">
-                        Select Klarna at checkout to split your purchase into
-                        smaller payments over time. Klarna makes it easy to buy
-                        now and pay later, with no impact on your credit score.
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              </div>
-            </div>
-
-            <div className="h-[50px] rounded-b-lg bg-gray-50 flex items-center justify-evenly">
-              {project.reportButtonEnabled !== false && (
-                <div className="inline-flex items-center gap-x-2">
-                  <Flag className="size-[15px] text-gray-500" />
-                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                    Report
-                  </span>
-                </div>
-              )}
-
-              {project.helpButtonEnabled === true && (
-                <div className="inline-flex items-center gap-x-2">
-                  <HelpCircle className="size-[15px] text-gray-500" />
-                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                    Help
-                  </span>
-                </div>
-              )}
-
-              {project.shareButtonEnabled !== false && (
-                <div className="inline-flex items-center gap-x-2">
-                  <Share06 className="size-[15px] text-gray-500" />
-                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                    Share
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-3 p-6">
-            <h1 className="text-base leading-none font-semibold text-dark-blue-400">
-              {projectStaticContent.heading}
-            </h1>
-
-            <div className="mt-5 space-y-5">
-              {projectStaticContent.guaranteeItems.map((item, idx) => (
-                <article
-                  key={`${item.title}-${idx}`}
-                  className="flex items-start gap-x-2"
-                >
-                  {renderProjectStaticIcon(
-                    item.icon,
-                    "size-[18px] text-dark-blue-400"
-                  )}
-                  <div className="flex-auto space-y-1">
-                    <h1 className="text-xs leading-none font-semibold text-dark-blue-400">
-                      {item.title}
-                    </h1>
-                    <p className="text-xs leading-none font-extralight text-dark-blue-400">
-                      {item.description}
-                    </p>
-                  </div>
-                </article>
-              ))}
-            </div>
-
-            <article className="flex items-start gap-x-2 p-3 mt-3 rounded-lg bg-primary-50">
-              {renderProjectStaticIcon(
-                projectStaticContent.highlightedNotice.icon,
-                "size-[18px] text-primary-500"
-              )}
-              <div className="flex-auto">
-                <p className="text-xs leading-none font-extralight text-dark-blue-400">
-                  {projectStaticContent.highlightedNotice.description}
-                </p>
-              </div>
-            </article>
-
-            <div className="mt-3">
-              <span className="text-xs text-dark-blue-400">
-                {projectStaticContent.policy.prefixText}{" "}
-                <Button
-                  className="text-xs p-0 h-auto"
-                  variant="link"
-                  onClick={() => {
-                    const href = projectStaticContent.policy.linkHref?.trim()
-                    if (!href) return
-                    if (/^https?:\/\//i.test(href)) {
-                      window.open(href, "_self")
-                      return
-                    }
-                    if (href.startsWith("/")) {
-                      router.push(href)
-                    }
-                  }}
-                >
-                  {projectStaticContent.policy.linkLabel}
+              <div className="mt-6 flex items-center gap-x-3">
+                <Button size="md">
+                  Publish
                 </Button>
-              </span>
+                <Button variant="outlined" visual="gray" size="md" className="flex-auto">
+                  <Eye className="size-[15px]" />
+                  View as Client
+                </Button>
+                <IconButton variant="outlined" visual="gray" size="md">
+                  <Share06 className="size-[15px]" />
+                </IconButton>
+              </div>
             </div>
           </div>
+
+          <Card className="w-full hover:border-gray-200 hover:ring-0">
+            <div className="w-full p-6">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-semibold text-dark-blue-400">
+                  Level Up Your Project Listing Skills
+                </h2>
+                <HelpCircle className="size-4 text-gray-400" />
+              </div>
+
+              <div className="mt-6 space-y-3">
+                {[
+                  {
+                    title: "Crafting Job Descriptions That Attract Top Talent",
+                    rating: "4.9",
+                    level: "Beginner",
+                    image: "/tutorial-thumbnails/image.png",
+                    ratingIcon: "/tutorial-icons/star.svg",
+                    levelIcon: "/tutorial-icons/level-beginner.svg",
+                    isNew: true,
+                  },
+                  {
+                    title: "Mastering Behavioral Interview Questions",
+                    rating: "4.7",
+                    level: "Beginner",
+                    image: "/tutorial-thumbnails/image-1.png",
+                    ratingIcon: "/tutorial-icons/star.svg",
+                    levelIcon: "/tutorial-icons/level-beginner-2.svg",
+                  },
+                  {
+                    title: "How to Spot Red Flags in Candidate Interviews",
+                    rating: "4.5",
+                    level: "Advanced",
+                    image: "/tutorial-thumbnails/image-2.png",
+                    ratingIcon: "/tutorial-icons/star.svg",
+                    levelIcon: "/tutorial-icons/level-advanced.svg",
+                  },
+                  {
+                    title: "Building an Inclusive and Diverse Hiring Process",
+                    rating: "4.1",
+                    level: "Intermediate",
+                    image: "/tutorial-thumbnails/image-3.png",
+                    ratingIcon: "/tutorial-icons/star.svg",
+                    levelIcon: "/tutorial-icons/level-intermediate.svg",
+                  },
+                ].map((tutorial, index) => (
+                  <div
+                    key={`${tutorial.title}-${index}`}
+                    className="flex items-start gap-3 border-b border-gray-200 pb-3 last:border-b-0 last:pb-0"
+                  >
+                    <div className="relative h-16 w-[104px] shrink-0 overflow-hidden rounded-[8px]">
+                      <NextImage
+                        src={tutorial.image}
+                        alt={tutorial.title}
+                        fill
+                        className="object-cover"
+                      />
+                      {tutorial.isNew ? (
+                        <span className="absolute left-1 top-1 rounded-[3px] bg-success-500 p-[3px] text-[8px] font-bold leading-none text-white">
+                          NEW
+                        </span>
+                      ) : null}
+                      <span className="absolute bottom-1 right-1 rounded-[3px] bg-black/50 p-[3px] text-[8px] font-bold leading-none text-white">
+                        01:20
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <NextLink
+                        href="#"
+                        className="line-clamp-2 text-xs font-semibold leading-normal text-dark-blue-400 hover:underline"
+                      >
+                        {tutorial.title}
+                      </NextLink>
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <div className="inline-flex items-center gap-1">
+                          <NextImage
+                            src={tutorial.ratingIcon}
+                            alt=""
+                            width={13}
+                            height={13}
+                            aria-hidden="true"
+                          />
+                          <span className="text-xs font-medium leading-4 text-dark-blue-400">
+                            {tutorial.rating}
+                          </span>
+                        </div>
+                        <div className="ml-auto inline-flex items-center gap-1">
+                          <NextImage
+                            src={tutorial.levelIcon}
+                            alt=""
+                            width={16}
+                            height={16}
+                            aria-hidden="true"
+                          />
+                          <span className="text-xs font-medium leading-4 text-gray-500">
+                            {tutorial.level}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Button
+                variant="outlined"
+                visual="gray"
+                className="mt-6 w-full text-sm font-semibold text-dark-blue-400"
+              >
+                View More Tutorials
+              </Button>
+            </div>
+          </Card>
         </div>
       </div>
     </div>
