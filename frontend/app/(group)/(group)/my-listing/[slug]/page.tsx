@@ -716,73 +716,25 @@ export default function ProjectDetails() {
                   <Home03 className="size-[18px] text-gray-500/50 cursor-pointer hover:text-gray-500" />
                 </NextLink>
 
-                {(() => {
-                  const cats = project.categories || []
-                  const l1 =
-                    cats[0] || project.category || "Software Development"
-                  const l1Slug = l1
-                    .toLowerCase()
-                    .replace(/\s+/g, "-")
-                    .replace(/[^a-z0-9-]/g, "")
-                    .replace(/&/g, "and")
-                  const l2 = cats[1]
-                  const l2Slug = l2
-                    ? l2
-                        .toLowerCase()
-                        .replace(/\s+/g, "-")
-                        .replace(/[^a-z0-9-]/g, "")
-                        .replace(/&/g, "and")
-                    : null
-                  return (
-                    <>
-                      <div className="inline-flex items-center gap-x-2">
-                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">
-                          /
-                        </span>
-                        <NextLink
-                          href={`/c/${l1Slug}`}
-                          className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300"
-                        >
-                          {l1}
-                        </NextLink>
-                      </div>
-                      {l2 && (
-                        <div className="inline-flex items-center gap-x-2">
-                          <span className="text-xs leading-6 text-gray-500/50 font-semibold">
-                            /
-                          </span>
-                          <NextLink
-                            href={`/c/${l1Slug}/${l2Slug}`}
-                            className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300"
-                          >
-                            {l2}
-                          </NextLink>
-                        </div>
-                      )}
-                      <div className="inline-flex items-center gap-x-2">
-                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">
-                          /
-                        </span>
-                        <NextLink
-                          href={`/c/${l1Slug}/${l2Slug || (project.listingType === "service" ? "services" : "projects")}`}
-                          className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300"
-                        >
-                          {project.listingType === "service"
-                            ? "Services"
-                            : "Projects"}
-                        </NextLink>
-                      </div>
-                      <div className="inline-flex items-center gap-x-2">
-                        <span className="text-xs leading-6 text-gray-500/50 font-semibold">
-                          /
-                        </span>
-                        <span className="text-xs leading-6 text-gray-500 font-semibold">
-                          {project.title}
-                        </span>
-                      </div>
-                    </>
-                  )
-                })()}
+                <div className="inline-flex items-center gap-x-2">
+                  <span className="text-xs leading-6 text-gray-500/50 font-semibold">
+                    /
+                  </span>
+                  <NextLink
+                    href="/my-listings"
+                    className="text-xs leading-6 text-gray-500/50 hover:text-gray-500 font-semibold hover:underline cursor-pointer transition duration-300"
+                  >
+                    My Listings
+                  </NextLink>
+                </div>
+                <div className="inline-flex items-center gap-x-2">
+                  <span className="text-xs leading-6 text-gray-500/50 font-semibold">
+                    /
+                  </span>
+                  <span className="text-xs leading-6 text-gray-500 font-semibold">
+                    {project.title}
+                  </span>
+                </div>
               </div>
 
               <div className="flex gap-x-[13px] items-start mt-8 relative">
