@@ -154,9 +154,6 @@ const ALLOWED_MIME = new Set([
   "video/quicktime",
 ])
 
-const ALLOWED_TYPES_LABEL =
-  "PNG, JPG, GIF, WEBP, SVG, PDF, DOC(X), XLS(X), PPT(X), TXT, CSV, ZIP, MP4, MOV"
-
 interface RejectedFile {
   id: string
   name: string
@@ -166,10 +163,10 @@ interface RejectedFile {
 
 const validateFile = (file: File): string | null => {
   if (file.size > MAX_FILE_BYTES) {
-    return `File exceeds ${Math.round(MAX_FILE_BYTES / (1024 * 1024))}MB limit`
+    return `Too large (max ${Math.round(MAX_FILE_BYTES / (1024 * 1024))}MB)`
   }
   if (!ALLOWED_MIME.has(file.type)) {
-    return `Unsupported file type. Allowed: ${ALLOWED_TYPES_LABEL}`
+    return "Unsupported file type"
   }
   return null
 }
@@ -333,7 +330,7 @@ export function Chats({
 
   // Auto mark-read when opening a conversation
   useEffect(() => {
-    if (!selectedConversation) return
+    if (!selectedConversation || !jwtToken) return
     const threadId = selectedConversation.id
     threadActions.markRead(threadId).catch(() => {})
     if (typeof window !== "undefined") {
@@ -341,7 +338,7 @@ export function Chats({
         new CustomEvent("inbox:thread-read", { detail: { threadId } })
       )
     }
-  }, [selectedConversation?.id])
+  }, [selectedConversation?.id, jwtToken])
 
   // 1) unwrap the AES key once per conversation
   useEffect(() => {

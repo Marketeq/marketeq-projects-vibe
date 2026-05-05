@@ -166,19 +166,27 @@ const LeftSidebar = ({
   const token = getAccessToken()
 
   const router = useRouter()
-  const CACHE_KEY = `inbox_conversations_${currentUserId}`
-  const [conversations, setConversations] = useState<Conversation[]>(() => {
+  const CACHE_KEY = currentUserId ? `inbox_conversations_${currentUserId}` : ""
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Hydrate from sessionStorage AFTER mount so SSR markup matches initial
+  // client render (avoids React hydration mismatch). Only restores when we
+  // have a real currentUserId — avoids cross-user cache bleed.
+  useEffect(() => {
+    if (!CACHE_KEY) return
     try {
       const cached = sessionStorage.getItem(CACHE_KEY)
-      return cached ? JSON.parse(cached) : []
-    } catch { return [] }
-  })
-  const [isLoading, setIsLoading] = useState(() => {
-    try { return !sessionStorage.getItem(CACHE_KEY) } catch { return true }
-  })
+      if (cached) {
+        setConversations(JSON.parse(cached))
+        setIsLoading(false)
+      }
+    } catch {}
+  }, [CACHE_KEY])
 
   // Persist conversations to sessionStorage so back-navigation restores instantly
   useEffect(() => {
+    if (!CACHE_KEY) return
     if (conversations.length > 0) {
       try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(conversations)) } catch {}
     }
