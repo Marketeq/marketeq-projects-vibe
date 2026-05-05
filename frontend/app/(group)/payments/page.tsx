@@ -929,6 +929,27 @@ export const BillingPaymentMethodsContent = forwardRef<
                 </div>
               </button>
             ))}
+
+            <button
+              type="button"
+              onClick={openAddNewPaymentMethodDialog}
+              className="block w-full border-t border-gray-200 bg-white px-[12px] py-[12px] text-left transition duration-200 hover:bg-gray-50 focus-visible:outline-none"
+            >
+              <div className="flex items-center gap-3 rounded-[8px] border border-dashed border-gray-300 bg-gray-25 px-4 py-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-500">
+                  <Plus className="size-5" />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="text-[14px] font-semibold leading-5 text-dark-blue-400">
+                    Add a new payment method
+                  </p>
+                  <p className="text-[10px] leading-4 text-gray-500">
+                    Add a card or bank account
+                  </p>
+                </div>
+              </div>
+            </button>
           </div>
         </div>
       </section>
