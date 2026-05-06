@@ -51,6 +51,7 @@ import {
   MessageTextCircle01,
   MoreHorizontal,
   MessageTextSquare01,
+  Play,
   Plus,
   Plus2,
   Rocket02,
@@ -65,8 +66,10 @@ import {
   Star,
   Stars02,
   Trash2,
+  Upload04,
   UploadCloud,
   Users03,
+  VideoRecorder,
   X,
   X2,
 } from "@blend-metrics/icons"
@@ -148,6 +151,7 @@ import {
   IconButton,
   Input,
   InputGroup,
+  InputLeftAddon,
   InputLeftElement,
   InputRightElement,
   Label,
@@ -626,6 +630,7 @@ export default function ProjectDetails() {
     rating: 0,
     reviewCount: 0,
     featuredImage: null,
+    featuredVideo: null as string | null,
     mediaUrls: [],
     programmingLanguages: [],
     developmentTech: [],
@@ -672,9 +677,12 @@ export default function ProjectDetails() {
   ])
   const [infoCatErrors, setInfoCatErrors] = React.useState<(string | null)[]>([null, null, null])
   const [hiddenImages, setHiddenImages] = React.useState<Set<number>>(new Set())
+  const [videoHidden, setVideoHidden] = React.useState(false)
   const galleryInputRef = React.useRef<HTMLInputElement>(null)
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false)
   const [isPublishing, setIsPublishing] = React.useState(false)
+  const [videoDialogOpen, setVideoDialogOpen] = React.useState(false)
+  const [videoUrlInput, setVideoUrlInput] = React.useState("")
   const { toast } = useToast()
 
   const handleGalleryUpload = React.useCallback(
@@ -1195,10 +1203,12 @@ export default function ProjectDetails() {
         // Helper to hydrate project state from publish draft data
         const hydrateFromDraft = (d: any) => {
           let featuredImage: string | null = null
+          let featuredVideo: string | null = null
           const galleryUrls: string[] = []
           if (d.media) {
             const mediaObj = Array.isArray(d.media) ? d.media[0] : d.media
             if (mediaObj?.featuredImage) featuredImage = mediaObj.featuredImage
+            if (mediaObj?.featuredVideo) featuredVideo = mediaObj.featuredVideo
             if (Array.isArray(mediaObj?.additionalImages)) {
               galleryUrls.push(...mediaObj.additionalImages)
             }
@@ -1209,6 +1219,7 @@ export default function ProjectDetails() {
             summary: d.shortDescription || d.fullDescription || "",
             description: d.fullDescription || "",
             featuredImage: featuredImage || d.featuredImage || null,
+            featuredVideo: featuredVideo || d.featuredVideo || null,
             mediaUrls: galleryUrls.length > 0 ? galleryUrls : d.mediaUrls ?? [],
             programmingLanguages:
               Array.isArray(d.skills) && d.skills.length > 0
@@ -1845,10 +1856,76 @@ export default function ProjectDetails() {
               />
               <Carousel className="max-w-[818px] w-full">
                 <CarouselContent className="-ml-3">
+                  {/* Featured video — first slot when present */}
+                  {project.featuredVideo && (
+                    <CarouselItem className="group/slide basis-1/3">
+                      <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
+                        {/* Video thumbnail — use an embed or a poster-like view */}
+                        <iframe
+                          src={project.featuredVideo}
+                          className={cn("absolute inset-0 w-full h-full pointer-events-none transition-all duration-300", videoHidden && "opacity-40 blur-[1px]")}
+                          allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          tabIndex={-1}
+                          title="Featured video"
+                        />
+                        {/* Play button overlay (default state) */}
+                        <div className={cn("absolute inset-0 flex items-center justify-center pointer-events-none group-hover/slide:opacity-0 transition-opacity duration-200", videoHidden && "opacity-70")}>
+                          <div className="size-10 rounded-full bg-white/90 flex items-center justify-center shadow">
+                            <Play className="size-5 text-gray-800 ml-0.5" />
+                          </div>
+                        </div>
+                        {/* Hidden badge */}
+                        {videoHidden && (
+                          <div className="absolute top-1.5 left-1.5">
+                            <div className="border border-dashed border-gray-400 rounded px-1.5 py-0.5">
+                              <EyeOff className="size-3 text-gray-400" />
+                            </div>
+                          </div>
+                        )}
+                        {/* Hover overlay with action buttons */}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2">
+                          <button
+                            type="button"
+                            className="size-9 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
+                            onClick={() => {
+                              setVideoUrlInput(project.featuredVideo || "")
+                              setVideoDialogOpen(true)
+                            }}
+                          >
+                            <Edit03 className="size-4 text-white" />
+                          </button>
+                          <button
+                            type="button"
+                            className="size-9 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
+                            onClick={() => setVideoHidden((prev) => !prev)}
+                          >
+                            {videoHidden ? (
+                              <Eye className="size-4 text-white" />
+                            ) : (
+                              <EyeOff className="size-4 text-white" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            className="size-9 rounded-full bg-white/20 hover:bg-red-500/80 inline-flex items-center justify-center transition"
+                            onClick={() => {
+                              setProject((prev: any) => ({ ...prev, featuredVideo: null }))
+                              setVideoHidden(false)
+                            }}
+                          >
+                            <Trash2 className="size-4 text-white" />
+                          </button>
+                        </div>
+                      </div>
+                    </CarouselItem>
+                  )}
                   {(() => {
                     const allUrls: string[] = (project.mediaUrls as string[] | undefined) ?? []
-                    // Show 5 slots: filled slots + empty slots to fill remaining
-                    const totalSlots = Math.max(5, allUrls.length)
+                    // Show enough slots: filled + empty to fill remaining (minus 1 if video takes a slot)
+                    const videoOffset = project.featuredVideo ? 1 : 0
+                    // Show 3 empty slots initially; grow only when images are added
+                    const emptySlots = 3 - videoOffset
+                    const totalSlots = Math.max(emptySlots, allUrls.length)
                     return Array.from({ length: totalSlots }).map((_, index) => {
                       const url = allUrls[index]
                       const isHidden = hiddenImages.has(index)
@@ -1948,6 +2025,35 @@ export default function ProjectDetails() {
                 <CarouselPreviousTrigger />
                 <CarouselNextTrigger />
               </Carousel>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="mt-3 inline-flex items-center gap-x-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 transition"
+                  >
+                    <Plus className="size-4" />
+                    Add Media
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[160px]">
+                  <DropdownMenuItem
+                    onSelect={() => galleryInputRef.current?.click()}
+                  >
+                    <Upload04 className="size-4 mr-2" />
+                    Add Image
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setVideoUrlInput(project.featuredVideo || "")
+                      setVideoDialogOpen(true)
+                    }}
+                  >
+                    <VideoRecorder className="size-4 mr-2" />
+                    Add Video
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               <div className="mt-6">
                 <Tabs
@@ -5799,28 +5905,82 @@ export default function ProjectDetails() {
 
               {/* Publish confirmation dialog */}
               <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
-                <DialogContent className="max-w-[480px]">
-                  <DialogHeader>
+                <DialogContent className="max-w-[480px] p-0">
+                  <div className="p-6">
                     <DialogTitle>
                       Publish this {project.listingType === "service" ? "service" : "project"}?
                     </DialogTitle>
-                    <DialogDescription>
+                    <DialogDescription className="mt-2">
                       Your {project.listingType === "service" ? "service" : "project"} will be visible live in the marketplace.
                     </DialogDescription>
-                  </DialogHeader>
+                  </div>
 
-                  <div className="mt-6 border-t border-gray-200 pt-4 flex items-center justify-between">
+                  <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
                     <DialogClose asChild>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-x-2 text-sm font-semibold text-gray-500 hover:text-gray-700 transition"
-                      >
-                        <X className="size-4" />
+                      <Button variant="link" visual="gray">
+                        <X className="size-[15px]" />
                         Cancel
-                      </button>
+                      </Button>
                     </DialogClose>
-                    <Button variant="outlined" visual="gray" size="md" onClick={handlePublish} disabled={isPublishing}>
+                    <Button variant="outlined" visual="gray" onClick={handlePublish} disabled={isPublishing}>
                       {isPublishing ? "Publishing..." : "Yes, Publish"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Add a Featured Video dialog */}
+              <Dialog open={videoDialogOpen} onOpenChange={setVideoDialogOpen}>
+                <DialogContent className="max-w-[480px] p-0">
+                  <div className="border-b border-gray-200 p-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <DialogTitle>Add a Featured Video</DialogTitle>
+                        <DialogDescription className="mt-2">
+                          Grab attention with a compelling video that showcases your vision.
+                        </DialogDescription>
+                      </div>
+                      <IconButton
+                        type="button"
+                        onClick={() => setVideoDialogOpen(false)}
+                        variant="ghost"
+                        visual="gray"
+                      >
+                        <X className="size-5" />
+                      </IconButton>
+                    </div>
+
+                    <div className="mt-6">
+                      <InputGroup>
+                        <InputLeftAddon>http://</InputLeftAddon>
+                        <Input
+                          placeholder="www.video.com"
+                          value={videoUrlInput}
+                          onChange={(e) => setVideoUrlInput(e.target.value)}
+                        />
+                      </InputGroup>
+                    </div>
+                  </div>
+
+                  <div className="py-4 px-6 flex items-center justify-between">
+                    <DialogClose asChild>
+                      <Button variant="link" visual="gray">
+                        <X className="size-[15px]" />
+                        Cancel
+                      </Button>
+                    </DialogClose>
+                    <Button
+                      onClick={() => {
+                        const url = videoUrlInput.trim()
+                        if (url) {
+                          const fullUrl = url.startsWith("http") ? url : `https://${url}`
+                          setProject((prev: any) => ({ ...prev, featuredVideo: fullUrl }))
+                        }
+                        setVideoDialogOpen(false)
+                      }}
+                      disabled={!videoUrlInput.trim()}
+                    >
+                      Save
                     </Button>
                   </div>
                 </DialogContent>

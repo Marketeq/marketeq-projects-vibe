@@ -56,6 +56,10 @@ export class PublishService {
     private readonly httpService: HttpService,
   ) {}
 
+  private get shouldSkipModeration(): boolean {
+    return process.env.SKIP_CONTENT_MODERATION === 'true';
+  }
+
   private throwIfHttpException(error: unknown): void {
     if (error instanceof HttpException) {
       throw error;
@@ -552,6 +556,15 @@ export class PublishService {
         );
       }
 
+      if (this.shouldSkipModeration) {
+        this.logger.warn(
+          `Skipping content moderation for project ${project.id} (SKIP_CONTENT_MODERATION=true)`,
+        );
+        return await this.applyModerationDecision(project.id!, {
+          status: 'approved',
+        });
+      }
+
       const moderationInput = this.toModerationInput({
         title: project.title,
         shortDescription: project.shortDescription,
@@ -749,25 +762,31 @@ export class PublishService {
         throw new BadRequestException('You can upload a maximum of 8 images.');
       }
 
-      const featuredImageModeration =
-        await this.projectModerationService.moderateUploadedImage(
-          dto.projectId,
-          files.featuredImage,
-        );
+      if (!this.shouldSkipModeration) {
+        const featuredImageModeration =
+          await this.projectModerationService.moderateUploadedImage(
+            dto.projectId,
+            files.featuredImage,
+          );
 
-      if (featuredImageModeration.status !== 'approved') {
-        const reason =
-          featuredImageModeration.reason ??
-          'Featured image failed moderation.';
+        if (featuredImageModeration.status !== 'approved') {
+          const reason =
+            featuredImageModeration.reason ??
+            'Featured image failed moderation.';
 
-        if (featuredImageModeration.status === 'pending_review') {
+          if (featuredImageModeration.status === 'pending_review') {
+            throw new BadRequestException(
+              `Featured image is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
+            );
+          }
+
           throw new BadRequestException(
-            `Featured image is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
+            `Project rejected: image violates moderation policy. ${reason}`.trim(),
           );
         }
-
-        throw new BadRequestException(
-          `Project rejected: image violates moderation policy. ${reason}`.trim(),
+      } else {
+        this.logger.warn(
+          `Skipping image moderation for project ${dto.projectId} (SKIP_CONTENT_MODERATION=true)`,
         );
       }
 
@@ -781,22 +800,24 @@ export class PublishService {
 
       if (uploadedFeaturedVideo) {
         moderationContext = 'video';
-        const videoModeration =
-          await this.projectModerationService.moderateUploadedVideo(
-            dto.projectId,
-            uploadedFeaturedVideo,
-          );
+        if (!this.shouldSkipModeration) {
+          const videoModeration =
+            await this.projectModerationService.moderateUploadedVideo(
+              dto.projectId,
+              uploadedFeaturedVideo,
+            );
 
-        if (videoModeration.status !== 'approved') {
-          const reason = videoModeration.reason ?? 'Featured video failed moderation.';
-          if (videoModeration.status === 'pending_review') {
+          if (videoModeration.status !== 'approved') {
+            const reason = videoModeration.reason ?? 'Featured video failed moderation.';
+            if (videoModeration.status === 'pending_review') {
+              throw new BadRequestException(
+                `Featured video is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
+              );
+            }
             throw new BadRequestException(
-              `Featured video is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
+              `Project rejected: video violates moderation policy. ${reason}`.trim(),
             );
           }
-          throw new BadRequestException(
-            `Project rejected: video violates moderation policy. ${reason}`.trim(),
-          );
         }
 
         const featuredVideoUpload =
@@ -807,22 +828,24 @@ export class PublishService {
         persistedVideoUrl = featuredVideoUpload.url;
       } else if (resolvedVideoUrl) {
         moderationContext = 'video';
-        const videoModeration =
-          await this.projectModerationService.moderateVideoUrl(
-            dto.projectId,
-            resolvedVideoUrl,
-          );
+        if (!this.shouldSkipModeration) {
+          const videoModeration =
+            await this.projectModerationService.moderateVideoUrl(
+              dto.projectId,
+              resolvedVideoUrl,
+            );
 
-        if (videoModeration.status !== 'approved') {
-          const reason = videoModeration.reason ?? 'Featured video failed moderation.';
-          if (videoModeration.status === 'pending_review') {
+          if (videoModeration.status !== 'approved') {
+            const reason = videoModeration.reason ?? 'Featured video failed moderation.';
+            if (videoModeration.status === 'pending_review') {
+              throw new BadRequestException(
+                `Featured video is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
+              );
+            }
             throw new BadRequestException(
-              `Featured video is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
+              `Project rejected: video violates moderation policy. ${reason}`.trim(),
             );
           }
-          throw new BadRequestException(
-            `Project rejected: video violates moderation policy. ${reason}`.trim(),
-          );
         }
 
         persistedVideoUrl = resolvedVideoUrl;
@@ -839,12 +862,22 @@ export class PublishService {
         ),
       );
 
-      const media = await this.mediaRepository.create({
+      // Upsert: update existing media record if one exists, otherwise create
+      const existingMedia = await this.mediaRepository.find({ projectId: dto.projectId });
+      let media: Media;
+      const mediaPayload = {
         featuredImage: featuredImageUpload.url,
         additionalImages: additionalImageUploads.map((image) => image.url),
         featuredVideo: persistedVideoUrl ?? undefined,
         projectId: dto.projectId,
-      });
+      };
+      if (existingMedia?.id) {
+        const updated = await this.mediaRepository.update(existingMedia.id, mediaPayload);
+        if (!updated) throw new InternalServerErrorException('Failed to update media');
+        media = updated;
+      } else {
+        media = await this.mediaRepository.create(mediaPayload);
+      }
 
       return media;
     } catch (error) {
