@@ -666,6 +666,17 @@ export default function ProjectDetails() {
   const [infoSummary, setInfoSummary] = React.useState("")
   const [infoProjectType, setInfoProjectType] = React.useState("Website")
   const [infoTab, setInfoTab] = React.useState("Basic Info")
+  const summaryTextareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const [focusSummaryOnOpen, setFocusSummaryOnOpen] = React.useState(false)
+  React.useEffect(() => {
+    if (focusSummaryOnOpen && projectInfoOpen) {
+      const timer = setTimeout(() => {
+        summaryTextareaRef.current?.focus()
+        setFocusSummaryOnOpen(false)
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [focusSummaryOnOpen, projectInfoOpen])
   const [categoryTree, setCategoryTree] = React.useState<CategoryTreeNode[]>([])
   const [categoryOptions, setCategoryOptions] = React.useState<string[]>(FALLBACK_CATEGORY_OPTIONS)
   const [subCategoryOptions, setSubCategoryOptions] = React.useState<string[]>([])
@@ -1784,7 +1795,14 @@ export default function ProjectDetails() {
                 </IconButton>
               </div>
 
-              <div className="mt-6 relative">
+              <div
+                className="mt-6 relative cursor-pointer hover:bg-gray-50 rounded-md transition -mx-2 px-2 py-1"
+                onClick={() => {
+                  setInfoTab("Basic Info")
+                  setFocusSummaryOnOpen(true)
+                  setProjectInfoOpen(true)
+                }}
+              >
                 <p className="text-sm font-light text-dark-blue-400">
                   {project.summary || "Add a short description here to explain your project features and benefits. This will help visitors quickly see the difference between your project and similar projects in the marketplace..."}
                 </p>
@@ -2421,6 +2439,7 @@ export default function ProjectDetails() {
                                       </span>
                                     </div>
                                     <Textarea
+                                      ref={summaryTextareaRef}
                                       className="min-h-[100px] resize-none"
                                       placeholder="Enter a short description..."
                                       value={infoSummary}

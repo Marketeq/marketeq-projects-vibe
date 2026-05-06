@@ -92,6 +92,7 @@ export class ProjectRelationalRepository implements ProjectRepository {
 
     const entities = await this.projectRepository.find({
       where,
+      relations: ['media'],
     });
 
     return entities.map((project) => ProjectMapper.toDomain(project));

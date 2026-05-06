@@ -309,7 +309,7 @@ async function fetchBackendListings(): Promise<MyListing[]> {
           : "Draft") as MyListingStatus,
       category: p.categories?.[0] || "Uncategorized",
       description: p.shortDescription || p.fullDescription,
-      mediaUrl: p.media?.featuredImage || pickFromList(FALLBACK_IMAGES, p.id),
+      mediaUrl: (Array.isArray(p.media) ? p.media[0]?.featuredImage : p.media?.featuredImage) || pickFromList(FALLBACK_IMAGES, p.id),
       budget: p.budget ? `$${Number(p.budget).toLocaleString()} budget` : "Budget TBD",
       updatedAt: p.updatedAt || p.createdAt,
     }))
