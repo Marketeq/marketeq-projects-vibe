@@ -1,5 +1,5 @@
 import { CreateProjectType } from "@/types/project"
-import { getPublicListingsUrl } from "@/lib/runtime-urls"
+import { getPublicApiUrl, getPublicListingsUrl } from "@/lib/runtime-urls"
 import AxiosRequest from ".."
 
 type CreatePhaseTaskPayload = {
@@ -33,6 +33,8 @@ type UpdateTaskPayload = Pick<
 // API URL so existing Vercel deployments keep working without a new env var.
 const LISTINGS_BASE =
   getPublicListingsUrl()
+
+const API_BASE = getPublicApiUrl() || "http://localhost:4000"
 
 export const ProjectAPI = {
   CreateProjectDraft: (
@@ -139,5 +141,22 @@ export const ProjectAPI = {
   },
   UpdateTask: (id: string, data: UpdateTaskPayload) => {
     return AxiosRequest.put(`${LISTINGS_BASE}/publish/task/update/${id}`, data)
+  },
+  GetProjectBySlug: async (slug: string) => {
+    const parts = slug.split("-")
+    const stripped = parts.length > 1 ? parts.slice(0, -1).join("-") : slug
+    const candidates = Array.from(new Set([slug, stripped]))
+
+    for (const candidate of candidates) {
+      try {
+        const res = await AxiosRequest.get(
+          `${API_BASE}/v1/projects/slug/${candidate}`
+        )
+        if (res?.data) return res
+      } catch {
+        // try next candidate
+      }
+    }
+    return null
   },
 }

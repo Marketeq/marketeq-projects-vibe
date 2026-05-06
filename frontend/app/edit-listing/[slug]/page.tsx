@@ -989,9 +989,11 @@ const Sidebar = () => {
 const Header = ({
   onClose,
   slug,
+  lastSavedAt,
 }: {
   onClose?: () => void
   slug?: string
+  lastSavedAt?: Date | null
 }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200 z-10">
@@ -1000,10 +1002,12 @@ const Header = ({
       </h3>
 
       <div className="flex items-center gap-x-3">
+        {lastSavedAt && (
         <span className="inline-flex items-center gap-x-1.5 text-sm text-gray-500">
           <Clock className="size-4" />
-          Saved at {new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })}
+          Saved at {lastSavedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })}
         </span>
+        )}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1013,7 +1017,7 @@ const Header = ({
                 visual="gray"
                 onClick={() => {
                   if (slug) {
-                    window.open(`/project-details/${slug}`, "_blank")
+                    window.open(`/project-details/${slug}`, `preview-${slug}`)
                   }
                 }}
               >
@@ -6440,10 +6444,115 @@ const Team = () => {
   )
 }
 
+const SortableFaqItem = ({
+  id,
+  faq,
+  index,
+}: {
+  id: string
+  faq: { q: string; a: string }
+  index: number
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: "relative" as const,
+    zIndex: isDragging ? 10 : undefined,
+  }
+
+  return (
+    <AccordionItem ref={setNodeRef} style={style} value={id} className="rounded-lg border border-gray-200 bg-white">
+      <AccordionTrigger className="w-full p-4 flex items-center gap-3 [&[data-state=open]_.closed-icons]:hidden [&[data-state=closed]_.open-icons]:hidden [&[data-state=open]_.closed-text]:hidden [&[data-state=open]_.open-text]:inline">
+        <button
+          type="button"
+          className="cursor-grab text-gray-400 hover:text-gray-600"
+          onClick={(e) => e.stopPropagation()}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical2 />
+        </button>
+        <div className="min-w-0 flex-1 text-left">
+          <span className="text-sm font-bold text-dark-blue-400">Question {index + 1}<span className="closed-text">:</span></span>
+          <span className="closed-text"> </span>
+          <span className="closed-text text-sm text-dark-blue-400">{faq.q}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="open-icons">
+            <IconButton asChild variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800">
+              <span><Check className="size-4" /></span>
+            </IconButton>
+          </span>
+          <span className="closed-icons">
+            <IconButton asChild variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800">
+              <span><Edit03 className="size-4" /></span>
+            </IconButton>
+          </span>
+          <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800" onClick={(e) => e.stopPropagation()}>
+            <Trash2 className="size-4" />
+          </IconButton>
+        </div>
+      </AccordionTrigger>
+      <DisclosureContent className="px-4 pb-4">
+        <p className="text-sm font-light text-dark-blue-400">
+          Make this clear and concise, this is what customers will see first.
+        </p>
+        <Input className="mt-2" defaultValue={faq.q} />
+        <div className="mt-4">
+          <h3 className="text-sm font-bold text-dark-blue-400">Answer</h3>
+          <p className="mt-1 text-sm font-light text-dark-blue-400">
+            Provide a detailed, helpful response that fully addresses the question
+          </p>
+        </div>
+        <Textarea className="mt-2" rows={4} defaultValue={faq.a} maxLength={300} />
+        <div className="mt-1 flex items-center justify-between">
+          <Button variant="outlined" visual="gray" size="sm">
+            <Stars02 className="size-[15px]" />
+            Generate With AI
+          </Button>
+          <span className="text-xs text-gray-500">{faq.a.length}/300</span>
+        </div>
+      </DisclosureContent>
+    </AccordionItem>
+  )
+}
+
 const Questions = () => {
   const [questionsTab, setQuestionsTab] = useState("FAQs")
   const [recentQTab, setRecentQTab] = useState("all")
-  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null)
+  const [openFaqId, setOpenFaqId] = useState<string | null>(null)
+  const [faqs, setFaqs] = useState([
+    { id: "faq-1", q: "How will you involve me in the process?", a: "We offer a comprehensive range of IT consulting services, including IT strategy development, software development, network infrastructure design and implementation, cybersecurity assessment and solutions, cloud computing solutions, and IT project management." },
+    { id: "faq-2", q: "How do you handle revisions and feedback?", a: "" },
+    { id: "faq-3", q: "Do you offer any post-design support or maintenance?", a: "" },
+  ])
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(KeyboardSensor)
+  )
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      setFaqs((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id)
+        const newIndex = items.findIndex((i) => i.id === over.id)
+        return arrayMove(items, oldIndex, newIndex)
+      })
+    }
+  }
 
   return (
     <ScrollArea
@@ -6475,67 +6584,26 @@ const Questions = () => {
                 </Button>
               </div>
 
-              <Accordion
-                type="single"
-                collapsible
-                className="mt-4 space-y-3"
-                value={openFaqIndex !== null ? `faq-${openFaqIndex}` : ""}
-                onValueChange={(val) => setOpenFaqIndex(val ? Number(val.replace("faq-", "")) : null)}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                modifiers={[restrictToVerticalAxis]}
+                onDragEnd={handleDragEnd}
               >
-                {[
-                  { q: "How will you involve me in the process?", a: "We offer a comprehensive range of IT consulting services, including IT strategy development, software development, network infrastructure design and implementation, cybersecurity assessment and solutions, cloud computing solutions, and IT project management." },
-                  { q: "How do you handle revisions and feedback?", a: "" },
-                  { q: "Do you offer any post-design support or maintenance?", a: "" },
-                ].map((faq, idx) => (
-                  <AccordionItem key={idx} value={`faq-${idx}`} className="rounded-lg border border-gray-200 bg-white">
-                    <AccordionTrigger className="w-full p-4 flex items-center gap-3 [&[data-state=open]_.closed-icons]:hidden [&[data-state=closed]_.open-icons]:hidden [&[data-state=open]_.closed-text]:hidden [&[data-state=open]_.open-text]:inline">
-                      <button type="button" className="cursor-grab text-gray-400 hover:text-gray-600" onClick={(e) => e.stopPropagation()}>
-                        <GripVertical2 />
-                      </button>
-                      <div className="min-w-0 flex-1 text-left">
-                        <span className="text-sm font-bold text-dark-blue-400">Question {idx + 1}<span className="closed-text">:</span></span>
-                        <span className="closed-text"> </span>
-                        <span className="closed-text text-sm text-dark-blue-400">{faq.q}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="open-icons">
-                          <IconButton asChild variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800">
-                            <span><Check className="size-4" /></span>
-                          </IconButton>
-                        </span>
-                        <span className="closed-icons">
-                          <IconButton asChild variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800">
-                            <span><Edit03 className="size-4" /></span>
-                          </IconButton>
-                        </span>
-                        <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800" onClick={(e) => e.stopPropagation()}>
-                          <Trash2 className="size-4" />
-                        </IconButton>
-                      </div>
-                    </AccordionTrigger>
-                    <DisclosureContent className="px-4 pb-4">
-                      <p className="text-sm font-light text-dark-blue-400">
-                        Make this clear and concise, this is what customers will see first.
-                      </p>
-                      <Input className="mt-2" defaultValue={faq.q} />
-                      <div className="mt-4">
-                        <h3 className="text-sm font-bold text-dark-blue-400">Answer</h3>
-                        <p className="mt-1 text-sm font-light text-dark-blue-400">
-                          Provide a detailed, helpful response that fully addresses the question
-                        </p>
-                      </div>
-                      <Textarea className="mt-2" rows={4} defaultValue={faq.a} maxLength={300} />
-                      <div className="mt-1 flex items-center justify-between">
-                        <Button variant="outlined" visual="gray" size="sm">
-                          <Stars02 className="size-[15px]" />
-                          Generate With AI
-                        </Button>
-                        <span className="text-xs text-gray-500">{faq.a.length}/300</span>
-                      </div>
-                    </DisclosureContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
+                <SortableContext items={faqs.map((f) => f.id)} strategy={verticalListSortingStrategy}>
+                  <Accordion
+                    type="single"
+                    collapsible
+                    className="mt-4 space-y-3"
+                    value={openFaqId ?? ""}
+                    onValueChange={(val) => setOpenFaqId(val || null)}
+                  >
+                    {faqs.map((faq, idx) => (
+                      <SortableFaqItem key={faq.id} id={faq.id} faq={faq} index={idx} />
+                    ))}
+                  </Accordion>
+                </SortableContext>
+              </DndContext>
             </RadixTabs.Content>
 
             <RadixTabs.Content value="RecentQuestions" className="focus-visible:outline-none">
@@ -6764,6 +6832,7 @@ function PublishProject({
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
   const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const persistedMediaRef = useRef<{
     featuredImage?: string
     additionalImages?: string[]
@@ -6772,37 +6841,39 @@ function PublishProject({
   const lastDraftPayloadRef = useRef<string>("")
   const lastScopePayloadRef = useRef<string>("")
   const lastMediaPayloadRef = useRef<string>("")
+  const hasHydratedRef = useRef(false)
 
   useEffect(() => {
     if (typeof window === "undefined") return
+    if (hasHydratedRef.current) return
 
     let cancelled = false
 
     const hydrateDraft = async () => {
-      const urlParams = new URLSearchParams(window.location.search)
-      const existingDraftId = urlParams.get("draftId")
-      const type = urlParams.get("type") ?? "project"
-
       try {
-        let response
+        // Edit mode: fetch existing project by slug
+        let response = slug ? await ProjectAPI.GetProjectBySlug(slug) : null
 
-        if (existingDraftId && UUID_PATTERN.test(existingDraftId)) {
-          response = await ProjectAPI.GetProjectDraft(existingDraftId)
-        } else {
-          response = await ProjectAPI.CreateProjectDraft({})
-          const nextDraftId = String(response?.data?.id ?? "")
-          if (nextDraftId) {
-            const nextUrl = `/publish-project?type=${encodeURIComponent(
-              type
-            )}&draftId=${encodeURIComponent(nextDraftId)}`
-            window.history.replaceState(window.history.state, "", nextUrl)
+        // If no project found by slug, try draftId from query params as fallback
+        if (!response?.data) {
+          const urlParams = new URLSearchParams(window.location.search)
+          const existingDraftId = urlParams.get("draftId")
+          if (existingDraftId && UUID_PATTERN.test(existingDraftId)) {
+            response = await ProjectAPI.GetProjectDraft(existingDraftId)
           }
         }
 
         if (cancelled) return
 
+        // If no project found by slug, create a new draft so edits still save
+        if (!response?.data) {
+          response = await ProjectAPI.CreateProjectDraft({})
+        }
+
+        if (cancelled) return
+
         const draft = response?.data ?? {}
-        const nextDraftId = String(draft?.id ?? existingDraftId ?? "")
+        const nextDraftId = String(draft?.id ?? "")
         setDraftProjectId(nextDraftId || null)
 
         projectInfoMethods.reset({
@@ -6918,6 +6989,7 @@ function PublishProject({
         console.error("Failed to hydrate project draft", error)
       } finally {
         if (!cancelled) {
+          hasHydratedRef.current = true
           setIsDraftBootstrapping(false)
         }
       }
@@ -6928,7 +7000,12 @@ function PublishProject({
     return () => {
       cancelled = true
     }
-  }, [mediaMethods, projectInfoMethods, projectScopeMethods])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug])
+
+  // Ref-stable save functions so cleanup/beforeunload can call them
+  const saveDraftRef = useRef<() => Promise<void>>(async () => {})
+  const saveScopeRef = useRef<() => Promise<void>>(async () => {})
 
   useEffect(() => {
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
@@ -6951,16 +7028,22 @@ function PublishProject({
       try {
         await ProjectAPI.UpdateProjectDraft(draftProjectId, payload)
         lastDraftPayloadRef.current = serializedPayload
+        setLastSavedAt(new Date())
       } catch (error) {
         console.error("Failed to save project draft", error)
       }
     }
 
+    saveDraftRef.current = saveDraft
+
     void saveDraft()
     const interval = setInterval(() => {
       void saveDraft()
     }, 2000)
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      void saveDraft()
+    }
   }, [
     draftProjectId,
     isDraftBootstrapping,
@@ -6983,23 +7066,39 @@ function PublishProject({
       try {
         await ProjectAPI.ReplaceProjectScope(draftProjectId, payload)
         lastScopePayloadRef.current = serializedPayload
+        setLastSavedAt(new Date())
       } catch (error) {
         console.error("Failed to save project scope draft", error)
       }
     }
+
+    saveScopeRef.current = saveScope
 
     void saveScope()
     const interval = setInterval(() => {
       void saveScope()
     }, 2000)
 
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      void saveScope()
+    }
   }, [
     draftProjectId,
     isDraftBootstrapping,
     isProjectSubmitted,
     projectScopeMethods,
   ])
+
+  // Flush pending saves when the user navigates away or closes the tab
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      void saveDraftRef.current()
+      void saveScopeRef.current()
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload)
+  }, [])
 
   useEffect(() => {
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
@@ -7098,6 +7197,7 @@ function PublishProject({
           ),
           featuredVideo: nextMedia.featuredVideo ?? "",
         })
+        setLastSavedAt(new Date())
       } catch (error) {
         console.error("Failed to save project media draft", error)
       }
@@ -7205,7 +7305,7 @@ function PublishProject({
               <ProjectScopeProvider value={projectScopeValue}>
                 <Sidebar />
                 <div className="flex-auto bg-white min-w-0 overflow-x-hidden">
-                  <Header onClose={() => router.back()} slug={slug} />
+                  <Header onClose={() => router.back()} slug={slug} lastSavedAt={lastSavedAt} />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}
                     onOpenChange={toggleIsSaveExitDialogOpen}
