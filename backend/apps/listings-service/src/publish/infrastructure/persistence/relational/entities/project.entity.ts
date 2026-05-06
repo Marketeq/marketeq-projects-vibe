@@ -61,6 +61,9 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   @Column({ type: String, nullable: true })
   subtitle: string;
 
+  @Column({ type: String, nullable: true })
+  listingType: string;
+
   @Column({ type: 'numeric', nullable: true })
   budget: number;
 

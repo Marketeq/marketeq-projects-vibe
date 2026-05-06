@@ -14,6 +14,7 @@ import {
   type AutocompleteCategorySuggestion,
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
+import { ProjectAPI } from "@/service/http/project"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
 import { TagsInputHiddenInput } from "@ark-ui/react"
 import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
@@ -39,6 +40,7 @@ import {
   Edit03,
   Expand06,
   Eye,
+  EyeOff,
   FileText,
   Flag,
   HelpCircle,
@@ -49,6 +51,7 @@ import {
   MessageTextCircle01,
   MoreHorizontal,
   MessageTextSquare01,
+  Play,
   Plus,
   Plus2,
   Rocket02,
@@ -63,8 +66,10 @@ import {
   Star,
   Stars02,
   Trash2,
+  Upload04,
   UploadCloud,
   Users03,
+  VideoRecorder,
   X,
   X2,
 } from "@blend-metrics/icons"
@@ -94,8 +99,8 @@ import {
   ComboboxInput,
   ComboboxTrigger,
   ComboboxButton,
-  ComboboxOptions,
   ComboboxOption,
+  ComboboxPrimitive,
 } from "@/components/ui/combobox/combobox"
 import { ScaleOutIn } from "@/components/ui/transitions/transitions"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover/popover"
@@ -130,6 +135,7 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -145,6 +151,7 @@ import {
   IconButton,
   Input,
   InputGroup,
+  InputLeftAddon,
   InputLeftElement,
   InputRightElement,
   Label,
@@ -188,6 +195,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   useCarousel,
+  useToast,
 } from "@/components/ui"
 
 const FALLBACK_CATEGORY_OPTIONS = [
@@ -621,6 +629,8 @@ export default function ProjectDetails() {
     description: "",
     rating: 0,
     reviewCount: 0,
+    featuredImage: null,
+    featuredVideo: null as string | null,
     mediaUrls: [],
     programmingLanguages: [],
     developmentTech: [],
@@ -633,11 +643,15 @@ export default function ProjectDetails() {
     scope: [],
   })
   const [loading, setLoading] = React.useState(false)
+  const [hasChanges, setHasChanges] = React.useState(false)
   const [selected, setSelected] = React.useState<string>("Details")
   const [descDialogOpen, setDescDialogOpen] = React.useState(false)
   const [descDraft, setDescDraft] = React.useState("")
   const [projectInfoOpen, setProjectInfoOpen] = React.useState(false)
-  const [infoTitle, setInfoTitle] = React.useState("")
+  const toTitleCase = (str: string) =>
+    str.replace(/\b\w/g, (char) => char.toUpperCase())
+  const [infoTitle, setInfoTitleRaw] = React.useState("")
+  const setInfoTitle = (val: string) => setInfoTitleRaw(toTitleCase(val))
   const [isTitleEditing, setIsTitleEditing] = React.useState(false)
   const [isTitleHovered, setIsTitleHovered] = React.useState(false)
   const [titleError, setTitleError] = React.useState<string | null>(null)
@@ -652,6 +666,17 @@ export default function ProjectDetails() {
   const [infoSummary, setInfoSummary] = React.useState("")
   const [infoProjectType, setInfoProjectType] = React.useState("Website")
   const [infoTab, setInfoTab] = React.useState("Basic Info")
+  const summaryTextareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const [focusSummaryOnOpen, setFocusSummaryOnOpen] = React.useState(false)
+  React.useEffect(() => {
+    if (focusSummaryOnOpen && projectInfoOpen) {
+      const timer = setTimeout(() => {
+        summaryTextareaRef.current?.focus()
+        setFocusSummaryOnOpen(false)
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [focusSummaryOnOpen, projectInfoOpen])
   const [categoryTree, setCategoryTree] = React.useState<CategoryTreeNode[]>([])
   const [categoryOptions, setCategoryOptions] = React.useState<string[]>(FALLBACK_CATEGORY_OPTIONS)
   const [subCategoryOptions, setSubCategoryOptions] = React.useState<string[]>([])
@@ -663,6 +688,178 @@ export default function ProjectDetails() {
     { category: "", subCategories: [] },
   ])
   const [infoCatErrors, setInfoCatErrors] = React.useState<(string | null)[]>([null, null, null])
+  const [hiddenImages, setHiddenImages] = React.useState<Set<number>>(new Set())
+  const [videoHidden, setVideoHidden] = React.useState(false)
+  const galleryInputRef = React.useRef<HTMLInputElement>(null)
+  const [publishDialogOpen, setPublishDialogOpen] = React.useState(false)
+  const [isPublishing, setIsPublishing] = React.useState(false)
+  const [videoDialogOpen, setVideoDialogOpen] = React.useState(false)
+  const [videoUrlInput, setVideoUrlInput] = React.useState("")
+  const { toast } = useToast()
+
+  const handleGalleryUpload = React.useCallback(
+    async (files: FileList | null, replaceIndex?: number) => {
+      if (!files || files.length === 0) return
+      if (!project.id || !isRealBackendId(project.id)) {
+        console.error("Cannot upload images — project has no backend ID yet. Save the project first.")
+        return
+      }
+      const currentUrls: string[] = project.mediaUrls ?? []
+      const newUrls = [...currentUrls]
+
+      for (const file of Array.from(files)) {
+        const formData = new FormData()
+        // Backend requires featuredImage field to be present
+        formData.append("featuredImage", file)
+        formData.append("projectId", project.id)
+        try {
+          const res = await ProjectAPI.UploadMedia(formData)
+          const url = res?.data?.url || res?.data?.featuredImage
+          if (url) {
+            if (replaceIndex !== undefined && replaceIndex < newUrls.length) {
+              newUrls[replaceIndex] = url
+            } else {
+              newUrls.push(url)
+            }
+          }
+        } catch (err: any) {
+          console.error("Failed to upload image:", err)
+          // Show local preview even if backend upload fails
+          const localUrl = URL.createObjectURL(file)
+          if (replaceIndex !== undefined && replaceIndex < newUrls.length) {
+            newUrls[replaceIndex] = localUrl
+          } else {
+            newUrls.push(localUrl)
+          }
+          const status = err?.response?.status
+          toast({
+            title: status === 503
+              ? "Image moderation service unavailable. Showing local preview."
+              : "Failed to upload image. Showing local preview.",
+            variant: "destructive",
+          })
+        }
+      }
+
+      setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
+      setHasChanges(true)
+      // Persist gallery URLs to the media record
+      if (isRealBackendId(project.id)) {
+        try {
+          await ProjectAPI.UpdateGalleryImages(project.id, newUrls.filter((u: string) => u && !u.startsWith("blob:")))
+        } catch (err) {
+          console.error("Failed to save gallery images:", err)
+        }
+      }
+    },
+    [project.id, project.mediaUrls]
+  )
+
+  const handleGalleryDelete = React.useCallback(
+    async (index: number) => {
+      const currentUrls: string[] = project.mediaUrls ?? []
+      const newUrls = currentUrls.filter((_: string, i: number) => i !== index)
+      setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
+      setHasChanges(true)
+      setHiddenImages((prev) => {
+        const next = new Set(prev)
+        next.delete(index)
+        return next
+      })
+      // Persist updated gallery to backend
+      if (project.id && isRealBackendId(project.id)) {
+        try {
+          await ProjectAPI.UpdateGalleryImages(project.id, newUrls.filter((u: string) => u && !u.startsWith("blob:")))
+        } catch (err) {
+          console.error("Failed to save gallery after delete:", err)
+        }
+      }
+    },
+    [project.id, project.mediaUrls]
+  )
+
+  const handleGalleryToggleHidden = React.useCallback(
+    (index: number) => {
+      setHiddenImages((prev) => {
+        const next = new Set(prev)
+        if (next.has(index)) next.delete(index)
+        else next.add(index)
+        return next
+      })
+    },
+    []
+  )
+
+  const handleFeaturedImageUpload = React.useCallback(
+    async (file: File) => {
+      setHasChanges(true)
+      if (!project.id || !isRealBackendId(project.id)) {
+        // Show local preview even without backend ID
+        const localUrl = URL.createObjectURL(file)
+        setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
+        return
+      }
+      const formData = new FormData()
+      formData.append("featuredImage", file)
+      formData.append("projectId", project.id)
+      try {
+        const res = await ProjectAPI.UploadMedia(formData)
+        const url = res?.data?.featuredImage || res?.data?.url
+        if (url) {
+          setProject((prev: any) => ({ ...prev, featuredImage: url }))
+        }
+      } catch (err: any) {
+        console.error("Failed to upload featured image:", err)
+        const localUrl = URL.createObjectURL(file)
+        setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
+        toast({
+          title: err?.response?.status === 503
+            ? "Image moderation service unavailable. Showing local preview."
+            : "Failed to upload featured image. Showing local preview.",
+          variant: "destructive",
+        })
+      }
+    },
+    [project.id, toast]
+  )
+
+  const handlePublish = React.useCallback(async () => {
+    if (!project?.id || !isRealBackendId(project.id)) return
+    setIsPublishing(true)
+    try {
+      await ProjectAPI.PublishProject(project.id)
+      setProject((prev: any) => ({ ...prev, status: "published" }))
+      setHasChanges(false)
+      setPublishDialogOpen(false)
+      const label = project.listingType === "service" ? "service" : "project"
+      toast({ title: `Your ${label} is live`, variant: "success" })
+    } catch (err) {
+      console.error("Failed to publish:", err)
+      toast({ title: "Failed to publish. Please try again.", variant: "destructive" })
+    } finally {
+      setIsPublishing(false)
+    }
+  }, [project?.id, project?.listingType, toast])
+
+  const handleUnpublish = React.useCallback(async () => {
+    if (!project?.id || !isRealBackendId(project.id)) return
+    setIsPublishing(true)
+    try {
+      await ProjectAPI.UpdateProjectDraft(project.id, { status: "draft" } as any)
+      setProject((prev: any) => ({ ...prev, status: "draft" }))
+      setHasChanges(false)
+      const label = project.listingType === "service" ? "service" : "project"
+      toast({ title: `Your ${label} is now a draft`, variant: "success" })
+    } catch (err) {
+      console.error("Failed to unpublish:", err)
+      toast({ title: "Failed to unpublish. Please try again.", variant: "destructive" })
+    } finally {
+      setIsPublishing(false)
+    }
+  }, [project?.id, project?.listingType, toast])
+
+  const isPublished = project?.status === "published"
+
   const [detailsDialogOpen, setDetailsDialogOpen] = React.useState(false)
   const [teamDialogOpen, setTeamDialogOpen] = React.useState(false)
   const [questionsDialogOpen, setQuestionsDialogOpen] = React.useState(false)
@@ -906,6 +1103,102 @@ export default function ProjectDetails() {
     [selectedCategoryNames, selectedSuggestedPairs, suggested]
   )
 
+  // Persist a partial update to the backend so edits are saved to the DB.
+  // If no backend draft exists yet, create one first, get the real UUID,
+  // update local state + URL so future saves and reloads work.
+  const isRealBackendId = (id: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+
+  const saveProjectFields = React.useCallback(
+    async (fields: Record<string, any>) => {
+      if (!project?.id) return
+      setHasChanges(true)
+
+      // If the project has a real backend UUID, just update it
+      if (isRealBackendId(project.id)) {
+        try {
+          await ProjectAPI.UpdateProjectDraft(project.id, fields)
+        } catch (err: any) {
+          console.error("Failed to save project fields:", err)
+        }
+        return
+      }
+
+      // No backend draft yet — create one with all current data + the new fields
+      try {
+        const draftRes = await ProjectAPI.CreateProjectDraft({
+          title: project.title === "Enter Project Title" ? "" : project.title || "",
+          shortDescription: project.summary || "",
+          fullDescription: project.description || "",
+          categories: project.categories || [],
+          subCategories: project.subcategories || [],
+          industries: project.industries || [],
+          tags: project.tags || [],
+          skills: project.programmingLanguages || project.skills || [],
+          listingType: project.listingType || "project",
+          ...fields,
+        })
+        if (draftRes?.data?.id) {
+          const newId = draftRes.data.id
+          setProject((prev: any) => ({ ...prev, id: newId }))
+          // Update the URL so reloads fetch the real draft
+          router.replace(`/my-listing/${newId}`, { scroll: false })
+        }
+      } catch (createErr) {
+        console.error("Failed to create project draft:", createErr)
+      }
+    },
+    [project?.id, project?.title, project?.summary, project?.description, project?.categories, project?.subcategories, project?.industries, project?.tags, project?.programmingLanguages, project?.skills, project?.listingType, router]
+  )
+
+  // Debounced autosave for scope changes
+  const scopeSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleScopeChange = React.useCallback(
+    (phases: any[]) => {
+      setProject((prev: any) => ({ ...prev, scope: phases }))
+      setHasChanges(true)
+      if (!project?.id || !isRealBackendId(project.id)) return
+
+      // Debounce: wait 1.5s after last change before saving
+      if (scopeSaveTimerRef.current) clearTimeout(scopeSaveTimerRef.current)
+      scopeSaveTimerRef.current = setTimeout(async () => {
+        try {
+          const scopePayload = (phases || []).map((phase: any, idx: number) => ({
+            name: phase.phaseName || `Phase ${idx + 1}`,
+            stageName: phase.phaseName || `Phase ${idx + 1}`,
+            startDay: 1,
+            endDay: 30,
+            order: idx,
+            projectId: project.id,
+            tasks: (phase.rows || []).map((row: any) => ({
+              taskName: row.task || "",
+              role: row.role || "",
+              location: Array.isArray(row.location) ? row.location : [row.location || ""].filter(Boolean),
+              experience: Array.isArray(row.experience) ? row.experience : [row.experience || ""].filter(Boolean),
+              experienceLevel: row.experienceLevel || row.experience || "Medior",
+              duration: typeof row.duration === "object" && row.duration !== null
+                ? `${row.duration.value} ${row.duration.type}`
+                : row.duration || "1 days",
+              estimatedHours: row.estimatedHours || undefined,
+              phaseId: "",
+            })),
+          }))
+          await ProjectAPI.ReplaceProjectScope(project.id, scopePayload)
+        } catch (err) {
+          console.error("Failed to autosave scope:", err)
+        }
+      }, 1500)
+    },
+    [project?.id]
+  )
+
+  // Cleanup scope save timer on unmount
+  React.useEffect(() => {
+    return () => {
+      if (scopeSaveTimerRef.current) clearTimeout(scopeSaveTimerRef.current)
+    }
+  }, [])
+
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
 
@@ -934,19 +1227,139 @@ export default function ProjectDetails() {
   React.useEffect(() => {
     async function fetchProject() {
       try {
+        // Ensure auth token is available before calling authenticated endpoints
+        await ensureDevAuth()
+
         const rawSlug = params.slug as string
-        // URLs are generated as `${slug}-${shortId}` but the shortId may be
-        // a short numeric CMS id (e.g. "55") or an 8-char hex UUID prefix.
-        // Try the full URL slug first, then fall back to stripping the
-        // trailing id segment.
+        // The URL param is typically a UUID (draft ID), not a slug.
+        // e.g. /my-listing/abc123-def456-...
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawSlug)
+
+        // Helper to hydrate project state from publish draft data
+        const hydrateFromDraft = (d: any) => {
+          let featuredImage: string | null = null
+          let featuredVideo: string | null = null
+          const galleryUrls: string[] = []
+          if (d.media) {
+            const mediaObj = Array.isArray(d.media) ? d.media[0] : d.media
+            if (mediaObj?.featuredImage) featuredImage = mediaObj.featuredImage
+            if (mediaObj?.featuredVideo) featuredVideo = mediaObj.featuredVideo
+            if (Array.isArray(mediaObj?.additionalImages)) {
+              galleryUrls.push(...mediaObj.additionalImages)
+            }
+          }
+          setProject({
+            ...d,
+            role: d.category || d.categories?.[0] || "Software Development",
+            summary: d.shortDescription || d.fullDescription || "",
+            description: d.fullDescription || "",
+            featuredImage: featuredImage || d.featuredImage || null,
+            featuredVideo: featuredVideo || d.featuredVideo || null,
+            mediaUrls: galleryUrls.length > 0 ? galleryUrls : d.mediaUrls ?? [],
+            programmingLanguages:
+              Array.isArray(d.skills) && d.skills.length > 0
+                ? d.skills
+                : d.programmingLanguages ?? [],
+            developmentTech:
+              Array.isArray(d.industries) && d.industries.length > 0
+                ? d.industries
+                : d.developmentTech ?? [],
+            categories: d.categories ?? [],
+            subcategories: d.subCategories ?? d.subcategories ?? [],
+            tags: d.tags ?? [],
+            faqs: d.faqs ?? [],
+            recentQuestions: d.recentQuestions ?? [],
+            team: d.team ?? [],
+            deliverables: d.deliverables ?? [],
+            scope: (d.scope ?? []).map((phase: any) => {
+              const rawTasks = phase.rows || phase.task || []
+              return {
+              phaseName: phase.phaseName || phase.name || phase.stageName || "",
+              ...(rawTasks.length > 0 ? { rows: rawTasks.map((t: any) => ({
+                id: t.id || crypto.randomUUID(),
+                task: t.task || t.taskName || "",
+                role: t.role || "",
+                location: Array.isArray(t.location) ? t.location[0] || "" : t.location || "",
+                experience: Array.isArray(t.experience) ? t.experience[0] || "Medior" : t.experience || "Medior",
+                duration: typeof t.duration === "object" && t.duration !== null
+                  ? t.duration
+                  : (() => {
+                      const raw = String(t.duration || "1 days")
+                      const parts = raw.match(/^(\d+)\s*(.*)$/)
+                      const value = parts ? Number(parts[1]) : 1
+                      const unit = parts?.[2]?.toLowerCase() || "days"
+                      const type = unit.startsWith("week") ? "weeks" : unit.startsWith("hour") ? "hours" : "days"
+                      return { value, type }
+                    })(),
+              })) } : {}),
+            }}),
+            rating: 4.9,
+            reviewCount: 14,
+            listingType: d.listingType || "project",
+          })
+          if (d.listingType) setInfoProjectType(d.listingType)
+          if (d.shortDescription) setInfoSummary(d.shortDescription)
+          if (d.title && d.title !== "Enter Project Title") setInfoTitle(d.title)
+
+          // Hydrate category rows for the Project Info dialog
+          if (Array.isArray(d.categorySelections) && d.categorySelections.length > 0) {
+            const rows: CategoryRow[] = d.categorySelections.map((cs: any) => ({
+              category: cs.category || "",
+              subCategories: Array.isArray(cs.subCategories) ? cs.subCategories : [],
+            }))
+            while (rows.length < 3) rows.push({ category: "", subCategories: [] })
+            setInfoCategories(rows.slice(0, 3))
+          } else if (Array.isArray(d.categories) && d.categories.length > 0) {
+            const subs = d.subCategories ?? d.subcategories ?? []
+            const rows: CategoryRow[] = d.categories.map((cat: string, i: number) => ({
+              category: cat,
+              subCategories: i === 0 && Array.isArray(subs) ? subs : [],
+            }))
+            while (rows.length < 3) rows.push({ category: "", subCategories: [] })
+            setInfoCategories(rows.slice(0, 3))
+          }
+
+          // Hydrate details dialog state
+          if (Array.isArray(d.skills) && d.skills.length > 0) setDetailsSkills(d.skills)
+          if (Array.isArray(d.industries) && d.industries.length > 0) setDetailsIndustry(d.industries)
+          if (Array.isArray(d.tags) && d.tags.length > 0) setDetailsTags(d.tags)
+        }
+
+        // 1. If the param is a UUID, fetch the draft directly by ID
+        if (isUuid) {
+          try {
+            const draftRes = await ProjectAPI.GetProjectDraft(rawSlug)
+            if (draftRes?.data) {
+              hydrateFromDraft(draftRes.data)
+              setLoading(false)
+              return
+            }
+          } catch {
+            // draft not found by ID — fall through
+          }
+        }
+
+        // 2. Try the authenticated publish endpoint by slug
         const parts = rawSlug.split("-")
         const stripped =
           parts.length > 1 ? parts.slice(0, -1).join("-") : rawSlug
         const candidates = Array.from(new Set([rawSlug, stripped]))
 
-        // Try fetching from listings-service via gateway
-        const apiBase =
-          getPublicApiUrl() || "http://localhost:4000"
+        for (const candidate of candidates) {
+          try {
+            const publishRes = await ProjectAPI.GetProjectBySlug(candidate)
+            if (publishRes?.data) {
+              hydrateFromDraft(publishRes.data)
+              setLoading(false)
+              return
+            }
+          } catch {
+            // not found — try next candidate
+          }
+        }
+
+        // 3. Fallback: try the public read endpoint (for published CMS projects)
+        const apiBase = getPublicApiUrl() || "http://localhost:4000"
         let res: Response | null = null
         let slug = rawSlug
         for (const candidate of candidates) {
@@ -958,16 +1371,13 @@ export default function ProjectDetails() {
           }
         }
         if (!res) {
-          // last attempt — assign the final failing response so the fallback
-          // branches below can run against the last tried slug
           res = await fetch(`${apiBase}/v1/projects/slug/${slug}`)
         }
         if (!res.ok) {
-          // Try as a service
           const svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
           if (!svcRes.ok) {
-            setLoading(false)
-            return
+            // Not found anywhere — fall through to step 4 (auto-create draft)
+            throw new Error("not-found")
           }
           const svcData = await svcRes.json()
           setProject({
@@ -986,9 +1396,6 @@ export default function ProjectDetails() {
           ...data,
           role: data.category || "Software Development",
           summary: data.shortDescription || data.description,
-          // UI mapping: reuse existing arrays so the "Project Details" panel
-          // stays populated even when the backend doesn't provide separate
-          // programmingLanguages/developmentTech lists.
           programmingLanguages:
             Array.isArray(data.skills) && data.skills.length > 0
               ? data.skills
@@ -999,10 +1406,32 @@ export default function ProjectDetails() {
               : data.developmentTech,
           rating: 4.9,
           reviewCount: 14,
-          listingType: "project",
+          listingType: data.listingType || "project",
         })
+        if (data.listingType) setInfoProjectType(data.listingType)
+        if (data.shortDescription) setInfoSummary(data.shortDescription)
+        return
       } catch (err) {
         console.error(err)
+      }
+
+      // 4. Nothing found anywhere — create a new backend draft so edits persist
+      try {
+        await ensureDevAuth()
+        const draftRes = await ProjectAPI.CreateProjectDraft({
+          title: "",
+          shortDescription: "",
+          fullDescription: "",
+          listingType: "project",
+        })
+        if (draftRes?.data?.id) {
+          const newId = draftRes.data.id
+          setProject((prev: any) => ({ ...prev, id: newId }))
+          // Replace URL with the real backend UUID so reloads work
+          router.replace(`/my-listing/${newId}`, { scroll: false })
+        }
+      } catch (createErr) {
+        console.error("Failed to create initial draft:", createErr)
       } finally {
         setLoading(false)
       }
@@ -1135,19 +1564,74 @@ export default function ProjectDetails() {
                 </div>
               </div>
 
-              <div className="flex gap-x-[13px] items-start mt-8 relative">
-                <div className="w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
-                  {project.mediaUrls?.[0] ? (
-                    <NextImage
-                      src={project.mediaUrls[0]}
-                      alt={project.title}
-                      sizes="25vw"
-                      loading="eager"
-                      priority
-                      fill
-                    />
+              <div className="flex gap-x-[13px] items-start mt-8 relative z-[5]">
+                <div className="group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
+                  {project.featuredImage ? (
+                    <>
+                      <NextImage
+                        className="object-cover"
+                        src={project.featuredImage}
+                        alt={project.title}
+                        sizes="25vw"
+                        loading="eager"
+                        priority
+                        fill
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2">
+                        <button
+                          type="button"
+                          className="size-8 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
+                          onClick={() => {
+                            const input = document.createElement("input")
+                            input.type = "file"
+                            input.accept = "image/*"
+                            input.onchange = (e) => {
+                              const files = (e.target as HTMLInputElement).files
+                              if (files?.[0]) {
+                                handleFeaturedImageUpload(files[0])
+                              }
+                            }
+                            input.click()
+                          }}
+                        >
+                          <Edit03 className="size-3.5 text-white" />
+                        </button>
+                        <button
+                          type="button"
+                          className="size-8 rounded-full bg-white/20 hover:bg-red-500/80 inline-flex items-center justify-center transition"
+                          onClick={() => setProject((prev: any) => ({ ...prev, featuredImage: null }))}
+                        >
+                          <Trash2 className="size-3.5 text-white" />
+                        </button>
+                      </div>
+                    </>
                   ) : (
-                    <img src="/placeholder-img.svg" alt="" className="w-[54px] h-[49px]" />
+                    <>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <img src="/placeholder-img.svg" alt="" className="size-[54px]" />
+                      </div>
+                      <div className="absolute inset-0 bg-gray-500/80 opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-x-1.5 px-2.5 py-1 rounded-md bg-white text-xs font-medium text-gray-800 hover:bg-gray-50 transition shadow-sm"
+                          onClick={() => {
+                            const input = document.createElement("input")
+                            input.type = "file"
+                            input.accept = "image/*"
+                            input.onchange = (e) => {
+                              const files = (e.target as HTMLInputElement).files
+                              if (files?.[0]) {
+                                handleFeaturedImageUpload(files[0])
+                              }
+                            }
+                            input.click()
+                          }}
+                        >
+                          <UploadCloud className="size-3.5" />
+                          Add Image
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
 
@@ -1171,6 +1655,7 @@ export default function ProjectDetails() {
                           setProject((prev: any) => ({ ...prev, listingType: val }))
                           setProjectTypeQuery("")
                           setProjectTypeOpen(false)
+                          saveProjectFields({ listingType: val })
                         }}
                         className="w-full"
                       >
@@ -1184,7 +1669,7 @@ export default function ProjectDetails() {
                             className="border-0 border-b border-gray-200 rounded-none focus:ring-0 focus:border-gray-200 hover:ring-0 hover:border-gray-200"
                           />
                         </ComboboxTrigger>
-                        <ComboboxOptions className="relative mt-0 shadow-none">
+                        <ComboboxPrimitive.Options static className="space-y-1 px-1">
                           <ScrollArea className="h-[304px]">
                             {filteredProjectTypes.map((opt) => (
                               <ComboboxOption key={opt} value={opt}>
@@ -1192,7 +1677,7 @@ export default function ProjectDetails() {
                               </ComboboxOption>
                             ))}
                           </ScrollArea>
-                        </ComboboxOptions>
+                        </ComboboxPrimitive.Options>
                       </Combobox>
                     </PopoverContent>
                   </Popover>
@@ -1229,6 +1714,7 @@ export default function ProjectDetails() {
                               setIsTitleEditing(false)
                               if (infoTitle.trim()) {
                                 setProject((prev: any) => ({ ...prev, title: infoTitle }))
+                                saveProjectFields({ title: infoTitle })
                               }
                             }}
                             onKeyDown={(e) => {
@@ -1309,7 +1795,14 @@ export default function ProjectDetails() {
                 </IconButton>
               </div>
 
-              <div className="mt-6 relative">
+              <div
+                className="mt-6 relative cursor-pointer hover:bg-gray-50 rounded-md transition -mx-2 px-2 py-1"
+                onClick={() => {
+                  setInfoTab("Basic Info")
+                  setFocusSummaryOnOpen(true)
+                  setProjectInfoOpen(true)
+                }}
+              >
                 <p className="text-sm font-light text-dark-blue-400">
                   {project.summary || "Add a short description here to explain your project features and benefits. This will help visitors quickly see the difference between your project and similar projects in the marketplace..."}
                 </p>
@@ -1331,19 +1824,17 @@ export default function ProjectDetails() {
                 </Button>
               </NextLink>
 
-              <DisclosureTrigger
-                value={
-                  selected === "Details" || selected === "View Project Scope"
-                    ? "Live Chat"
-                    : "Details"
+              <Button
+                variant="link"
+                onClick={() =>
+                  setSelected(
+                    selected === "Live Chat" ? "Details" : "Live Chat"
+                  )
                 }
-                asChild
               >
-                <Button variant="link">
-                  <MessageTextCircle01 className="size-5" />
-                  Live Chat
-                </Button>
-              </DisclosureTrigger>
+                <MessageTextCircle01 className="size-5" />
+                {selected === "Live Chat" ? "End Chat" : "Live Chat"}
+              </Button>
 
               <Button
                 className="group"
@@ -1392,44 +1883,226 @@ export default function ProjectDetails() {
                 static /waves.png placeholder carousel so the design
                 density stays intact (saved "no-empty-swap" memory rule).
               */}
+              <input
+                ref={galleryInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  handleGalleryUpload(e.target.files)
+                  e.target.value = ""
+                }}
+              />
               <Carousel className="max-w-[818px] w-full">
                 <CarouselContent className="-ml-3">
+                  {/* Featured video — first slot when present */}
+                  {project.featuredVideo && (
+                    <CarouselItem className="group/slide basis-1/3">
+                      <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
+                        {/* Video thumbnail — use an embed or a poster-like view */}
+                        <iframe
+                          src={project.featuredVideo}
+                          className={cn("absolute inset-0 w-full h-full pointer-events-none transition-all duration-300", videoHidden && "opacity-40 blur-[1px]")}
+                          allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          tabIndex={-1}
+                          title="Featured video"
+                        />
+                        {/* Play button overlay (default state) */}
+                        <div className={cn("absolute inset-0 flex items-center justify-center pointer-events-none group-hover/slide:opacity-0 transition-opacity duration-200", videoHidden && "opacity-70")}>
+                          <div className="size-10 rounded-full bg-white/90 flex items-center justify-center shadow">
+                            <Play className="size-5 text-gray-800 ml-0.5" />
+                          </div>
+                        </div>
+                        {/* Hidden badge */}
+                        {videoHidden && (
+                          <div className="absolute top-1.5 left-1.5">
+                            <div className="border border-dashed border-gray-400 rounded px-1.5 py-0.5">
+                              <EyeOff className="size-3 text-gray-400" />
+                            </div>
+                          </div>
+                        )}
+                        {/* Hover overlay with action buttons */}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2">
+                          <button
+                            type="button"
+                            className="size-9 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
+                            onClick={() => {
+                              setVideoUrlInput(project.featuredVideo || "")
+                              setVideoDialogOpen(true)
+                            }}
+                          >
+                            <Edit03 className="size-4 text-white" />
+                          </button>
+                          <button
+                            type="button"
+                            className="size-9 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
+                            onClick={() => setVideoHidden((prev) => !prev)}
+                          >
+                            {videoHidden ? (
+                              <Eye className="size-4 text-white" />
+                            ) : (
+                              <EyeOff className="size-4 text-white" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            className="size-9 rounded-full bg-white/20 hover:bg-red-500/80 inline-flex items-center justify-center transition"
+                            onClick={() => {
+                              setProject((prev: any) => ({ ...prev, featuredVideo: null }))
+                              setVideoHidden(false)
+                            }}
+                          >
+                            <Trash2 className="size-4 text-white" />
+                          </button>
+                        </div>
+                      </div>
+                    </CarouselItem>
+                  )}
                   {(() => {
-                    const gallery =
-                      (project.mediaUrls as string[] | undefined)?.slice(1) ??
-                      []
-                    if (gallery.length === 0) {
-                      return Array.from({ length: 5 }).map((_, index) => (
-                        <CarouselItem key={index} className="group basis-1/3">
-                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-gray-100 flex items-center justify-center">
-                            <img src="/placeholder-img.svg" alt="" className="w-[54px] h-[49px]" />
+                    const allUrls: string[] = (project.mediaUrls as string[] | undefined) ?? []
+                    // Show enough slots: filled + empty to fill remaining (minus 1 if video takes a slot)
+                    const videoOffset = project.featuredVideo ? 1 : 0
+                    // Show 3 empty slots initially; grow only when images are added
+                    const emptySlots = 3 - videoOffset
+                    const totalSlots = Math.max(emptySlots, allUrls.length)
+                    return Array.from({ length: totalSlots }).map((_, index) => {
+                      const url = allUrls[index]
+                      const isHidden = hiddenImages.has(index)
+
+                      return (
+                        <CarouselItem key={index} className="group/slide basis-1/3">
+                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
+                            {url ? (
+                              <>
+                                <NextImage
+                                  className={cn("object-cover transition-all duration-300", isHidden && "opacity-40 blur-[1px]")}
+                                  src={url}
+                                  alt={`Gallery image ${index + 1}`}
+                                  sizes="25vw"
+                                  fill
+                                />
+                                {isHidden && (
+                                  <div className="absolute top-1.5 left-1.5">
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <div className="border border-dashed border-gray-400 rounded px-1.5 py-0.5 cursor-help">
+                                            <EyeOff className="size-3 text-gray-400" />
+                                          </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
+                                          This image is hidden from your listing
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </div>
+                                )}
+                                {/* Hover overlay with action buttons */}
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2">
+                                  <button
+                                    type="button"
+                                    className="size-9 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
+                                    onClick={() => {
+                                      const input = document.createElement("input")
+                                      input.type = "file"
+                                      input.accept = "image/*"
+                                      input.onchange = (e) => {
+                                        const files = (e.target as HTMLInputElement).files
+                                        handleGalleryUpload(files, index)
+                                      }
+                                      input.click()
+                                    }}
+                                  >
+                                    <Edit03 className="size-4 text-white" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="size-9 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
+                                    onClick={() => handleGalleryToggleHidden(index)}
+                                  >
+                                    {isHidden ? (
+                                      <Eye className="size-4 text-white" />
+                                    ) : (
+                                      <EyeOff className="size-4 text-white" />
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="size-9 rounded-full bg-white/20 hover:bg-red-500/80 inline-flex items-center justify-center transition"
+                                    onClick={() => handleGalleryDelete(index)}
+                                  >
+                                    <Trash2 className="size-4 text-white" />
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                {/* Empty state */}
+                                <div className="absolute inset-0 bg-gray-50 flex items-center justify-center">
+                                  <img src="/placeholder-img.svg" alt="" className="size-[54px]" />
+                                </div>
+                                {/* Empty hover: Add Image button */}
+                                <div className="absolute inset-0 bg-gray-500/80 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-x-1.5 px-3 py-1.5 rounded-md bg-white text-sm font-medium text-gray-800 hover:bg-gray-50 transition shadow-sm"
+                                    onClick={() => {
+                                      const input = document.createElement("input")
+                                      input.type = "file"
+                                      input.accept = "image/*"
+                                      input.onchange = (e) => {
+                                        const files = (e.target as HTMLInputElement).files
+                                        handleGalleryUpload(files)
+                                      }
+                                      input.click()
+                                    }}
+                                  >
+                                    <UploadCloud className="size-4" />
+                                    Add Image
+                                  </button>
+                                </div>
+                              </>
+                            )}
                           </div>
                         </CarouselItem>
-                      ))
-                    }
-                    return gallery.map((url, index) => (
-                      <CarouselItem
-                        key={`${url}-${index}`}
-                        className="group basis-1/3"
-                      >
-                        <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
-                          <NextImage
-                            className="object-cover"
-                            src={url}
-                            alt={`${project.title} — gallery image ${index + 1}`}
-                            sizes="25vw"
-                            fill
-                          />
-                          <div className="absolute inset-0 transition duration-300" />
-                        </div>
-                      </CarouselItem>
-                    ))
+                      )
+                    })
                   })()}
                 </CarouselContent>
 
                 <CarouselPreviousTrigger />
                 <CarouselNextTrigger />
               </Carousel>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="mt-3 inline-flex items-center gap-x-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 transition"
+                  >
+                    <Plus className="size-4" />
+                    Add Media
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[160px]">
+                  <DropdownMenuItem
+                    onSelect={() => galleryInputRef.current?.click()}
+                  >
+                    <Upload04 className="size-4 mr-2" />
+                    Add Image
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setVideoUrlInput(project.featuredVideo || "")
+                      setVideoDialogOpen(true)
+                    }}
+                  >
+                    <VideoRecorder className="size-4 mr-2" />
+                    Add Video
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               <div className="mt-6">
                 <Tabs
@@ -1443,12 +2116,18 @@ export default function ProjectDetails() {
                       <div className="pt-[12px] flex-auto group-data-[position=default]/tabs:contents">
                         <div className="pb-2 inline-flex items-center gap-x-3 group-data-[position=default]/tabs:hidden">
                           <div className="h-12 relative w-[66px] overflow-hidden rounded-[5px] bg-[#FBFBFB] border-b border-black/15">
-                            <NextImage
-                              className="object-cover"
-                              src="/artificial-intelligence.jpeg"
-                              sizes="15vw"
-                              fill
-                            />
+                            {project.featuredImage ? (
+                              <NextImage
+                                className="object-cover"
+                                src={project.featuredImage}
+                                sizes="15vw"
+                                fill
+                              />
+                            ) : (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <img src="/placeholder-img.svg" alt="" className="size-8" />
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex flex-col items-start gap-y-0.5">
@@ -1520,9 +2199,22 @@ export default function ProjectDetails() {
                               isShowing && "h-auto"
                             )}
                           >
-                            <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
-                              {project.title}
-                            </h1>
+                            <div className="flex items-start justify-between">
+                              <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
+                                {project.title}
+                              </h1>
+                              <IconButton
+                                className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
+                                variant="ghost"
+                                visual="gray"
+                                onClick={() => {
+                                  setDescDraft(project.description || project.summary || "")
+                                  setDescDialogOpen(true)
+                                }}
+                              >
+                                <Edit03 className="size-4" />
+                              </IconButton>
+                            </div>
 
                             <div className="mt-6 border-t pt-6 border-gray-200">
                               {/*
@@ -1632,6 +2324,7 @@ export default function ProjectDetails() {
                               onClick={() => {
                                 setProject((prev: any) => ({ ...prev, description: descDraft }))
                                 setDescDialogOpen(false)
+                                saveProjectFields({ fullDescription: descDraft })
                               }}
                             >
                               Save
@@ -1646,16 +2339,37 @@ export default function ProjectDetails() {
                           <form
                             onSubmit={(e) => {
                               e.preventDefault()
+                              const updatedCategories = infoCategories
+                                .filter((r) => r.category)
+                                .map((r) => r.category)
+                              const updatedSubCategories = infoCategories
+                                .filter((r) => r.category)
+                                .flatMap((r) => r.subCategories || [])
+                                .filter(Boolean)
+                              const categorySelections = infoCategories
+                                .filter((r) => r.category)
+                                .map((r) => ({
+                                  category: r.category,
+                                  subCategories: (r.subCategories || []).filter(Boolean),
+                                }))
                               setProject((prev: any) => ({
                                 ...prev,
                                 title: infoTitle || prev.title,
                                 summary: infoSummary || prev.summary,
                                 listingType: infoProjectType,
-                                categories: infoCategories
-                                  .filter((r) => r.category)
-                                  .map((r) => r.category),
+                                categories: updatedCategories,
+                                subcategories: updatedSubCategories,
+                                categorySelections,
                               }))
                               setProjectInfoOpen(false)
+                              saveProjectFields({
+                                title: infoTitle || undefined,
+                                shortDescription: infoSummary || undefined,
+                                listingType: infoProjectType || undefined,
+                                categories: updatedCategories,
+                                subCategories: updatedSubCategories,
+                                categorySelections,
+                              })
                             }}
                           >
                             <div>
@@ -1723,6 +2437,7 @@ export default function ProjectDetails() {
                                       </span>
                                     </div>
                                     <Textarea
+                                      ref={summaryTextareaRef}
                                       className="min-h-[100px] resize-none"
                                       placeholder="Enter a short description..."
                                       value={infoSummary}
@@ -2052,9 +2767,27 @@ export default function ProjectDetails() {
                       {project.programmingLanguages?.length > 0 || project.developmentTech?.length > 0 || project.subcategories?.length > 0 || project.tags?.length > 0 ? (
                       <div className="mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                         <div className="p-6 border-b border-gray-200">
-                          <h2 className="text-xl leading-none font-bold text-dark-blue-400">
-                            Project Details
-                          </h2>
+                          <div className="flex items-start justify-between">
+                            <h2 className="text-xl leading-none font-bold text-dark-blue-400">
+                              Project Details
+                            </h2>
+                            <IconButton
+                              className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
+                              variant="ghost"
+                              visual="gray"
+                              onClick={() => {
+                                setDetailsLangs(project.programmingLanguages ?? [])
+                                setDetailsTech(project.developmentTech ?? [])
+                                setDetailsIndustry(project.industries ?? project.developmentTech ?? [])
+                                setDetailsTags(project.tags ?? [])
+                                setDetailsSkills(project.skills ?? project.programmingLanguages ?? [])
+                                setDetailsTools(project.tools ?? [])
+                                setDetailsDialogOpen(true)
+                              }}
+                            >
+                              <Edit03 className="size-4" />
+                            </IconButton>
+                          </div>
 
                           <div className="mt-6">
                             <div className="grid gap-x-6 grid-cols-2">
@@ -2502,7 +3235,15 @@ export default function ProjectDetails() {
                               Your project deliverables will be displayed here once you add a scope to your offer. These deliverables are automatically generated based on the details in your scope and tasks, they&apos;re not directly editable.
                             </p>
                           </div>
-                          <Button variant="outlined" visual="gray" className="shrink-0 ml-[75px]" onClick={() => setDetailsDialogOpen(true)}>
+                          <Button variant="outlined" visual="gray" className="shrink-0 ml-[75px]" onClick={() => {
+                                setDetailsLangs(project.programmingLanguages ?? [])
+                                setDetailsTech(project.developmentTech ?? [])
+                                setDetailsIndustry(project.industries ?? project.developmentTech ?? [])
+                                setDetailsTags(project.tags ?? [])
+                                setDetailsSkills(project.skills ?? project.programmingLanguages ?? [])
+                                setDetailsTools(project.tools ?? [])
+                                setDetailsDialogOpen(true)
+                              }}>
                             <Plus className="size-[15px]" />
                             Add Details
                           </Button>
@@ -2788,6 +3529,11 @@ export default function ProjectDetails() {
                                 tools: detailsTools,
                               }))
                               setDetailsDialogOpen(false)
+                              saveProjectFields({
+                                industries: detailsIndustry,
+                                tags: detailsTags,
+                                skills: detailsSkills,
+                              })
                             }}>Save</Button>
                           </div>
                         </DialogContent>
@@ -3592,7 +4338,7 @@ export default function ProjectDetails() {
                         </DialogContent>
                       </Dialog>
 
-                      {project.reviewCount > 0 && (
+                      {(project.completedContracts?.length > 0 || project.ongoingContracts?.length > 0) && (
                       <>
                       <div className="p-6 mt-6 border gap-x-[50px] flex items-start rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                         <div className="flex flex-col flex-1 gap-y-1.5 basis-[147px]">
@@ -5101,7 +5847,7 @@ export default function ProjectDetails() {
                   </div>
                 </div>
 
-                <ScopeBuilder embedded />
+                <ScopeBuilder embedded phases={project.scope?.length > 0 ? project.scope : undefined} onPhasesChange={handleScopeChange} />
               </div>
             </TabsContent>
           </Tabs>
@@ -5182,17 +5928,169 @@ export default function ProjectDetails() {
               </div>
 
               <div className="mt-6 flex items-center gap-x-3">
-                <Button size="md">
-                  Publish
-                </Button>
-                <Button variant="outlined" visual="gray" size="md" className="flex-auto">
-                  <Eye className="size-[15px]" />
-                  View as Client
-                </Button>
-                <IconButton variant="outlined" visual="gray" size="md">
-                  <Share06 className="size-[15px]" />
-                </IconButton>
+                {hasChanges ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button size="md" onClick={() => setPublishDialogOpen(true)} disabled={isPublishing}>
+                          Publish
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
+                        Publish your changes to the marketplace
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : isPublished ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outlined" visual="gray" size="md" className="gap-x-1.5">
+                              <span className="size-2 rounded-full bg-success-500" />
+                              Live
+                              <ChevronDown className="size-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuItem onSelect={handleUnpublish} disabled={isPublishing}>
+                              <EyeOff className="size-4 mr-2" />
+                              Unpublish
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
+                        Your listing is live and visible on the marketplace
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="outlined" visual="gray" size="md" className="gap-x-1.5">
+                          <span className="size-2 rounded-full bg-gray-400" />
+                          Draft
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
+                        Saved as draft, not yet visible on the marketplace
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="outlined" visual="gray" size="md" className="flex-auto" onClick={() => router.push(`/project-details/${params.slug}`)}>
+                        <Eye className="size-[15px]" />
+                        View as Client
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
+                      Preview as a client
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <IconButton variant="outlined" visual="gray" size="md">
+                        <Share06 className="size-[15px]" />
+                      </IconButton>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
+                      Share listing
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
+
+              {/* Publish confirmation dialog */}
+              <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+                <DialogContent className="max-w-[480px] p-0">
+                  <div className="p-6">
+                    <DialogTitle>
+                      Publish this {project.listingType === "service" ? "service" : "project"}?
+                    </DialogTitle>
+                    <DialogDescription className="mt-2">
+                      Your {project.listingType === "service" ? "service" : "project"} will be visible live in the marketplace.
+                    </DialogDescription>
+                  </div>
+
+                  <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
+                    <DialogClose asChild>
+                      <Button variant="link" visual="gray">
+                        <X className="size-[15px]" />
+                        Cancel
+                      </Button>
+                    </DialogClose>
+                    <Button variant="outlined" visual="gray" onClick={handlePublish} disabled={isPublishing}>
+                      {isPublishing ? "Publishing..." : "Yes, Publish"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Add a Featured Video dialog */}
+              <Dialog open={videoDialogOpen} onOpenChange={setVideoDialogOpen}>
+                <DialogContent className="max-w-[480px] p-0">
+                  <div className="border-b border-gray-200 p-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <DialogTitle>Add a Featured Video</DialogTitle>
+                        <DialogDescription className="mt-2">
+                          Grab attention with a compelling video that showcases your vision.
+                        </DialogDescription>
+                      </div>
+                      <IconButton
+                        type="button"
+                        onClick={() => setVideoDialogOpen(false)}
+                        variant="ghost"
+                        visual="gray"
+                      >
+                        <X className="size-5" />
+                      </IconButton>
+                    </div>
+
+                    <div className="mt-6">
+                      <InputGroup>
+                        <InputLeftAddon>http://</InputLeftAddon>
+                        <Input
+                          placeholder="www.video.com"
+                          value={videoUrlInput}
+                          onChange={(e) => setVideoUrlInput(e.target.value)}
+                        />
+                      </InputGroup>
+                    </div>
+                  </div>
+
+                  <div className="py-4 px-6 flex items-center justify-between">
+                    <DialogClose asChild>
+                      <Button variant="link" visual="gray">
+                        <X className="size-[15px]" />
+                        Cancel
+                      </Button>
+                    </DialogClose>
+                    <Button
+                      onClick={() => {
+                        const url = videoUrlInput.trim()
+                        if (url) {
+                          const fullUrl = url.startsWith("http") ? url : `https://${url}`
+                          setProject((prev: any) => ({ ...prev, featuredVideo: fullUrl }))
+                          setHasChanges(true)
+                        }
+                        setVideoDialogOpen(false)
+                      }}
+                      disabled={!videoUrlInput.trim()}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
 

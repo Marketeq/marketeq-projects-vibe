@@ -152,6 +152,11 @@ export class CreateProjectDto {
   @IsOptional()
   skills?: string[];
 
+  @ApiProperty({ description: 'Listing type (e.g. Website, Mobile App)', required: false })
+  @IsOptional()
+  @IsString()
+  listingType?: string;
+
   @ApiProperty({ description: 'User ID of the project creator' })
   @IsOptional()
   @IsString()

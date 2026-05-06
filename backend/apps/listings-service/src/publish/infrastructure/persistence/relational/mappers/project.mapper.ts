@@ -19,6 +19,7 @@ export class ProjectMapper {
     project.industries = raw.industries;
     project.tags = raw.tags;
     project.skills = raw.skills;
+    project.listingType = raw.listingType;
     project.categories = raw.categories;
     project.subCategories = raw.subCategories;
     project.categorySelections = raw.categorySelections;
@@ -28,6 +29,9 @@ export class ProjectMapper {
     project.createdAt = raw.createdAt;
     project.updatedAt = raw.updatedAt;
     project.deletedAt = raw.deletedAt;
+    if (raw.media) {
+      project.media = raw.media;
+    }
 
     return project;
   }
@@ -53,6 +57,7 @@ export class ProjectMapper {
     projectEntity.industries = project.industries!;
     projectEntity.tags = project.tags!;
     projectEntity.skills = project.skills!;
+    projectEntity.listingType = project.listingType!;
     projectEntity.categories = project.categories!;
     projectEntity.subCategories = project.subCategories!;
     projectEntity.categorySelections = project.categorySelections ?? [];

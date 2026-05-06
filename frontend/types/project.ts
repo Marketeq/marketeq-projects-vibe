@@ -39,6 +39,7 @@ export type CreateProjectType = {
   industries?: string[]
   tags?: string[]
   skills?: string[]
+  listingType?: string
   shortDescription: string
   fullDescription: string
   userId: string
