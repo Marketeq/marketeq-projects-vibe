@@ -732,12 +732,20 @@ export default function ProjectDetails() {
 
       setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
       setHasChanges(true)
+      // Persist gallery URLs to the media record
+      if (isRealBackendId(project.id)) {
+        try {
+          await ProjectAPI.UpdateGalleryImages(project.id, newUrls.filter((u: string) => u && !u.startsWith("blob:")))
+        } catch (err) {
+          console.error("Failed to save gallery images:", err)
+        }
+      }
     },
     [project.id, project.mediaUrls]
   )
 
   const handleGalleryDelete = React.useCallback(
-    (index: number) => {
+    async (index: number) => {
       const currentUrls: string[] = project.mediaUrls ?? []
       const newUrls = currentUrls.filter((_: string, i: number) => i !== index)
       setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
@@ -747,8 +755,16 @@ export default function ProjectDetails() {
         next.delete(index)
         return next
       })
+      // Persist updated gallery to backend
+      if (project.id && isRealBackendId(project.id)) {
+        try {
+          await ProjectAPI.UpdateGalleryImages(project.id, newUrls.filter((u: string) => u && !u.startsWith("blob:")))
+        } catch (err) {
+          console.error("Failed to save gallery after delete:", err)
+        }
+      }
     },
-    [project.mediaUrls]
+    [project.id, project.mediaUrls]
   )
 
   const handleGalleryToggleHidden = React.useCallback(
@@ -1800,7 +1816,7 @@ export default function ProjectDetails() {
               >
                 <Button variant="link">
                   <MessageTextCircle01 className="size-5" />
-                  Live Chat
+                  {selected === "Live Chat" ? "End Chat" : "Live Chat"}
                 </Button>
               </DisclosureTrigger>
 
@@ -1952,9 +1968,18 @@ export default function ProjectDetails() {
                                 />
                                 {isHidden && (
                                   <div className="absolute top-1.5 left-1.5">
-                                    <div className="border border-dashed border-gray-400 rounded px-1.5 py-0.5">
-                                      <EyeOff className="size-3 text-gray-400" />
-                                    </div>
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <div className="border border-dashed border-gray-400 rounded px-1.5 py-0.5 cursor-help">
+                                            <EyeOff className="size-3 text-gray-400" />
+                                          </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
+                                          This image is hidden from your listing
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
                                   </div>
                                 )}
                                 {/* Hover overlay with action buttons */}
@@ -5894,8 +5919,8 @@ export default function ProjectDetails() {
                           Publish
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        You have unpublished changes. Publish to make them visible on the marketplace.
+                      <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
+                        Publish your changes to the marketplace
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -5919,8 +5944,8 @@ export default function ProjectDetails() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        Your {project.listingType === "service" ? "service" : "project"} is live and visible on the marketplace.
+                      <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
+                        Your listing is live and visible on the marketplace
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -5933,8 +5958,8 @@ export default function ProjectDetails() {
                           Draft
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        Your {project.listingType === "service" ? "service" : "project"} is saved as a draft and not yet visible on the marketplace.
+                      <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
+                        Saved as draft, not yet visible on the marketplace
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -5947,8 +5972,8 @@ export default function ProjectDetails() {
                         View as Client
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      Preview how clients will see your listing.
+                    <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
+                      Preview as a client
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -5959,8 +5984,8 @@ export default function ProjectDetails() {
                         <Share06 className="size-[15px]" />
                       </IconButton>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      Share your listing.
+                    <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
+                      Share listing
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>

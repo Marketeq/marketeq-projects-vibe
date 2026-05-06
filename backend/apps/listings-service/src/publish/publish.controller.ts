@@ -230,6 +230,19 @@ export class PublishController {
     );
   }
 
+  @Put('media/:projectId/gallery')
+  async updateGalleryImages(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() body: { additionalImages: string[] },
+  ) {
+    return this.publishService.updateMediaGallery(
+      req.user.sub,
+      projectId,
+      body.additionalImages ?? [],
+    );
+  }
+
   @Post('phase')
   async createProjectOfPhase(
     @Req() req: AuthenticatedRequest,

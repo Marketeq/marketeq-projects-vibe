@@ -744,6 +744,23 @@ export class PublishService {
     }
   }
 
+  async updateMediaGallery(
+    userId: string,
+    projectId: string,
+    additionalImages: string[],
+  ): Promise<Media | null> {
+    const project = await this.projectRepository.find({ id: projectId });
+    if (!project || project.userId !== userId) {
+      throw new NotFoundException('Project not found');
+    }
+    const existingMedia = await this.mediaRepository.find({ projectId });
+    if (!existingMedia) {
+      // Create a new media record with just additionalImages
+      return this.mediaRepository.create({ projectId, additionalImages, featuredImage: '' } as any);
+    }
+    return this.mediaRepository.update(existingMedia.id, { additionalImages });
+  }
+
   async createProjectOfMedia(
     userId: string,
     files: {
