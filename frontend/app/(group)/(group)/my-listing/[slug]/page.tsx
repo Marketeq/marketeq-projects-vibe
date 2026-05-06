@@ -1824,19 +1824,17 @@ export default function ProjectDetails() {
                 </Button>
               </NextLink>
 
-              <DisclosureTrigger
-                value={
-                  selected === "Details" || selected === "View Project Scope"
-                    ? "Live Chat"
-                    : "Details"
+              <Button
+                variant="link"
+                onClick={() =>
+                  setSelected(
+                    selected === "Live Chat" ? "Details" : "Live Chat"
+                  )
                 }
-                asChild
               >
-                <Button variant="link">
-                  <MessageTextCircle01 className="size-5" />
-                  {selected === "Live Chat" ? "End Chat" : "Live Chat"}
-                </Button>
-              </DisclosureTrigger>
+                <MessageTextCircle01 className="size-5" />
+                {selected === "Live Chat" ? "End Chat" : "Live Chat"}
+              </Button>
 
               <Button
                 className="group"
