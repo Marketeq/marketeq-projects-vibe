@@ -40,6 +40,7 @@ import { HttpService } from '@nestjs/axios';
 import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategory.dto';
 import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
 import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
+import { slugify } from '../shared/utils/slugify';
 
 @Injectable()
 export class PublishService {
@@ -324,8 +325,10 @@ export class PublishService {
     dto: UpsertProjectDraftDto,
   ): Promise<Project> {
     try {
+      const title = dto.title ?? '';
       const payload = {
-        title: dto.title ?? '',
+        title,
+        slug: title ? slugify(title) : null,
         subtitle: dto.subtitle ?? null,
         shortDescription: dto.shortDescription ?? '',
         fullDescription: dto.fullDescription ?? '',
@@ -392,7 +395,10 @@ export class PublishService {
 
     const payload: Partial<Project> = {};
 
-    if (dto.title !== undefined) payload.title = dto.title;
+    if (dto.title !== undefined) {
+      payload.title = dto.title;
+      payload.slug = dto.title ? slugify(dto.title) : null;
+    }
     if (dto.subtitle !== undefined) payload.subtitle = dto.subtitle;
     if (dto.shortDescription !== undefined) {
       payload.shortDescription = dto.shortDescription;
@@ -428,6 +434,39 @@ export class PublishService {
     }
 
     return updated;
+  }
+
+  async getProjectDraftBySlug(userId: string, slug: string): Promise<any> {
+    const project = await this.projectRepository.findBySlug(slug, userId);
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    const media = await this.mediaRepository.find({ projectId: project.id });
+    const phases = await this.phaseRepository.findAll({
+      filterOptions: { projectId: project.id },
+    });
+
+    const scope = await Promise.all(
+      phases
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map(async (phase) => {
+          const hydratedPhase =
+            (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
+          return {
+            ...hydratedPhase,
+            task: [...(hydratedPhase.task ?? [])].sort(
+              (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+            ),
+          };
+        }),
+    );
+
+    return {
+      ...project,
+      media: media ?? null,
+      scope,
+    };
   }
 
   async getMyProjects(userId: string): Promise<Project[]> {

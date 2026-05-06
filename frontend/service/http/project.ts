@@ -143,19 +143,13 @@ export const ProjectAPI = {
     return AxiosRequest.put(`${LISTINGS_BASE}/publish/task/update/${id}`, data)
   },
   GetProjectBySlug: async (slug: string) => {
-    const parts = slug.split("-")
-    const stripped = parts.length > 1 ? parts.slice(0, -1).join("-") : slug
-    const candidates = Array.from(new Set([slug, stripped]))
-
-    for (const candidate of candidates) {
-      try {
-        const res = await AxiosRequest.get(
-          `${API_BASE}/v1/projects/slug/${candidate}`
-        )
-        if (res?.data) return res
-      } catch {
-        // try next candidate
-      }
+    try {
+      const res = await AxiosRequest.get(
+        `${LISTINGS_BASE}/publish/project/slug/${slug}`
+      )
+      if (res?.data) return res
+    } catch {
+      // not found
     }
     return null
   },

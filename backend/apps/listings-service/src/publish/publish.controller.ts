@@ -71,6 +71,22 @@ export class PublishController {
     }
   }
 
+  @Get('project/slug/:slug')
+  async getProjectDraftBySlug(
+    @Req() req: AuthenticatedRequest,
+    @Param('slug') slug: string,
+  ) {
+    try {
+      return await this.publishService.getProjectDraftBySlug(
+        req.user.sub,
+        slug,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
   @Get('project/:projectId')
   async getProjectDraft(
     @Req() req: AuthenticatedRequest,
