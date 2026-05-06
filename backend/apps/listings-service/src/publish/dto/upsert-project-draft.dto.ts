@@ -106,4 +106,9 @@ export class UpsertProjectDraftDto {
   @IsArray()
   @IsString({ each: true })
   skills?: string[];
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  listingType?: string;
 }

@@ -343,6 +343,7 @@ export class PublishService {
         industries: dto.industries ?? dto.industry ?? [],
         tags: dto.tags ?? [],
         skills: dto.skills ?? [],
+        listingType: dto.listingType ?? null,
         status: 'draft',
         projectDatePublished: null,
         userId,
@@ -427,6 +428,7 @@ export class PublishService {
     }
     if (dto.tags !== undefined) payload.tags = dto.tags;
     if (dto.skills !== undefined) payload.skills = dto.skills;
+    if (dto.listingType !== undefined) payload.listingType = dto.listingType;
 
     const updated = await this.projectRepository.update(projectId, payload);
     if (!updated) {

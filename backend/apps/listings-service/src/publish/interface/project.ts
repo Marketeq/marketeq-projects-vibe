@@ -27,6 +27,7 @@ export class Project {
   industries?: string[] | null;
   tags?: string[] | null;
   skills?: string[] | null;
+  listingType?: string | null;
   status?: string | null;
   projectDatePublished?: Date | null;
   userId: string;
