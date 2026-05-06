@@ -29,6 +29,9 @@ export class ProjectMapper {
     project.createdAt = raw.createdAt;
     project.updatedAt = raw.updatedAt;
     project.deletedAt = raw.deletedAt;
+    if (raw.media) {
+      project.media = raw.media;
+    }
 
     return project;
   }

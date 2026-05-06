@@ -32,6 +32,8 @@ export class Project {
   projectDatePublished?: Date | null;
   userId: string;
 
+  media?: any[];
+
   createdAt?: Date;
   updatedAt?: Date;
   deletedAt?: Date | null;
