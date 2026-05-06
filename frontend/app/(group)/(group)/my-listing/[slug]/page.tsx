@@ -5879,16 +5879,21 @@ export default function ProjectDetails() {
 
               <div className="mt-6 flex items-center gap-x-3">
                 {isPublished ? (
-                  <>
-                    <Button variant="outlined" visual="gray" size="md" className="gap-x-1.5" onClick={handleUnpublish} disabled={isPublishing}>
-                      <span className="size-2 rounded-full bg-success-500" />
-                      Live
-                    </Button>
-                    <Button variant="outlined" visual="gray" size="md" onClick={handleUnpublish} disabled={isPublishing}>
-                      <EyeOff className="size-[15px]" />
-                      Unpublish
-                    </Button>
-                  </>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outlined" visual="gray" size="md" className="gap-x-1.5">
+                        <span className="size-2 rounded-full bg-success-500" />
+                        Live
+                        <ChevronDown className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem onSelect={handleUnpublish} disabled={isPublishing}>
+                        <EyeOff className="size-4 mr-2" />
+                        Unpublish
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 ) : (
                   <Button size="md" onClick={() => setPublishDialogOpen(true)} disabled={isPublishing}>
                     Publish
