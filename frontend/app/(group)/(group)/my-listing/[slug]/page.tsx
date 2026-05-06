@@ -94,8 +94,8 @@ import {
   ComboboxInput,
   ComboboxTrigger,
   ComboboxButton,
-  ComboboxOptions,
   ComboboxOption,
+  ComboboxPrimitive,
 } from "@/components/ui/combobox/combobox"
 import { ScaleOutIn } from "@/components/ui/transitions/transitions"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover/popover"
@@ -1184,7 +1184,7 @@ export default function ProjectDetails() {
                             className="border-0 border-b border-gray-200 rounded-none focus:ring-0 focus:border-gray-200 hover:ring-0 hover:border-gray-200"
                           />
                         </ComboboxTrigger>
-                        <ComboboxOptions className="relative mt-0 shadow-none">
+                        <ComboboxPrimitive.Options static className="space-y-1 px-1">
                           <ScrollArea className="h-[304px]">
                             {filteredProjectTypes.map((opt) => (
                               <ComboboxOption key={opt} value={opt}>
@@ -1192,7 +1192,7 @@ export default function ProjectDetails() {
                               </ComboboxOption>
                             ))}
                           </ScrollArea>
-                        </ComboboxOptions>
+                        </ComboboxPrimitive.Options>
                       </Combobox>
                     </PopoverContent>
                   </Popover>
