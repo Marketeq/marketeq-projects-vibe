@@ -643,6 +643,7 @@ export default function ProjectDetails() {
     scope: [],
   })
   const [loading, setLoading] = React.useState(false)
+  const [hasChanges, setHasChanges] = React.useState(false)
   const [selected, setSelected] = React.useState<string>("Details")
   const [descDialogOpen, setDescDialogOpen] = React.useState(false)
   const [descDraft, setDescDraft] = React.useState("")
@@ -730,6 +731,7 @@ export default function ProjectDetails() {
       }
 
       setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
+      setHasChanges(true)
     },
     [project.id, project.mediaUrls]
   )
@@ -739,6 +741,7 @@ export default function ProjectDetails() {
       const currentUrls: string[] = project.mediaUrls ?? []
       const newUrls = currentUrls.filter((_: string, i: number) => i !== index)
       setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
+      setHasChanges(true)
       setHiddenImages((prev) => {
         const next = new Set(prev)
         next.delete(index)
@@ -762,6 +765,7 @@ export default function ProjectDetails() {
 
   const handleFeaturedImageUpload = React.useCallback(
     async (file: File) => {
+      setHasChanges(true)
       if (!project.id || !isRealBackendId(project.id)) {
         // Show local preview even without backend ID
         const localUrl = URL.createObjectURL(file)
@@ -798,6 +802,7 @@ export default function ProjectDetails() {
     try {
       await ProjectAPI.PublishProject(project.id)
       setProject((prev: any) => ({ ...prev, status: "published" }))
+      setHasChanges(false)
       setPublishDialogOpen(false)
       const label = project.listingType === "service" ? "service" : "project"
       toast({ title: `Your ${label} is live`, variant: "success" })
@@ -815,6 +820,7 @@ export default function ProjectDetails() {
     try {
       await ProjectAPI.UpdateProjectDraft(project.id, { status: "draft" } as any)
       setProject((prev: any) => ({ ...prev, status: "draft" }))
+      setHasChanges(false)
       const label = project.listingType === "service" ? "service" : "project"
       toast({ title: `Your ${label} is now a draft`, variant: "success" })
     } catch (err) {
@@ -1079,6 +1085,7 @@ export default function ProjectDetails() {
   const saveProjectFields = React.useCallback(
     async (fields: Record<string, any>) => {
       if (!project?.id) return
+      setHasChanges(true)
 
       // If the project has a real backend UUID, just update it
       if (isRealBackendId(project.id)) {
@@ -1122,6 +1129,7 @@ export default function ProjectDetails() {
   const handleScopeChange = React.useCallback(
     (phases: any[]) => {
       setProject((prev: any) => ({ ...prev, scope: phases }))
+      setHasChanges(true)
       if (!project?.id || !isRealBackendId(project.id)) return
 
       // Debounce: wait 1.5s after last change before saving
@@ -5878,7 +5886,11 @@ export default function ProjectDetails() {
               </div>
 
               <div className="mt-6 flex items-center gap-x-3">
-                {isPublished ? (
+                {hasChanges ? (
+                  <Button size="md" onClick={() => setPublishDialogOpen(true)} disabled={isPublishing}>
+                    Publish
+                  </Button>
+                ) : isPublished ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outlined" visual="gray" size="md" className="gap-x-1.5">
@@ -5895,8 +5907,9 @@ export default function ProjectDetails() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 ) : (
-                  <Button size="md" onClick={() => setPublishDialogOpen(true)} disabled={isPublishing}>
-                    Publish
+                  <Button variant="outlined" visual="gray" size="md" className="gap-x-1.5" disabled>
+                    <span className="size-2 rounded-full bg-gray-400" />
+                    Draft
                   </Button>
                 )}
                 <Button variant="outlined" visual="gray" size="md" className="flex-auto" onClick={() => router.push(`/project-details/${params.slug}`)}>
@@ -5980,6 +5993,7 @@ export default function ProjectDetails() {
                         if (url) {
                           const fullUrl = url.startsWith("http") ? url : `https://${url}`
                           setProject((prev: any) => ({ ...prev, featuredVideo: fullUrl }))
+                          setHasChanges(true)
                         }
                         setVideoDialogOpen(false)
                       }}
