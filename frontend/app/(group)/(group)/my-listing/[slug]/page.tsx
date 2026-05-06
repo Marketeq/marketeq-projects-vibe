@@ -89,6 +89,16 @@ import {
   ShowMoreLessComp,
   ShowMoreLessRoot,
 } from "@/components/show-more-less"
+import {
+  Combobox,
+  ComboboxInput,
+  ComboboxTrigger,
+  ComboboxButton,
+  ComboboxOptions,
+  ComboboxOption,
+} from "@/components/ui/combobox/combobox"
+import { ScaleOutIn } from "@/components/ui/transitions/transitions"
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover/popover"
 import { GripVertical2 } from "@/components/icons/grip-vertical-2"
 import { ScopeBuilder } from "@/components/scope-builder"
 import { useInviteWindowStore } from "@/components/invite-window"
@@ -628,6 +638,17 @@ export default function ProjectDetails() {
   const [descDraft, setDescDraft] = React.useState("")
   const [projectInfoOpen, setProjectInfoOpen] = React.useState(false)
   const [infoTitle, setInfoTitle] = React.useState("")
+  const [isTitleEditing, setIsTitleEditing] = React.useState(false)
+  const [isTitleHovered, setIsTitleHovered] = React.useState(false)
+  const [titleError, setTitleError] = React.useState<string | null>(null)
+  const titleInputRef = React.useRef<HTMLInputElement>(null)
+  const [projectTypeOpen, setProjectTypeOpen] = React.useState(false)
+  const [projectTypeQuery, setProjectTypeQuery] = React.useState("")
+  const filteredProjectTypes = projectTypeQuery === ""
+    ? PROJECT_TYPE_OPTIONS
+    : PROJECT_TYPE_OPTIONS.filter((opt) =>
+        opt.toLowerCase().includes(projectTypeQuery.toLowerCase())
+      )
   const [infoSummary, setInfoSummary] = React.useState("")
   const [infoProjectType, setInfoProjectType] = React.useState("Website")
   const [infoTab, setInfoTab] = React.useState("Basic Info")
@@ -1126,17 +1147,138 @@ export default function ProjectDetails() {
                       fill
                     />
                   ) : (
-                    <Image03 className="size-10 text-gray-300" />
+                    <img src="/placeholder-img.svg" alt="" className="w-[54px] h-[49px]" />
                   )}
                 </div>
 
                 <div className="flex flex-col items-start gap-y-3 flex-1">
-                  <Badge className="rounded-[5px] bg-gray-100" visual="gray">
-                    Select Project Type
-                  </Badge>
-                  <h1 className="text-[28px] leading-none font-bold text-gray-300">
-                    {project.title}
-                  </h1>
+                  <Popover open={projectTypeOpen} onOpenChange={(open) => {
+                    setProjectTypeOpen(open)
+                    if (!open) setProjectTypeQuery("")
+                  }}>
+                    <PopoverTrigger asChild>
+                      <button type="button">
+                        <Badge className="rounded-[5px] bg-gray-100 cursor-pointer" visual="gray">
+                          {infoProjectType || "Select Project Type"}
+                        </Badge>
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[224px] rounded-xl bg-white shadow-2xl p-0 border-0">
+                      <Combobox
+                        value={infoProjectType}
+                        onChange={(val: string) => {
+                          setInfoProjectType(val)
+                          setProject((prev: any) => ({ ...prev, listingType: val }))
+                          setProjectTypeQuery("")
+                          setProjectTypeOpen(false)
+                        }}
+                        className="w-full"
+                      >
+                        <ComboboxTrigger>
+                          <ComboboxButton>
+                            <SearchMd className="size-4" />
+                          </ComboboxButton>
+                          <ComboboxInput
+                            placeholder="Search"
+                            onChange={(e) => setProjectTypeQuery(e.target.value)}
+                            className="border-0 border-b border-gray-200 rounded-none focus:ring-0 focus:border-gray-200 hover:ring-0 hover:border-gray-200"
+                          />
+                        </ComboboxTrigger>
+                        <ComboboxOptions className="relative mt-0 shadow-none">
+                          <ScrollArea className="h-[304px]">
+                            {filteredProjectTypes.map((opt) => (
+                              <ComboboxOption key={opt} value={opt}>
+                                {opt}
+                              </ComboboxOption>
+                            ))}
+                          </ScrollArea>
+                        </ComboboxOptions>
+                      </Combobox>
+                    </PopoverContent>
+                  </Popover>
+
+                  <div
+                    className="flex items-center gap-1.5 w-full cursor-pointer"
+                    onMouseEnter={() => setIsTitleHovered(true)}
+                    onMouseLeave={() => setIsTitleHovered(false)}
+                    onClick={() => {
+                      if (!isTitleEditing) {
+                        setInfoTitle(project.title === "Enter Project Title" ? "" : project.title || "")
+                        setIsTitleEditing(true)
+                        setTitleError(null)
+                        setTimeout(() => titleInputRef.current?.focus(), 0)
+                      }
+                    }}
+                  >
+                    <div className="flex flex-col flex-1 min-w-0">
+                      {isTitleEditing ? (
+                        <>
+                          <input
+                            ref={titleInputRef}
+                            type="text"
+                            className="w-full text-[22px] leading-[30px] font-semibold text-dark-blue-400 bg-transparent border-0 border-b border-gray-300 outline-none p-0 m-0 placeholder:text-gray-400 placeholder:font-semibold"
+                            value={infoTitle}
+                            placeholder="Enter Project Title"
+                            maxLength={120}
+                            onChange={(e) => {
+                              const val = e.target.value.slice(0, 120)
+                              setInfoTitle(val)
+                              if (titleError) setTitleError(null)
+                            }}
+                            onBlur={() => {
+                              setIsTitleEditing(false)
+                              if (infoTitle.trim()) {
+                                setProject((prev: any) => ({ ...prev, title: infoTitle }))
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault()
+                                ;(e.target as HTMLInputElement).blur()
+                              }
+                              if (e.key === "Escape") {
+                                setIsTitleEditing(false)
+                                setTitleError(null)
+                                setInfoTitle(project.title === "Enter Project Title" ? "" : project.title || "")
+                              }
+                              const currentLen = infoTitle.length
+                              const selLen = (e.currentTarget.selectionEnd ?? 0) - (e.currentTarget.selectionStart ?? 0)
+                              if (
+                                !e.ctrlKey && !e.metaKey && !e.altKey &&
+                                e.key.length === 1 &&
+                                currentLen - selLen >= 120
+                              ) {
+                                e.preventDefault()
+                                setTitleError("Please do not enter more than 120 character(s)")
+                              }
+                            }}
+                            onPaste={(e) => {
+                              const pastedText = e.clipboardData.getData("text")
+                              const currentLen = infoTitle.length
+                              const selLen = (e.currentTarget.selectionEnd ?? 0) - (e.currentTarget.selectionStart ?? 0)
+                              if (currentLen - selLen + pastedText.length > 120) {
+                                e.preventDefault()
+                                setTitleError("Please do not enter more than 120 character(s)")
+                              }
+                            }}
+                          />
+                          {titleError && (
+                            <span className="text-xs text-red-500 mt-1">{titleError}</span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-[22px] leading-[30px] font-semibold text-dark-blue-400">
+                          {project.title || "Enter Project Title"}
+                        </span>
+                      )}
+                    </div>
+                    <Edit03
+                      className={cn(
+                        "size-4 text-gray-400 shrink-0 transition-opacity duration-200",
+                        isTitleHovered || isTitleEditing ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                  </div>
 
                   <button
                     className="inline-flex items-center gap-x-1.5 text-sm font-semibold text-dark-blue-400 hover:underline transition duration-300"
@@ -1260,7 +1402,7 @@ export default function ProjectDetails() {
                       return Array.from({ length: 5 }).map((_, index) => (
                         <CarouselItem key={index} className="group basis-1/3">
                           <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-gray-100 flex items-center justify-center">
-                            <Image03 className="size-10 text-gray-300" />
+                            <img src="/placeholder-img.svg" alt="" className="w-[54px] h-[49px]" />
                           </div>
                         </CarouselItem>
                       ))
