@@ -625,6 +625,7 @@ export default function ProjectDetails() {
     description: "",
     rating: 0,
     reviewCount: 0,
+    featuredImage: null,
     mediaUrls: [],
     programmingLanguages: [],
     developmentTech: [],
@@ -749,6 +750,38 @@ export default function ProjectDetails() {
       })
     },
     []
+  )
+
+  const handleFeaturedImageUpload = React.useCallback(
+    async (file: File) => {
+      if (!project.id || !isRealBackendId(project.id)) {
+        // Show local preview even without backend ID
+        const localUrl = URL.createObjectURL(file)
+        setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
+        return
+      }
+      const formData = new FormData()
+      formData.append("featuredImage", file)
+      formData.append("projectId", project.id)
+      try {
+        const res = await ProjectAPI.UploadMedia(formData)
+        const url = res?.data?.featuredImage || res?.data?.url
+        if (url) {
+          setProject((prev: any) => ({ ...prev, featuredImage: url }))
+        }
+      } catch (err: any) {
+        console.error("Failed to upload featured image:", err)
+        const localUrl = URL.createObjectURL(file)
+        setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
+        toast({
+          title: err?.response?.status === 503
+            ? "Image moderation service unavailable. Showing local preview."
+            : "Failed to upload featured image. Showing local preview.",
+          variant: "destructive",
+        })
+      }
+    },
+    [project.id, toast]
   )
 
   const handlePublish = React.useCallback(async () => {
@@ -1161,12 +1194,13 @@ export default function ProjectDetails() {
 
         // Helper to hydrate project state from publish draft data
         const hydrateFromDraft = (d: any) => {
-          const mediaUrls: string[] = []
+          let featuredImage: string | null = null
+          const galleryUrls: string[] = []
           if (d.media) {
             const mediaObj = Array.isArray(d.media) ? d.media[0] : d.media
-            if (mediaObj?.featuredImage) mediaUrls.push(mediaObj.featuredImage)
+            if (mediaObj?.featuredImage) featuredImage = mediaObj.featuredImage
             if (Array.isArray(mediaObj?.additionalImages)) {
-              mediaUrls.push(...mediaObj.additionalImages)
+              galleryUrls.push(...mediaObj.additionalImages)
             }
           }
           setProject({
@@ -1174,7 +1208,8 @@ export default function ProjectDetails() {
             role: d.category || d.categories?.[0] || "Software Development",
             summary: d.shortDescription || d.fullDescription || "",
             description: d.fullDescription || "",
-            mediaUrls: mediaUrls.length > 0 ? mediaUrls : d.mediaUrls ?? [],
+            featuredImage: featuredImage || d.featuredImage || null,
+            mediaUrls: galleryUrls.length > 0 ? galleryUrls : d.mediaUrls ?? [],
             programmingLanguages:
               Array.isArray(d.skills) && d.skills.length > 0
                 ? d.skills
@@ -1485,11 +1520,11 @@ export default function ProjectDetails() {
 
               <div className="flex gap-x-[13px] items-start mt-8 relative z-[5]">
                 <div className="group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
-                  {project.mediaUrls?.[0] ? (
+                  {project.featuredImage ? (
                     <>
                       <NextImage
                         className="object-cover"
-                        src={project.mediaUrls[0]}
+                        src={project.featuredImage}
                         alt={project.title}
                         sizes="25vw"
                         loading="eager"
@@ -1506,7 +1541,9 @@ export default function ProjectDetails() {
                             input.accept = "image/*"
                             input.onchange = (e) => {
                               const files = (e.target as HTMLInputElement).files
-                              handleGalleryUpload(files, 0)
+                              if (files?.[0]) {
+                                handleFeaturedImageUpload(files[0])
+                              }
                             }
                             input.click()
                           }}
@@ -1516,7 +1553,7 @@ export default function ProjectDetails() {
                         <button
                           type="button"
                           className="size-8 rounded-full bg-white/20 hover:bg-red-500/80 inline-flex items-center justify-center transition"
-                          onClick={() => handleGalleryDelete(0)}
+                          onClick={() => setProject((prev: any) => ({ ...prev, featuredImage: null }))}
                         >
                           <Trash2 className="size-3.5 text-white" />
                         </button>
@@ -1537,7 +1574,9 @@ export default function ProjectDetails() {
                             input.accept = "image/*"
                             input.onchange = (e) => {
                               const files = (e.target as HTMLInputElement).files
-                              handleGalleryUpload(files, 0)
+                              if (files?.[0]) {
+                                handleFeaturedImageUpload(files[0])
+                              }
                             }
                             input.click()
                           }}
@@ -1922,12 +1961,18 @@ export default function ProjectDetails() {
                       <div className="pt-[12px] flex-auto group-data-[position=default]/tabs:contents">
                         <div className="pb-2 inline-flex items-center gap-x-3 group-data-[position=default]/tabs:hidden">
                           <div className="h-12 relative w-[66px] overflow-hidden rounded-[5px] bg-[#FBFBFB] border-b border-black/15">
-                            <NextImage
-                              className="object-cover"
-                              src="/artificial-intelligence.jpeg"
-                              sizes="15vw"
-                              fill
-                            />
+                            {project.featuredImage ? (
+                              <NextImage
+                                className="object-cover"
+                                src={project.featuredImage}
+                                sizes="15vw"
+                                fill
+                              />
+                            ) : (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <img src="/placeholder-img.svg" alt="" className="size-8" />
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex flex-col items-start gap-y-0.5">
@@ -4137,7 +4182,7 @@ export default function ProjectDetails() {
                         </DialogContent>
                       </Dialog>
 
-                      {project.reviewCount > 0 && (
+                      {(project.completedContracts?.length > 0 || project.ongoingContracts?.length > 0) && (
                       <>
                       <div className="p-6 mt-6 border gap-x-[50px] flex items-start rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                         <div className="flex flex-col flex-1 gap-y-1.5 basis-[147px]">
