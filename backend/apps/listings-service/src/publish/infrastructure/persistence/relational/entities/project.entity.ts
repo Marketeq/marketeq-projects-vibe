@@ -25,6 +25,10 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   cmsId?: string;
 
   @Index()
+  @Column({ type: String, nullable: true })
+  slug?: string;
+
+  @Index()
   @Column({ type: String, length: 120 })
   title: string;
 

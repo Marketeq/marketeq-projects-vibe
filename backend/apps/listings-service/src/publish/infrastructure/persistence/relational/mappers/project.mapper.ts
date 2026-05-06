@@ -6,6 +6,7 @@ export class ProjectMapper {
     const project = new Project();
     project.id = raw.id;
     project.cmsId = raw.cmsId;
+    project.slug = raw.slug;
     project.title = raw.title;
     project.subtitle = raw.subtitle;
     project.shortDescription = raw.shortDescription;
@@ -39,6 +40,7 @@ export class ProjectMapper {
     }
 
     projectEntity.cmsId = project.cmsId ?? undefined;
+    projectEntity.slug = project.slug ?? undefined;
     projectEntity.title = project.title;
     projectEntity.subtitle = project.subtitle!;
     projectEntity.shortDescription = project.shortDescription!;

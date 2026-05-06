@@ -3,6 +3,7 @@ import { Exclude } from 'class-transformer';
 export class Project {
   id?: string;
   cmsId?: string | null;
+  slug?: string | null;
 
   @Exclude({ toPlainOnly: true })
   title: string;

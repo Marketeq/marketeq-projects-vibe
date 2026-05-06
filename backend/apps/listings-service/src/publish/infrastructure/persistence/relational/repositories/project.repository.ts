@@ -97,6 +97,16 @@ export class ProjectRelationalRepository implements ProjectRepository {
     return entities.map((project) => ProjectMapper.toDomain(project));
   }
 
+  async findBySlug(
+    slug: string,
+    userId: string,
+  ): Promise<NullableType<Project>> {
+    const entity = await this.projectRepository.findOne({
+      where: { slug, userId } as FindOptionsWhere<ProjectEntity>,
+    });
+    return entity ? ProjectMapper.toDomain(entity) : null;
+  }
+
   async findOne(
     fields: EntityCondition<Project>,
   ): Promise<NullableType<Project>> {

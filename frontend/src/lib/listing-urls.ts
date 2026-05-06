@@ -65,5 +65,5 @@ export function teamDetailsUrl(id: string): string {
  * Edit route for an owned project draft / listing.
  */
 export function editProjectListingUrl(draftId: string): string {
-  return `/publish-project?type=project&draftId=${draftId}`
+  return `/my-listing/${draftId}`
 }
