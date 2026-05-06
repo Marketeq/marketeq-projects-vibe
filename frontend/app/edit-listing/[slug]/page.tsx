@@ -1832,84 +1832,6 @@ const indexCategoryTreeByName = (nodes: CategoryTreeNode[]) => {
   visit(nodes)
   return index
 }
-const InlineEditableTitle = ({
-  value,
-  placeholder,
-  maxLength,
-  onChange,
-  onBlur,
-}: {
-  value: string
-  placeholder: string
-  maxLength: number
-  onChange: (val: string) => void
-  onBlur?: () => void
-}) => {
-  const [isEditing, setIsEditing] = useState(false)
-  const [isHovered, setIsHovered] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  const handleClick = () => {
-    setIsEditing(true)
-    setTimeout(() => inputRef.current?.focus(), 0)
-  }
-
-  const handleBlur = () => {
-    setIsEditing(false)
-    onBlur?.()
-  }
-
-  const hasValue = value.trim().length > 0
-
-  if (isEditing) {
-    return (
-      <div className="mb-6 flex items-center gap-2">
-        <input
-          ref={inputRef}
-          type="text"
-          className="flex-1 text-[22px] font-semibold text-dark-blue-400 leading-[30px] bg-transparent border-b-2 border-primary-500 outline-none placeholder:text-gray-400 placeholder:font-semibold py-1"
-          value={value}
-          placeholder={placeholder}
-          maxLength={maxLength}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={handleBlur}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault()
-              handleBlur()
-            }
-          }}
-        />
-        <Edit03 className="size-5 text-gray-400 shrink-0" />
-      </div>
-    )
-  }
-
-  return (
-    <div
-      className="mb-6 flex items-center gap-2 cursor-pointer group"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onClick={handleClick}
-    >
-      <h2
-        className={cn(
-          "text-[22px] font-semibold leading-[30px] py-1",
-          hasValue ? "text-dark-blue-400" : "text-gray-400"
-        )}
-      >
-        {hasValue ? value : placeholder}
-      </h2>
-      <Edit03
-        className={cn(
-          "size-5 text-gray-400 shrink-0 transition-opacity duration-200",
-          isHovered ? "opacity-100" : "opacity-0"
-        )}
-      />
-    </div>
-  )
-}
-
 type ProjectInfoProps = {
   setProgress?: (val: number) => void
 }
@@ -2397,24 +2319,6 @@ const ProjectInfo = ({
           </div>
 
           <div className="flex-auto min-w-0">
-            {/* Inline editable title */}
-            <InlineEditableTitle
-              value={projectInfoValues.title ?? ""}
-              placeholder="Enter Project Title"
-              maxLength={TITLE_MAX_LENGTH}
-              onChange={(val) => {
-                methods.setValue("title", val.slice(0, TITLE_MAX_LENGTH), {
-                  shouldDirty: true,
-                  shouldTouch: true,
-                  shouldValidate: false,
-                })
-                if (titleHasError && get(errors, "title.type") === "manual") {
-                  methods.clearErrors("title")
-                }
-              }}
-              onBlur={() => void methods.trigger("title")}
-            />
-
             <Tabs defaultValue="basic-info">
               <TabsList className="px-0 pt-0 gap-6">
                 <TabsTrigger value="basic-info">Basic Info</TabsTrigger>
@@ -2423,6 +2327,86 @@ const ProjectInfo = ({
               </TabsList>
 
               <TabsContent value="basic-info">
+            <div
+              id="publish-project-title-field"
+              className="space-y-1.5 mt-6 mb-6"
+            >
+              <div className="space-y-0.5">
+                <Label
+                  className="leading-9 text-dark-blue-400 font-semibold"
+                  size="lg"
+                  htmlFor="title"
+                >
+                  Title
+                </Label>
+                <div className="flex items-center justify-between">
+                  <HelperText size="sm">
+                    Write a title that accurately describes your project scope
+                    for the marketplace.
+                  </HelperText>
+
+                  <span className="text-xs leading-[14.52px] text-gray-500">
+                    {titleCharacterCount}/{TITLE_MAX_LENGTH}
+                  </span>
+                </div>
+              </div>
+
+              <Input
+                id="title"
+                type="text"
+                placeholder="Enter Title"
+                value={projectInfoValues.title ?? ""}
+                maxLength={TITLE_MAX_LENGTH}
+                onChange={(event) => {
+                  methods.setValue(
+                    "title",
+                    event.target.value.slice(0, TITLE_MAX_LENGTH),
+                    {
+                      shouldDirty: true,
+                      shouldTouch: true,
+                      shouldValidate: false,
+                    }
+                  )
+                  if (titleHasError && get(errors, "title.type") === "manual") {
+                    methods.clearErrors("title")
+                  }
+                }}
+                onBlur={() => void methods.trigger("title")}
+                onKeyDown={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      projectInfoValues.title?.length || 0,
+                      TITLE_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                  }
+                }}
+                onPaste={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      projectInfoValues.title?.length || 0,
+                      TITLE_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                  }
+                }}
+                isInvalid={titleHasError}
+              />
+
+              <HookFormErrorMessage
+                errors={errors}
+                name="title"
+                render={({ message }) => (
+                  <ErrorMessage size="sm">{message}</ErrorMessage>
+                )}
+              />
+            </div>
 
             <div id="publish-project-type-field" className="space-y-1.5 mt-6 mb-6">
               <div className="space-y-0.5">
