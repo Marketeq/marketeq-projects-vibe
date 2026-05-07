@@ -16,7 +16,8 @@ This document tracks the remaining production-grade DevOps controls for the `mar
 | P1 | Structured deploy summary / observability artifact | Implemented in this phase | Every promotion now emits a single GitHub commit comment summary with SHA, visibility, checks, and machine-readable JSON | live n8n orchestrator |
 | P1 | Automated rollback playbook | In progress | A first-class staging rollback trigger now exists in-repo, but current staging history has no recent smoke-green candidate to validate a full live recovery | `scripts/devops/rollback-staging.mjs`, live n8n orchestrator |
 | P2 | Concurrency lock / queue hardening at the orchestrator level | Implemented in this phase | Prevents overlapping `dev-main` / `staging` promotions from racing each other on the n8n host | live n8n orchestrator |
-| P2 | Live env drift reconciliation against Vercel / Render variable sets | In progress | The repo now has an explicit runtime env drift checker; Render is fully checked and Vercel is currently blocked by missing env-read token scope | `scripts/devops/check-runtime-env-drift.mjs` |
+| P1 | Staging env self-heal before promotion | Implemented in this phase | Prevents `dev-main -> staging` deploys from breaking login when Vercel staging URLs or Render auth/runtime envs drift | `scripts/devops/sync-staging-runtime-envs.mjs`, `scripts/devops/marketeq-staging-env-baseline.json`, live n8n orchestrator |
+| P2 | Live env drift reconciliation against Vercel / Render variable sets | Implemented in this phase | The repo now checks and repairs the exact staging Vercel contract plus required Render runtime/auth envs before promotions | `scripts/devops/check-runtime-env-drift.mjs`, `scripts/devops/sync-staging-runtime-envs.mjs` |
 
 ## What was implemented in this phase
 
@@ -104,16 +105,26 @@ Lock behavior:
 `node scripts/devops/check-runtime-env-drift.mjs`
 
 Compares:
-- `frontend/.env.local.example` against live Vercel `dev-main` project env keys
-- `frontend/.env.staging.example` against live Vercel `staging` project env keys
-- `frontend/.env.production.example` against live Vercel `live-mvp` project env keys
-- `backend/.env.production.example` against live Render backend env keys
+- the exact staging Vercel runtime values required for login and API routing
+- the exact shared Render backend runtime values required for staging/live auth stability
+- required live Render auth secret presence with backup-secret awareness
 
 Current live result:
-- Render env keys are readable and drift is visible
-- Vercel env-read is blocked by the available token not being accepted for the project env API
+- live staging Vercel envs are readable and match the frozen staging contract
+- live Render envs are readable and are now repaired back to the shared-backend baseline when they drift
 
-### 9. Staging rollback trigger
+### 9. Staging env self-heal baseline + repair
+
+`node scripts/devops/sync-staging-runtime-envs.mjs --component all`
+
+This is the repo-controlled repair tool for the staging runtime contract. It:
+- restores the exact staging Vercel env values from `scripts/devops/marketeq-staging-env-baseline.json`
+- restores the shared Render backend runtime values needed for staging login and deploy safety
+- rehydrates required Render auth secrets from n8n runtime backup env vars if they ever drift out
+
+The live n8n orchestrator now runs the same repair logic before `dev-main -> staging` and `staging` promotions. If env repair cannot restore a safe auth/runtime state, the promotion fails before frontend deploy completion instead of silently shipping a broken staging login.
+
+### 10. Staging rollback trigger
 
 `node scripts/devops/rollback-staging.mjs --check`
 
@@ -127,10 +138,10 @@ Triggers the live n8n orchestrator with `event=rollback`, which promotes the req
 
 ## Known remaining gaps
 
-1. The Vercel-side env reconciliation still needs a Vercel token with env-read permission.
-2. A fully live rollback test still needs a known-good staging candidate SHA with both green Vercel and green Smoke histories.
+1. A fully live rollback test still needs a known-good staging candidate SHA with both green Vercel and green Smoke histories.
+2. The current shared backend auth route is still returning `502` in live smoke, which is an app/runtime issue that the new self-heal automation now detects and blocks instead of masking.
 
 ## Next recommended implementation order
 
-1. Finish Vercel env-read auth so the runtime env drift checker can reconcile all three frontend projects.
-2. Validate a live staging rollback against a known-good candidate once one exists or is deliberately selected.
+1. Validate a live staging rollback against a known-good candidate once one exists or is deliberately selected.
+2. Keep the staging auth smoke green after the current backend/login repair lands, then re-run a full `dev-main -> staging` promotion to confirm the self-heal + smoke gate path on a healthy backend.

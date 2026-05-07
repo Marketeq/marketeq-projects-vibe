@@ -7,6 +7,14 @@ const VERCEL_TOKEN = process.env.VERCEL_TOKEN || "";
 const RENDER_TOKEN = process.env.RENDER_TOKEN || "";
 const SMOKE_USER_EMAIL = process.env.SMOKE_USER_EMAIL || "";
 const SMOKE_USER_PASSWORD = process.env.SMOKE_USER_PASSWORD || "";
+const RENDER_ENV_DATABASE_URL = process.env.RENDER_ENV_DATABASE_URL || "";
+const RENDER_ENV_INTERNAL_SERVICE_TOKEN = process.env.RENDER_ENV_INTERNAL_SERVICE_TOKEN || "";
+const RENDER_ENV_AUTH_REFRESH_SECRET = process.env.RENDER_ENV_AUTH_REFRESH_SECRET || "";
+const RENDER_ENV_AUTH_JWT_PRIVATE_KEY = process.env.RENDER_ENV_AUTH_JWT_PRIVATE_KEY || "";
+const RENDER_ENV_AUTH_JWT_PUBLIC_KEY = process.env.RENDER_ENV_AUTH_JWT_PUBLIC_KEY || "";
+const RENDER_ENV_BREVO_API_KEY = process.env.RENDER_ENV_BREVO_API_KEY || "";
+const RENDER_ENV_BREVO_FROM_EMAIL = process.env.RENDER_ENV_BREVO_FROM_EMAIL || "";
+const RENDER_ENV_BREVO_FROM_NAME = process.env.RENDER_ENV_BREVO_FROM_NAME || "";
 
 const EVENT = process.env.EVENT || "";
 const BRANCH = process.env.BRANCH || "";
@@ -58,6 +66,69 @@ const SMOKE_TARGETS = {
   },
 };
 
+const STAGING_VERCEL_TARGET = ["production", "preview"];
+const STAGING_VERCEL_ENV_BASELINE = {
+  NEXT_PUBLIC_BACKEND_URL: "https://marketeq-backend.onrender.com/api",
+  NEXT_PUBLIC_API_BASE_URL: "https://marketeq-backend.onrender.com/api",
+  NEXT_PUBLIC_API_URL: "https://marketeq-backend.onrender.com/api",
+  NEXT_PUBLIC_AUTH_URL: "https://marketeq-backend.onrender.com/api",
+  NEXT_PUBLIC_USER_URL: "https://marketeq-backend.onrender.com/api",
+  NEXT_PUBLIC_LISTINGS_URL: "https://marketeq-backend.onrender.com/api",
+  NEXT_PUBLIC_WS_URL: "wss://marketeq-backend.onrender.com",
+  NEXT_PUBLIC_AUTH_MODE: "staging",
+  NEXT_PUBLIC_COOKIE_SAMESITE: "none",
+  NEXT_PUBLIC_COOKIE_SECURE: "true",
+  NEXT_PUBLIC_COOKIE_DOMAIN: ".marketeq-staging.com",
+  NEXT_PUBLIC_GOOGLE_OAUTH_REDIRECT: "https://staging.marketeq.com/auth/google/callback",
+  NEXT_PUBLIC_LINKEDIN_OAUTH_REDIRECT: "https://staging.marketeq.com/auth/linkedin/callback",
+  NEXT_PUBLIC_ENABLE_DEV_LOGIN_BYPASS: "false",
+  NEXT_PUBLIC_ENABLE_DEBUG_PANELS: "false",
+  NEXT_PUBLIC_R2_CDN_BASE: "https://cdn.marketeq.com",
+};
+const RENDER_SHARED_BACKEND_BASELINE = {
+  FRONTEND_URL: [
+    "http://localhost:3000",
+    "https://dev-marketeq-projects.vercel.app",
+    "https://staging-marketeq-projects.vercel.app",
+    "https://live-marketeq-projects.vercel.app",
+    "https://marketeq-mvp-dev.vercel.app",
+    "https://marketeq-mvp-staging.vercel.app",
+    "https://marketeq-mvp-live.vercel.app",
+    "https://dev.marketeq.com",
+    "https://staging.marketeq.com",
+    "https://marketeq.com",
+  ],
+  DATABASE_SSL: "true",
+};
+const RENDER_REQUIRED_SECRET_BACKUPS = {
+  DATABASE_URL: { env: "RENDER_ENV_DATABASE_URL", value: RENDER_ENV_DATABASE_URL },
+  INTERNAL_SERVICE_TOKEN: {
+    env: "RENDER_ENV_INTERNAL_SERVICE_TOKEN",
+    value: RENDER_ENV_INTERNAL_SERVICE_TOKEN,
+  },
+  AUTH_REFRESH_SECRET: {
+    env: "RENDER_ENV_AUTH_REFRESH_SECRET",
+    value: RENDER_ENV_AUTH_REFRESH_SECRET,
+  },
+  AUTH_JWT_PRIVATE_KEY: {
+    env: "RENDER_ENV_AUTH_JWT_PRIVATE_KEY",
+    value: RENDER_ENV_AUTH_JWT_PRIVATE_KEY,
+  },
+  AUTH_JWT_PUBLIC_KEY: {
+    env: "RENDER_ENV_AUTH_JWT_PUBLIC_KEY",
+    value: RENDER_ENV_AUTH_JWT_PUBLIC_KEY,
+  },
+  BREVO_API_KEY: { env: "RENDER_ENV_BREVO_API_KEY", value: RENDER_ENV_BREVO_API_KEY },
+  BREVO_FROM_EMAIL: {
+    env: "RENDER_ENV_BREVO_FROM_EMAIL",
+    value: RENDER_ENV_BREVO_FROM_EMAIL,
+  },
+  BREVO_FROM_NAME: {
+    env: "RENDER_ENV_BREVO_FROM_NAME",
+    value: RENDER_ENV_BREVO_FROM_NAME,
+  },
+};
+
 const IGNORED_PROMOTION_PATTERNS = [
   /^docs\//,
   /^\.github\//,
@@ -87,6 +158,7 @@ function assertRequiredSecrets() {
 
   if (!GH_TOKEN) missing.push("GH_TOKEN");
   if (!VERCEL_TOKEN) missing.push("VERCEL_TOKEN");
+  if (!RENDER_TOKEN) missing.push("RENDER_TOKEN");
   if (!SMOKE_USER_EMAIL) missing.push("SMOKE_USER_EMAIL");
   if (!SMOKE_USER_PASSWORD) missing.push("SMOKE_USER_PASSWORD");
 
@@ -97,6 +169,18 @@ function assertRequiredSecrets() {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function toSortedUniqueStrings(values) {
+  return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))].sort();
+}
+
+function parseOriginList(value) {
+  return toSortedUniqueStrings(String(value || "").split(","));
+}
+
+function serializeOriginList(values) {
+  return toSortedUniqueStrings(values).join(",");
 }
 
 async function jsonFetch(url, init = {}) {
@@ -137,6 +221,68 @@ async function renderApi(method, path, body) {
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
+}
+
+async function vercelApi(method, path, body) {
+  return jsonFetch(`${VERCEL_API}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${VERCEL_TOKEN}`,
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+}
+
+async function fetchVercelProjectEnv(projectId) {
+  const payload = await vercelApi("GET", `/v9/projects/${projectId}/env?teamId=${VERCEL_TEAM_ID}`);
+  return Array.isArray(payload?.envs) ? payload.envs : [];
+}
+
+async function upsertVercelProjectEnv(projectId, key, value, target = STAGING_VERCEL_TARGET) {
+  return vercelApi("POST", `/v10/projects/${projectId}/env?upsert=true&teamId=${VERCEL_TEAM_ID}`, {
+    key,
+    value,
+    type: "plain",
+    target,
+  });
+}
+
+async function fetchAllRenderEnvVars() {
+  const items = [];
+  let cursor = "";
+
+  while (true) {
+    const query = new URLSearchParams({ limit: "100" });
+    if (cursor) query.set("cursor", cursor);
+    const payload = await renderApi("GET", `/v1/services/${RENDER_SERVICE_ID}/env-vars?${query.toString()}`);
+    const page = Array.isArray(payload) ? payload : [];
+    items.push(...page);
+    if (page.length === 0 || !page[page.length - 1]?.cursor || page.length < 100) {
+      break;
+    }
+    cursor = page[page.length - 1].cursor;
+  }
+
+  return items;
+}
+
+async function replaceRenderEnvVars(entries) {
+  const body = entries.map((entry) => ({
+    key: entry.key,
+    value: entry.value,
+  }));
+
+  try {
+    return await renderApi("PUT", `/v1/services/${RENDER_SERVICE_ID}/env-vars`, body);
+  } catch (error) {
+    if (!String(error?.message || "").includes("400")) {
+      throw error;
+    }
+    return renderApi("PUT", `/v1/services/${RENDER_SERVICE_ID}/env-vars`, {
+      envVars: body,
+    });
+  }
 }
 
 async function setCommitStatus(sha, context, state, description, targetUrl = "") {
@@ -513,6 +659,246 @@ async function waitForVercelDeployment(project, sha) {
 
   await setCommitStatus(sha, project.context, "failure", "Deployment timed out in n8n");
   return { ok: false, system: "vercel", context: project.context, state: "timeout", url: "" };
+}
+
+function buildStagingVercelEnvDrift(liveEnvs) {
+  const targetSignature = JSON.stringify(STAGING_VERCEL_TARGET.slice().sort());
+  const liveMap = new Map();
+
+  for (const entry of liveEnvs) {
+    const entryTargets = Array.isArray(entry?.target) ? entry.target.slice().sort() : [];
+    if (JSON.stringify(entryTargets) !== targetSignature || !entry?.key) continue;
+    liveMap.set(entry.key, String(entry.value ?? ""));
+  }
+
+  const drift = [];
+  for (const [key, expected] of Object.entries(STAGING_VERCEL_ENV_BASELINE)) {
+    const actual = liveMap.has(key) ? String(liveMap.get(key)) : "";
+    if (!actual) {
+      drift.push({ key, expected: String(expected), actual: "", reason: "missing" });
+    } else if (actual !== String(expected)) {
+      drift.push({ key, expected: String(expected), actual, reason: "value-mismatch" });
+    }
+  }
+
+  return drift;
+}
+
+function buildRenderEnvDrift(liveEntries) {
+  const liveMap = new Map(
+    liveEntries
+      .map((entry) => [entry?.envVar?.key, entry?.envVar?.value])
+      .filter(([key]) => Boolean(key)),
+  );
+
+  const drift = [];
+  const missingSecrets = [];
+
+  const actualOrigins = parseOriginList(liveMap.get("FRONTEND_URL") || "");
+  const expectedOrigins = toSortedUniqueStrings(RENDER_SHARED_BACKEND_BASELINE.FRONTEND_URL);
+  const missingOrigins = expectedOrigins.filter((origin) => !actualOrigins.includes(origin));
+  const extraOrigins = actualOrigins.filter((origin) => !expectedOrigins.includes(origin));
+  if (missingOrigins.length > 0 || extraOrigins.length > 0) {
+    drift.push({
+      key: "FRONTEND_URL",
+      reason: "origin-mismatch",
+      expected: serializeOriginList(expectedOrigins),
+      actual: serializeOriginList(actualOrigins),
+      missingOrigins,
+      extraOrigins,
+    });
+  }
+
+  for (const [key, expected] of Object.entries(RENDER_SHARED_BACKEND_BASELINE)) {
+    if (key === "FRONTEND_URL") continue;
+    const actual = String(liveMap.get(key) ?? "");
+    if (actual !== String(expected)) {
+      drift.push({ key, expected: String(expected), actual, reason: actual ? "value-mismatch" : "missing" });
+    }
+  }
+
+  for (const [key, backup] of Object.entries(RENDER_REQUIRED_SECRET_BACKUPS)) {
+    if (!String(liveMap.get(key) ?? "")) {
+      missingSecrets.push({
+        key,
+        backupEnv: backup.env,
+        repairable: Boolean(backup.value),
+      });
+    }
+  }
+
+  return {
+    drift,
+    missingSecrets,
+    liveMap,
+  };
+}
+
+async function waitForRenderRuntimeReady() {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= 90; attempt += 1) {
+    try {
+      await smokeExpectOk("render-health", `${RENDER_URL}/health`);
+      await smokeExpectStatus("render-auth-login-shape", `${RENDER_URL}/api/auth/login`, 400, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+      return { ok: true, system: "env", context: "Render runtime", state: "ready", url: RENDER_URL };
+    } catch (error) {
+      lastError = error;
+      await sleep(5_000);
+    }
+  }
+
+  throw lastError || new Error("Render runtime did not become ready after env update");
+}
+
+async function ensureStagingRuntimeEnvs() {
+  const checks = [];
+
+  const vercelEnvs = await fetchVercelProjectEnv(PROJECTS.staging.projectId);
+  const vercelDrift = buildStagingVercelEnvDrift(vercelEnvs);
+  if (vercelDrift.length > 0) {
+    for (const item of vercelDrift) {
+      await upsertVercelProjectEnv(PROJECTS.staging.projectId, item.key, item.expected, STAGING_VERCEL_TARGET);
+    }
+    const verified = buildStagingVercelEnvDrift(await fetchVercelProjectEnv(PROJECTS.staging.projectId));
+    if (verified.length > 0) {
+      throw new Error(
+        JSON.stringify({
+          ok: false,
+          status: "failed",
+          mode: "staging-env-vercel",
+          branch: BRANCH,
+          sha: SHA_INPUT || "",
+          reason: `staging-vercel-env-drift:${verified.map((item) => item.key).join(",")}`,
+          checks: [
+            {
+              ok: false,
+              system: "env",
+              context: "Vercel staging env",
+              state: "drift",
+              url: SMOKE_TARGETS.staging.frontendUrl,
+            },
+          ],
+        }),
+      );
+    }
+    checks.push({
+      ok: true,
+      system: "env",
+      context: "Vercel staging env",
+      state: "repaired",
+      url: SMOKE_TARGETS.staging.frontendUrl,
+    });
+  } else {
+    checks.push({
+      ok: true,
+      system: "env",
+      context: "Vercel staging env",
+      state: "verified",
+      url: SMOKE_TARGETS.staging.frontendUrl,
+    });
+  }
+
+  const renderEntries = await fetchAllRenderEnvVars();
+  const renderReport = buildRenderEnvDrift(renderEntries);
+  const needsRenderRepair = renderReport.drift.length > 0 || renderReport.missingSecrets.length > 0;
+
+  if (needsRenderRepair) {
+    for (const item of renderReport.missingSecrets) {
+      if (!item.repairable) {
+        throw new Error(
+          JSON.stringify({
+            ok: false,
+            status: "failed",
+            mode: "staging-env-render",
+            branch: BRANCH,
+            sha: SHA_INPUT || "",
+            reason: `render-secret-missing:${item.key}`,
+            checks: [
+              {
+                ok: false,
+                system: "env",
+                context: "Render shared backend env",
+                state: "missing-secret",
+                url: RENDER_URL,
+              },
+            ],
+          }),
+        );
+      }
+    }
+
+    const nextMap = new Map(
+      renderEntries
+        .map((entry) => [entry?.envVar?.key, entry?.envVar?.value])
+        .filter(([key]) => Boolean(key)),
+    );
+
+    nextMap.set("FRONTEND_URL", serializeOriginList(RENDER_SHARED_BACKEND_BASELINE.FRONTEND_URL));
+    nextMap.set("DATABASE_SSL", String(RENDER_SHARED_BACKEND_BASELINE.DATABASE_SSL));
+    for (const issue of renderReport.missingSecrets) {
+      nextMap.set(issue.key, RENDER_REQUIRED_SECRET_BACKUPS[issue.key].value);
+    }
+
+    await replaceRenderEnvVars(
+      [...nextMap.entries()].map(([key, value]) => ({
+        key,
+        value: String(value ?? ""),
+      })),
+    );
+
+    const verified = buildRenderEnvDrift(await fetchAllRenderEnvVars());
+    if (verified.drift.length > 0 || verified.missingSecrets.length > 0) {
+      throw new Error(
+        JSON.stringify({
+          ok: false,
+          status: "failed",
+          mode: "staging-env-render",
+          branch: BRANCH,
+          sha: SHA_INPUT || "",
+          reason: `render-env-drift:${[
+            ...verified.drift.map((item) => item.key),
+            ...verified.missingSecrets.map((item) => item.key),
+          ].join(",")}`,
+          checks: [
+            {
+              ok: false,
+              system: "env",
+              context: "Render shared backend env",
+              state: "drift",
+              url: RENDER_URL,
+            },
+          ],
+        }),
+      );
+    }
+
+    const readiness = await waitForRenderRuntimeReady();
+    checks.push({
+      ok: true,
+      system: "env",
+      context: "Render shared backend env",
+      state: "repaired",
+      url: RENDER_URL,
+    });
+    checks.push(readiness);
+  } else {
+    checks.push({
+      ok: true,
+      system: "env",
+      context: "Render shared backend env",
+      state: "verified",
+      url: RENDER_URL,
+    });
+  }
+
+  return checks;
 }
 
 async function smokeRequest(url, init = {}, retries = 3) {
@@ -892,6 +1278,14 @@ async function main() {
         return;
       }
 
+      let envChecks = [];
+      try {
+        envChecks = await ensureStagingRuntimeEnvs();
+      } catch (error) {
+        await setTargetContexts(targetSha, targetBranches, "failure", "Blocked: staging env repair failed", RENDER_URL);
+        throw error;
+      }
+
       let renderResult = { ok: true, system: "render", state: "skipped", url: RENDER_URL };
       if (promotion.mode === "backend") {
         renderResult = await ensureRenderLive(targetSha);
@@ -951,7 +1345,9 @@ async function main() {
 
       summary.status = "success";
       summary.mode = promotion.mode === "backend" ? "dev-main-to-staging" : "frontend-only";
-      summary.checks = [renderResult, devResult, stagingResult, devSmoke, stagingSmoke].map(normalizeCheck).filter(Boolean);
+      summary.checks = [...envChecks, renderResult, devResult, stagingResult, devSmoke, stagingSmoke]
+        .map(normalizeCheck)
+        .filter(Boolean);
       return;
     }
 
@@ -963,6 +1359,13 @@ async function main() {
         await sleep(3_000);
       }
 
+      let envChecks = [];
+      try {
+        envChecks = await ensureStagingRuntimeEnvs();
+      } catch (error) {
+        await setTargetContexts(targetSha, targetBranches, "failure", "Blocked: staging env repair failed", RENDER_URL);
+        throw error;
+      }
       const renderResult = await ensureRenderLive(targetSha);
       if (!renderResult.ok) {
         await setTargetContexts(targetSha, targetBranches, "failure", "Blocked: shared Render deploy failed", renderResult.url);
@@ -989,7 +1392,7 @@ async function main() {
       }
 
       summary.status = "success";
-      summary.checks = [renderResult, stagingResult, stagingSmoke].map(normalizeCheck).filter(Boolean);
+      summary.checks = [...envChecks, renderResult, stagingResult, stagingSmoke].map(normalizeCheck).filter(Boolean);
       return;
     }
 

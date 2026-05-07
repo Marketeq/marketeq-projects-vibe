@@ -1,0 +1,55 @@
+{
+  "vercelStaging": {
+    "projectId": "prj_zxwZ4cEzY1kRsMbPst6nAoMWTxTG",
+    "target": [
+      "production",
+      "preview"
+    ],
+    "values": {
+      "NEXT_PUBLIC_BACKEND_URL": "https://marketeq-backend.onrender.com/api",
+      "NEXT_PUBLIC_API_BASE_URL": "https://marketeq-backend.onrender.com/api",
+      "NEXT_PUBLIC_API_URL": "https://marketeq-backend.onrender.com/api",
+      "NEXT_PUBLIC_AUTH_URL": "https://marketeq-backend.onrender.com/api",
+      "NEXT_PUBLIC_USER_URL": "https://marketeq-backend.onrender.com/api",
+      "NEXT_PUBLIC_LISTINGS_URL": "https://marketeq-backend.onrender.com/api",
+      "NEXT_PUBLIC_WS_URL": "wss://marketeq-backend.onrender.com",
+      "NEXT_PUBLIC_AUTH_MODE": "staging",
+      "NEXT_PUBLIC_COOKIE_SAMESITE": "none",
+      "NEXT_PUBLIC_COOKIE_SECURE": "true",
+      "NEXT_PUBLIC_COOKIE_DOMAIN": ".marketeq-staging.com",
+      "NEXT_PUBLIC_GOOGLE_OAUTH_REDIRECT": "https://staging.marketeq.com/auth/google/callback",
+      "NEXT_PUBLIC_LINKEDIN_OAUTH_REDIRECT": "https://staging.marketeq.com/auth/linkedin/callback",
+      "NEXT_PUBLIC_ENABLE_DEV_LOGIN_BYPASS": "false",
+      "NEXT_PUBLIC_ENABLE_DEBUG_PANELS": "false",
+      "NEXT_PUBLIC_R2_CDN_BASE": "https://cdn.marketeq.com"
+    }
+  },
+  "renderSharedBackend": {
+    "serviceId": "srv-d76r48nafjfc73e1djf0",
+    "requiredOriginList": [
+      "http://localhost:3000",
+      "https://dev-marketeq-projects.vercel.app",
+      "https://staging-marketeq-projects.vercel.app",
+      "https://live-marketeq-projects.vercel.app",
+      "https://marketeq-mvp-dev.vercel.app",
+      "https://marketeq-mvp-staging.vercel.app",
+      "https://marketeq-mvp-live.vercel.app",
+      "https://dev.marketeq.com",
+      "https://staging.marketeq.com",
+      "https://marketeq.com"
+    ],
+    "values": {
+      "DATABASE_SSL": "true"
+    },
+    "requiredSecrets": {
+      "DATABASE_URL": "RENDER_ENV_DATABASE_URL",
+      "INTERNAL_SERVICE_TOKEN": "RENDER_ENV_INTERNAL_SERVICE_TOKEN",
+      "AUTH_REFRESH_SECRET": "RENDER_ENV_AUTH_REFRESH_SECRET",
+      "AUTH_JWT_PRIVATE_KEY": "RENDER_ENV_AUTH_JWT_PRIVATE_KEY",
+      "AUTH_JWT_PUBLIC_KEY": "RENDER_ENV_AUTH_JWT_PUBLIC_KEY",
+      "BREVO_API_KEY": "RENDER_ENV_BREVO_API_KEY",
+      "BREVO_FROM_EMAIL": "RENDER_ENV_BREVO_FROM_EMAIL",
+      "BREVO_FROM_NAME": "RENDER_ENV_BREVO_FROM_NAME"
+    }
+  }
+}
