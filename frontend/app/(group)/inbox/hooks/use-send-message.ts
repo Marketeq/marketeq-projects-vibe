@@ -4,7 +4,7 @@ import { decryptWithPrivateKey, encryptAES } from "@/src/crypto/e2ee"
 import { exportPrivateKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
-import type { Message } from "@/types/message"
+import type { Message, MessageType } from "@/types/message"
 
 /// Backend returns the message directly
 type SendResponse = Message
@@ -23,9 +23,14 @@ export function useSendMessage(
   /**
    * Encrypts & sends a new message.
    * @param convId   the conversation UUID
-   * @param plaintext the message body
+   * @param plaintext the message body (for GIFs, this is the Tenor URL)
    */
-  return async function send(convId: string, plaintext: string, replyToMessageId?: string) {
+  return async function send(
+    convId: string,
+    plaintext: string,
+    replyToMessageId?: string,
+    messageType: MessageType = "text"
+  ) {
     if (!convId || !token) {
       throw new Error("Missing conversation ID or auth token")
     }
@@ -41,7 +46,7 @@ export function useSendMessage(
     if (!key && privateKey) {
       try {
         const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-          `/api/messaging/conversations/${convId}/key?isGroup=${isGroup}`,
+          `/messaging/conversations/${convId}/key?isGroup=${isGroup}`,
           { headers: { Authorization: `Bearer ${token}` } }
         )
         const wrapped = Uint8Array.from(atob(encryptedKey), (c) =>
@@ -62,14 +67,21 @@ export function useSendMessage(
 
     // Encrypt or fail — never send plaintext
     if (!key) {
-      throw new Error("Encryption key not available. Please wait and try again.")
+      throw new Error(
+        "Encryption key not available. Please wait and try again."
+      )
     }
 
     const ciphertext = await encryptAES(plaintext, key)
     return apiFetch<SendResponse>(`/v1/messages`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
-      body: { threadId: convId, ciphertext, ...(replyToMessageId && { replyToMessageId }) },
+      body: {
+        threadId: convId,
+        ciphertext,
+        ...(replyToMessageId && { replyToMessageId }),
+        ...(messageType !== "text" && { messageType }),
+      },
     })
   }
 }

@@ -33,8 +33,10 @@ const SERVICES = [
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
   { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
+  { name: 'notification-service',       port: '3006', dir: 'apps/notification-service' },
   { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service' },
   { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service' },
+  { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service' },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway' };
@@ -43,12 +45,27 @@ const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gatewa
 const gatewayEnv = {
   ...process.env,
   PORT: GATEWAY_PORT,
-  AUTH_SERVICE_URL:         'http://localhost:3001',
-  USER_SERVICE_URL:         'http://localhost:3002',
-  LISTINGS_SERVICE_URL:     'http://localhost:3003',
-  INVITATIONS_SERVICE_URL:  'http://localhost:3013',
-  MODERATION_SERVICE_URL:   'http://localhost:3014',
+  HOST: '0.0.0.0',
+  AUTH_SERVICE_URL:             'http://localhost:3001',
+  USER_SERVICE_URL:             'http://localhost:3002',
+  LISTINGS_SERVICE_URL:         'http://localhost:3003',
+  NOTIFICATION_SERVICE_URL:     'http://localhost:3006',
+  INVITATIONS_SERVICE_URL:      'http://localhost:3013',
+  MODERATION_SERVICE_URL:       'http://localhost:3014',
+  TIME_TRACKING_SERVICE_URL:    'http://localhost:3017',
 };
+
+function buildInternalServiceEnv(port) {
+  return {
+    ...process.env,
+    PORT: port,
+    HOST: '127.0.0.1',
+    // The shared Render container serves HTTP APIs for staging/dev.
+    // It does not run a colocated RabbitMQ broker, so queue consumers
+    // must degrade gracefully instead of crash-looping the service.
+    RABBITMQ_REQUIRED: 'false',
+  };
+}
 
 function launchService(svc, env, isGateway = false) {
   const mainCandidates = [
@@ -93,18 +110,27 @@ function launchService(svc, env, isGateway = false) {
   return child;
 }
 
-// Start internal services first, then the gateway
-console.log('[boot] Launching all services in single container...');
-console.log(`[boot] Gateway will listen on port ${GATEWAY_PORT}`);
+async function bootstrapAll() {
+  console.log('[boot] Launching all services in single container...');
+  console.log(`[boot] Gateway will listen on port ${GATEWAY_PORT}`);
 
-for (const svc of SERVICES) {
-  launchService(svc, { ...process.env, PORT: svc.port }, false);
+  launchService(GATEWAY, gatewayEnv, true);
+
+  // Start the gateway first so Render discovers the public-facing process
+  // before the internal services begin listening. Do not hard-fail if the
+  // gateway takes time to become healthy while RabbitMQ reconnects.
+  setTimeout(() => {
+    console.log('[boot] Launching internal services after gateway head start...');
+    for (const svc of SERVICES) {
+      launchService(svc, buildInternalServiceEnv(svc.port), false);
+    }
+  }, 4000);
 }
 
-// Give services 2 seconds to start, then launch gateway
-setTimeout(() => {
-  launchService(GATEWAY, gatewayEnv, true);
-}, 2000);
+bootstrapAll().catch((error) => {
+  console.error(`[boot] Fatal startup error: ${error.message}`);
+  process.exit(1);
+});
 
 // Forward signals for graceful shutdown
 ['SIGTERM', 'SIGINT'].forEach((sig) => {

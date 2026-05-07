@@ -27,6 +27,22 @@ interface ResolvedMediaRef {
   filename?: string;
 }
 
+const SYNC_FETCH_TIMEOUT_MS = 5000;
+
+async function fetchWithTimeout(
+  input: Parameters<typeof fetch>[0],
+  init: RequestInit = {},
+  timeoutMs = SYNC_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 type ProjectSyncProjection = {
   id: number | string;
   title: string;
@@ -39,19 +55,10 @@ type ProjectSyncProjection = {
   subcategories?: unknown;
   tags?: unknown;
   projectSkills?: unknown;
+  /** Always [] — marketplace wizard does not collect separate language/framework lists. */
   programmingLanguages?: unknown;
   developmentTechnologies?: unknown;
-  totalEstimatedHours?: number;
-  timelineValue?: number;
-  timelineUnit?: string;
-  priceRangeMin?: number;
-  priceRangeMax?: number;
-  pricingModel?: string;
-  priceViewMode?: string;
-  projectType?: string;
-  klarnaPaymentEnabled?: boolean;
   recentQuestions?: unknown;
-  skillsAndTools?: unknown;
   chatEnabled?: boolean;
   reportButtonEnabled?: boolean;
   shareButtonEnabled?: boolean;
@@ -64,11 +71,38 @@ type ProjectSyncProjection = {
   videoUrl?: string;
   scope?: unknown;
   industries?: unknown;
-  relatedProjects?: unknown;
   datePublished?: string;
   projectDurationLabel?: string;
   ownerId?: string;
 };
+
+function scopeWithEstimatedHours(scope: unknown): unknown {
+  if (!Array.isArray(scope)) return scope;
+
+  const toHours = (task: any): number | null => {
+    const dv = Number(task?.durationValue);
+    const dt = typeof task?.durationType === "string" ? task.durationType : "";
+    if (Number.isFinite(dv) && dv > 0 && dt) {
+      if (dt === "hours") return dv;
+      if (dt === "days") return dv * 24;
+      return dv * 168; // weeks (default)
+    }
+    const legacy = Number(task?.estimatedHours);
+    return Number.isFinite(legacy) && legacy > 0 ? legacy : null;
+  };
+
+  return scope.map((phase: any) => {
+    if (!phase || typeof phase !== "object") return phase;
+    const tasks = Array.isArray(phase.tasks) ? phase.tasks : [];
+    return {
+      ...phase,
+      tasks: tasks.map((t: any) => {
+        const hours = toHours(t);
+        return hours == null ? t : { ...t, estimatedHours: hours };
+      }),
+    };
+  });
+}
 
 function isResolvedMedia(value: unknown): value is ResolvedMediaRef {
   if (typeof value !== "object") return false;
@@ -190,11 +224,15 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
   try {
     const docStatus = (doc as any)._status;
     if (docStatus && docStatus !== "published") {
-      // Keep listings-service aligned with Payload's public visibility:
-      // any transition away from `published` must immediately hide the
-      // row from `/v1/projects` and `/v1/projects/slug/:slug`.
+      // Payload drafts autosave can fire afterChange with `_status=draft` even
+      // when a published version exists. Do not archive listings rows for draft
+      // autosaves, or the marketplace will "disappear" intermittently.
+      //
+      // Only hard-archive when explicitly archived/flagged (editor intent).
+      if (docStatus === "draft") return doc;
+
       const url = `${listingsUrl.replace(/\/$/, "")}/internal/project-sync/${encodeURIComponent(String(doc.id))}`;
-      const res = await fetch(url, {
+      const res = await fetchWithTimeout(url, {
         method: "DELETE",
         headers: { authorization: `Bearer ${token}` },
       });
@@ -241,12 +279,16 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       return null;
     };
 
-    const populatedThumbnail = await resolveMedia((doc as any).thumbnail);
-    const populatedGallery = Array.isArray((doc as any).gallery)
+    const populatedThumbnail = await resolveMedia(
+      (doc as any).thumbnail ?? (doc as any)["Featured Image"],
+    );
+    const rawGallery =
+      (doc as any).additionalImages ??
+      (doc as any).gallery ??
+      (doc as any)["Additional Images"];
+    const populatedGallery = Array.isArray(rawGallery)
       ? await Promise.all(
-          (
-            (doc as any).gallery as Array<{ image?: unknown; caption?: string }>
-          ).map(async (g) => ({
+          (rawGallery as Array<{ image?: unknown; caption?: string }>).map(async (g) => ({
             ...g,
             image: await resolveMedia(g?.image),
           })),
@@ -276,6 +318,19 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       cmsBase,
     );
 
+    const flattenedSubcategories = Array.from(
+      new Set(
+        ((doc as any).categories ?? [])
+          .flatMap((category: any) =>
+            Array.isArray(category?.subcategories) ? category.subcategories : [],
+          )
+          .map((entry: any) =>
+            typeof entry?.value === "string" ? entry.value.trim() : "",
+          )
+          .filter((value: string) => value.length > 0),
+      ),
+    ).map((value) => ({ value }));
+
     // Sync contract boundary: only forward serving/projection fields.
     // This prevents admin/editorial-only keys from drifting into the
     // listings write-model via broad object spreads.
@@ -288,22 +343,12 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       deliverables: (doc as any).deliverables,
       faqQuestions: (doc as any).faqQuestions,
       categories: (doc as any).categories,
-      subcategories: (doc as any).subcategories,
+      subcategories: flattenedSubcategories,
       tags: (doc as any).tags,
       projectSkills: (doc as any).projectSkills,
-      programmingLanguages: (doc as any).programmingLanguages,
-      developmentTechnologies: (doc as any).developmentTechnologies,
-      totalEstimatedHours: (doc as any).totalEstimatedHours,
-      timelineValue: (doc as any).timelineValue,
-      timelineUnit: (doc as any).timelineUnit,
-      priceRangeMin: (doc as any).priceRangeMin,
-      priceRangeMax: (doc as any).priceRangeMax,
-      pricingModel: (doc as any).pricingModel,
-      priceViewMode: (doc as any).priceViewMode,
-      projectType: (doc as any).projectType,
-      klarnaPaymentEnabled: (doc as any).klarnaPaymentEnabled,
+      programmingLanguages: [],
+      developmentTechnologies: [],
       recentQuestions: (doc as any).recentQuestions,
-      skillsAndTools: (doc as any).skillsAndTools,
       chatEnabled: (doc as any).chatEnabled,
       reportButtonEnabled: (doc as any).reportButtonEnabled,
       shareButtonEnabled: (doc as any).shareButtonEnabled,
@@ -324,16 +369,15 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
       thumbnailUrl: thumbnailUrl ?? undefined,
       galleryUrls,
       videoUrl,
-      scope: (doc as any).scope,
+      scope: scopeWithEstimatedHours((doc as any).scope),
       industries: (doc as any).industries,
-      relatedProjects: (doc as any).relatedProjects,
       datePublished: (doc as any).datePublished,
       projectDurationLabel: (doc as any).projectDurationLabel,
       ownerId: (doc as any).ownerId,
     };
 
     const url = `${listingsUrl.replace(/\/$/, "")}/internal/project-sync`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -397,7 +441,7 @@ export const syncProjectToListings: CollectionAfterChangeHook = async ({
     const revalidateSecret = process.env.REVALIDATE_SECRET;
     if (revalidateUrl && revalidateSecret) {
       try {
-        const res = await fetch(revalidateUrl, {
+        const res = await fetchWithTimeout(revalidateUrl, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -448,7 +492,7 @@ export const deleteProjectFromListings: CollectionAfterDeleteHook = async ({
 
   try {
     const url = `${listingsUrl.replace(/\/$/, "")}/internal/project-sync/${encodeURIComponent(String(doc.id))}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "DELETE",
       headers: { authorization: `Bearer ${token}` },
     });
@@ -487,7 +531,7 @@ export const deleteProjectFromListings: CollectionAfterDeleteHook = async ({
     const revalidateSecret = process.env.REVALIDATE_SECRET;
     if (revalidateUrl && revalidateSecret) {
       try {
-        await fetch(revalidateUrl, {
+        await fetchWithTimeout(revalidateUrl, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({

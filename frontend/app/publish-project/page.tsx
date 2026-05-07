@@ -23,6 +23,7 @@ import {
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
+import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { HTTPS, ONE_SECOND } from "@/utils/constants"
 import {
@@ -108,6 +109,7 @@ import {
 import { Steps } from "headless-stepper"
 import {
   Controller,
+  type FieldPath,
   SubmitHandler,
   UseFormReturn,
   get,
@@ -129,6 +131,7 @@ import { Network2 } from "@/components/icons/network-2"
 import { Network3 } from "@/components/icons/network-3"
 import { Network4 } from "@/components/icons/network-4"
 import { CountriesCombobox, OwnCombobox } from "@/components/own-combobox"
+import { RichTextEditor } from "@/components/rich-text-editor"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -229,6 +232,66 @@ type SubmissionOutcome = {
   projectSlug?: string
 }
 
+type PublishErrorClassification =
+  | "image_rejection"
+  | "video_rejection"
+  | "content_rejection"
+  | "temporary_unavailable"
+  | "other"
+
+function classifyPublishError(input: {
+  message?: string
+  statusCode?: number
+  status?: string
+}): PublishErrorClassification {
+  const message = String(input.message ?? "").trim()
+  const normalizedMessage = message.toLowerCase()
+  const normalizedStatus = String(input.status ?? "")
+    .trim()
+    .toLowerCase()
+
+  const isTemporaryUnavailable =
+    input.statusCode === 502 ||
+    input.statusCode === 503 ||
+    normalizedStatus === "publish_blocked" ||
+    /temporarily unavailable|currently unavailable|upstream listings-service|retry media upload|invalid response|failed with status 5\d{2}|bad gateway|service unavailable/.test(
+      normalizedMessage
+    )
+
+  if (isTemporaryUnavailable) {
+    return "temporary_unavailable"
+  }
+
+  const isVideoRejection =
+    /project rejected:\s*video|video violates moderation policy|unsafe frame|frame_moderation|video rejected|video moderation review/.test(
+      normalizedMessage
+    )
+
+  if (isVideoRejection) {
+    return "video_rejection"
+  }
+
+  const isImageRejection =
+    /project rejected:\s*image|image violates moderation policy|featured image failed moderation|image rejected by moderation|nudity|graphic|gore|weapon|hate symbol|blur/.test(
+      normalizedMessage
+    )
+
+  if (isImageRejection) {
+    return "image_rejection"
+  }
+
+  const isContentRejection =
+    /project rejected:\s*content|content violates moderation policy|banned keyword|bad words|profanity|content failed validation|content moderation|community guidelines|rejected by moderation/.test(
+      normalizedMessage
+    )
+
+  if (isContentRejection) {
+    return "content_rejection"
+  }
+
+  return "other"
+}
+
 function makeUniqueFile(
   file: File | Blob | undefined
 ): File | Blob | undefined {
@@ -244,7 +307,160 @@ function makeUniqueFile(
   return file
 }
 
-const Empty = ({ outcome }: { outcome?: SubmissionOutcome }) => {
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+type PersistedMediaFile = File & {
+  __persistedUrl?: string
+}
+
+const isPersistedMediaFile = (file: unknown): file is PersistedMediaFile =>
+  file instanceof File &&
+  typeof (file as PersistedMediaFile).__persistedUrl === "string"
+
+const buildPersistedMediaFile = (url: string, fallbackName: string) => {
+  const pathname = (() => {
+    try {
+      return new URL(url).pathname
+    } catch {
+      return ""
+    }
+  })()
+  const derivedName = pathname.split("/").pop() || fallbackName
+  const file = new File([""], derivedName, {
+    type: "image/jpeg",
+  }) as PersistedMediaFile
+  file.__persistedUrl = url
+  return file
+}
+
+const resolveMediaFileForUpload = async (
+  file: File | Blob | undefined,
+  fallbackName: string
+): Promise<File | Blob | undefined> => {
+  if (!file) return undefined
+  if (isPersistedMediaFile(file)) {
+    const response = await fetch(file.__persistedUrl!)
+    const blob = await response.blob()
+    return new File([blob], file.name || fallbackName, {
+      type: blob.type || file.type || "image/jpeg",
+    })
+  }
+  return makeUniqueFile(file)
+}
+
+const hydrateRemoteMediaFile = async (url: string, fallbackName: string) => {
+  try {
+    const response = await fetch(url)
+    const blob = await response.blob()
+    const file = new File([blob], fallbackName, {
+      type: blob.type || "image/jpeg",
+    }) as PersistedMediaFile
+    file.__persistedUrl = url
+    return file
+  } catch {
+    return buildPersistedMediaFile(url, fallbackName)
+  }
+}
+
+const buildProjectDraftPayload = (projectInfo: ProjectInfoFormValues) => {
+  const categorySelections = (projectInfo.category ?? [])
+    .map((value) => ({
+      category: value?.category?.trim() ?? "",
+      subCategories: (value?.subCategories ?? [])
+        .map((subCategory) => subCategory.trim())
+        .filter(Boolean),
+    }))
+    .filter(
+      (value) => value.category.length > 0 && value.subCategories.length > 0
+    )
+
+  const categories = Array.from(
+    new Set(
+      categorySelections
+        .map((value) => value.category)
+        .filter((value): value is string => Boolean(value))
+    )
+  )
+  const subCategories = Array.from(
+    new Set(
+      categorySelections
+        .flatMap((value) => value.subCategories)
+        .filter((value): value is string => Boolean(value))
+    )
+  )
+
+  return {
+    title: projectInfo.title,
+    categories,
+    subCategories,
+    categorySelections,
+    industries: projectInfo.industry,
+    tags: projectInfo.tags,
+    skills: projectInfo.skills,
+    shortDescription: projectInfo.shortDescription,
+    fullDescription: projectInfo.fullDescription,
+  }
+}
+
+const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
+  (phases ?? [])
+    .map((phase, phaseIndex) => {
+      const phaseName = phase?.phaseName?.trim()
+      const rows = (phase?.rows ?? [])
+        .map((row) => {
+          const taskName = row?.task?.trim()
+          const role = row?.role?.trim()
+          const locationValue = row?.location?.trim()
+          const experienceLevel = row?.experience?.trim()
+          const durationValue = row?.duration?.value
+          const durationType = row?.duration?.type
+
+          if (
+            !taskName ||
+            !role ||
+            !locationValue ||
+            !experienceLevel ||
+            durationValue === undefined ||
+            !durationType
+          ) {
+            return null
+          }
+
+          return {
+            taskName,
+            role,
+            location: [locationValue],
+            experience: [experienceLevel],
+            experienceLevel,
+            duration: `${durationValue} ${durationType}`,
+            phaseId: "temporary-required-string",
+          }
+        })
+        .filter((row): row is NonNullable<typeof row> => Boolean(row))
+
+      if (!phaseName || rows.length === 0) {
+        return null
+      }
+
+      return {
+        name: phaseName,
+        stageName: `Stage ${phaseIndex + 1}`,
+        startDay: 1,
+        endDay: 8,
+        order: phaseIndex + 1,
+        projectId,
+        tasks: rows,
+      }
+    })
+    .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase))
+const Empty = ({
+  outcome,
+  draftId,
+}: {
+  outcome?: SubmissionOutcome
+  draftId?: string
+}) => {
   const status = outcome?.status ?? "in_review"
   // Category slug is not known at this point in the flow; fall back to an
   // empty string so buildProjectUrl returns "/c//projects/<slug>-<shortId>",
@@ -349,7 +565,15 @@ const Empty = ({ outcome }: { outcome?: SubmissionOutcome }) => {
           </div>
         ) : status === "needs_update" ? (
           <div className="mt-8">
-            <Button onClick={() => window.location.reload()}>
+            <Button
+              onClick={() => {
+                if (draftId) {
+                  router.push(editProjectListingUrl(draftId))
+                  return
+                }
+                router.push("/publish-project")
+              }}
+            >
               Update Project
             </Button>
           </div>
@@ -405,7 +629,53 @@ const meta = {
   ],
 } as const
 
+const plainTextFromRichTextHtml = (value: string) => {
+  if (!value) return ""
+
+  if (typeof window !== "undefined") {
+    const container = window.document.createElement("div")
+    container.innerHTML = value
+    return (container.textContent ?? container.innerText ?? "")
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+
+  return value
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+const getRichTextCharacterCount = (value: string) =>
+  plainTextFromRichTextHtml(value).length
+
 const DURATION_TYPE = ["days", "weeks", "hours"] as const
+
+const formatDurationUnit = (
+  value: number,
+  type: (typeof DURATION_TYPE)[number]
+) => {
+  if (value === 1) {
+    if (type === "days") return "day"
+    if (type === "weeks") return "week"
+    return "hour"
+  }
+
+  return type
+}
+
+const durationToDays = (
+  value: number,
+  type: (typeof DURATION_TYPE)[number]
+) => {
+  if (type === "weeks") return value * 7
+  if (type === "hours") return Math.max(1, Math.ceil(value / 24))
+  return value
+}
 const EXPERIENCE_LEVELS = [
   "Student",
   "Junior",
@@ -473,15 +743,6 @@ const Sidebar = () => {
   const projectInfoMethods: UseFormReturn<ProjectInfoFormValues> =
     useProjectInfoContext()
   const mediaMethods = useMediaContext()
-
-  const projectInfoValues = useWatch({ control: projectInfoMethods.control })
-  const { error: projectInfoError } =
-    projectInfoSchema.safeParse(projectInfoValues)
-  const projectInfoFlattenError = projectInfoError?.flatten()
-
-  const mediaValues = useWatch({ control: mediaMethods.control })
-  const { error: mediaError } = mediaFormSchema.safeParse(mediaValues)
-  const mediaFlattenError = mediaError?.flatten()
   const { projectScopeMethods, setTaskSearchDialogOpen } =
     useProjectScopeContext()
   const [phases] = projectScopeMethods
@@ -493,9 +754,30 @@ const Sidebar = () => {
         (p.phaseName?.trim?.() ?? "").length > 0 ||
         (Array.isArray(p.rows) && p.rows.length > 0)
     )
+  const hasProjectInfoFieldError = useCallback(
+    (name: (typeof meta)["Project Info"][number]["name"]) => {
+      if (name === "category") {
+        return Boolean(projectInfoMethods.formState.errors.category)
+      }
+
+      return hookFormHasError({
+        errors: projectInfoMethods.formState.errors,
+        name: name as FieldPath<ProjectInfoFormValues>,
+      })
+    },
+    [projectInfoMethods.formState.errors]
+  )
+  const hasMediaFieldError = useCallback(
+    (name: (typeof meta)["Media"][number]["name"]) =>
+      hookFormHasError({
+        errors: mediaMethods.formState.errors,
+        name: name as FieldPath<MediaFormValues>,
+      }),
+    [mediaMethods.formState.errors]
+  )
 
   return (
-    <div className="py-6 px-[15px] flex flex-col shrink-0 gap-y-5 xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
+    <div className="sticky top-0 py-6 px-[15px] flex h-screen flex-col shrink-0 gap-y-5 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
       {stepsState.map(({ label, isValid }, index) => {
         const isActive = currentStep === index
         // can open this step if it's the first, or the previous step is valid
@@ -543,49 +825,61 @@ const Sidebar = () => {
                 {isActive && (
                   <div className="pl-[25px]">
                     {label === "Project Info" &&
-                      meta[label].map((field, i) => (
-                        <div
-                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
-                          key={i}
-                        >
-                          <span className="text-sm leading-6 text-gray-500">
-                            {field.label}
-                          </span>
+                      meta[label].map((field, i) => {
+                        const isDirty = Boolean(
+                          projectInfoMethods.formState.dirtyFields[field.name]
+                        )
+                        const hasError = hasProjectInfoFieldError(field.name)
+                        const shouldShowStatus = hasError || isDirty
 
-                          {projectInfoMethods.formState.dirtyFields[
-                            field.name
-                          ] &&
-                            (projectInfoFlattenError?.fieldErrors[
-                              field.name
-                            ] ? (
-                              <AlertCircle className="size-[22px] text-warning-500 shrink-0" />
-                            ) : (
-                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                                <Check className="size-3 text-white" />
-                              </div>
-                            ))}
-                        </div>
-                      ))}
+                        return (
+                          <div
+                            className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                            key={i}
+                          >
+                            <span className="text-sm leading-6 text-gray-500">
+                              {field.label}
+                            </span>
+
+                            {shouldShowStatus &&
+                              (hasError ? (
+                                <AlertCircle className="size-[22px] text-warning-500 shrink-0" />
+                              ) : (
+                                <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                                  <Check className="size-3 text-white" />
+                                </div>
+                              ))}
+                          </div>
+                        )
+                      })}
                     {label === "Media" &&
-                      meta[label].map((field, i) => (
-                        <div
-                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
-                          key={i}
-                        >
-                          <span className="text-sm leading-6 text-gray-500">
-                            {field.label}
-                          </span>
+                      meta[label].map((field, i) => {
+                        const isDirty = Boolean(
+                          mediaMethods.formState.dirtyFields[field.name]
+                        )
+                        const hasError = hasMediaFieldError(field.name)
+                        const shouldShowStatus = hasError || isDirty
 
-                          {mediaMethods.formState.dirtyFields[field.name] &&
-                            (mediaFlattenError?.fieldErrors[field.name] ? (
-                              <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
-                            ) : (
-                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                                <Check className="size-3 text-white" />
-                              </div>
-                            ))}
-                        </div>
-                      ))}
+                        return (
+                          <div
+                            className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                            key={i}
+                          >
+                            <span className="text-sm leading-6 text-gray-500">
+                              {field.label}
+                            </span>
+
+                            {shouldShowStatus &&
+                              (hasError ? (
+                                <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
+                              ) : (
+                                <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                                  <Check className="size-3 text-white" />
+                                </div>
+                              ))}
+                          </div>
+                        )
+                      })}
                     {label === "Project Scope" &&
                       meta[label].map((field, i) => (
                         <div
@@ -647,11 +941,17 @@ const Sidebar = () => {
   )
 }
 
-const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
+const Header = ({
+  onSaveExit,
+  onPreview,
+}: {
+  onSaveExit?: () => void
+  onPreview?: () => void
+}) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200">
-      <h3 className="text-sm leading-[16.94px] text-gray-900 font-semibold">
-        Publish to Marketplace
+      <h3 className="text-base leading-[19.36px] text-dark-blue-400 font-semibold">
+        Create a Project
       </h3>
 
       <div className="flex items-center gap-x-3">
@@ -670,7 +970,10 @@ const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
           </Tooltip>
         </TooltipProvider>
 
-        <Button className="bg-primary-500/15 text-primary-500 hover:bg-primary-500 hover:text-white">
+        <Button
+          className="bg-primary-500/15 text-primary-500 hover:bg-primary-500 hover:text-white"
+          onClick={onPreview}
+        >
           <Eye className="size-[15px]" /> Preview
         </Button>
         <Button
@@ -727,7 +1030,10 @@ const BottomBar = ({
           ? response.data
           : []
         const categoryNodesByName = indexCategoryTreeByName(nodes)
-        const creations = new Map<string, { name: string; parentUuid?: string }>()
+        const creations = new Map<
+          string,
+          { name: string; parentUuid?: string }
+        >()
 
         ;(projectInfo.category ?? []).forEach((entry) => {
           const categoryName = entry?.category?.trim()
@@ -750,10 +1056,13 @@ const BottomBar = ({
               return
             }
 
-            creations.set(`${categoryNode.uuid}:${trimmedSubCategory.toLowerCase()}`, {
-              name: trimmedSubCategory,
-              parentUuid: categoryNode.uuid,
-            })
+            creations.set(
+              `${categoryNode.uuid}:${trimmedSubCategory.toLowerCase()}`,
+              {
+                name: trimmedSubCategory,
+                parentUuid: categoryNode.uuid,
+              }
+            )
           })
         })
 
@@ -771,50 +1080,49 @@ const BottomBar = ({
 
     await ensureCustomSubcategories()
 
-    const categories = Array.from(
-      new Set(
-        (projectInfo.category ?? [])
-          .map((value) => value?.category?.trim())
-          .filter((value): value is string => Boolean(value))
-      )
-    )
-    const subCategories = Array.from(
-      new Set(
-        (projectInfo.category ?? [])
-          .flatMap((value) => value?.subCategories ?? [])
-          .map((value) => value?.trim())
-          .filter((value): value is string => Boolean(value))
-      )
-    )
-
     const payload: CreateProjectType = {
-      title: projectInfo.title,
-      categories,
-      subCategories,
-      categorySelections: (projectInfo.category ?? []).map((value) => ({
-        category: value?.category?.trim() ?? "",
-        subCategories: (value?.subCategories ?? [])
-          .map((subCategory) => subCategory.trim())
-          .filter(Boolean),
-      })),
-      industries: projectInfo.industry,
-      tags: projectInfo.tags,
-      skills: projectInfo.skills,
-      shortDescription: projectInfo.shortDescription,
-      fullDescription: projectInfo.fullDescription,
+      ...buildProjectDraftPayload(projectInfo),
       userId: user?.id ?? "",
     }
 
     try {
-      // 1. Create project first
-      const createProjectResponse = await ProjectAPI.CreateProject(payload)
-      const projectId =
-        createProjectResponse?.data?.projectId ??
-        createProjectResponse?.data?.id
+      const projectIdFromUrl =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("draftId")
+          : null
+      let projectId =
+        projectIdFromUrl && UUID_PATTERN.test(projectIdFromUrl)
+          ? projectIdFromUrl
+          : null
+      let createProjectResponse
+
+      if (projectId) {
+        createProjectResponse = await ProjectAPI.UpdateProjectDraft(
+          projectId,
+          payload
+        )
+      } else {
+        createProjectResponse = await ProjectAPI.CreateProjectDraft(payload)
+        projectId =
+          createProjectResponse?.data?.projectId ??
+          createProjectResponse?.data?.id
+        if (projectId && typeof window !== "undefined") {
+          const urlParams = new URLSearchParams(window.location.search)
+          const type = urlParams.get("type") ?? "project"
+          window.history.replaceState(
+            window.history.state,
+            "",
+            `/publish-project?type=${encodeURIComponent(type)}&draftId=${encodeURIComponent(
+              String(projectId)
+            )}`
+          )
+        }
+      }
+
       createdProjectId = projectId ? String(projectId) : undefined
       createdProjectSlug = createProjectResponse?.data?.slug
 
-      // 2. Upload media after project is created
+      // 2. Upload media after project draft is saved
       let mediaUploadSuccess = true
       let mediaUploadErrorMsg = ""
       if (projectId) {
@@ -831,16 +1139,22 @@ const BottomBar = ({
         if (featuredFile || additionalFiles.length || videoUrl) {
           const formData = new FormData()
           formData.append("projectId", String(projectId))
-          const uniqueFeatured = makeUniqueFile(featuredFile)
+          const uniqueFeatured = await resolveMediaFileForUpload(
+            featuredFile,
+            "featured-image.jpg"
+          )
           if (uniqueFeatured) {
             formData.append("featuredImage", uniqueFeatured)
           }
-          additionalFiles.forEach((file) => {
-            const uniqueAdditional = makeUniqueFile(file)
+          for (const file of additionalFiles) {
+            const uniqueAdditional = await resolveMediaFileForUpload(
+              file,
+              "additional-image.jpg"
+            )
             if (uniqueAdditional) {
               formData.append("additionalImages", uniqueAdditional)
             }
-          })
+          }
           if (videoUrl) {
             formData.append("videoUrl", videoUrl)
           }
@@ -853,26 +1167,39 @@ const BottomBar = ({
               error?.response?.data?.message ||
               error?.message ||
               "Media upload failed. Please check your files."
+            const errorType = classifyPublishError({
+              message: mediaUploadErrorMsg,
+              statusCode: error?.response?.status,
+              status: error?.response?.data?.status,
+            })
+
+            if (errorType === "temporary_unavailable") {
+              toast({
+                title:
+                  mediaUploadErrorMsg ||
+                  "Media upload is temporarily unavailable. Please try again.",
+                variant: "destructive",
+              })
+              return
+            }
           }
         }
       }
 
       // 3. If media upload failed, set project to needs_update and show re-upload option
       if (!mediaUploadSuccess) {
-        const isVideoViolation =
-          /featured video|video moderation|unsafe frame|video rejected|video violates|frame_moderation/i.test(
-            mediaUploadErrorMsg
-          )
-        const isImageViolation =
-          /image|media|animation|blur|nudity|graphic|gore|weapon|hate symbol/i.test(
-            mediaUploadErrorMsg
-          )
-        const isContentModerationRejection =
-          /banned keyword|profanity|content failed validation|content moderation|community guidelines|rejected by moderation/i.test(
-            mediaUploadErrorMsg
-          )
+        const errorType = classifyPublishError({
+          message: mediaUploadErrorMsg,
+        })
+        const isVideoViolation = errorType === "video_rejection"
+        const isImageViolation = errorType === "image_rejection"
+        const isContentModerationRejection = errorType === "content_rejection"
 
-        if (!isVideoViolation && !isImageViolation && !isContentModerationRejection) {
+        if (
+          !isVideoViolation &&
+          !isImageViolation &&
+          !isContentModerationRejection
+        ) {
           toast({
             title:
               mediaUploadErrorMsg || "Media upload failed. Please try again.",
@@ -898,7 +1225,7 @@ const BottomBar = ({
         return
       }
 
-      // 4. Create phases as before
+      // 4. Replace the saved project scope before publish
       if (projectId) {
         const publishPhases = (phases ?? [])
           .map((phase, phaseIndex) => {
@@ -929,7 +1256,10 @@ const BottomBar = ({
                   location: [locationValue],
                   experience: [experienceLevel],
                   experienceLevel,
-                  duration: `${durationValue} ${durationType}`,
+                  duration: `${durationValue} ${formatDurationUnit(
+                    durationValue,
+                    durationType
+                  )}`,
                   phaseId: "temporary-required-string",
                 }
               })
@@ -939,11 +1269,19 @@ const BottomBar = ({
               return null
             }
 
+            const { startDay, endDay } = getPhaseDayRange(
+              phases ?? [],
+              phaseIndex
+            )
+            if (typeof endDay !== "number") {
+              return null
+            }
+
             return {
               name: phaseName,
               stageName: `Stage ${phaseIndex + 1}`,
-              startDay: 1,
-              endDay: 8,
+              startDay,
+              endDay,
               order: phaseIndex + 1,
               projectId: String(projectId),
               tasks: rows,
@@ -999,21 +1337,20 @@ const BottomBar = ({
         error?.response?.data?.message ||
         error?.message ||
         "Unable to submit project"
+      const errorType = classifyPublishError({
+        message: errorMessage,
+        statusCode: error?.response?.status,
+        status: error?.response?.data?.status,
+      })
+      const isVideoViolation = errorType === "video_rejection"
+      const isImageViolation = errorType === "image_rejection"
+      const isContentModerationRejection = errorType === "content_rejection"
 
-      const isVideoViolation =
-        /featured video|video moderation|unsafe frame|video rejected|video violates|frame_moderation/i.test(
-          errorMessage
-        )
-      const isImageViolation =
-        /image|media|animation|blur|nudity|graphic|gore|weapon|hate symbol/i.test(
-          errorMessage
-        )
-      const isContentModerationRejection =
-        /banned keyword|profanity|content failed validation|content moderation|community guidelines|rejected by moderation/i.test(
-          errorMessage
-        )
-
-      if (isVideoViolation || isImageViolation || isContentModerationRejection) {
+      if (
+        isVideoViolation ||
+        isImageViolation ||
+        isContentModerationRejection
+      ) {
         await waitForReviewWindow()
         setSubmissionOutcome({
           status: "needs_update",
@@ -1106,13 +1443,13 @@ const ProjectInfoTip = ({
 
       <div className="flex items-center gap-x-2">
         <Lightbulb05 className="size-[30px] shrink-0 text-primary-500" />
-        <span className="text-base leading-[30px] font-semibold text-gray-900">
+        <span className="text-base leading-normal font-semibold text-gray-900">
           Tip
         </span>
       </div>
       <div className="mt-1">
-        <span className="text-xs leading-[14.52px] text-black/60">
-          A great title gives your audience a reason to open your project
+        <span className="text-xs leading-normal text-black/60">
+          Show the outcome, audience, and value.
         </span>
       </div>
 
@@ -1120,14 +1457,15 @@ const ProjectInfoTip = ({
         <div className="flex items-center gap-x-3">
           <CheckCircle className="size-5 shrink-0 text-primary-500" />{" "}
           <span className="text-sm leading-5 font-semibold text-gray-700">
-            Focus on the purpose
+            Outcome first
           </span>
         </div>
 
         <div className="mt-3">
-          <span className="text-sm leading-[16.94px] text-gray-500">
-            Use impactful keywords that communicate value and make it easy to
-            identify in a list of projects.
+          <span className="text-sm leading-normal text-gray-500">
+            Name the deliverable, who it helps, and the result it creates. If
+            someone only reads the first two lines, they should still understand
+            the value.
           </span>
         </div>
       </div>
@@ -1136,14 +1474,15 @@ const ProjectInfoTip = ({
         <div className="flex items-center gap-x-3">
           <CheckCircle className="size-5 shrink-0 text-primary-500" />{" "}
           <span className="text-sm leading-5 font-semibold text-gray-700">
-            Focus on the purpose
+            Proof over filler
           </span>
         </div>
 
         <div className="mt-3">
-          <span className="text-sm leading-[16.94px] text-gray-500">
-            Use impactful keywords that communicate value and make it easy to
-            identify in a list of projects.
+          <span className="text-sm leading-normal text-gray-500">
+            Include scope, constraints, tools, timeline, or measurable impact.
+            Specific tags and skills improve search visibility and help the
+            right collaborators self-select.
           </span>
         </div>
       </div>
@@ -1154,25 +1493,49 @@ const ProjectInfoTip = ({
 const projectInfoSchema = z.object({
   title: z
     .string()
+    .trim()
+    .min(1, "Please enter a project title")
+    .regex(
+      /^[A-Za-z0-9 -]+$/,
+      "Title can only contain letters, numbers, spaces, and hyphens."
+    )
     .min(10, "Please enter at least 10 character(s)")
     .max(120, "Please do not enter more than 120 character(s)"),
   category: z
     .array(
-      z.object({
-        category: z
-          .string({
-            required_error: "Please enter/select a category",
-          })
-          .min(1, "Please select at least 1 character(s)"),
-        subCategories: z
-          .array(z.string(), {
-            required_error: "Please enter/select at least 1 sub-category(s)",
-          })
-          .min(1, "Please enter/select at least 1 category(s)")
-          .max(5, "You can add a maximum of five (5) sub categories"),
-      })
+      z
+        .object({
+          category: z.string().default(""),
+          subCategories: z
+            .array(z.string())
+            .max(5, "You can add a maximum of five (5) sub categories"),
+        })
+        .superRefine((value, ctx) => {
+          const selectedCategory = value.category.trim()
+          const selectedSubCategories = value.subCategories.filter(
+            (subCategory) => subCategory.trim()
+          )
+
+          if (!selectedCategory) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["category"],
+              message: "Please select a category",
+            })
+            return
+          }
+
+          if (!selectedSubCategories.length) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["subCategories"],
+              message:
+                "Please select at least 1 sub-category for this category",
+            })
+          }
+        })
     )
-    .length(3, "Please enter/select all the categories and sub-categories"),
+    .length(3, "Please select all required categories"),
   industry: z
     .array(z.string(), {
       required_error: "Please enter/select at least 1 industry(s)",
@@ -1183,15 +1546,34 @@ const projectInfoSchema = z.object({
     .string()
     .min(50, "Please enter at least 50 character(s)")
     .max(300, "Please do not enter more than 300 character(s)"),
-  fullDescription: z
-    .string()
-    .min(100, "Please enter at least 100 character(s)")
-    .max(2_000, "Please do not enter more than 2,000 character(s)"),
+  fullDescription: z.string().superRefine((value, ctx) => {
+    const contentLength = getRichTextCharacterCount(value)
+
+    if (contentLength < 100) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.too_small,
+        minimum: 100,
+        type: "string",
+        inclusive: true,
+        message: "Please enter at least 100 character(s)",
+      })
+    }
+
+    if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.too_big,
+        maximum: FULL_DESCRIPTION_MAX_LENGTH,
+        type: "string",
+        inclusive: true,
+        message: "Please do not enter more than 5,000 character(s)",
+      })
+    }
+  }),
   tags: z
     .array(z.string(), {
-      required_error: "Please enter/select at least 1 tags(s)",
+      required_error: "Please add at least three tags",
     })
-    .min(1, "Please enter/select at least 1 tags(s)")
+    .min(3, "Please add at least three tags")
     .max(10, "Please do not enter/select more than 10 tag(s)"),
   skills: z
     .array(z.string(), {
@@ -1213,14 +1595,58 @@ const PROJECT_INFO_PROGRESS_FIELDS: Array<keyof ProjectInfoFormValues> = [
   "skills",
 ]
 
+const PROJECT_INFO_VALIDATION_TARGETS: Array<{
+  name: FieldPath<ProjectInfoFormValues>
+  targetId: string
+}> = [
+  { name: "title", targetId: "publish-project-title-field" },
+  { name: "category.0.category", targetId: "publish-project-category-field" },
+  {
+    name: "category.0.subCategories",
+    targetId: "publish-project-category-field",
+  },
+  { name: "category.1.category", targetId: "publish-project-category-field" },
+  {
+    name: "category.1.subCategories",
+    targetId: "publish-project-category-field",
+  },
+  { name: "category.2.category", targetId: "publish-project-category-field" },
+  {
+    name: "category.2.subCategories",
+    targetId: "publish-project-category-field",
+  },
+  { name: "industry", targetId: "publish-project-industry-field" },
+  {
+    name: "shortDescription",
+    targetId: "publish-project-short-description-field",
+  },
+  {
+    name: "fullDescription",
+    targetId: "publish-project-full-description-field",
+  },
+  { name: "tags", targetId: "publish-project-tags-field" },
+  { name: "skills", targetId: "publish-project-skills-field" },
+]
+
+const scrollToPublishField = (targetId: string) => {
+  if (typeof window === "undefined") return
+
+  window.requestAnimationFrame(() => {
+    document.getElementById(targetId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    })
+  })
+}
+
 const TITLE_MAX_LENGTH = 120
 const SHORT_DESCRIPTION_MAX_LENGTH = 300
-const FULL_DESCRIPTION_MAX_LENGTH = 2000
+const FULL_DESCRIPTION_MAX_LENGTH = 5000
 const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
   "Please do not enter more than 300 character(s)"
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 2,000 character(s)"
+  "Please do not enter more than 5,000 character(s)"
 
 const FALLBACK_CATEGORY_OPTIONS = [
   "Web Development",
@@ -1303,7 +1729,9 @@ const DEFAULT_SUGGESTED_CATEGORIES: SuggestedCategoryOption[] = [
 
 const isActiveCategoryNode = (node: CategoryTreeNode) => node.approved
 
-const collectCategoryDescendants = (node?: CategoryTreeNode): CategoryTreeNode[] => {
+const collectCategoryDescendants = (
+  node?: CategoryTreeNode
+): CategoryTreeNode[] => {
   if (!node?.children?.length) return []
 
   return node.children.flatMap((child) => {
@@ -1356,7 +1784,7 @@ const ProjectInfo = ({
   const { toggleValidation } = useStepContext()
   const methods = useProjectInfoContext()
   const {
-    formState: { isValid, errors },
+    formState: { errors },
     setValue,
     trigger,
   } = methods
@@ -1371,16 +1799,13 @@ const ProjectInfo = ({
   const [categoryOptions, setCategoryOptions] = useState<string[]>(
     FALLBACK_CATEGORY_OPTIONS
   )
-  const [subCategoryOptions, setSubCategoryOptions] = useState<string[]>(
-    (FALLBACK_SUBCATEGORY_OPTIONS as string[]) ?? []
-  )
+  const [subCategoryOptions, setSubCategoryOptions] = useState<string[]>([])
   const [industryOptions, setIndustryOptions] = useState<string[]>(
     FALLBACK_INDUSTRY_OPTIONS
   )
   const [tagOptions, setTagOptions] = useState<string[]>(FALLBACK_TAG_OPTIONS)
   const [skills, setSkills] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
   const [suggestedSkillOptions] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
-  const [titleInputValue, setTitleInputValue] = useState("")
   const categoryRequestRef = useRef(0)
   const categoryDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -1390,12 +1815,13 @@ const ProjectInfo = ({
     null
   )
 
-  useIsomorphicLayoutEffect(() => {
-    toggleValidation(isValid)
-  }, [isValid])
-
   const onSubmit: SubmitHandler<ProjectInfoFormValues> = (values) => {}
   const projectInfoValues = useWatch({ control: methods.control })
+  const isProjectInfoValid =
+    projectInfoSchema.safeParse(projectInfoValues).success
+  useIsomorphicLayoutEffect(() => {
+    toggleValidation(isProjectInfoValid)
+  }, [isProjectInfoValid])
   const categoryValues = useWatch({
     control: methods.control,
     name: "category",
@@ -1405,26 +1831,31 @@ const ProjectInfo = ({
   }, [categoryTree])
   const getSubCategoryOptionsForCategory = useCallback(
     (categoryName?: string, query = "") => {
+      if (!categoryName) return []
+
       const normalizedQuery = query.trim().toLowerCase()
-      const activeNode = categoryName
-        ? categoryNodesByName.get(categoryName)
-        : undefined
+      const activeNode = categoryNodesByName.get(categoryName)
       const sourceNodes = activeNode
         ? collectCategoryDescendants(activeNode)
-        : categoryTree.flatMap((node) => collectCategoryDescendants(node))
+        : []
 
       return getUniqueOptions(
         sourceNodes
           .map((node) => node.name)
           .filter((name) =>
-            normalizedQuery ? name.toLowerCase().includes(normalizedQuery) : true
+            normalizedQuery
+              ? name.toLowerCase().includes(normalizedQuery)
+              : true
           )
       )
     },
     [categoryNodesByName, categoryTree]
   )
   const handleSubCategoryChange = useCallback(
-    (fieldName: `category.${0 | 1 | 2}.subCategories`, onChange: (value: string[]) => void) =>
+    (
+      fieldName: `category.${0 | 1 | 2}.subCategories`,
+      onChange: (value: string[]) => void
+    ) =>
       (details: { value: string[] }) => {
         if (details.value.length > MAX_SUBCATEGORIES_PER_CATEGORY) {
           methods.setError(fieldName, {
@@ -1449,7 +1880,8 @@ const ProjectInfo = ({
       onChange(categoryName)
       setActiveCategoryIndex(index)
 
-      const availableSubCategories = getSubCategoryOptionsForCategory(categoryName)
+      const availableSubCategories =
+        getSubCategoryOptionsForCategory(categoryName)
       setSubCategoryOptions(availableSubCategories)
 
       const fieldName = `category.${index}.subCategories` as const
@@ -1462,19 +1894,21 @@ const ProjectInfo = ({
         methods.setValue(fieldName, nextSubCategories, {
           shouldDirty: true,
           shouldTouch: true,
-          shouldValidate: true,
+          shouldValidate: false,
         })
       }
 
-      void methods.trigger(`category.${index}`)
+      methods.clearErrors(`category.${index}.category`)
+      methods.clearErrors(`category.${index}.subCategories`)
     },
     [getSubCategoryOptionsForCategory, methods]
   )
 
   const completedProjectInfoFields = PROJECT_INFO_PROGRESS_FIELDS.filter(
     (fieldName) =>
-      projectInfoSchema.shape[fieldName]
-        .safeParse(projectInfoValues?.[fieldName]).success
+      projectInfoSchema.shape[fieldName].safeParse(
+        projectInfoValues?.[fieldName]
+      ).success
   ).length
   const progressValue = Math.max(
     0,
@@ -1485,8 +1919,7 @@ const ProjectInfo = ({
       )
     )
   )
-  const titleCharacterCount =
-    titleInputValue.length || projectInfoValues.title?.length || 0
+  const titleCharacterCount = projectInfoValues.title?.length || 0
   const titleHasError = hookFormHasError({
     errors,
     name: "title",
@@ -1499,46 +1932,12 @@ const ProjectInfo = ({
     errors,
     name: "fullDescription",
   })
-  const hasCommittedTitle =
-    typeof projectInfoValues.title === "string" &&
-    projectInfoValues.title.trim().length > 0
+  const fullDescriptionCharacterCount = getRichTextCharacterCount(
+    projectInfoValues.fullDescription ?? ""
+  )
   const shortDescriptionField = methods.register("shortDescription", {
     onBlur: () => trigger("shortDescription"),
   })
-  const fullDescriptionField = methods.register("fullDescription", {
-    onBlur: () => trigger("fullDescription"),
-  })
-
-  const commitTitleValue = useCallback(() => {
-    const nextValue = titleInputValue.trim()
-
-    if (!nextValue) {
-      void methods.trigger("title")
-      return
-    }
-
-    methods.setValue("title", nextValue, {
-      shouldDirty: true,
-      shouldTouch: true,
-      shouldValidate: true,
-    })
-    void methods.trigger("title").then((isValid) => {
-      if (isValid) {
-        methods.clearErrors("title")
-        setTitleInputValue("")
-      }
-    })
-  }, [methods, titleInputValue])
-
-  const clearCommittedTitle = useCallback(() => {
-    methods.setValue("title", "", {
-      shouldDirty: true,
-      shouldTouch: true,
-      shouldValidate: true,
-    })
-    methods.clearErrors("title")
-    setTitleInputValue("")
-  }, [methods])
 
   const triggerMaxLengthError = useCallback(
     (
@@ -1564,7 +1963,8 @@ const ProjectInfo = ({
       const selectionLength =
         event.currentTarget.selectionEnd !== null &&
         event.currentTarget.selectionStart !== null
-          ? event.currentTarget.selectionEnd - event.currentTarget.selectionStart
+          ? event.currentTarget.selectionEnd -
+            event.currentTarget.selectionStart
           : 0
 
       if ("key" in event) {
@@ -1593,7 +1993,13 @@ const ProjectInfo = ({
       const activeCategoryName = Array.isArray(categoryValues)
         ? categoryValues[index]?.category
         : undefined
-      const fallbackOptions = getSubCategoryOptionsForCategory(activeCategoryName)
+      const fallbackOptions =
+        getSubCategoryOptionsForCategory(activeCategoryName)
+
+      if (!activeCategoryName) {
+        setSubCategoryOptions([])
+        return
+      }
 
       if (!trimmedQuery) {
         setSubCategoryOptions(fallbackOptions)
@@ -1636,7 +2042,10 @@ const ProjectInfo = ({
           setSubCategoryOptions(
             getIsNotEmpty(matchingSubCategories)
               ? matchingSubCategories
-              : getSubCategoryOptionsForCategory(activeCategoryName, trimmedQuery)
+              : getSubCategoryOptionsForCategory(
+                  activeCategoryName,
+                  trimmedQuery
+                )
           )
         } catch (error) {
           setSubCategoryOptions(
@@ -1694,9 +2103,7 @@ const ProjectInfo = ({
         const nextSuggested = selectableCategories
           .map((node) => {
             const subCategory = findSuggestedSubCategory(node)
-            return subCategory
-              ? { category: node.name, subCategory }
-              : null
+            return subCategory ? { category: node.name, subCategory } : null
           })
           .filter((value): value is SuggestedCategoryOption => value !== null)
 
@@ -1750,12 +2157,14 @@ const ProjectInfo = ({
               itemIndex === index ? null : item?.category?.trim()
             )
             .filter(
-              (item): item is string => typeof item === "string" && item.length > 0
+              (item): item is string =>
+                typeof item === "string" && item.length > 0
             )
         : []
 
       return categoryOptions.filter(
-        (category) => category === currentValue || !selectedCategories.includes(category)
+        (category) =>
+          category === currentValue || !selectedCategories.includes(category)
       )
     },
     [categoryOptions, categoryValues]
@@ -1763,13 +2172,24 @@ const ProjectInfo = ({
   const selectedSuggestedPairs = useMemo(
     () =>
       new Set(
+        (Array.isArray(categoryValues) ? categoryValues : []).flatMap((item) =>
+          item?.category && Array.isArray(item.subCategories)
+            ? item.subCategories.map(
+                (subCategory) => `${item.category}::${subCategory}`
+              )
+            : []
+        )
+      ),
+    [categoryValues]
+  )
+  const selectedCategoryNames = useMemo(
+    () =>
+      new Set(
         (Array.isArray(categoryValues) ? categoryValues : [])
-          .flatMap((item) =>
-            item?.category && Array.isArray(item.subCategories)
-              ? item.subCategories.map(
-                  (subCategory) => `${item.category}::${subCategory}`
-                )
-              : []
+          .map((item) => item?.category?.trim())
+          .filter(
+            (category): category is string =>
+              typeof category === "string" && category.length > 0
           )
       ),
     [categoryValues]
@@ -1779,16 +2199,18 @@ const ProjectInfo = ({
       suggested
         .filter(
           ({ category, subCategory }) =>
+            !selectedCategoryNames.has(category) &&
             !selectedSuggestedPairs.has(`${category}::${subCategory}`)
         )
         .slice(0, 3),
-    [selectedSuggestedPairs, suggested]
+    [selectedCategoryNames, selectedSuggestedPairs, suggested]
   )
 
   return (
     <form className="contents" onSubmit={methods.handleSubmit(onSubmit)}>
       <ScrollArea
         className="h-[calc(theme(size.full)-148px)] overflow-x-hidden"
+        viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
         <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-[41.45px]">
@@ -1802,8 +2224,7 @@ const ProjectInfo = ({
                     Tip
                   </h1>
                   <p className="text-xs leading-[14.52px] text-dark-blue-400 tracking-[0.01em]">
-                    A great title gives your audience a reason to open your
-                    project
+                    Show the outcome, audience, and value.
                   </p>
                 </div>
 
@@ -1840,7 +2261,10 @@ const ProjectInfo = ({
               Project Info
             </h1>
 
-            <div className="space-y-1.5 mt-6 mb-6">
+            <div
+              id="publish-project-title-field"
+              className="space-y-1.5 mt-6 mb-6"
+            >
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -1861,81 +2285,53 @@ const ProjectInfo = ({
                 </div>
               </div>
 
-              <div className="relative">
-                <Input
-                  id="title"
-                  type="text"
-                  placeholder={hasCommittedTitle && !titleInputValue ? "" : "Enter Title"}
-                  value={titleInputValue}
-                  maxLength={TITLE_MAX_LENGTH}
-                  onChange={(event) => {
-                    setTitleInputValue(
-                      event.target.value.slice(0, TITLE_MAX_LENGTH)
+              <Input
+                id="title"
+                type="text"
+                placeholder="Enter Title"
+                value={projectInfoValues.title ?? ""}
+                maxLength={TITLE_MAX_LENGTH}
+                onChange={(event) => {
+                  methods.setValue(
+                    "title",
+                    event.target.value.slice(0, TITLE_MAX_LENGTH),
+                    {
+                      shouldDirty: true,
+                      shouldTouch: true,
+                      shouldValidate: false,
+                    }
+                  )
+                  if (titleHasError && get(errors, "title.type") === "manual") {
+                    methods.clearErrors("title")
+                  }
+                }}
+                onBlur={() => void methods.trigger("title")}
+                onKeyDown={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      projectInfoValues.title?.length || 0,
+                      TITLE_MAX_LENGTH
                     )
-                    if (
-                      titleHasError &&
-                      get(errors, "title.type") === "manual"
-                    ) {
-                      methods.clearErrors("title")
-                    }
-                  }}
-                  onBlur={commitTitleValue}
-                  onKeyDown={(event) => {
-                    if (
-                      shouldBlockMaxLengthInput(
-                        event,
-                        titleInputValue.length,
-                        TITLE_MAX_LENGTH
-                      )
-                    ) {
-                      event.preventDefault()
-                      triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
-                      return
-                    }
-                    if (event.key !== "Enter") return
+                  ) {
                     event.preventDefault()
-                    commitTitleValue()
-                  }}
-                  onPaste={(event) => {
-                    if (
-                      shouldBlockMaxLengthInput(
-                        event,
-                        titleInputValue.length,
-                        TITLE_MAX_LENGTH
-                      )
-                    ) {
-                      event.preventDefault()
-                      triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
-                    }
-                  }}
-                  className={cn(
-                    hasCommittedTitle &&
-                      !titleInputValue &&
-                      !titleHasError &&
-                      "text-transparent"
-                  )}
-                  isInvalid={titleHasError}
-                />
-
-                {hasCommittedTitle && !titleInputValue && !titleHasError ? (
-                  <div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center px-[14px]">
-                    <div className="pointer-events-auto inline-flex max-w-full items-center gap-1 rounded-md bg-primary-50 px-2 py-1 text-sm leading-none text-primary-500">
-                      <span className="truncate">
-                        {projectInfoValues.title}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="Remove selected title"
-                        className="inline-flex size-4 items-center justify-center rounded-sm opacity-60 transition hover:bg-primary-100 hover:opacity-100"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={clearCommittedTitle}
-                      >
-                        <X2 className="size-3" />
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                  }
+                }}
+                onPaste={(event) => {
+                  if (
+                    shouldBlockMaxLengthInput(
+                      event,
+                      projectInfoValues.title?.length || 0,
+                      TITLE_MAX_LENGTH
+                    )
+                  ) {
+                    event.preventDefault()
+                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                  }
+                }}
+                isInvalid={titleHasError}
+              />
 
               <HookFormErrorMessage
                 errors={errors}
@@ -1946,7 +2342,7 @@ const ProjectInfo = ({
               />
             </div>
 
-            <div className="space-y-6 mt-0">
+            <div id="publish-project-category-field" className="space-y-6 mt-0">
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -1993,11 +2389,13 @@ const ProjectInfo = ({
                             )}
                           </ListboxButton>
                           <ListboxOptions>
-                            {getAvailableCategoriesForIndex(0, value).map((category) => (
-                              <ListboxOption key={category} value={category}>
-                                {category}
-                              </ListboxOption>
-                            ))}
+                            {getAvailableCategoriesForIndex(0, value).map(
+                              (category) => (
+                                <ListboxOption key={category} value={category}>
+                                  {category}
+                                </ListboxOption>
+                              )
+                            )}
                           </ListboxOptions>
                         </Listbox>
                       )}
@@ -2115,11 +2513,13 @@ const ProjectInfo = ({
                             )}
                           </ListboxButton>
                           <ListboxOptions>
-                            {getAvailableCategoriesForIndex(1, value).map((category) => (
-                              <ListboxOption key={category} value={category}>
-                                {category}
-                              </ListboxOption>
-                            ))}
+                            {getAvailableCategoriesForIndex(1, value).map(
+                              (category) => (
+                                <ListboxOption key={category} value={category}>
+                                  {category}
+                                </ListboxOption>
+                              )
+                            )}
                           </ListboxOptions>
                         </Listbox>
                       )}
@@ -2242,11 +2642,13 @@ const ProjectInfo = ({
                             )}
                           </ListboxButton>
                           <ListboxOptions>
-                            {getAvailableCategoriesForIndex(2, value).map((category) => (
-                              <ListboxOption key={category} value={category}>
-                                {category}
-                              </ListboxOption>
-                            ))}
+                            {getAvailableCategoriesForIndex(2, value).map(
+                              (category) => (
+                                <ListboxOption key={category} value={category}>
+                                  {category}
+                                </ListboxOption>
+                              )
+                            )}
                           </ListboxOptions>
                         </Listbox>
                       )}
@@ -2347,54 +2749,55 @@ const ProjectInfo = ({
                 </span>
 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
-                  {suggestedForDisplay.map(
-                    ({ category, subCategory }) => (
-                      <Badge
-                        size="md"
-                        className="pr-2 focus-visible:outline-none text-primary-500 bg-primary-50"
-                        visual="primary"
-                        asChild
-                        key={category}
+                  {suggestedForDisplay.map(({ category, subCategory }) => (
+                    <Badge
+                      size="md"
+                      className="pr-2 focus-visible:outline-none text-primary-500 bg-primary-50"
+                      visual="primary"
+                      asChild
+                      key={category}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const indexToUpdate = activeCategoryIndex
+
+                          // write values and mark as user-driven so Sidebar shows the checkmark
+                          setValue(
+                            `category.${indexToUpdate}.category`,
+                            category,
+                            {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            }
+                          )
+                          setValue(
+                            `category.${indexToUpdate}.subCategories`,
+                            [subCategory],
+                            {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            }
+                          )
+
+                          // validate that slot
+                          trigger(`category.${indexToUpdate}`)
+
+                          // keep suggestions visible for subsequent category slots
+                        }}
                       >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const indexToUpdate = activeCategoryIndex
-
-                            // write values and mark as user-driven so Sidebar shows the checkmark
-                            setValue(
-                              `category.${indexToUpdate}.category`,
-                              category,
-                              {
-                                shouldDirty: true,
-                                shouldValidate: true,
-                              }
-                            )
-                            setValue(
-                              `category.${indexToUpdate}.subCategories`,
-                              [subCategory],
-                              {
-                                shouldDirty: true,
-                                shouldValidate: true,
-                              }
-                            )
-
-                            // validate that slot
-                            trigger(`category.${indexToUpdate}`)
-
-                            // keep suggestions visible for subsequent category slots
-                          }}
-                        >
-                          {category} / {subCategory}
-                          <Plus2 className="size-3 opacity-50 hover:opacity-100" />
-                        </button>
-                      </Badge>
-                    )
-                  )}
+                        {category} / {subCategory}
+                        <Plus2 className="size-3 opacity-50 hover:opacity-100" />
+                      </button>
+                    </Badge>
+                  ))}
                 </div>
               </div>
             )}
-            <div className="space-y-1.5 mt-6">
+            <div
+              id="publish-project-industry-field"
+              className="space-y-1.5 mt-6"
+            >
               <Controller
                 name="industry"
                 control={methods.control}
@@ -2487,7 +2890,10 @@ const ProjectInfo = ({
               />
             </div>
 
-            <div className="space-y-1.5 mt-6">
+            <div
+              id="publish-project-short-description-field"
+              className="space-y-1.5 mt-6"
+            >
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -2564,7 +2970,10 @@ const ProjectInfo = ({
               />
             </div>
 
-            <div className="space-y-1.5 mt-6">
+            <div
+              id="publish-project-full-description-field"
+              className="space-y-1.5 mt-6"
+            >
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -2580,57 +2989,72 @@ const ProjectInfo = ({
                   </HelperText>
 
                   <span className="text-xs leading-[14.52px] text-gray-500">
-                    {projectInfoValues.fullDescription?.length || 0}/
+                    {fullDescriptionCharacterCount}/
                     {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
                   </span>
                 </div>
               </div>
 
-              <Textarea
-                id="full-description"
-                placeholder="Enter a full Description"
-                maxLength={FULL_DESCRIPTION_MAX_LENGTH}
-                {...fullDescriptionField}
-                onChange={(event) => {
-                  fullDescriptionField.onChange(event)
-                  if (
-                    fullDescriptionHasError &&
-                    get(errors, "fullDescription.type") === "manual"
-                  ) {
-                    methods.clearErrors("fullDescription")
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      event.currentTarget.value.length,
-                      FULL_DESCRIPTION_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError(
-                      "fullDescription",
-                      FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                    )
-                  }
-                }}
-                onPaste={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      event.currentTarget.value.length,
-                      FULL_DESCRIPTION_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError(
-                      "fullDescription",
-                      FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                    )
-                  }
-                }}
-                isInvalid={fullDescriptionHasError}
+              <Controller
+                name="fullDescription"
+                control={methods.control}
+                render={({ field }) => (
+                  <RichTextEditor
+                    defaultValue={field.value ?? ""}
+                    placeholder="<p class='text-gray-400'>Enter a full Description</p>"
+                    allowFullscreen
+                    className={cn(
+                      "rounded-lg border bg-white transition-colors",
+                      fullDescriptionHasError
+                        ? "border-error-500"
+                        : "border-gray-300 focus-within:border-primary-500"
+                    )}
+                    toolbarClassName="left-4"
+                    editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+                    onUpdate={(html) => {
+                      field.onChange(html)
+
+                      const contentLength = getRichTextCharacterCount(html)
+                      if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+                        triggerMaxLengthError(
+                          "fullDescription",
+                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                        )
+                        return
+                      }
+
+                      if (
+                        fullDescriptionHasError &&
+                        get(errors, "fullDescription.message") ===
+                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                      ) {
+                        methods.clearErrors("fullDescription")
+                      }
+                    }}
+                    onBlur={(html) => {
+                      field.onBlur()
+
+                      const contentLength = getRichTextCharacterCount(html)
+                      if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+                        triggerMaxLengthError(
+                          "fullDescription",
+                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                        )
+                        return
+                      }
+
+                      if (
+                        fullDescriptionHasError &&
+                        get(errors, "fullDescription.message") ===
+                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                      ) {
+                        methods.clearErrors("fullDescription")
+                      }
+
+                      void trigger("fullDescription")
+                    }}
+                  />
+                )}
               />
 
               <HookFormErrorMessage
@@ -2642,7 +3066,7 @@ const ProjectInfo = ({
               />
             </div>
 
-            <div className="space-y-1.5 mt-6">
+            <div id="publish-project-tags-field" className="space-y-1.5 mt-6">
               <Controller
                 name="tags"
                 control={methods.control}
@@ -2736,7 +3160,7 @@ const ProjectInfo = ({
               />
             </div>
 
-            <div className="space-y-1.5 mt-6">
+            <div id="publish-project-skills-field" className="space-y-1.5 mt-6">
               <Controller
                 name="skills"
                 control={methods.control}
@@ -2867,7 +3291,7 @@ const ProjectInfo = ({
               </div>
             ) : null}
           </div>
-          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0">
+          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
             <ProjectInfoTip showArrow />
           </div>
         </div>
@@ -2895,13 +3319,13 @@ const MediaTip = ({ showArrow, closeTrigger, className }: MediaTipProps) => {
       {closeTrigger}
       <div className="flex items-center gap-x-2">
         <Lightbulb05 className="size-[30px] shrink-0 text-primary-500" />
-        <span className="text-base leading-[30px] font-semibold text-gray-900">
+        <span className="text-base leading-normal font-semibold text-gray-900">
           Tip
         </span>
       </div>
       <div className="mt-1">
-        <span className="text-xs leading-[14.52px] text-black/60">
-          Make your project stand out with a better images.
+        <span className="text-xs leading-normal text-black/60">
+          Strong visuals build trust at a glance.
         </span>
       </div>
 
@@ -2914,10 +3338,10 @@ const MediaTip = ({ showArrow, closeTrigger, className }: MediaTipProps) => {
         </div>
 
         <ul className="mt-3 list-disc pl-4">
-          <li className="text-sm leading-[16.94px] text-gray-500">
+          <li className="text-sm leading-normal text-gray-500">
             Upload a professional, high-quality image to represent your scope.
           </li>
-          <li className="text-sm leading-[16.94px] text-gray-500 mt-5">
+          <li className="text-sm leading-normal text-gray-500 mt-5">
             Ensure it reflects the essence of your work and attracts attention
             in the marketplace.
           </li>
@@ -2933,7 +3357,7 @@ const MediaTip = ({ showArrow, closeTrigger, className }: MediaTipProps) => {
         </div>
 
         <div className="mt-3">
-          <span className="text-sm leading-[16.94px] text-gray-500">
+          <span className="text-sm leading-normal text-gray-500">
             Use impactful keywords that communicate value and make it easy to
             identify in a list of projects.
           </span>
@@ -3039,6 +3463,18 @@ type MediaFormValues = {
   }[][]
   featuredVideo: string
 }
+
+const MEDIA_VALIDATION_TARGETS: Array<{
+  name: FieldPath<MediaFormValues>
+  targetId: string
+}> = [
+  { name: "featuredImages", targetId: "publish-project-featured-images-field" },
+  {
+    name: "additionalImages",
+    targetId: "publish-project-additional-images-field",
+  },
+  { name: "featuredVideo", targetId: "publish-project-featured-video-field" },
+]
 type MediaProps = {
   setProgress?: (val: number) => void
 }
@@ -3059,17 +3495,18 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
   const { currentStep } = useStepRootContext()
   const [progressValue, setProgressValue] = useState(0)
 
-  useIsomorphicLayoutEffect(() => {
-    toggleValidation(isValid)
-  }, [isValid])
-
   const onSubmit: SubmitHandler<MediaFormValues> = (values) => {}
 
   const mediaValues = useWatch({ control: control })
+  const isMediaValid = mediaFormSchema.safeParse(mediaValues).success
   const { error } = mediaFormSchema.safeParse(mediaValues)
   const featuredImage = useWatch({ control, name: "featuredImages" })
   const additionalImages = useWatch({ control, name: "additionalImages" })
   const featuredVideo = useWatch({ control, name: "featuredVideo" })
+
+  useIsomorphicLayoutEffect(() => {
+    toggleValidation(isMediaValid)
+  }, [isMediaValid])
 
   const featuredImageRef = React.useRef(featuredImage)
   const progressValueRef = React.useRef(progressValue)
@@ -3147,6 +3584,7 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
     <form className="contents" onSubmit={handleSubmit(onSubmit)}>
       <ScrollArea
         className="h-[calc(theme(size.full)-148px)] overflow-x-hidden"
+        viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
         <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col gap-y-10 min-[1024px]:flex-row min-[1024px]:gap-x-[41.45px]">
@@ -3197,7 +3635,10 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
               Media
             </h1>
 
-            <div className="space-y-3 mt-6">
+            <div
+              id="publish-project-featured-images-field"
+              className="space-y-3 mt-6"
+            >
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -3268,7 +3709,10 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
               />
             </div>
 
-            <div className="space-y-3 mt-6">
+            <div
+              id="publish-project-additional-images-field"
+              className="space-y-3 mt-6"
+            >
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -3323,7 +3767,10 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
               />
             </div>
 
-            <div className="space-y-3 mt-6">
+            <div
+              id="publish-project-featured-video-field"
+              className="space-y-3 mt-6"
+            >
               <div className="space-y-0.5">
                 <Label
                   className="leading-9 text-dark-blue-400 font-semibold"
@@ -3422,7 +3869,7 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
             </div>
           </div>
 
-          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0">
+          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
             <MediaTip />
           </div>
         </div>
@@ -3455,21 +3902,21 @@ const ProjectScopeTip = ({
 
       <div className="flex items-center gap-x-2">
         <Lightbulb05 className="size-[30px] shrink-0 text-primary-500" />
-        <span className="text-base leading-[30px] font-semibold text-gray-900">
+        <span className="text-base leading-normal font-semibold text-gray-900">
           Tip
         </span>
       </div>
       <div className="mt-1">
-        <span className="text-xs leading-[14.52px] block text-dark-blue-400">
-          Review and Refine Your Project Scope
+        <span className="text-xs leading-normal block text-dark-blue-400">
+          Clarify phases, owners, and deliverables.
         </span>
 
         <ul className="mt-3 list-disc pl-4 space-y-5">
-          <li className="text-xs leading-[14.52px] tracking-[0.01em] text-dark-blue-400">
+          <li className="text-xs leading-normal tracking-[0.01em] text-dark-blue-400">
             Ensure all phases and tasks align with your project goals and
             deliverables.
           </li>
-          <li className="text-xs leading-[14.52px] tracking-[0.01em] text-dark-blue-400">
+          <li className="text-xs leading-normal tracking-[0.01em] text-dark-blue-400">
             Review dependencies, timelines, and assignments for clarity.
           </li>
         </ul>
@@ -3510,15 +3957,15 @@ const ProjectScopeTip = ({
         </div>
 
         <ul className="mt-3 list-disc pl-4 space-y-5">
-          <li className="text-sm leading-[16.94px] text-gray-500">
+          <li className="text-sm leading-normal text-gray-500">
             Use the project planner to edit existing phases or tasks
             effortlessly.
           </li>
-          <li className="text-sm leading-[16.94px] text-gray-500">
+          <li className="text-sm leading-normal text-gray-500">
             Double-check for any overlapping or missing tasks to maintain
             efficiency.
           </li>
-          <li className="text-sm leading-[16.94px] text-gray-500">
+          <li className="text-sm leading-normal text-gray-500">
             Add new phases, tasks, or processes quickly with the + Add option. •
           </li>
         </ul>
@@ -3675,6 +4122,11 @@ const TaskDialog = ({
       },
     },
   })
+  const taskDurationValue = useWatch({
+    control,
+    name: "duration.value",
+    defaultValue: 1,
+  })
   const onSubmit: SubmitHandler<TaskFormValues> = (values) => {
     onAddTask(values)
     toggleIsOpen(false)
@@ -3702,6 +4154,61 @@ const TaskDialog = ({
               name="task"
               render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
             />
+          </div>
+
+          <div className="space-y-1.5 mt-3">
+            <Label htmlFor="duration" className="text-gray-700" size="sm">
+              Duration
+            </Label>
+            <div className="grid grid-cols-2 gap-x-3">
+              <Input
+                id="duration"
+                className="text-gray-900"
+                type="number"
+                min={1}
+                {...register("duration.value")}
+                isInvalid={hookFormHasError({ errors, name: "duration.value" })}
+              />
+              <Controller
+                control={control}
+                name="duration.type"
+                render={({ field: { value, onChange } }) => (
+                  <Listbox value={value} onChange={onChange} id="duration">
+                    <ListboxButton placeholder="Select">
+                      {({ value: selectedValue }) =>
+                        formatDurationUnit(
+                          Number(taskDurationValue) || 0,
+                          selectedValue as (typeof DURATION_TYPE)[number]
+                        ).replace(/^./, (character) => character.toUpperCase())
+                      }
+                    </ListboxButton>
+                    <ListboxOptions>
+                      {DURATION_TYPE.map((format) => (
+                        <ListboxOption key={format} value={format}>
+                          {formatDurationUnit(
+                            Number(taskDurationValue) || 0,
+                            format
+                          ).replace(/^./, (character) =>
+                            character.toUpperCase()
+                          )}
+                        </ListboxOption>
+                      ))}
+                    </ListboxOptions>
+                  </Listbox>
+                )}
+              />
+            </div>
+
+            {(hookFormHasError({ errors, name: "duration.value" }) ||
+              hookFormHasError({
+                errors,
+                name: "duration.type",
+              })) && (
+              <ErrorMessage size="sm">
+                {get(errors, "duration.value.message") ||
+                  get(errors, "duration.type.message")}
+              </ErrorMessage>
+            )}
           </div>
 
           <div className="space-y-1.5 mt-3">
@@ -3769,48 +4276,6 @@ const TaskDialog = ({
               name="experience"
               render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
             />
-          </div>
-
-          <div className="space-y-1.5 mt-3">
-            <Label htmlFor="duration" className="text-gray-700" size="sm">
-              Duration
-            </Label>
-            <div className="grid grid-cols-2 gap-x-3">
-              <Input
-                id="duration"
-                className="text-gray-900"
-                defaultValue="1"
-                {...register("duration.value")}
-                isInvalid={hookFormHasError({ errors, name: "duration.value" })}
-              />
-              <Controller
-                control={control}
-                name="duration.type"
-                render={({ field: { value, onChange } }) => (
-                  <Listbox value={value} onChange={onChange} id="duration">
-                    <ListboxButton placeholder="Select" />
-                    <ListboxOptions>
-                      {DURATION_TYPE.map((format) => (
-                        <ListboxOption key={format} value={format}>
-                          {format.charAt(0).toUpperCase() + format.slice(1)}
-                        </ListboxOption>
-                      ))}
-                    </ListboxOptions>
-                  </Listbox>
-                )}
-              />
-            </div>
-
-            {(hookFormHasError({ errors, name: "duration.value" }) ||
-              hookFormHasError({
-                errors,
-                name: "duration.type",
-              })) && (
-              <ErrorMessage size="sm">
-                {get(errors, "duration.value.message") ||
-                  get(errors, "duration.type.message")}
-              </ErrorMessage>
-            )}
           </div>
 
           <DialogFooter className="mt-8 grid gap-x-3">
@@ -4197,6 +4662,50 @@ interface Phase {
   rows?: PhaseRow[]
 }
 
+const getPhaseDurationInDays = (phase?: Phase) => {
+  const rows = phase?.rows ?? []
+  const durations = rows
+    .map((row) => {
+      const value = Number(row?.duration?.value)
+      const type = row?.duration?.type
+
+      if (!Number.isFinite(value) || value <= 0 || !type) return null
+      return durationToDays(value, type)
+    })
+    .filter((value): value is number => typeof value === "number")
+
+  return durations.length ? Math.max(...durations) : 0
+}
+
+const getPhaseDayRange = (phases: Phase[], phaseIndex: number) => {
+  const priorDays = phases
+    .slice(0, phaseIndex)
+    .reduce((sum, phase) => sum + getPhaseDurationInDays(phase), 0)
+  const startDay = priorDays + 1
+  const duration = getPhaseDurationInDays(phases[phaseIndex])
+  const endDay = duration > 0 ? startDay + duration - 1 : undefined
+
+  return { startDay, endDay }
+}
+
+const getPhaseDayRangeLabel = (phases: Phase[], phaseIndex: number) => {
+  const { startDay, endDay } = getPhaseDayRange(phases, phaseIndex)
+
+  if (typeof endDay !== "number" || endDay === startDay) {
+    return `Day ${startDay}`
+  }
+
+  return `Day ${startDay} - Day ${endDay}`
+}
+
+const getPhaseSearchTargetId = (phaseIndex: number) =>
+  `project-scope-phase-${phaseIndex}`
+
+const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
+  `project-scope-phase-${phaseIndex}-task-${rowIndex}`
+
+const normalizeSearchText = (value?: string) =>
+  (value ?? "").toLowerCase().replace(/\s+/g, " ").trim()
 interface PhaseTableRowProps {
   row: Row<PhaseRow>
 }
@@ -4281,6 +4790,7 @@ const columns = [
             onValueChange={setValue}
             placeholder="Add Role"
             options={table.options.meta?.roles}
+            triggerClassName="max-w-full"
           />
         </TableCell>
       )
@@ -4311,7 +4821,9 @@ const columns = [
   columnHelper.accessor("experience", {
     cell: ({ getValue, row: { index }, column: { id }, table }) => {
       // eslint-disable-next-line
-      const [value, setValue] = useUncontrolledState<ExperienceLevel>({
+      const [value, setValue] = useUncontrolledState<
+        ExperienceLevel | undefined
+      >({
         defaultValue: getValue(),
         onChange: (value) => table.options.meta?.updateData(index, id, value),
       })
@@ -4338,7 +4850,8 @@ const columns = [
           type="button"
           onClick={() => table.options.meta?.openDurationDialog(index)}
         >
-          {getValue().value} {getValue().type}
+          {getValue().value}{" "}
+          {formatDurationUnit(getValue().value, getValue().type)}
         </button>
       </TableCell>
     ),
@@ -4540,7 +5053,11 @@ const PhaseTable = ({
 type PhaseNameDialogAction =
   | {
       type: "TOGGLE"
-      payload?: { open?: boolean; addTo?: "start" | "end" }
+      payload?: {
+        open?: boolean
+        addTo?: "start" | "end" | "below"
+        targetPhaseIndex?: number
+      }
     }
   | { type: "EDIT"; payload: number }
 
@@ -4548,7 +5065,7 @@ type PhaseNameDialogState = {
   open: boolean
   editingPhaseIndex: number | null
   action: "EDIT" | null
-  addTo: "start" | "end"
+  addTo: "start" | "end" | "below"
 }
 
 const phaseNameDialogReducer = (
@@ -4561,7 +5078,10 @@ const phaseNameDialogReducer = (
       return {
         ...state,
         action: null,
-        editingPhaseIndex: null,
+        editingPhaseIndex:
+          typeof payload?.targetPhaseIndex === "number"
+            ? payload.targetPhaseIndex
+            : null,
         open: typeof payload?.open === "boolean" ? payload.open : !state.open,
         addTo: typeof payload?.addTo === "string" ? payload.addTo : "end",
       }
@@ -4743,7 +5263,7 @@ const ProjectScope = ({
           // Toast
           toast({
             variant: "success",
-            title: "Phase renamed",
+            title: "Phase Renamed",
             action: (
               <ToastAction
                 altText="Undo"
@@ -4765,25 +5285,42 @@ const ProjectScope = ({
       }
 
       // Do the add
+      let insertedPhaseIndex = 0
       setPhases((prev) => {
-        if (addTo === "start") {
-          // prepend (added above)
-          return [{ phaseName }, ...prev]
-        }
-        // append (added below)
-        return [...prev, { phaseName }]
+        const next = [...prev]
+        const hasTargetPhase =
+          typeof editingPhaseIndex === "number" &&
+          editingPhaseIndex >= 0 &&
+          editingPhaseIndex < next.length
+
+        insertedPhaseIndex =
+          addTo === "start" && hasTargetPhase
+            ? editingPhaseIndex
+            : addTo === "below" && hasTargetPhase
+              ? editingPhaseIndex + 1
+              : next.length
+
+        next.splice(insertedPhaseIndex, 0, { phaseName })
+        return next
       })
 
       // Prepare Undo for this action
-      lastUndo.current =
-        addTo === "start"
-          ? () => setPhases((prev) => prev.slice(1)) // remove first
-          : () => setPhases((prev) => prev.slice(0, -1)) // remove last
+      lastUndo.current = () =>
+        setPhases((prev) =>
+          prev.filter((_, index) => index !== insertedPhaseIndex)
+        )
 
       // Toast
+      const phaseAddedTitle =
+        addTo === "start"
+          ? "Phase Added Above"
+          : addTo === "below"
+            ? "Phase Added Below"
+            : "Phase Added"
+
       toast({
         variant: "success",
-        title: addTo === "start" ? "Phase added above" : "Phase added below",
+        title: phaseAddedTitle,
         action: (
           <ToastAction
             altText="Undo"
@@ -4875,7 +5412,7 @@ const ProjectScope = ({
       if (didChange) {
         toast({
           variant: "success",
-          title: "Duration changed",
+          title: "Duration Changed",
           action: (
             <ToastAction
               altText="Undo"
@@ -4932,7 +5469,7 @@ const ProjectScope = ({
         return prev.filter((_, i) => i !== idx)
       })
 
-      pushSuccess("Phase deleted", lastUndo.current || undefined)
+      pushSuccess("Phase Deleted", lastUndo.current || undefined)
       lastUndo.current = null
     },
     [pushSuccess, setPhases]
@@ -4980,7 +5517,7 @@ const ProjectScope = ({
         return next
       })
 
-      pushSuccess("Phase duplicated", lastUndo.current || undefined)
+      pushSuccess("Phase Duplicated", lastUndo.current || undefined)
       lastUndo.current = null
     },
     [pushSuccess, setPhases]
@@ -5049,6 +5586,11 @@ const ProjectScope = ({
       },
       values: durationFormValues,
     })
+    const selectedDurationValue = useWatch({
+      control,
+      name: "duration.value",
+      defaultValue: 1,
+    })
 
     React.useEffect(() => {
       if (open && durationFormValues) {
@@ -5090,9 +5632,24 @@ const ProjectScope = ({
                 control={control}
                 render={({ field }) => (
                   <select {...field} className="border rounded px-2 py-1">
-                    <option value="days">Days</option>
-                    <option value="weeks">Weeks</option>
-                    <option value="hours">Hours</option>
+                    <option value="days">
+                      {formatDurationUnit(
+                        Number(selectedDurationValue) || 0,
+                        "days"
+                      ).replace(/^./, (character) => character.toUpperCase())}
+                    </option>
+                    <option value="weeks">
+                      {formatDurationUnit(
+                        Number(selectedDurationValue) || 0,
+                        "weeks"
+                      ).replace(/^./, (character) => character.toUpperCase())}
+                    </option>
+                    <option value="hours">
+                      {formatDurationUnit(
+                        Number(selectedDurationValue) || 0,
+                        "hours"
+                      ).replace(/^./, (character) => character.toUpperCase())}
+                    </option>
                   </select>
                 )}
               />
@@ -5111,6 +5668,7 @@ const ProjectScope = ({
     )
   }
   const currentPhaseName =
+    phaseDialogState.action === "EDIT" &&
     typeof phaseDialogState.editingPhaseIndex === "number"
       ? (phases[phaseDialogState.editingPhaseIndex]?.phaseName ?? "")
       : ""
@@ -5119,6 +5677,7 @@ const ProjectScope = ({
     <>
       <ScrollArea
         className="h-[calc(theme(size.full)-148px)] overflow-x-hidden"
+        viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
         <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] min-[1024px]:flex space-y-10 min-[1024px]:space-y-0 min-[1024px]:flex-row min-[1024px]:gap-x-[41.45px]">
@@ -5244,15 +5803,9 @@ const ProjectScope = ({
                               </span>
                             </div>
 
-                            <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:w-[118px] md:pl-0">
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 1
-                              </span>
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                -
-                              </span>
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 8
+                                {getPhaseDayRangeLabel(phases, index)}
                               </span>
                             </div>
                           </div>
@@ -5272,10 +5825,21 @@ const ProjectScope = ({
                               onInsertAbove={() =>
                                 dispatch({
                                   type: "TOGGLE",
-                                  payload: { addTo: "start" },
+                                  payload: {
+                                    addTo: "start",
+                                    targetPhaseIndex: index,
+                                  },
                                 })
                               }
-                              onInsertBelow={() => dispatch({ type: "TOGGLE" })}
+                              onInsertBelow={() =>
+                                dispatch({
+                                  type: "TOGGLE",
+                                  payload: {
+                                    addTo: "below",
+                                    targetPhaseIndex: index,
+                                  },
+                                })
+                              }
                               onDuplicatePhase={() => onDuplicatePhase(index)}
                             />
                             <PlusDropdown
@@ -5348,21 +5912,15 @@ const ProjectScope = ({
                                 )}
                                 <div className="inline-block md:hidden">
                                   <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    Day 1 - Day 8
+                                    {getPhaseDayRangeLabel(phases, index)}
                                   </span>
                                 </div>
                               </div>
                             </div>
 
-                            <div className="hidden md:inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                            <div className="hidden items-center justify-start gap-x-2 pl-10 md:inline-flex md:w-[118px] md:pl-0">
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 1
-                              </span>
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                -
-                              </span>
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                Day 8
+                                {getPhaseDayRangeLabel(phases, index)}
                               </span>
                             </div>
                           </div>
@@ -5382,10 +5940,21 @@ const ProjectScope = ({
                               onInsertAbove={() =>
                                 dispatch({
                                   type: "TOGGLE",
-                                  payload: { addTo: "start" },
+                                  payload: {
+                                    addTo: "start",
+                                    targetPhaseIndex: index,
+                                  },
                                 })
                               }
-                              onInsertBelow={() => dispatch({ type: "TOGGLE" })}
+                              onInsertBelow={() =>
+                                dispatch({
+                                  type: "TOGGLE",
+                                  payload: {
+                                    addTo: "below",
+                                    targetPhaseIndex: index,
+                                  },
+                                })
+                              }
                               onDuplicatePhase={() => onDuplicatePhase(index)}
                             />
                             <PlusDropdown
@@ -5493,7 +6062,7 @@ const ProjectScope = ({
             />
           </div>
 
-          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0">
+          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
             <ProjectScopeTip showArrow />
           </div>
         </div>
@@ -5575,6 +6144,19 @@ function PublishProject({
   const router = useRouter()
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
     resolver: zodResolver(projectInfoSchema),
+    defaultValues: {
+      title: "",
+      category: [
+        { category: "", subCategories: [] },
+        { category: "", subCategories: [] },
+        { category: "", subCategories: [] },
+      ],
+      industry: [],
+      shortDescription: "",
+      fullDescription: "",
+      tags: [],
+      skills: [],
+    },
   })
   const mediaMethods = useForm<MediaFormValues>({
     resolver: zodResolver(mediaFormSchema),
@@ -5587,88 +6169,353 @@ function PublishProject({
   const [submissionOutcome, setSubmissionOutcome] =
     useState<SubmissionOutcome | null>(null)
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
-
-  // Autosave: persist draft to localStorage on every change so new/edited
-  // projects appear on /my-listings even if the user never clicks Save.
-  const draftIdRef = useRef<string>("")
-  if (!draftIdRef.current && typeof window !== "undefined") {
-    const urlParams = new URLSearchParams(window.location.search)
-    const existing = urlParams.get("draftId")
-    draftIdRef.current =
-      existing ||
-      `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  }
-
-  // Load existing draft on mount (if ?draftId= is in URL)
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    const urlParams = new URLSearchParams(window.location.search)
-    const id = urlParams.get("draftId")
-    if (!id) return
-    try {
-      const raw = window.localStorage.getItem("marketeq-project-drafts")
-      const drafts = raw ? JSON.parse(raw) : {}
-      const draft = drafts[id]
-      if (!draft) return
-      if (draft.projectInfo) projectInfoMethods.reset(draft.projectInfo)
-      if (draft.media) mediaMethods.reset(draft.media)
-      if (draft.projectScope) projectScopeMethods[1](draft.projectScope)
-    } catch {
-      /* ignore */
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
+  const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
+  const persistedMediaRef = useRef<{
+    featuredImage?: string
+    additionalImages?: string[]
+    featuredVideo?: string
+  } | null>(null)
+  const lastDraftPayloadRef = useRef<string>("")
+  const lastScopePayloadRef = useRef<string>("")
+  const lastMediaPayloadRef = useRef<string>("")
 
   useEffect(() => {
     if (typeof window === "undefined") return
-    // Derive draft lifecycle status. Draft → In Review → Published (after
-    // content moderation passes) or Needs Update (rejected).
-    const draftStatus: "draft" | "in_review" | "published" | "needs_update" =
-      !isProjectSubmitted
-        ? "draft"
-        : submissionOutcome?.status === "published"
-          ? "published"
-          : submissionOutcome?.status === "needs_update"
-            ? "needs_update"
-            : "in_review"
 
-    const saveDraft = () => {
+    let cancelled = false
+
+    const hydrateDraft = async () => {
+      const urlParams = new URLSearchParams(window.location.search)
+      const existingDraftId = urlParams.get("draftId")
+      const type = urlParams.get("type") ?? "project"
+
       try {
-        const info = projectInfoMethods.getValues()
-        const mediaVals = mediaMethods.getValues()
-        const scope = projectScopeMethods[0]
-        const key = "marketeq-project-drafts"
-        const raw = window.localStorage.getItem(key)
-        const drafts = raw ? JSON.parse(raw) : {}
-        drafts[draftIdRef.current] = {
-          id: draftIdRef.current,
-          projectInfo: info,
-          media: {
-            // Strip non-serializable File objects from media
-            featuredVideo: mediaVals?.featuredVideo ?? "",
-          },
-          projectScope: scope,
-          currentStep,
-          status: draftStatus,
-          savedAt: new Date().toISOString(),
+        let response
+
+        if (existingDraftId && UUID_PATTERN.test(existingDraftId)) {
+          response = await ProjectAPI.GetProjectDraft(existingDraftId)
+        } else {
+          response = await ProjectAPI.CreateProjectDraft({})
+          const nextDraftId = String(response?.data?.id ?? "")
+          if (nextDraftId) {
+            const nextUrl = `/publish-project?type=${encodeURIComponent(
+              type
+            )}&draftId=${encodeURIComponent(nextDraftId)}`
+            window.history.replaceState(window.history.state, "", nextUrl)
+          }
         }
-        window.localStorage.setItem(key, JSON.stringify(drafts))
-      } catch {
-        /* ignore serialization errors */
+
+        if (cancelled) return
+
+        const draft = response?.data ?? {}
+        const nextDraftId = String(draft?.id ?? existingDraftId ?? "")
+        setDraftProjectId(nextDraftId || null)
+
+        projectInfoMethods.reset({
+          title: draft?.title ?? "",
+          category: Array.isArray(draft?.categorySelections)
+            ? draft.categorySelections
+            : [],
+          industry: Array.isArray(draft?.industries) ? draft.industries : [],
+          shortDescription: draft?.shortDescription ?? "",
+          fullDescription: draft?.fullDescription ?? "",
+          tags: Array.isArray(draft?.tags) ? draft.tags : [],
+          skills: Array.isArray(draft?.skills) ? draft.skills : [],
+        })
+        lastDraftPayloadRef.current = JSON.stringify(
+          buildProjectDraftPayload({
+            title: draft?.title ?? "",
+            category: Array.isArray(draft?.categorySelections)
+              ? draft.categorySelections
+              : [],
+            industry: Array.isArray(draft?.industries) ? draft.industries : [],
+            shortDescription: draft?.shortDescription ?? "",
+            fullDescription: draft?.fullDescription ?? "",
+            tags: Array.isArray(draft?.tags) ? draft.tags : [],
+            skills: Array.isArray(draft?.skills) ? draft.skills : [],
+          })
+        )
+
+        const persistedMedia = draft?.media
+          ? {
+              featuredImage: draft.media.featuredImage,
+              additionalImages: Array.isArray(draft.media.additionalImages)
+                ? draft.media.additionalImages
+                : [],
+              featuredVideo: draft.media.featuredVideo ?? "",
+            }
+          : null
+        persistedMediaRef.current = persistedMedia
+
+        const hydratedFeaturedImage = persistedMedia?.featuredImage
+          ? await hydrateRemoteMediaFile(
+              persistedMedia.featuredImage,
+              "featured-image.jpg"
+            )
+          : null
+        const hydratedAdditionalImages = await Promise.all(
+          (persistedMedia?.additionalImages ?? []).map((url: string) =>
+            hydrateRemoteMediaFile(url, "additional-image.jpg")
+          )
+        )
+
+        mediaMethods.reset({
+          featuredImages: hydratedFeaturedImage
+            ? [
+                {
+                  meta: hydratedFeaturedImage,
+                  progress: 100,
+                  hasError: false,
+                },
+              ]
+            : [],
+          additionalImages: hydratedAdditionalImages.map((file) => [
+            {
+              meta: file,
+              progress: 100,
+              hasError: false,
+            },
+          ]),
+          featuredVideo: persistedMedia?.featuredVideo ?? "",
+        })
+        lastMediaPayloadRef.current = JSON.stringify({
+          featuredImage: persistedMedia?.featuredImage ?? "",
+          additionalImages: persistedMedia?.additionalImages ?? [],
+          featuredVideo: persistedMedia?.featuredVideo ?? "",
+        })
+
+        const scope = Array.isArray(draft?.scope)
+          ? draft.scope.map((phase: any) => ({
+              phaseName: phase?.name ?? "",
+              rows: Array.isArray(phase?.task)
+                ? phase.task.map((task: any) => {
+                    const durationRaw = String(task?.duration ?? "").trim()
+                    const [durationValue, ...durationTypeParts] =
+                      durationRaw.split(/\s+/)
+                    return {
+                      id: String(task?.id ?? getId()),
+                      task: task?.taskName ?? "",
+                      role: task?.role ?? "",
+                      location: Array.isArray(task?.location)
+                        ? (task.location[0] ?? "")
+                        : "",
+                      experience: Array.isArray(task?.experience)
+                        ? (task.experience[0] ?? task?.experienceLevel ?? "")
+                        : (task?.experienceLevel ?? ""),
+                      duration: {
+                        value: Number(durationValue) || 0,
+                        type:
+                          (durationTypeParts.join(" ") as
+                            | "days"
+                            | "weeks"
+                            | "hours") || "weeks",
+                      },
+                    }
+                  })
+                : [],
+            }))
+          : []
+
+        projectScopeMethods[1](scope.length > 0 ? scope : [{}])
+        lastScopePayloadRef.current = JSON.stringify(
+          buildScopeDraftPayload(nextDraftId, scope.length > 0 ? scope : [])
+        )
+      } catch (error) {
+        console.error("Failed to hydrate project draft", error)
+      } finally {
+        if (!cancelled) {
+          setIsDraftBootstrapping(false)
+        }
       }
     }
-    saveDraft()
-    if (isProjectSubmitted) return
-    const interval = setInterval(saveDraft, 2000)
+
+    void hydrateDraft()
+
+    return () => {
+      cancelled = true
+    }
+  }, [mediaMethods, projectInfoMethods, projectScopeMethods])
+
+  useEffect(() => {
+    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
+
+    const saveDraft = async () => {
+      const info = projectInfoMethods.getValues()
+      const payload = buildProjectDraftPayload({
+        title: info.title ?? "",
+        category: info.category ?? [],
+        industry: info.industry ?? [],
+        tags: info.tags ?? [],
+        skills: info.skills ?? [],
+        shortDescription: info.shortDescription ?? "",
+        fullDescription: info.fullDescription ?? "",
+      })
+
+      const serializedPayload = JSON.stringify(payload)
+      if (serializedPayload === lastDraftPayloadRef.current) return
+
+      try {
+        await ProjectAPI.UpdateProjectDraft(draftProjectId, payload)
+        lastDraftPayloadRef.current = serializedPayload
+      } catch (error) {
+        console.error("Failed to save project draft", error)
+      }
+    }
+
+    void saveDraft()
+    const interval = setInterval(() => {
+      void saveDraft()
+    }, 2000)
     return () => clearInterval(interval)
   }, [
+    draftProjectId,
+    isDraftBootstrapping,
     projectInfoMethods,
-    mediaMethods,
-    projectScopeMethods,
-    currentStep,
     isProjectSubmitted,
-    submissionOutcome,
   ])
+
+  useEffect(() => {
+    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
+
+    const saveScope = async () => {
+      const payload = buildScopeDraftPayload(
+        draftProjectId,
+        projectScopeMethods[0]
+      )
+      const serializedPayload = JSON.stringify(payload)
+
+      if (serializedPayload === lastScopePayloadRef.current) return
+
+      try {
+        await ProjectAPI.ReplaceProjectScope(draftProjectId, payload)
+        lastScopePayloadRef.current = serializedPayload
+      } catch (error) {
+        console.error("Failed to save project scope draft", error)
+      }
+    }
+
+    void saveScope()
+    const interval = setInterval(() => {
+      void saveScope()
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [
+    draftProjectId,
+    isDraftBootstrapping,
+    isProjectSubmitted,
+    projectScopeMethods,
+  ])
+
+  useEffect(() => {
+    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
+
+    const saveMedia = async () => {
+      const mediaValues = mediaMethods.getValues()
+      const featuredMeta = mediaValues.featuredImages?.[0]?.meta
+      const additionalMeta =
+        mediaValues.additionalImages
+          ?.flat()
+          .map((item) => item?.meta)
+          .filter(Boolean) ?? []
+      const videoUrl = mediaValues.featuredVideo?.trim() ?? ""
+
+      const signature = JSON.stringify({
+        featuredImage: isPersistedMediaFile(featuredMeta)
+          ? featuredMeta.__persistedUrl
+          : (featuredMeta?.name ?? ""),
+        additionalImages: additionalMeta.map((item: any) =>
+          isPersistedMediaFile(item) ? item.__persistedUrl : (item?.name ?? "")
+        ),
+        featuredVideo: videoUrl,
+      })
+
+      if (signature === lastMediaPayloadRef.current) return
+      if (!featuredMeta) return
+
+      const formData = new FormData()
+      formData.append("projectId", draftProjectId)
+
+      const resolvedFeatured = await resolveMediaFileForUpload(
+        featuredMeta,
+        "featured-image.jpg"
+      )
+      if (!resolvedFeatured) return
+      formData.append("featuredImage", resolvedFeatured)
+
+      for (const file of additionalMeta) {
+        const resolvedAdditional = await resolveMediaFileForUpload(
+          file,
+          "additional-image.jpg"
+        )
+        if (resolvedAdditional) {
+          formData.append("additionalImages", resolvedAdditional)
+        }
+      }
+
+      if (videoUrl) {
+        formData.append(
+          "videoUrl",
+          videoUrl.replace(/^(https?:\/\/)+/i, "https://")
+        )
+      }
+
+      try {
+        const response = await ProjectAPI.UploadMedia(formData)
+        const nextMedia = {
+          featuredImage:
+            response?.data?.featuredImage ??
+            persistedMediaRef.current?.featuredImage ??
+            "",
+          additionalImages:
+            response?.data?.additionalImages ??
+            persistedMediaRef.current?.additionalImages ??
+            [],
+          featuredVideo:
+            response?.data?.featuredVideo ??
+            response?.data?.videoUrl ??
+            videoUrl,
+        }
+
+        persistedMediaRef.current = nextMedia
+        lastMediaPayloadRef.current = JSON.stringify(nextMedia)
+
+        mediaMethods.reset({
+          featuredImages: nextMedia.featuredImage
+            ? [
+                {
+                  meta: buildPersistedMediaFile(
+                    nextMedia.featuredImage,
+                    "featured-image.jpg"
+                  ),
+                  progress: 100,
+                  hasError: false,
+                },
+              ]
+            : [],
+          additionalImages: (nextMedia.additionalImages ?? []).map(
+            (url: string) => [
+              {
+                meta: buildPersistedMediaFile(url, "additional-image.jpg"),
+                progress: 100,
+                hasError: false,
+              },
+            ]
+          ),
+          featuredVideo: nextMedia.featuredVideo ?? "",
+        })
+      } catch (error) {
+        console.error("Failed to save project media draft", error)
+      }
+    }
+
+    const interval = setInterval(() => {
+      void saveMedia()
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted, mediaMethods])
 
   const projectScopeValue = useMemo(
     () => ({
@@ -5693,12 +6540,36 @@ function PublishProject({
   //  Validate the current step when Next is clicked
   const validateCurrentStep = React.useCallback(async () => {
     if (currentStep === 0) {
-      // Project Info: validate ALL fields, focus first invalid
-      return await projectInfoMethods.trigger(undefined, { shouldFocus: true })
+      const isStepValid = await projectInfoMethods.trigger(undefined, {
+        shouldFocus: true,
+      })
+
+      if (!isStepValid) {
+        const firstInvalidTarget = PROJECT_INFO_VALIDATION_TARGETS.find(
+          ({ name }) => projectInfoMethods.getFieldState(name).invalid
+        )
+        if (firstInvalidTarget) {
+          scrollToPublishField(firstInvalidTarget.targetId)
+        }
+      }
+
+      return isStepValid
     }
     if (currentStep === 1) {
-      // Media: validate all (kept for parity / future)
-      return await mediaMethods.trigger(undefined, { shouldFocus: true })
+      const isStepValid = await mediaMethods.trigger(undefined, {
+        shouldFocus: true,
+      })
+
+      if (!isStepValid) {
+        const firstInvalidTarget = MEDIA_VALIDATION_TARGETS.find(
+          ({ name }) => mediaMethods.getFieldState(name).invalid
+        )
+        if (firstInvalidTarget) {
+          scrollToPublishField(firstInvalidTarget.targetId)
+        }
+      }
+
+      return isStepValid
     }
     // Step 3 uses its own schema checks
     return true
@@ -5715,42 +6586,21 @@ function PublishProject({
   }, [projectInfoProgress, mediaProgress, projectScopeProgress])
 
   const handleSaveExit = React.useCallback(() => {
-    try {
-      const draft = {
-        projectInfo: projectInfoMethods.getValues(),
-        media: mediaMethods.getValues(),
-        projectScope: projectScopeMethods[0],
-        currentStep,
-        savedAt: new Date().toISOString(),
-      }
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          "publish-project-draft",
-          JSON.stringify(draft)
-        )
-      }
-    } catch (err) {
-      console.error("Failed to save draft", err)
-    }
     toggleIsSaveExitDialogOpen(false)
     router.push("/my-listings")
-  }, [
-    projectInfoMethods,
-    mediaMethods,
-    projectScopeMethods,
-    currentStep,
-    toggleIsSaveExitDialogOpen,
-    router,
-  ])
+  }, [toggleIsSaveExitDialogOpen, router])
 
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">
       <div className="h-[70px] border-b border-gray-200 flex items-center pr-[17px] pl-8">
-        <h1 className="text-sm leading-[16.94px] font-semibold text-gray-900">
-          Publish to Marketplace
+        <h1 className="text-base leading-[19.36px] font-semibold text-dark-blue-400">
+          Create a Project
         </h1>
       </div>
-      <Empty outcome={submissionOutcome ?? undefined} />
+      <Empty
+        outcome={submissionOutcome ?? undefined}
+        draftId={draftProjectId ?? undefined}
+      />
     </div>
   ) : (
     <StepperProvider value={stepperValue}>
@@ -5811,6 +6661,12 @@ export default function PublishRootProject() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.title = "Create a Project | Marketeq"
+    }
   }, [])
 
   if (!mounted) {

@@ -29,7 +29,7 @@ async function bootstrap() {
   // cms-service publishes raw payloads via amqp-connection-manager — the
   // deserializer lifts the publisher's `event` field into NestJS's `pattern`
   // slot so @EventPattern handlers fire (same trick as category-service).
-  const rabbitmqUrl = process.env.RABBITMQ_URL;
+  const rabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
   if (rabbitmqUrl) {
     app.connectMicroservice<MicroserviceOptions>({
       transport: Transport.RMQ,
@@ -54,12 +54,23 @@ async function bootstrap() {
       },
     });
     logger.log('RabbitMQ microservice connected (queue: cms.talent-profile.sync)');
+
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'user_service_queue',
+        queueOptions: { durable: true },
+      },
+    });
+    logger.log('RabbitMQ microservice connected (queue: user_service_queue)');
   } else {
     logger.warn('RABBITMQ_URL not set — talent-profile sync consumer disabled');
   }
 
   await app.startAllMicroservices();
-  await app.listen(port);
-  logger.log(`User Service is running on port ${port}`);
+  const host = process.env.HOST || '0.0.0.0';
+  await app.listen(port, host);
+  logger.log(`User Service is running on ${host}:${port}`);
 }
 bootstrap();

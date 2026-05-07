@@ -1,0 +1,149 @@
+[
+  {
+    "table_name": "_category_pages_v"
+  },
+  {
+    "table_name": "_category_pages_v_version_category_ref_breadcrumb"
+  },
+  {
+    "table_name": "_category_pages_v_version_comparison_table"
+  },
+  {
+    "table_name": "_category_pages_v_version_faq"
+  },
+  {
+    "table_name": "_category_pages_v_version_featured_listings"
+  },
+  {
+    "table_name": "_category_pages_v_version_featured_subcategories"
+  },
+  {
+    "table_name": "_category_pages_v_version_promoted_children"
+  },
+  {
+    "table_name": "_category_pages_v_version_related_reads"
+  },
+  {
+    "table_name": "_projects_v"
+  },
+  {
+    "table_name": "_projects_v_version_categories"
+  },
+  {
+    "table_name": "_projects_v_version_development_technologies"
+  },
+  {
+    "table_name": "_projects_v_version_faq_questions"
+  },
+  {
+    "table_name": "_projects_v_version_gallery"
+  },
+  {
+    "table_name": "_projects_v_version_programming_languages"
+  },
+  {
+    "table_name": "_projects_v_version_project_skills"
+  },
+  {
+    "table_name": "_projects_v_version_recent_questions"
+  },
+  {
+    "table_name": "_projects_v_version_skills_and_tools"
+  },
+  {
+    "table_name": "_projects_v_version_subcategories"
+  },
+  {
+    "table_name": "_projects_v_version_tags"
+  },
+  {
+    "table_name": "category_pages"
+  },
+  {
+    "table_name": "category_pages_category_ref_breadcrumb"
+  },
+  {
+    "table_name": "category_pages_comparison_table"
+  },
+  {
+    "table_name": "category_pages_faq"
+  },
+  {
+    "table_name": "category_pages_featured_listings"
+  },
+  {
+    "table_name": "category_pages_featured_subcategories"
+  },
+  {
+    "table_name": "category_pages_promoted_children"
+  },
+  {
+    "table_name": "category_pages_related_reads"
+  },
+  {
+    "table_name": "media"
+  },
+  {
+    "table_name": "payload_jobs"
+  },
+  {
+    "table_name": "payload_jobs_log"
+  },
+  {
+    "table_name": "payload_kv"
+  },
+  {
+    "table_name": "payload_locked_documents"
+  },
+  {
+    "table_name": "payload_locked_documents_rels"
+  },
+  {
+    "table_name": "payload_migrations"
+  },
+  {
+    "table_name": "payload_preferences"
+  },
+  {
+    "table_name": "payload_preferences_rels"
+  },
+  {
+    "table_name": "projects"
+  },
+  {
+    "table_name": "projects_categories"
+  },
+  {
+    "table_name": "projects_development_technologies"
+  },
+  {
+    "table_name": "projects_faq_questions"
+  },
+  {
+    "table_name": "projects_gallery"
+  },
+  {
+    "table_name": "projects_programming_languages"
+  },
+  {
+    "table_name": "projects_project_skills"
+  },
+  {
+    "table_name": "projects_recent_questions"
+  },
+  {
+    "table_name": "projects_skills_and_tools"
+  },
+  {
+    "table_name": "projects_subcategories"
+  },
+  {
+    "table_name": "projects_tags"
+  },
+  {
+    "table_name": "users"
+  },
+  {
+    "table_name": "users_sessions"
+  }
+]

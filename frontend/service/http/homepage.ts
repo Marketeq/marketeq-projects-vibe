@@ -1,13 +1,11 @@
 import AxiosRequest from ".."
+import { getPublicHomepageUrl } from "@/lib/runtime-urls"
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.NEXT_PUBLIC_AUTH_URL ||
-  ""
+const HOMEPAGE_BASE = getPublicHomepageUrl() || ""
 
 export const HomepageAPI = {
   /** Fetch the fully assembled homepage payload (public, no auth required). */
   getHomepage: () => {
-    return AxiosRequest.get(`${API_BASE}/homepage`)
+    return AxiosRequest.get(`${HOMEPAGE_BASE}/homepage`)
   },
 }

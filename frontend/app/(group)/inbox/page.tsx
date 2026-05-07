@@ -6,13 +6,13 @@ import { useSearchParams } from "next/navigation"
 import { ensureEncryptionKeysExist, loadPrivateKey } from "@/src/crypto/keys"
 import { apiFetch } from "@/src/lib/api"
 import { getAccessToken, getCurrentUser } from "@/utils/auth"
+import { useMessageSearchIndex } from "@/utils/useMessageSearchIndex"
 import { useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
 import { User } from "@/types/user"
 import { ChatsContextProvider } from "@/components/chat"
 import { EditContextProvider } from "@/components/inbox-comps"
-import { EditContextProvider as StoriesEditContextProvider } from "@/stories/inbox.stories"
 import { Chats } from "./components/chats-comp"
 import LeftSidebar from "./components/left-sidebar"
 import RightSidebar from "./components/right-sidebar"
@@ -97,9 +97,7 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
 
   return (
     <EditContextProvider value={editContextValue}>
-      <StoriesEditContextProvider value={editContextValue}>
-        <ChatsContextProvider value={value}>{children}</ChatsContextProvider>
-      </StoriesEditContextProvider>
+      <ChatsContextProvider value={value}>{children}</ChatsContextProvider>
     </EditContextProvider>
   )
 }
@@ -111,11 +109,31 @@ export default function InboxRoot() {
   const initialParticipantId = searchParams?.get("participantId") ?? null
 
   const [selectedConversation, setSelectedConversation] =
-    useState<Conversation | null>(null)
+    useState<Conversation | null>(() => {
+      try {
+        const cached = sessionStorage.getItem("inbox_selected_conversation")
+        return cached ? JSON.parse(cached) : null
+      } catch { return null }
+    })
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null)
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
+  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(
+    null
+  )
   const [messagesByConversation, setMessagesByConversation] = useState<
     Record<string, Message[]>
   >({})
+
+  // Persist selected conversation so back-navigation restores it
+  useEffect(() => {
+    try {
+      if (selectedConversation) {
+        sessionStorage.setItem("inbox_selected_conversation", JSON.stringify(selectedConversation))
+      } else {
+        sessionStorage.removeItem("inbox_selected_conversation")
+      }
+    } catch {}
+  }, [selectedConversation])
 
   const [token, setToken] = useState("")
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
@@ -155,17 +173,34 @@ export default function InboxRoot() {
     })()
   }, [token])
 
-  // Callback to let Chats tell us when history is loaded:
-  const handleMessagesLoaded = (convId: string, msgs: Message[]) => {
-    setMessagesByConversation((prev) => ({
-      ...prev,
-      [convId]: msgs,
-    }))
-  }
+  // Callback to let Chats tell us when history is loaded. Stable ref so
+  // chats-comp's effect dep array doesn't fire every render → infinite loop.
+  const handleMessagesLoaded = useCallback(
+    (convId: string, msgs: Message[]) => {
+      setMessagesByConversation((prev) => {
+        if (prev[convId] === msgs) return prev
+        return { ...prev, [convId]: msgs }
+      })
+    },
+    []
+  )
+
+  // Persisted client-side search index. Loads cached docs from IndexedDB
+  // immediately, then rebuilds in the background as soon as we have a
+  // private key (E2EE makes server-side search impossible).
+  const currentUserId = getCurrentUser()?.id ?? null
+  const searchIndex = useMessageSearchIndex({
+    userId: currentUserId,
+    token,
+    privateKey,
+  })
 
   return (
     <Inbox>
-      <div className="flex bg-white" style={{ minHeight: "calc(100vh - 65px)" }}>
+      <div
+        className="flex w-full bg-white overflow-hidden"
+        style={{ height: "calc(100vh - 65px)" }}
+      >
         <LeftSidebar
           selectedConversation={selectedConversation}
           setSelectedConversation={setSelectedConversation}
@@ -173,6 +208,9 @@ export default function InboxRoot() {
           messagesByConversation={messagesByConversation}
           initialThreadId={initialThreadId}
           initialParticipantId={initialParticipantId}
+          searchIndex={searchIndex}
+          onHighlightMessage={setHighlightMessageId}
+          privateKey={privateKey}
         />
 
         {/* pass only the conversation and token into Chats */}
@@ -181,9 +219,16 @@ export default function InboxRoot() {
           jwtToken={token}
           privateKey={privateKey}
           currentUserProfile={currentUserProfile}
+          onToggleRightSidebar={() => setRightSidebarOpen((v) => !v)}
+          onMessagesLoaded={handleMessagesLoaded}
+          highlightMessageId={highlightMessageId}
+          onHighlightConsumed={() => setHighlightMessageId(null)}
+          onIndexNewMessage={searchIndex.addDoc}
         />
 
-        <RightSidebar selectedConversation={selectedConversation} jwtToken={token} />
+        {rightSidebarOpen && (
+          <RightSidebar selectedConversation={selectedConversation} jwtToken={token} />
+        )}
       </div>
     </Inbox>
   )

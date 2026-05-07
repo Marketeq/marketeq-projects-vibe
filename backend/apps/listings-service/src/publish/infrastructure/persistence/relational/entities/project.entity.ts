@@ -21,8 +21,12 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   id: string;
 
   @Index()
-  @Column({ type: String, nullable: true, unique: true })
+  @Column({ name: 'strapiId', type: String, nullable: true, unique: true })
   cmsId?: string;
+
+  @Index()
+  @Column({ type: String, nullable: true })
+  slug?: string;
 
   @Index()
   @Column({ type: String, length: 120 })
@@ -40,7 +44,6 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   @Column({ type: String, array: true, default: [] })
   subCategories: string[];
 
-  @Column({ type: 'jsonb', default: () => "'[]'" })
   categorySelections: {
     category: string;
     subCategories: string[];
@@ -57,6 +60,9 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
 
   @Column({ type: String, nullable: true })
   subtitle: string;
+
+  @Column({ type: String, nullable: true })
+  listingType: string;
 
   @Column({ type: 'numeric', nullable: true })
   budget: number;
@@ -78,6 +84,9 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
 
   @Column({ type: 'timestamptz', nullable: true })
   projectDatePublished?: Date;
+
+  @Column({ type: 'jsonb', nullable: true, default: null })
+  deliverables: any[] | null;
 
   @OneToMany(() => MediaEntity, (media) => media.project, { cascade: true })
   media: MediaEntity[];

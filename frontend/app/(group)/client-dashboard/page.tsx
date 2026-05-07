@@ -5,27 +5,6 @@ import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI } from "@/service/http/user"
 import { cn } from "@/utils/functions"
-
-type DashboardProfile = {
-  id: string
-  email: string
-  firstName?: string | null
-  lastName?: string | null
-  username?: string | null
-  avatarUrl?: string | null
-  bio?: string | null
-  overview?: string | null
-  location?: string | null
-  industry?: string | null
-  recentJobTitle?: string | null
-  userType?: string | null
-  lookingToWorkWith?: string[] | null
-  businessGoals?: string | null
-  gettingStartedStep?: number | null
-  totalProjectsCompleted?: number | null
-  clientSuccessRating?: number | null
-  createdAt?: string | Date
-}
 import {
   ArrowRight,
   Briefcase,
@@ -35,8 +14,6 @@ import {
   Clock,
   Download,
   Edit03,
-  Facebook,
-  Linkedin,
   MapPin,
   MoreHorizontal,
   Plus,
@@ -44,13 +21,13 @@ import {
   Star,
   X,
 } from "@blend-metrics/icons"
-import { InstagramDefault } from "@blend-metrics/icons/social"
 import { AccordionItem } from "@radix-ui/react-accordion"
 import { VariantProps, cva } from "class-variance-authority"
 import { useToggle } from "react-use"
-import { Logo3, XIcon } from "@/components/icons"
+import { DashboardFooter } from "@/components/dashboard-footer"
 import NextLink from "@/components/next-link"
 import SecuritySettingsStepper from "@/components/security-settings"
+import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Accordion,
   AccordionTrigger,
@@ -78,7 +55,26 @@ import {
   TooltipTrigger,
 } from "@/components/ui"
 
-import { LeftSidebar } from "@/components/talent-dashboard-comps"
+type DashboardProfile = {
+  id: string
+  email: string
+  firstName?: string | null
+  lastName?: string | null
+  username?: string | null
+  avatarUrl?: string | null
+  bio?: string | null
+  overview?: string | null
+  location?: string | null
+  industry?: string | null
+  recentJobTitle?: string | null
+  userType?: string | null
+  lookingToWorkWith?: string[] | null
+  businessGoals?: string | null
+  gettingStartedStep?: number | null
+  totalProjectsCompleted?: number | null
+  clientSuccessRating?: number | null
+  createdAt?: string | Date
+}
 
 interface Project {
   projectName: string
@@ -190,7 +186,10 @@ const Table = () => {
 
           <tbody>
             <tr>
-              <td colSpan={4} className="px-6 py-10 text-center text-sm text-gray-400">
+              <td
+                colSpan={4}
+                className="px-6 py-10 text-center text-sm text-gray-400"
+              >
                 No contracts yet.
               </td>
             </tr>
@@ -208,7 +207,13 @@ const Table = () => {
   )
 }
 
-const Welcome = ({ onOpenProfile, user }: { onOpenProfile?: () => void; user?: DashboardProfile | null }) => {
+const Welcome = ({
+  onOpenProfile,
+  user,
+}: {
+  onOpenProfile?: () => void
+  user?: DashboardProfile | null
+}) => {
   return (
     <div className="space-y-3.5 md:space-y-5">
       <div className="md:contents flex flex-col space-y-5">
@@ -310,11 +315,7 @@ const RecentProjects = () => {
         </h1>
 
         <NextLink href="/my-contracts" className="xs:max-md:hidden">
-          <Button
-            className="text-dark-blue-400"
-            variant="link"
-            visual="gray"
-          >
+          <Button className="text-dark-blue-400" variant="link" visual="gray">
             View All Contracts <ArrowRight className="size-3.5" />
           </Button>
         </NextLink>
@@ -421,11 +422,7 @@ const RecentActivity = ({
 
         {nextStepHref && (
           <NextLink href={nextStepHref} className="my-auto ml-auto">
-            <Button
-              className="text-dark-blue-400"
-              variant="link"
-              visual="gray"
-            >
+            <Button className="text-dark-blue-400" variant="link" visual="gray">
               Continue to next step <ArrowRight className="size-3.5" />
             </Button>
           </NextLink>
@@ -435,7 +432,9 @@ const RecentActivity = ({
         <div className="pt-3">
           <div className="border p-5 rounded-lg bg-white border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
             <h1 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
-              {completedSteps >= totalSteps ? "All Done!" : "Let\u2019s Get Started"}
+              {completedSteps >= totalSteps
+                ? "All Done!"
+                : "Let\u2019s Get Started"}
             </h1>
 
             <div className="mt-5">
@@ -475,9 +474,7 @@ const RecentActivity = ({
                     {currentStep > index ? (
                       <Check className="size-[22.4px]" />
                     ) : (
-                      <span className="text-sm font-semibold">
-                        {index + 1}
-                      </span>
+                      <span className="text-sm font-semibold">{index + 1}</span>
                     )}
                   </div>
 
@@ -540,7 +537,7 @@ const RightDrawer = ({ profile }: { profile?: DashboardProfile | null }) => {
 const Content = ({ profile }: { profile?: DashboardProfile | null }) => {
   const [isOpen, toggleIsOpen] = useToggle(false)
   return (
-    <div className="flex-auto pt-3.5 px-3.5 md:pt-6 md:px-6 min-[1024px]:px-8 min-[1200px]:pl-[274px] min-[1024px]:pt-8 min-[1200px]:pr-[50px]">
+    <div className="flex-auto pt-3.5 px-3.5 md:pt-6 md:px-6 min-[1024px]:px-8 min-[1200px]:pl-[248px] min-[1024px]:pt-8 min-[1200px]:pr-[50px]">
       <div className="flex min-[1440px]:gap-x-8 justify-center overflow-hidden">
         <div className="xs:max-[1440px]:flex-auto min-[1440px]:max-w-[1024px] space-y-3 md:space-y-5 min-w-0">
           <Welcome onOpenProfile={toggleIsOpen} user={profile} />
@@ -617,16 +614,28 @@ const RightSidebarUpPart = ({
 >) => {
   const { user } = useAuth()
   const displayUser = profile || user
-  const fullName = [displayUser?.firstName, displayUser?.lastName].filter(Boolean).join(" ") || "User"
-  const initials = [displayUser?.firstName?.[0], displayUser?.lastName?.[0]].filter(Boolean).join("").toUpperCase() || "U"
+  const fullName =
+    [displayUser?.firstName, displayUser?.lastName].filter(Boolean).join(" ") ||
+    "User"
+  const initials =
+    [displayUser?.firstName?.[0], displayUser?.lastName?.[0]]
+      .filter(Boolean)
+      .join("")
+      .toUpperCase() || "U"
   const username = displayUser?.username ? `@${displayUser.username}` : ""
-  const jobTitle = profile?.recentJobTitle || profile?.industry || profile?.userType || ""
+  const jobTitle =
+    profile?.recentJobTitle || profile?.industry || profile?.userType || ""
   const location = profile?.location || ""
   const bio = profile?.bio || profile?.overview || ""
-  const interests: string[] = Array.isArray(profile?.lookingToWorkWith) ? profile.lookingToWorkWith : []
+  const interests: string[] = Array.isArray(profile?.lookingToWorkWith)
+    ? profile.lookingToWorkWith
+    : []
   const rating = profile?.clientSuccessRating ?? null
   const memberSince = displayUser?.createdAt
-    ? new Date(displayUser.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+    ? new Date(displayUser.createdAt).toLocaleDateString("en-US", {
+        month: "short",
+        year: "numeric",
+      })
     : ""
 
   return (
@@ -706,7 +715,7 @@ const RightSidebarUpPart = ({
               <h1 className="text-sm leading-[16.94px] font-bold text-dark-blue-400">
                 About
               </h1>
-              <p className="mt-3 text-[13px] leading-[15.73px] text-dark-blue-400">
+              <p className="mt-3 text-[13px] leading-[15.73px] text-dark-blue-400 line-clamp-2">
                 {bio}
               </p>
             </>
@@ -859,49 +868,7 @@ const RightSidebar = ({ profile }: { profile?: DashboardProfile | null }) => {
 }
 
 const Footer = () => {
-  return (
-    <div className="mt-8 mb-3.5 md:my-8 px-5 md:px-6 flex flex-col md:flex-row items-center gap-5 md:justify-between">
-      <div className="flex md:flex-row flex-col items-center gap-5 md:gap-x-[57px]">
-        <NextLink className="focus-visible:outline-none" href="/">
-          <Logo3 className="shrink-0 w-[120px] h-[17.63px]" />
-        </NextLink>
-        <span className="text-[13px] leading-[15.73px] font-light text-dark-blue-400">
-          © 2011 - 2025 Marketeq Digital Inc. All Rights Reserved.
-        </span>
-      </div>
-
-      <div className="flex items-center gap-x-[16.6px]">
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <Facebook className="fill-dark-blue-400 size-4" />
-        </IconButton>
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <XIcon className="text-dark-blue-400 size-4" />
-        </IconButton>
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <InstagramDefault className="text-dark-blue-400 size-4" />
-        </IconButton>
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <Linkedin className="text-dark-blue-400 size-4" />
-        </IconButton>
-      </div>
-    </div>
-  )
+  return <DashboardFooter className="mt-8 mb-3.5 px-5 md:my-8 md:px-6" />
 }
 
 export default function ClientDashboard() {
@@ -948,7 +915,7 @@ export default function ClientDashboard() {
         </div>
       )}
       <AuthenticatedRoute>
-        <LeftSidebar />
+        <LeftSidebar forceRole="CLIENT" />
         <Content profile={profile} />
       </AuthenticatedRoute>
     </>

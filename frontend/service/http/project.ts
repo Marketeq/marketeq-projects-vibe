@@ -1,4 +1,5 @@
 import { CreateProjectType } from "@/types/project"
+import { getPublicApiUrl, getPublicListingsUrl } from "@/lib/runtime-urls"
 import AxiosRequest from ".."
 
 type CreatePhaseTaskPayload = {
@@ -31,12 +32,61 @@ type UpdateTaskPayload = Pick<
 // Prefer a dedicated listings URL if set; otherwise fall back to the general
 // API URL so existing Vercel deployments keep working without a new env var.
 const LISTINGS_BASE =
-  process.env.NEXT_PUBLIC_LISTINGS_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.NEXT_PUBLIC_AUTH_URL ||
-  ""
+  getPublicListingsUrl()
+
+const API_BASE = getPublicApiUrl() || "http://localhost:4000"
 
 export const ProjectAPI = {
+  CreateProjectDraft: (
+    data: Partial<CreateProjectType> & {
+      title?: string
+      shortDescription?: string
+      fullDescription?: string
+    } = {}
+  ) => {
+    return AxiosRequest.post(`${LISTINGS_BASE}/publish/project/draft`, data)
+  },
+  GetProjectDraft: (projectId: string) => {
+    return AxiosRequest.get(`${LISTINGS_BASE}/publish/project/${projectId}`)
+  },
+  UpdateProjectDraft: (
+    projectId: string,
+    data: Partial<CreateProjectType> & {
+      title?: string
+      shortDescription?: string
+      fullDescription?: string
+    }
+  ) => {
+    return AxiosRequest.put(`${LISTINGS_BASE}/publish/project/${projectId}`, data)
+  },
+  GetMyProjects: () => {
+    return AxiosRequest.get(`${LISTINGS_BASE}/publish/projects/mine`)
+  },
+  ReplaceProjectScope: (
+    projectId: string,
+    scope: Array<{
+      name: string
+      stageName: string
+      startDay: number
+      endDay: number
+      order: number
+      projectId: string
+      tasks: Array<{
+        taskName: string
+        role: string
+        location: string[]
+        experience: string[]
+        experienceLevel: string
+        duration: string
+        estimatedHours?: number
+        phaseId: string
+      }>
+    }>
+  ) => {
+    return AxiosRequest.put(`${LISTINGS_BASE}/publish/project/${projectId}/scope`, {
+      scope,
+    })
+  },
   CreateProject: (data: CreateProjectType | FormData) => {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/project`, data, {
       headers: {
@@ -50,6 +100,16 @@ export const ProjectAPI = {
   },
   UploadMedia: (data: FormData) => {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/media`, data, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    })
+  },
+  UpdateGalleryImages: (projectId: string, additionalImages: string[]) => {
+    return AxiosRequest.put(`${LISTINGS_BASE}/publish/media/${projectId}/gallery`, { additionalImages })
+  },
+  UploadRichTextImage: (data: FormData) => {
+    return AxiosRequest.post(`${LISTINGS_BASE}/publish/rich-text-image`, data, {
       headers: {
         "Content-Type": "multipart/form-data",
       },
@@ -84,5 +144,16 @@ export const ProjectAPI = {
   },
   UpdateTask: (id: string, data: UpdateTaskPayload) => {
     return AxiosRequest.put(`${LISTINGS_BASE}/publish/task/update/${id}`, data)
+  },
+  GetProjectBySlug: async (slug: string) => {
+    try {
+      const res = await AxiosRequest.get(
+        `${LISTINGS_BASE}/publish/project/slug/${slug}`
+      )
+      if (res?.data) return res
+    } catch {
+      // not found
+    }
+    return null
   },
 }

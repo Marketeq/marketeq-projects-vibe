@@ -7,10 +7,11 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios"
 import Cookies from "js-cookie"
+import { getPublicApiUrl, getPublicAuthUrl } from "@/lib/runtime-urls"
 
 interface Config extends AxiosRequestConfig {}
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? ""
+const BASE = getPublicApiUrl()
 
 const getAccessToken = () => {
   const cookieToken = Cookies.get("access_token") || Cookies.get("accessToken")
@@ -100,7 +101,7 @@ axiosInstance.interceptors.response.use(
     originalRequest._retry = true
 
     try {
-      const AUTH_BASE = process.env.NEXT_PUBLIC_AUTH_URL ?? ""
+      const AUTH_BASE = getPublicAuthUrl()
       const res = await axiosInstance.post(`${AUTH_BASE}/auth/refresh`, {
         refresh_token: refreshToken,
       })
@@ -112,6 +113,9 @@ axiosInstance.interceptors.response.use(
         Cookies.set("access_token", newAccessToken, { path: "/" })
         if (newRefreshToken) {
           Cookies.set("refresh_token", newRefreshToken, { path: "/" })
+        }
+        if (res?.data?.sessionId) {
+          Cookies.set("session_id", res.data.sessionId, { path: "/" })
         }
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
         processQueue(null, newAccessToken)
@@ -125,6 +129,7 @@ axiosInstance.interceptors.response.use(
       // Refresh failed — clear tokens, user will need to re-login
       Cookies.remove("access_token", { path: "/" })
       Cookies.remove("refresh_token", { path: "/" })
+      Cookies.remove("session_id", { path: "/" })
       return Promise.reject(refreshError)
     } finally {
       isRefreshing = false

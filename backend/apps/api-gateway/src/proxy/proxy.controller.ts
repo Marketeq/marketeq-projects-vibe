@@ -1,6 +1,7 @@
-import { Controller, All, Req, Res, Get } from '@nestjs/common'
+import { Controller, All, Req, Res, Get, ForbiddenException } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { ProxyService } from './proxy.service'
+import { HomepageService } from '../homepage/homepage.service'
 
 const SERVICE_PREFIX_MAP: Record<string, string> = {
   auth: 'auth',
@@ -40,7 +41,13 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
 
 @Controller()
 export class ProxyController {
-  constructor(private readonly proxy: ProxyService) {}
+  private static readonly VARIANT_MAX_LENGTH = 64
+  private static readonly VARIANT_PATTERN = /^[a-zA-Z0-9_-]+$/
+
+  constructor(
+    private readonly proxy: ProxyService,
+    private readonly homepageService: HomepageService,
+  ) {}
 
   @Get('health')
   health() {
@@ -50,6 +57,63 @@ export class ProxyController {
   @Get('ready')
   ready() {
     return { status: 'ready' }
+  }
+
+  @Get('homepage')
+  async homepage(@Req() req: Request) {
+    return this.getHomepagePayload(req)
+  }
+
+  @Get('api/homepage')
+  async apiHomepage(@Req() req: Request) {
+    return this.getHomepagePayload(req)
+  }
+
+  @Get('v1/homepage')
+  async v1Homepage(@Req() req: Request) {
+    return this.getHomepagePayload(req)
+  }
+
+  @Get('homepage/health')
+  async homepageHealth() {
+    return this.homepageService.healthCheck()
+  }
+
+  @Get('api/homepage/health')
+  async apiHomepageHealth() {
+    return this.homepageService.healthCheck()
+  }
+
+  @Get('v1/homepage/health')
+  async v1HomepageHealth() {
+    return this.homepageService.healthCheck()
+  }
+
+  private async getHomepagePayload(req: Request) {
+    const rawVariant = (req as any).cookies?.mktq_hp_variant as string | undefined
+    const preview = typeof req.query.preview === 'string' ? req.query.preview : undefined
+    const previewToken = req.headers['x-preview-token']
+    const previewTokenValue =
+      typeof previewToken === 'string' ? previewToken : Array.isArray(previewToken) ? previewToken[0] : undefined
+
+    let variant: string | undefined
+    if (
+      rawVariant &&
+      rawVariant.length <= ProxyController.VARIANT_MAX_LENGTH &&
+      ProxyController.VARIANT_PATTERN.test(rawVariant)
+    ) {
+      variant = rawVariant
+    }
+
+    if (preview === '1' && !previewTokenValue) {
+      throw new ForbiddenException('Invalid or missing preview token')
+    }
+
+    return this.homepageService.getHomepage({
+      variant,
+      preview: preview === '1',
+      previewToken: previewTokenValue,
+    })
   }
 
   @All('*')
@@ -69,6 +133,8 @@ export class ProxyController {
       prefix = 'listings'
     } else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {
       prefix = 'messages'
+    } else if (prefix === 'v1' && segments[1] === 'notifications') {
+      prefix = 'notifications'
     }
 
     const serviceName = SERVICE_PREFIX_MAP[prefix]

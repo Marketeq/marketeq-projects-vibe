@@ -45,6 +45,8 @@ describe('PublishService moderation flow', () => {
     uploadProjectMedia: jest.fn(),
   };
 
+  const httpService = {};
+
   let service: PublishService;
 
   const createDto: CreateProjectDto = {
@@ -63,6 +65,7 @@ describe('PublishService moderation flow', () => {
       taskRepository as any,
       moderationService,
       cloudflareStorageService as any,
+      httpService as any,
     );
   });
 

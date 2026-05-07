@@ -21,6 +21,7 @@ import { OnboardingDismissedDto } from './dtos/onboarding-dismissed.dto';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { RefreshTimezoneDto } from './dtos/refresh-timezone.dto';
+import { UpdatePhoneDto } from './dtos/update-phone.dto';
 import { R2Service } from '../storage/r2.service';
 
 const ALLOWED_AVATAR_MIME_TYPES = new Set([
@@ -181,5 +182,19 @@ export class UserSelfController {
 
     await this.userService.updateAvatarUrl(resolved.id, url);
     return { url };
+  }
+
+  @ApiOperation({ summary: 'Update the current user phone number' })
+  @Patch('phone')
+  async updatePhone(
+    @CurrentUser() user: JwtUser,
+    @Body() dto: UpdatePhoneDto,
+  ) {
+    if (!('phone' in dto)) {
+      throw new BadRequestException('phone field is required (string or null)');
+    }
+    const resolved = await this.userService.getUserByClaims(user);
+    const updated = await this.userService.updatePhone(resolved.id, dto.phone ?? null);
+    return { id: updated.id, phone: updated.phone ?? null };
   }
 }

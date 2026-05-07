@@ -1,15 +1,15 @@
 "use client"
 
-import { useState, useMemo, useEffect, useCallback } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
-  getClientContracts,
-  getTalentContracts,
-  endContract as apiEndContract,
-  respondToContract,
   type Contract as ApiContract,
   type ContractStatus as ApiContractStatus,
+  endContract as apiEndContract,
+  getClientContracts,
+  getTalentContracts,
+  respondToContract,
 } from "@/src/lib/api/contracts"
 import {
   Briefcase,
@@ -114,8 +114,16 @@ const sampleContracts: Contract[] = [
     hoursTotal: "142h 30m",
     teamMembers: [
       { name: "Sarah Chen", avatar: "/man.jpg", role: "UX Designer" },
-      { name: "Alex Rivera", avatar: "/images/avatar-1.png", role: "Frontend Developer" },
-      { name: "Jordan Lee", avatar: "/images/avatar-2.png", role: "QA Engineer" },
+      {
+        name: "Alex Rivera",
+        avatar: "/images/avatar-1.png",
+        role: "Frontend Developer",
+      },
+      {
+        name: "Jordan Lee",
+        avatar: "/images/avatar-2.png",
+        role: "QA Engineer",
+      },
       { name: "Chris Patel", avatar: "/man.jpg", role: "Backend Developer" },
       { name: "Dana Kim", avatar: "/images/avatar-1.png", role: "PM" },
       { name: "Nina Torres", avatar: "/images/avatar-2.png", role: "Designer" },
@@ -206,7 +214,11 @@ const sampleContracts: Contract[] = [
     hoursTotal: "142h 30m",
     teamMembers: [
       { name: "Chris Patel", avatar: "/man.jpg", role: "SEO Specialist" },
-      { name: "Dana Kim", avatar: "/images/avatar-1.png", role: "Content Writer" },
+      {
+        name: "Dana Kim",
+        avatar: "/images/avatar-1.png",
+        role: "Content Writer",
+      },
       { name: "Sarah Chen", avatar: "/images/avatar-2.png", role: "Designer" },
       { name: "Alex Rivera", avatar: "/man.jpg", role: "Developer" },
       { name: "Jordan Lee", avatar: "/images/avatar-1.png", role: "QA" },
@@ -270,8 +282,16 @@ const sampleContracts: Contract[] = [
     hoursTotal: "142h 30m",
     teamMembers: [
       { name: "Nina Torres", avatar: "/man.jpg", role: "Social Media Manager" },
-      { name: "Leo Park", avatar: "/images/avatar-1.png", role: "Graphic Designer" },
-      { name: "Mia Johnson", avatar: "/images/avatar-2.png", role: "Copywriter" },
+      {
+        name: "Leo Park",
+        avatar: "/images/avatar-1.png",
+        role: "Graphic Designer",
+      },
+      {
+        name: "Mia Johnson",
+        avatar: "/images/avatar-2.png",
+        role: "Copywriter",
+      },
       { name: "Tom Blake", avatar: "/man.jpg", role: "Designer" },
       { name: "Sam Reyes", avatar: "/images/avatar-1.png", role: "Video" },
       { name: "Chris Patel", avatar: "/images/avatar-2.png", role: "SEO" },
@@ -363,9 +383,7 @@ const sampleContracts: Contract[] = [
     weeklyLimit: "20 hrs weekly limit",
     talentUsername: "@uxdesignpro22",
     talentRole: "UX Designer",
-    teamMembers: [
-      { name: "Devon", avatar: "/man.jpg", role: "UX Designer" },
-    ],
+    teamMembers: [{ name: "Devon", avatar: "/man.jpg", role: "UX Designer" }],
   },
   {
     id: "c10",
@@ -465,10 +483,20 @@ function mapApiContract(c: ApiContract): Contract {
     rate: `$${c.rate}`,
     schedule: c.schedule,
     duration: c.duration,
-    startDate: c.startAtISO ? new Date(c.startAtISO).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "",
+    startDate: c.startAtISO
+      ? new Date(c.startAtISO).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "",
     endDate: "",
     nextMilestone: "—",
-    updatedAt: new Date(c.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    updatedAt: new Date(c.updatedAt).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }),
     lastActivity: "—",
     billingCycle: "Billed weekly",
     progress: 0,
@@ -494,9 +522,10 @@ export default function MyContractsPage() {
     if (!user?.id) return
     setLoading(true)
     try {
-      const data = user.accountType === "TALENT"
-        ? await getTalentContracts(user.id)
-        : await getClientContracts(user.id)
+      const data =
+        user.accountType === "TALENT"
+          ? await getTalentContracts(user.id)
+          : await getClientContracts(user.id)
 
       if (data.length > 0) {
         setContracts(data.map(mapApiContract))
@@ -519,8 +548,19 @@ export default function MyContractsPage() {
   const filtered = useMemo(() => {
     let results = contracts.filter((c) => {
       // Tab filter
-      if (activeTab === "active" && c.status !== "Active" && c.status !== "Ended" && c.status !== "Disputed") return false
-      if (activeTab === "pending" && c.status !== "Pending" && c.status !== "Canceled") return false
+      if (
+        activeTab === "active" &&
+        c.status !== "Active" &&
+        c.status !== "Ended" &&
+        c.status !== "Disputed"
+      )
+        return false
+      if (
+        activeTab === "pending" &&
+        c.status !== "Pending" &&
+        c.status !== "Canceled"
+      )
+        return false
       // Type filter
       if (typeFilter !== "all" && c.type !== typeFilter) return false
       // Search
@@ -530,7 +570,8 @@ export default function MyContractsPage() {
           !c.title.toLowerCase().includes(q) &&
           !c.groupName.toLowerCase().includes(q) &&
           !c.talentName.toLowerCase().includes(q)
-        ) return false
+        )
+          return false
       }
       return true
     })
@@ -538,11 +579,16 @@ export default function MyContractsPage() {
     // Sort
     results = [...results].sort((a, b) => {
       switch (sortBy) {
-        case "recent": return a.updatedAt.localeCompare(b.updatedAt)
-        case "milestone": return a.nextMilestone.localeCompare(b.nextMilestone)
-        case "az": return a.title.localeCompare(b.title)
-        case "za": return b.title.localeCompare(a.title)
-        default: return 0
+        case "recent":
+          return a.updatedAt.localeCompare(b.updatedAt)
+        case "milestone":
+          return a.nextMilestone.localeCompare(b.nextMilestone)
+        case "az":
+          return a.title.localeCompare(b.title)
+        case "za":
+          return b.title.localeCompare(a.title)
+        default:
+          return 0
       }
     })
 
@@ -551,18 +597,30 @@ export default function MyContractsPage() {
 
   // Group contracts by groupId for grouped view
   const grouped = useMemo(() => {
-    const map = new Map<string, { groupName: string; type: ContractType; contracts: Contract[] }>()
+    const map = new Map<
+      string,
+      { groupName: string; type: ContractType; contracts: Contract[] }
+    >()
     for (const c of filtered) {
       if (!map.has(c.groupId)) {
-        map.set(c.groupId, { groupName: c.groupName, type: c.type, contracts: [] })
+        map.set(c.groupId, {
+          groupName: c.groupName,
+          type: c.type,
+          contracts: [],
+        })
       }
       map.get(c.groupId)!.contracts.push(c)
     }
     return Array.from(map.values())
   }, [filtered])
 
-  const activeCount = contracts.filter((c) => c.status === "Active" || c.status === "Ended" || c.status === "Disputed").length
-  const pendingCount = contracts.filter((c) => c.status === "Pending" || c.status === "Canceled").length
+  const activeCount = contracts.filter(
+    (c) =>
+      c.status === "Active" || c.status === "Ended" || c.status === "Disputed"
+  ).length
+  const pendingCount = contracts.filter(
+    (c) => c.status === "Pending" || c.status === "Canceled"
+  ).length
 
   const [showSearch, setShowSearch] = useState(false)
   const [filterCount] = useState(3)
@@ -576,16 +634,28 @@ export default function MyContractsPage() {
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold text-dark-blue-400">My Contracts</h1>
+              <h1 className="text-xl font-bold text-dark-blue-400">
+                My Contracts
+              </h1>
               <p className="text-sm text-gray-500 mt-0.5">
                 You have {contracts.length} contracts in total
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <Button variant="ghost" visual="gray" size="sm" leftIcon={<HelpCircle className="size-4" />}>
+              <Button
+                variant="ghost"
+                visual="gray"
+                size="sm"
+                leftIcon={<HelpCircle className="size-4" />}
+              >
                 Get help
               </Button>
-              <Button variant="outlined" visual="gray" size="sm" leftIcon={<Copy className="size-4" />}>
+              <Button
+                variant="outlined"
+                visual="gray"
+                size="sm"
+                leftIcon={<Copy className="size-4" />}
+              >
                 Browse Contracts
               </Button>
               <Button size="sm" leftIcon={<Plus className="size-4" />}>
@@ -618,9 +688,13 @@ export default function MyContractsPage() {
                   onClick={() => setActiveTab("active")}
                 >
                   Active
-                  <span className={`ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium ${
-                    activeTab === "active" ? "bg-primary-50 text-primary-500" : "bg-gray-100 text-gray-500"
-                  }`}>
+                  <span
+                    className={`ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium ${
+                      activeTab === "active"
+                        ? "bg-primary-50 text-primary-500"
+                        : "bg-gray-100 text-gray-500"
+                    }`}
+                  >
                     {activeCount}
                   </span>
                 </button>
@@ -635,9 +709,13 @@ export default function MyContractsPage() {
                   onClick={() => setActiveTab("pending")}
                 >
                   Pending
-                  <span className={`ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium ${
-                    activeTab === "pending" ? "bg-primary-50 text-primary-500" : "bg-gray-100 text-gray-500"
-                  }`}>
+                  <span
+                    className={`ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium ${
+                      activeTab === "pending"
+                        ? "bg-primary-50 text-primary-500"
+                        : "bg-gray-100 text-gray-500"
+                    }`}
+                  >
                     {pendingCount}
                   </span>
                 </button>
@@ -653,11 +731,23 @@ export default function MyContractsPage() {
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
-                    <DropdownMenuItem onClick={() => setTypeFilter("all")}>All Types</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("project")}>Projects</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("service")}>Services</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("team")}>Teams</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("individual")}>Individual</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTypeFilter("all")}>
+                      All Types
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTypeFilter("project")}>
+                      Projects
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTypeFilter("service")}>
+                      Services
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTypeFilter("team")}>
+                      Teams
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setTypeFilter("individual")}
+                    >
+                      Individual
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -666,7 +756,12 @@ export default function MyContractsPage() {
               <div className="flex items-center gap-2 pb-2">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" visual="gray" size="sm" className="gap-1.5">
+                    <Button
+                      variant="ghost"
+                      visual="gray"
+                      size="sm"
+                      className="gap-1.5"
+                    >
                       <FilterLines className="size-4" />
                       Filters
                       {filterCount > 0 && (
@@ -677,26 +772,51 @@ export default function MyContractsPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setTypeFilter("all")}>All Types</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("project")}>Projects</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("service")}>Services</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("team")}>Teams</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("individual")}>Individual</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTypeFilter("all")}>
+                      All Types
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTypeFilter("project")}>
+                      Projects
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTypeFilter("service")}>
+                      Services
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTypeFilter("team")}>
+                      Teams
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setTypeFilter("individual")}
+                    >
+                      Individual
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" visual="gray" size="sm" className="gap-1.5">
+                    <Button
+                      variant="ghost"
+                      visual="gray"
+                      size="sm"
+                      className="gap-1.5"
+                    >
                       <SwitchVertical01 className="size-4" />
                       Recent Activity
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setSortBy("recent")}>Recent Activity</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSortBy("milestone")}>Next Milestone</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSortBy("az")}>A → Z</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSortBy("za")}>Z → A</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSortBy("recent")}>
+                      Recent Activity
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSortBy("milestone")}>
+                      Next Milestone
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSortBy("az")}>
+                      A → Z
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSortBy("za")}>
+                      Z → A
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
 
@@ -750,7 +870,11 @@ export default function MyContractsPage() {
 
             {/* Contract cards */}
             <div className="mt-4">
-              <ContractsView contracts={filtered} grouped={grouped} viewMode={viewMode} />
+              <ContractsView
+                contracts={filtered}
+                grouped={grouped}
+                viewMode={viewMode}
+              />
             </div>
           </div>
         </div>
@@ -771,8 +895,12 @@ function ContractsView({
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
         <FileCheck02 className="size-10 text-gray-300 mx-auto" />
-        <p className="text-sm text-gray-500 mt-3">No contracts match your filters</p>
-        <p className="text-xs text-gray-400 mt-1">Browse the Marketplace to start a project</p>
+        <p className="text-sm text-gray-500 mt-3">
+          No contracts match your filters
+        </p>
+        <p className="text-xs text-gray-400 mt-1">
+          Browse the Marketplace to start a project
+        </p>
       </div>
     )
   }
@@ -792,13 +920,27 @@ function ContractsView({
       <table className="w-full">
         <thead>
           <tr className="border-b border-gray-100">
-            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Contract</th>
-            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Type</th>
-            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Talent</th>
-            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Status</th>
-            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Total Hours</th>
-            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Progress</th>
-            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Last Activity</th>
+            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">
+              Contract
+            </th>
+            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">
+              Type
+            </th>
+            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">
+              Talent
+            </th>
+            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">
+              Status
+            </th>
+            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">
+              Total Hours
+            </th>
+            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">
+              Progress
+            </th>
+            <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">
+              Last Activity
+            </th>
             <th className="text-left text-xs font-medium text-gray-500 px-4 py-3"></th>
           </tr>
         </thead>
@@ -811,7 +953,6 @@ function ContractsView({
     </div>
   )
 }
-
 
 function ContractCard({ contract }: { contract: Contract }) {
   const TypeIcon = typeIcons[contract.type]
@@ -828,10 +969,17 @@ function ContractCard({ contract }: { contract: Contract }) {
           {contract.title}
         </h3>
         <div className="flex items-center gap-3 flex-none">
-          <span className={`text-xs font-medium px-3 py-1 rounded-full border ${statusColors[contract.status]}`}>
+          <span
+            className={`text-xs font-medium px-3 py-1 rounded-full border ${statusColors[contract.status]}`}
+          >
             {contract.status}
           </span>
-          <Button variant="outlined" visual="gray" size="sm" className="flex-none">
+          <Button
+            variant="outlined"
+            visual="gray"
+            size="sm"
+            className="flex-none"
+          >
             <Plus className="size-4 mr-1.5" />
             Add Team Member
           </Button>
@@ -844,27 +992,42 @@ function ContractCard({ contract }: { contract: Contract }) {
         {/* Project & Service: Type badge + Billing cycle */}
         {(isProject || isService) && (
           <>
-            <Badge visual={typeColors[contract.type] as any} size="sm" className="rounded-full capitalize gap-1">
+            <Badge
+              visual={typeColors[contract.type] as any}
+              size="sm"
+              className="rounded-full capitalize gap-1"
+            >
               <TypeIcon className="size-3.5" />
               {typeLabels[contract.type]}
             </Badge>
             <span className="text-sm text-gray-400">
-              Billing cycle · <span className="font-semibold text-dark-blue-400">{contract.billingCycle}</span>
+              Billing cycle ·{" "}
+              <span className="font-semibold text-dark-blue-400">
+                {contract.billingCycle}
+              </span>
             </span>
           </>
         )}
         {/* Team: Billing Cycle only (no type badge) */}
         {isTeam && (
           <span className="text-sm text-gray-400">
-            Billing Cycle · <span className="font-semibold text-dark-blue-400">{contract.billingCycle}</span>
+            Billing Cycle ·{" "}
+            <span className="font-semibold text-dark-blue-400">
+              {contract.billingCycle}
+            </span>
           </span>
         )}
         {/* Individual: Rate + weekly limit */}
         {isIndividual && (
           <span className="text-sm text-gray-400">
-            Rate · <span className="font-semibold text-dark-blue-400">{contract.rate}</span>
+            Rate ·{" "}
+            <span className="font-semibold text-dark-blue-400">
+              {contract.rate}
+            </span>
             {contract.weeklyLimit && (
-              <span className="ml-1.5 text-gray-400">{contract.weeklyLimit}</span>
+              <span className="ml-1.5 text-gray-400">
+                {contract.weeklyLimit}
+              </span>
             )}
           </span>
         )}
@@ -877,14 +1040,19 @@ function ContractCard({ contract }: { contract: Contract }) {
           /* Individual: single avatar with name & role */
           <div className="flex items-center gap-3">
             <Avatar size="md">
-              <AvatarImage src={contract.talentAvatar} alt={contract.talentName} />
+              <AvatarImage
+                src={contract.talentAvatar}
+                alt={contract.talentName}
+              />
               <AvatarFallback>{contract.talentName[0]}</AvatarFallback>
             </Avatar>
             <div>
               <p className="text-sm font-semibold text-dark-blue-400">
                 {contract.talentName}{" "}
                 {contract.talentUsername && (
-                  <span className="font-normal text-gray-400">{contract.talentUsername}</span>
+                  <span className="font-normal text-gray-400">
+                    {contract.talentUsername}
+                  </span>
                 )}
               </p>
               {contract.talentRole && (
@@ -908,19 +1076,31 @@ function ContractCard({ contract }: { contract: Contract }) {
         <div className="flex items-center gap-6">
           <div className="text-right">
             <p className="text-xs text-gray-400">Today</p>
-            <p className="text-sm font-bold text-dark-blue-400">{contract.hoursToday} <span className="font-normal text-gray-400">Logged</span></p>
+            <p className="text-sm font-bold text-dark-blue-400">
+              {contract.hoursToday}{" "}
+              <span className="font-normal text-gray-400">Logged</span>
+            </p>
           </div>
           <div className="text-right">
             <p className="text-xs text-gray-400">This Week</p>
-            <p className="text-sm font-bold text-dark-blue-400">{contract.hoursThisWeek} <span className="font-normal text-gray-400">Logged</span></p>
+            <p className="text-sm font-bold text-dark-blue-400">
+              {contract.hoursThisWeek}{" "}
+              <span className="font-normal text-gray-400">Logged</span>
+            </p>
           </div>
           <div className="text-right">
             <p className="text-xs text-gray-400">This Month</p>
-            <p className="text-sm font-bold text-dark-blue-400">{contract.hoursThisMonth} <span className="font-normal text-gray-400">Logged</span></p>
+            <p className="text-sm font-bold text-dark-blue-400">
+              {contract.hoursThisMonth}{" "}
+              <span className="font-normal text-gray-400">Logged</span>
+            </p>
           </div>
           <div className="text-right">
             <p className="text-xs text-gray-400">Total Hours</p>
-            <p className="text-sm font-bold text-dark-blue-400">{contract.hoursTotal} <span className="font-normal text-gray-400">Logged</span></p>
+            <p className="text-sm font-bold text-dark-blue-400">
+              {contract.hoursTotal}{" "}
+              <span className="font-normal text-gray-400">Logged</span>
+            </p>
           </div>
         </div>
       </div>
@@ -947,16 +1127,24 @@ function ContractCard({ contract }: { contract: Contract }) {
                 {contract.progress < 100 && (
                   <div
                     className="absolute inset-y-0 rounded-r-full bg-primary-500"
-                    style={{ left: `${contract.progress}%`, width: `${Math.min(20, 100 - contract.progress)}%` }}
+                    style={{
+                      left: `${contract.progress}%`,
+                      width: `${Math.min(20, 100 - contract.progress)}%`,
+                    }}
                   />
                 )}
               </div>
-              <span className="text-xs text-gray-500 flex-none">{contract.progress}%</span>
+              <span className="text-xs text-gray-500 flex-none">
+                {contract.progress}%
+              </span>
             </div>
           )}
         </div>
         <p className="text-xs text-gray-400 flex-none">
-          Last activity <span className="font-semibold text-dark-blue-400">{contract.lastActivity}</span>
+          Last activity{" "}
+          <span className="font-semibold text-dark-blue-400">
+            {contract.lastActivity}
+          </span>
         </p>
       </div>
     </div>
@@ -968,7 +1156,9 @@ function ContractRow({ contract }: { contract: Contract }) {
     <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
       <td className="px-4 py-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-dark-blue-400 truncate max-w-[240px]">{contract.title}</p>
+          <p className="text-sm font-medium text-dark-blue-400 truncate max-w-[240px]">
+            {contract.title}
+          </p>
           <p className="text-xs text-gray-400">{contract.groupName}</p>
         </div>
       </td>
@@ -984,23 +1174,36 @@ function ContractRow({ contract }: { contract: Contract }) {
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
           <Avatar size="xs">
-            <AvatarImage src={contract.talentAvatar} alt={contract.talentName} />
+            <AvatarImage
+              src={contract.talentAvatar}
+              alt={contract.talentName}
+            />
             <AvatarFallback>{contract.talentName[0]}</AvatarFallback>
           </Avatar>
-          <span className="text-sm text-dark-blue-400">{contract.talentName}</span>
+          <span className="text-sm text-dark-blue-400">
+            {contract.talentName}
+          </span>
         </div>
       </td>
       <td className="px-4 py-3">
-        <span className={`text-[10px] px-2 py-0.5 rounded-full border ${statusColors[contract.status]}`}>
+        <span
+          className={`text-[10px] px-2 py-0.5 rounded-full border ${statusColors[contract.status]}`}
+        >
           {contract.status}
         </span>
       </td>
       <td className="px-4 py-3">
-        <span className="text-sm text-dark-blue-400">{contract.hoursTotal}</span>
+        <span className="text-sm text-dark-blue-400">
+          {contract.hoursTotal}
+        </span>
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2 min-w-[100px]">
-          <Progress value={contract.progress} bubble={false} className="h-1.5 flex-auto" />
+          <Progress
+            value={contract.progress}
+            bubble={false}
+            className="h-1.5 flex-auto"
+          />
           <span className="text-xs text-gray-500">{contract.progress}%</span>
         </div>
       </td>
@@ -1043,11 +1246,21 @@ function ContractActions({ contract }: { contract: Contract }) {
         {contract.status === "Active" && (
           <>
             <DropdownMenuItem>View Milestones</DropdownMenuItem>
-            <DropdownMenuItem className="text-red-600" onClick={handleEndContract}>End Contract</DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-red-600"
+              onClick={handleEndContract}
+            >
+              End Contract
+            </DropdownMenuItem>
           </>
         )}
         {contract.status === "Pending" && (
-          <DropdownMenuItem className="text-red-600" onClick={handleRejectContract}>Cancel</DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-red-600"
+            onClick={handleRejectContract}
+          >
+            Cancel
+          </DropdownMenuItem>
         )}
         {contract.status === "Ended" && (
           <DropdownMenuItem>Leave Review</DropdownMenuItem>

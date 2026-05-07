@@ -14,7 +14,7 @@
 |---|---|---|---|
 | `dev-main` | Active development. Default branch. All feature PRs target this. | Developers (via PR) | Vercel `marketeq-projects-dev` |
 | `staging` | QA testing. Receives promoted commits from `dev-main`. | QA (via promotion script) | Vercel `marketeq-projects-staging` |
-| `live-mvp` | Production. Receives promoted commits from `staging`. | CTO + QA (via promotion script) | Vercel `marketeq-projects-live-mvp` + Render `marketeq-vibe-backend` |
+| `live-mvp` | Production. Receives promoted commits from `staging`. | CTO + QA (via promotion script) | Vercel `marketeq-projects-live-mvp` + Render `marketeq-backend` |
 
 **Flow:** feature branch → PR → `dev-main` → QA promotes to `staging` → QA tests → promote to `live-mvp` → production.
 
@@ -49,42 +49,34 @@ Each Vercel project has its own env var set in the Vercel dashboard, populated f
 
 ## 3. Render topology
 
-**Two Render services — staging and production.**
+**One shared Render service.**
 
 | Render service | ID | Branch | Auto-deploy | Serves | URL |
 |---|---|---|---|---|---|
-| `marketeq-vibe-backend-staging` | `srv-d7fbl028qa3s73d6ea0g` | `staging` | yes | Vercel dev + Vercel staging | `https://marketeq-vibe-backend-staging.onrender.com` |
-| `marketeq-backend` | `srv-d76r48nafjfc73e1djf0` | `live-mvp` | yes | Vercel live only | `https://marketeq-backend.onrender.com` |
+| `marketeq-backend` | `srv-d76r48nafjfc73e1djf0` | `live-mvp` | yes | Vercel dev + Vercel staging + Vercel live | `https://marketeq-backend.onrender.com` |
 
-### 3.1 Why two services
+### 3.1 Why one service
 
-QA needs to test full-stack changes (frontend + backend together) on staging before promoting to production. Two services give us:
-
-- **Staging Render** deploys when code reaches `staging` — QA tests new backend endpoints on `staging-marketeq-projects.vercel.app`
-- **Live Render** deploys only when code reaches `live-mvp` — production is isolated from QA testing
-- Dev Vercel also hits the staging Render backend, so developers can see new backend endpoints on dev preview
+The backend does not redeploy from `dev-main`, and local development never depends on Render. `staging` is a frontend promotion branch, not a second backend fleet. The shared backend stays anchored to the production-grade Render service so there is one service, one URL, and one source of truth for the deployed backend.
 
 ### 3.2 Vercel → Render mapping
 
 | Vercel Project | Branch | Points to |
 |---|---|---|
-| `marketeq-projects-dev` | `dev-main` | `marketeq-vibe-backend-staging` |
-| `marketeq-projects-staging` | `staging` | `marketeq-vibe-backend-staging` |
+| `marketeq-projects-dev` | `dev-main` | `marketeq-backend` |
+| `marketeq-projects-staging` | `staging` | `marketeq-backend` |
 | `marketeq-projects-live-mvp` | `live-mvp` | `marketeq-backend` |
 
 ### 3.3 Database isolation
 
-Each Render service has its own Supabase PostgreSQL instance on the Hostinger VPS (`72.61.77.231`):
+The shared Render backend uses the live backend database wiring on the Hostinger VPS (`72.61.77.231`). Local development keeps its own local-only stack.
 
 | Database | Docker Project | Port | Used by |
 |---|---|---|---|
-| `supabase-staging` | `supabase-staging` | `5434` | Staging Render (`marketeq-vibe-backend-staging`) |
-| `supabase-live` | `supabase-live` | `5433` | Live Render (`marketeq-backend`) |
+| `supabase-live` | `supabase-live` | `5433` | Shared Render backend (`marketeq-backend`) |
 | `supabase-dev` | `supabase-dev` | `5432` | Local development only |
 
-QA cannot corrupt production data. Staging and live databases are completely separate — different Docker containers, different ports, different credentials.
-
-Migrations run per-environment. When code with a new migration reaches `staging`, it runs against the staging DB. When promoted to `live-mvp`, it runs against the production DB.
+QA must treat staging as a frontend promotion environment backed by the shared Render service. Backend-only changes are promoted deliberately through `live-mvp`, not by creating a second staging backend target.
 
 ### 3.4 Backwards-compatibility requirement
 
@@ -132,8 +124,8 @@ There are **three frozen env templates per app**, one per environment, each inde
 | Frontend template | Backend template | Used for |
 |---|---|---|
 | `frontend/.env.local.example` | `backend/.env.local.example` | Local dev on `dev-main` or any feature branch |
-| `frontend/.env.staging.example` | `backend/.env.staging.example` | Vercel `marketeq-projects-staging` + (future) staging Render |
-| `frontend/.env.production.example` | `backend/.env.production.example` | Vercel `marketeq-projects-live-mvp` + Render `marketeq-vibe-backend` |
+| `frontend/.env.staging.example` | `backend/.env.staging.example` | Vercel `marketeq-projects-staging` against the shared Render backend |
+| `frontend/.env.production.example` | `backend/.env.production.example` | Vercel `marketeq-projects-live-mvp` + Render `marketeq-backend` |
 
 Each template owns a distinct set of values for:
 - `NEXT_PUBLIC_BACKEND_URL` / `BACKEND_URL`
@@ -242,7 +234,7 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 5. Checks out `live-mvp`, merges `staging` with the protected-file strategy:
    - `live-mvp` wins on conflict for: `frontend/.env.production.example`, `backend/.env.production.example`, `frontend/vercel.json`, `render.yaml`
 6. Runs `gitleaks`
-7. Pushes `live-mvp` — triggers both Vercel `marketeq-projects-live-mvp` and Render `marketeq-vibe-backend` auto-deploys **in lockstep**
+7. Pushes `live-mvp` — triggers both Vercel `marketeq-projects-live-mvp` and Render `marketeq-backend` auto-deploys **in lockstep**
 8. Polls Vercel **and** Render APIs for the resulting deployments until both report `READY` / `live` or fail (10-min timeout)
 9. Creates an annotated git tag `release-YYYY-MM-DD-HHMM` and a GitHub Release listing every promoted commit
 
@@ -283,10 +275,12 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 ## 10. Pointers
 
 - Code review rules (seven-point checklist, block comment template, review prompt): `docs/CODE_REVIEW_SOP.md`
+- Remediation backlog and implementation status: `docs/DEVOPS_REMEDIATION_PLAN.md`
 - Automated checks running on every PR: `.github/workflows/sop-check.yml`, `.github/workflows/ai-breakage-check.yml`, `.github/workflows/post-merge-audit.yml`, `.github/workflows/gitleaks.yml`
 - CODEOWNERS routing: `.github/CODEOWNERS`
 - PR template: `.github/pull_request_template.md`
 - Promotion scripts: `scripts/qa-promote-dev-to-staging.sh`, `scripts/qa-promote-staging-to-live.sh`
+- DevOps control scripts: `scripts/devops/check-devops-drift.mjs`, `scripts/devops/check-runtime-env-drift.mjs`, `scripts/devops/sync-staging-runtime-envs.mjs`, `scripts/devops/sync-n8n-workflow.mjs`, `scripts/devops/publish-n8n-runner.mjs`, `scripts/devops/install-n8n-runtime-secrets.mjs`, `scripts/devops/rollback-staging.mjs`, `scripts/devops/marketeq-devops.config.json`, `scripts/devops/marketeq-staging-env-baseline.json`
 - Env templates: `frontend/.env.{local,staging,production}.example`, `backend/.env.{local,staging,production}.example`
 
 ---

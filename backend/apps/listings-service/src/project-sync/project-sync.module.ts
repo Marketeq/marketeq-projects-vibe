@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ProjectSyncController } from "./project-sync.controller";
+import { ProjectDeliverablesController } from "./project-deliverables.controller";
 import { ProjectSyncService } from "./project-sync.service";
 import { ProjectSyncContractMiddleware } from "./project-sync.contract.middleware";
 import { DELIVERABLES_ADAPTER } from "./deliverables/deliverables.adapter";
@@ -17,7 +18,7 @@ import { SkillsAdapterHuggingFace } from "./skills/skills.adapter.huggingface";
 
 @Module({
   imports: [ConfigModule],
-  controllers: [ProjectSyncController],
+  controllers: [ProjectSyncController, ProjectDeliverablesController],
   providers: [
     ProjectSyncService,
     DeliverablesAdapterHeuristic,

@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { ThreadsService } from './threads.service';
 import { AblyService } from '../ably/ably.service';
+import { BlockEnforcementService } from '../blocks/block-enforcement.service';
 import { GatewayAuthGuard } from '../guards/gateway-auth.guard';
 import { AddParticipantDto } from './dtos/add-participant.dto';
 import {
@@ -29,6 +30,7 @@ export class ThreadsController {
   constructor(
     private readonly threadsService: ThreadsService,
     private readonly ablyService: AblyService,
+    private readonly blockEnforcement: BlockEnforcementService,
   ) {}
 
   // --- Static routes (must come before /:id) ---
@@ -42,8 +44,9 @@ export class ThreadsController {
   async getAblyToken(@Req() req: any, @Query('threadId') threadId?: string) {
     const userId = req.user?.id;
     if (threadId) {
-      await this.threadsService.assertUserIsParticipant(threadId, userId);
-      return this.ablyService.createTokenRequest(userId, [threadId]);
+      const thread = await this.threadsService.assertUserIsParticipant(threadId, userId);
+      const allowed = await this.blockEnforcement.getCapabilityThreadIds(userId, [thread]);
+      return this.ablyService.createTokenRequest(userId, allowed);
     }
     return this.ablyService.createTokenRequest(userId);
   }

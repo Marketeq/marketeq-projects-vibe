@@ -1,3 +1,5 @@
+export type MessageType = "text" | "file" | "gif"
+
 export interface Message {
   id: string
   content: string // decrypted display content
@@ -13,13 +15,29 @@ export interface Message {
   deleted?: boolean
   isDeleted?: boolean // legacy alias for deleted
   status?: string
-  messageType?: string
+  messageType?: MessageType
   edited?: boolean
   starred?: boolean
   replyToMessageId?: string
   forwardedFromId?: string
   quotedCiphertext?: string | null
   quotedContent?: string | null
+  attachments?: MessageAttachment[]
+  reactions?: MessageReaction[]
+}
+
+export interface MessageReaction {
+  userId: string
+  emoji: string
+  createdAt: string
+}
+
+export interface MessageAttachment {
+  id: string
+  fileUrl: string
+  fileType: string
+  fileName?: string | null
+  fileSize?: number | null
 }
 
 // Extended Message type to include file attachments

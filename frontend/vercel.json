@@ -1,16 +1,18 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
+  "ignoreCommand": "exit 1",
   "git": {
     "deploymentEnabled": {
+      "*": false,
       "feat/*": false,
       "fix/*": false,
       "chore/*": false,
       "refactor/*": false,
       "agent/*": false,
-      "dev-main": true,
-      "staging": true,
-      "live-mvp": true
+      "dev-main": false,
+      "staging": false,
+      "live-mvp": false
     }
   }
 }

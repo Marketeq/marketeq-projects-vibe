@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   HttpException,
   HttpStatus,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -38,6 +39,14 @@ import {
 import { CloudflareStorageService } from './cloudflare-storage.service';
 import { HttpService } from '@nestjs/axios';
 import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategory.dto';
+import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
+import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
+import { slugify } from '../shared/utils/slugify';
+import {
+  DELIVERABLES_ADAPTER,
+  DeliverablesAdapter,
+} from '../project-sync/deliverables/deliverables.adapter';
+import { ScopePhaseInput } from '../project-sync/deliverables/deliverables.types';
 
 @Injectable()
 export class PublishService {
@@ -51,7 +60,13 @@ export class PublishService {
     private readonly projectModerationService: ProjectModerationService,
     private readonly cloudflareStorageService: CloudflareStorageService,
     private readonly httpService: HttpService,
+    @Inject(DELIVERABLES_ADAPTER)
+    private readonly deliverablesAdapter: DeliverablesAdapter,
   ) {}
+
+  private get shouldSkipModeration(): boolean {
+    return process.env.SKIP_CONTENT_MODERATION === 'true';
+  }
 
   private throwIfHttpException(error: unknown): void {
     if (error instanceof HttpException) {
@@ -299,6 +314,7 @@ export class PublishService {
             await this.taskRepository.create({
               taskName: taskDto.taskName,
               role: taskDto.role,
+              description: taskDto.description,
               location: taskDto.location,
               experience: taskDto.experience,
               experienceLevel: taskDto.experienceLevel,
@@ -317,6 +333,245 @@ export class PublishService {
     }
   }
 
+  async createProjectDraft(
+    userId: string,
+    dto: UpsertProjectDraftDto,
+  ): Promise<Project> {
+    try {
+      const title = dto.title ?? '';
+      const payload = {
+        title,
+        slug: title ? slugify(title) : null,
+        subtitle: dto.subtitle ?? null,
+        shortDescription: dto.shortDescription ?? '',
+        fullDescription: dto.fullDescription ?? '',
+        budget: dto.budget ?? null,
+        initialTeamBudget: dto.initialTeamBudget ?? null,
+        durationMonths: dto.durationMonths ?? null,
+        location: dto.location ?? null,
+        timezone: dto.timezone ?? null,
+        categories: dto.categories ?? [],
+        subCategories: dto.subCategories ?? [],
+        categorySelections: dto.categorySelections ?? [],
+        industries: dto.industries ?? dto.industry ?? [],
+        tags: dto.tags ?? [],
+        skills: dto.skills ?? [],
+        listingType: dto.listingType ?? null,
+        status: 'draft',
+        projectDatePublished: null,
+        userId,
+      };
+
+      return await this.projectRepository.create(payload);
+    } catch (error) {
+      this.throwIfHttpException(error);
+      throw new InternalServerErrorException('Failed to create project draft');
+    }
+  }
+
+  async getProjectDraft(userId: string, projectId: string): Promise<any> {
+    const project = await this.ensureProjectOwnership(projectId, userId);
+
+    const media = await this.mediaRepository.find({ projectId: project.id });
+    const phases = await this.phaseRepository.findAll({
+      filterOptions: { projectId: project.id },
+    });
+
+    const scope = await Promise.all(
+      phases
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map(async (phase) => {
+          const hydratedPhase =
+            (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
+
+          return {
+            ...hydratedPhase,
+            task: [...(hydratedPhase.task ?? [])].sort(
+              (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+            ),
+          };
+        }),
+    );
+
+    return {
+      ...project,
+      media: media ?? null,
+      scope,
+    };
+  }
+
+  async updateProjectDraft(
+    userId: string,
+    projectId: string,
+    dto: UpsertProjectDraftDto,
+  ): Promise<Project> {
+    await this.ensureProjectOwnership(projectId, userId);
+
+    const payload: Partial<Project> = {};
+
+    if (dto.title !== undefined) {
+      payload.title = dto.title;
+      payload.slug = dto.title ? slugify(dto.title) : null;
+    }
+    if (dto.subtitle !== undefined) payload.subtitle = dto.subtitle;
+    if (dto.shortDescription !== undefined) {
+      payload.shortDescription = dto.shortDescription;
+    }
+    if (dto.fullDescription !== undefined) {
+      payload.fullDescription = dto.fullDescription;
+    }
+    if (dto.budget !== undefined) payload.budget = dto.budget;
+    if (dto.initialTeamBudget !== undefined) {
+      payload.initialTeamBudget = dto.initialTeamBudget;
+    }
+    if (dto.durationMonths !== undefined) {
+      payload.durationMonths = dto.durationMonths;
+    }
+    if (dto.location !== undefined) payload.location = dto.location;
+    if (dto.timezone !== undefined) payload.timezone = dto.timezone;
+    if (dto.categories !== undefined) payload.categories = dto.categories;
+    if (dto.subCategories !== undefined) {
+      payload.subCategories = dto.subCategories;
+    }
+    if (dto.categorySelections !== undefined) {
+      payload.categorySelections = dto.categorySelections;
+    }
+    if (dto.industries !== undefined || dto.industry !== undefined) {
+      payload.industries = dto.industries ?? dto.industry ?? [];
+    }
+    if (dto.tags !== undefined) payload.tags = dto.tags;
+    if (dto.skills !== undefined) payload.skills = dto.skills;
+    if (dto.listingType !== undefined) payload.listingType = dto.listingType;
+
+    const updated = await this.projectRepository.update(projectId, payload);
+    if (!updated) {
+      throw new NotFoundException('Project not found');
+    }
+
+    return updated;
+  }
+
+  async getProjectDraftBySlug(userId: string, slug: string): Promise<any> {
+    const project = await this.projectRepository.findBySlug(slug, userId);
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    const media = await this.mediaRepository.find({ projectId: project.id });
+    const phases = await this.phaseRepository.findAll({
+      filterOptions: { projectId: project.id },
+    });
+
+    const scope = await Promise.all(
+      phases
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map(async (phase) => {
+          const hydratedPhase =
+            (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
+          return {
+            ...hydratedPhase,
+            task: [...(hydratedPhase.task ?? [])].sort(
+              (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+            ),
+          };
+        }),
+    );
+
+    return {
+      ...project,
+      media: media ?? null,
+      scope,
+    };
+  }
+
+  async getMyProjects(userId: string): Promise<Project[]> {
+    return this.projectRepository.findAll({
+      filterOptions: {
+        userId,
+      },
+    });
+  }
+
+  async replaceProjectScope(
+    userId: string,
+    projectId: string,
+    dto: UpsertProjectScopeDto,
+  ): Promise<{ scope: Phase[] }> {
+    await this.ensureProjectOwnership(projectId, userId);
+
+    const existingPhases = await this.phaseRepository.findAll({
+      filterOptions: { projectId },
+    });
+
+    for (const phase of existingPhases) {
+      const hydratedPhase =
+        (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
+
+      for (const task of hydratedPhase.task ?? []) {
+        await this.taskRepository.softDelete(task.id);
+      }
+
+      await this.phaseRepository.softDelete(phase.id);
+    }
+
+    const scope: Phase[] = [];
+
+    for (const phaseDto of dto.scope ?? []) {
+      const phase = await this.phaseRepository.create({
+        name: phaseDto.name,
+        stageName: phaseDto.stageName,
+        startDay: phaseDto.startDay,
+        endDay: phaseDto.endDay,
+        order: phaseDto.order,
+        projectId,
+      });
+
+      for (const taskDto of phaseDto.tasks ?? []) {
+        await this.taskRepository.create({
+          taskName: taskDto.taskName,
+          role: taskDto.role,
+          description: taskDto.description,
+          location: taskDto.location,
+          experience: taskDto.experience,
+          experienceLevel: taskDto.experienceLevel,
+          duration: taskDto.duration,
+          estimatedHours: taskDto.estimatedHours,
+          phaseId: phase.id,
+        });
+      }
+
+      const phaseWithTasks =
+        (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
+      scope.push(phaseWithTasks);
+    }
+
+    // Auto-derive deliverables from the new scope
+    try {
+      const project = await this.projectRepository.findOne({ id: projectId });
+      const projectContext = {
+        projectType: project?.categories?.[0] ?? null,
+        projectDescription: project?.shortDescription || project?.fullDescription || null,
+      };
+
+      const adapterInput: ScopePhaseInput[] = scope.map((phase, index) => ({
+        phaseName: phase.name || phase.stageName || `Phase ${index + 1}`,
+        order: phase.order ?? index,
+        tasks: (phase.task ?? []).map((t) => ({
+          title: t.taskName,
+          roleName: t.role,
+          description: t.description ?? undefined,
+        })),
+      }));
+
+      const deliverables = await this.deliverablesAdapter.deriveDeliverables(adapterInput, projectContext);
+      await this.projectRepository.update(projectId, { deliverables });
+    } catch (err) {
+      this.logger.warn(`Failed to derive deliverables for project ${projectId}: ${(err as Error).message}`);
+    }
+
+    return { scope };
+  }
+
   async publishExistingProject(
     userId: string,
     projectId: string,
@@ -333,6 +588,15 @@ export class PublishService {
         throw new BadRequestException(
           'Featured image is required before publishing.',
         );
+      }
+
+      if (this.shouldSkipModeration) {
+        this.logger.warn(
+          `Skipping content moderation for project ${project.id} (SKIP_CONTENT_MODERATION=true)`,
+        );
+        return await this.applyModerationDecision(project.id!, {
+          status: 'approved',
+        });
       }
 
       const moderationInput = this.toModerationInput({
@@ -386,6 +650,7 @@ export class PublishService {
           await this.taskRepository.create({
             taskName: task.taskName,
             role: task.role,
+            description: task.description,
             location: task.location,
             experience: task.experience,
             experienceLevel: task.experienceLevel,
@@ -448,6 +713,7 @@ export class PublishService {
         await this.taskRepository.create({
           taskName: task.taskName,
           role: task.role,
+          description: task.description,
           location: task.location,
           experience: task.experience,
           experienceLevel: task.experienceLevel,
@@ -514,6 +780,23 @@ export class PublishService {
     }
   }
 
+  async updateMediaGallery(
+    userId: string,
+    projectId: string,
+    additionalImages: string[],
+  ): Promise<Media | null> {
+    const project = await this.projectRepository.find({ id: projectId });
+    if (!project || project.userId !== userId) {
+      throw new NotFoundException('Project not found');
+    }
+    const existingMedia = await this.mediaRepository.find({ projectId });
+    if (!existingMedia) {
+      // Create a new media record with just additionalImages
+      return this.mediaRepository.create({ projectId, additionalImages, featuredImage: '' } as any);
+    }
+    return this.mediaRepository.update(existingMedia.id, { additionalImages });
+  }
+
   async createProjectOfMedia(
     userId: string,
     files: {
@@ -532,25 +815,31 @@ export class PublishService {
         throw new BadRequestException('You can upload a maximum of 8 images.');
       }
 
-      const featuredImageModeration =
-        await this.projectModerationService.moderateUploadedImage(
-          dto.projectId,
-          files.featuredImage,
-        );
+      if (!this.shouldSkipModeration) {
+        const featuredImageModeration =
+          await this.projectModerationService.moderateUploadedImage(
+            dto.projectId,
+            files.featuredImage,
+          );
 
-      if (featuredImageModeration.status !== 'approved') {
-        const reason =
-          featuredImageModeration.reason ??
-          'Featured image failed moderation.';
+        if (featuredImageModeration.status !== 'approved') {
+          const reason =
+            featuredImageModeration.reason ??
+            'Featured image failed moderation.';
 
-        if (featuredImageModeration.status === 'pending_review') {
+          if (featuredImageModeration.status === 'pending_review') {
+            throw new BadRequestException(
+              `Featured image is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
+            );
+          }
+
           throw new BadRequestException(
-            `Featured image is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
+            `Project rejected: image violates moderation policy. ${reason}`.trim(),
           );
         }
-
-        throw new BadRequestException(
-          `Project rejected: image violates moderation policy. ${reason}`.trim(),
+      } else {
+        this.logger.warn(
+          `Skipping image moderation for project ${dto.projectId} (SKIP_CONTENT_MODERATION=true)`,
         );
       }
 
@@ -564,22 +853,24 @@ export class PublishService {
 
       if (uploadedFeaturedVideo) {
         moderationContext = 'video';
-        const videoModeration =
-          await this.projectModerationService.moderateUploadedVideo(
-            dto.projectId,
-            uploadedFeaturedVideo,
-          );
+        if (!this.shouldSkipModeration) {
+          const videoModeration =
+            await this.projectModerationService.moderateUploadedVideo(
+              dto.projectId,
+              uploadedFeaturedVideo,
+            );
 
-        if (videoModeration.status !== 'approved') {
-          const reason = videoModeration.reason ?? 'Featured video failed moderation.';
-          if (videoModeration.status === 'pending_review') {
+          if (videoModeration.status !== 'approved') {
+            const reason = videoModeration.reason ?? 'Featured video failed moderation.';
+            if (videoModeration.status === 'pending_review') {
+              throw new BadRequestException(
+                `Featured video is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
+              );
+            }
             throw new BadRequestException(
-              `Featured video is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
+              `Project rejected: video violates moderation policy. ${reason}`.trim(),
             );
           }
-          throw new BadRequestException(
-            `Project rejected: video violates moderation policy. ${reason}`.trim(),
-          );
         }
 
         const featuredVideoUpload =
@@ -590,22 +881,24 @@ export class PublishService {
         persistedVideoUrl = featuredVideoUpload.url;
       } else if (resolvedVideoUrl) {
         moderationContext = 'video';
-        const videoModeration =
-          await this.projectModerationService.moderateVideoUrl(
-            dto.projectId,
-            resolvedVideoUrl,
-          );
+        if (!this.shouldSkipModeration) {
+          const videoModeration =
+            await this.projectModerationService.moderateVideoUrl(
+              dto.projectId,
+              resolvedVideoUrl,
+            );
 
-        if (videoModeration.status !== 'approved') {
-          const reason = videoModeration.reason ?? 'Featured video failed moderation.';
-          if (videoModeration.status === 'pending_review') {
+          if (videoModeration.status !== 'approved') {
+            const reason = videoModeration.reason ?? 'Featured video failed moderation.';
+            if (videoModeration.status === 'pending_review') {
+              throw new BadRequestException(
+                `Featured video is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
+              );
+            }
             throw new BadRequestException(
-              `Featured video is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
+              `Project rejected: video violates moderation policy. ${reason}`.trim(),
             );
           }
-          throw new BadRequestException(
-            `Project rejected: video violates moderation policy. ${reason}`.trim(),
-          );
         }
 
         persistedVideoUrl = resolvedVideoUrl;
@@ -622,12 +915,22 @@ export class PublishService {
         ),
       );
 
-      const media = await this.mediaRepository.create({
+      // Upsert: update existing media record if one exists, otherwise create
+      const existingMedia = await this.mediaRepository.find({ projectId: dto.projectId });
+      let media: Media;
+      const mediaPayload = {
         featuredImage: featuredImageUpload.url,
         additionalImages: additionalImageUploads.map((image) => image.url),
         featuredVideo: persistedVideoUrl ?? undefined,
         projectId: dto.projectId,
-      });
+      };
+      if (existingMedia?.id) {
+        const updated = await this.mediaRepository.update(existingMedia.id, mediaPayload);
+        if (!updated) throw new InternalServerErrorException('Failed to update media');
+        media = updated;
+      } else {
+        media = await this.mediaRepository.create(mediaPayload);
+      }
 
       return media;
     } catch (error) {

@@ -14,7 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -27,6 +27,8 @@ import { CreateProjectTaskDto } from './dto/create-task.dto';
 import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategory.dto';
 import { UpdatePhaseDto } from './dto/update-phase.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
+import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
 import { Request } from 'express';
 
 type AuthenticatedRequest = Request & {
@@ -50,6 +52,94 @@ export class PublishController {
   ) {
     try {
       return await this.publishService.createNewProject(req.user.sub, dto);
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Post('project/draft')
+  async createProjectDraft(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: UpsertProjectDraftDto,
+  ) {
+    try {
+      return await this.publishService.createProjectDraft(req.user.sub, dto);
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Get('project/slug/:slug')
+  async getProjectDraftBySlug(
+    @Req() req: AuthenticatedRequest,
+    @Param('slug') slug: string,
+  ) {
+    try {
+      return await this.publishService.getProjectDraftBySlug(
+        req.user.sub,
+        slug,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Get('project/:projectId')
+  async getProjectDraft(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.getProjectDraft(req.user.sub, projectId);
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Put('project/:projectId')
+  async updateProjectDraft(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() dto: UpsertProjectDraftDto,
+  ) {
+    try {
+      return await this.publishService.updateProjectDraft(
+        req.user.sub,
+        projectId,
+        dto,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Get('projects/mine')
+  async getMyProjects(@Req() req: AuthenticatedRequest) {
+    try {
+      return await this.publishService.getMyProjects(req.user.sub);
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Put('project/:projectId/scope')
+  async replaceProjectScope(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() dto: UpsertProjectScopeDto,
+  ) {
+    try {
+      return await this.publishService.replaceProjectScope(
+        req.user.sub,
+        projectId,
+        dto,
+      );
     } catch (error) {
       console.log('err', error);
       throw error;
@@ -137,6 +227,19 @@ export class PublishController {
         featuredVideo: featuredVideoFile,
       },
       dto,
+    );
+  }
+
+  @Put('media/:projectId/gallery')
+  async updateGalleryImages(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() body: { additionalImages: string[] },
+  ) {
+    return this.publishService.updateMediaGallery(
+      req.user.sub,
+      projectId,
+      body.additionalImages ?? [],
     );
   }
 

@@ -2,6 +2,8 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 import { ProjectSyncDto } from "./dto/project-sync.dto";
+import { Project } from "../projects/entities/project.entity";
+import { ListingStatus } from "../shared/enums/listing.enum";
 import {
   DELIVERABLES_ADAPTER,
   DeliverablesAdapter,
@@ -25,6 +27,119 @@ import { SKILLS_ADAPTER, SkillsAdapter } from "./skills/skills.adapter";
 export class ProjectSyncService {
   private readonly logger = new Logger(ProjectSyncService.name);
 
+  private hourlyRateForTask(input: {
+    roleName: string;
+    experienceLevel: string;
+    location?: string;
+  }): number {
+    const role = (input.roleName || "").toLowerCase();
+    const exp = (input.experienceLevel || "Medior").toLowerCase();
+    const loc = (input.location || "").toLowerCase();
+
+    // Base rates (USD/hr) — heuristic defaults used when no assignee rate exists.
+    // Mirrors docs guidance: “use a default rate based on job title and region.”
+    let base = 85;
+    if (role.includes("architect")) base = 140;
+    else if (role.includes("machine learning") || role.includes("data scientist"))
+      base = 135;
+    else if (role.includes("devops") || role.includes("site reliability"))
+      base = 120;
+    else if (role.includes("security")) base = 125;
+    else if (role.includes("backend")) base = 105;
+    else if (role.includes("full stack") || role.includes("fullstack"))
+      base = 110;
+    else if (role.includes("frontend")) base = 100;
+    else if (role.includes("mobile")) base = 105;
+    else if (role.includes("qa")) base = 70;
+    else if (role.includes("ui/ux") || role.includes("designer") || role.includes("design"))
+      base = 90;
+    else if (role.includes("research")) base = 85;
+
+    const expMult =
+      exp === "student"
+        ? 0.5
+        : exp === "junior"
+          ? 0.75
+          : exp === "senior"
+            ? 1.25
+            : exp === "guru"
+              ? 1.5
+              : 1.0; // Medior/default
+
+    // Very rough location multipliers. We can refine once a rates table is introduced.
+    let locMult = 0.85;
+    if (
+      loc.includes("united states") ||
+      loc.includes("canada") ||
+      loc.includes("united kingdom") ||
+      loc.includes("australia")
+    ) {
+      locMult = 1.0;
+    } else if (
+      loc.includes("germany") ||
+      loc.includes("netherlands") ||
+      loc.includes("france") ||
+      loc.includes("sweden") ||
+      loc.includes("norway") ||
+      loc.includes("denmark")
+    ) {
+      locMult = 0.95;
+    } else if (
+      loc.includes("poland") ||
+      loc.includes("romania") ||
+      loc.includes("ukraine") ||
+      loc.includes("bulgaria")
+    ) {
+      locMult = 0.7;
+    } else if (
+      loc.includes("india") ||
+      loc.includes("pakistan") ||
+      loc.includes("bangladesh") ||
+      loc.includes("sri lanka")
+    ) {
+      locMult = 0.5;
+    } else if (
+      loc.includes("brazil") ||
+      loc.includes("mexico") ||
+      loc.includes("argentina") ||
+      loc.includes("colombia")
+    ) {
+      locMult = 0.65;
+    }
+
+    return Math.round(base * expMult * locMult);
+  }
+
+  private budgetFromScope(scope: Array<{
+    phaseName: string;
+    order: number;
+    tasks: Array<{
+      title: string;
+      roleName: string;
+      location?: string;
+      experienceLevel: string;
+      estimatedHours: number;
+    }>;
+  }>): { budget: number | null; totalHours: number } {
+    const tasks = scope.flatMap((p) => p.tasks);
+    const totalHours = tasks.reduce(
+      (acc, t) => acc + (Number.isFinite(t.estimatedHours) ? Number(t.estimatedHours) : 0),
+      0,
+    );
+    if (tasks.length === 0 || totalHours <= 0) return { budget: null, totalHours: 0 };
+    const totalCost = tasks.reduce((acc, t) => {
+      const hours = Number.isFinite(t.estimatedHours) ? Number(t.estimatedHours) : 0;
+      if (hours <= 0) return acc;
+      const rate = this.hourlyRateForTask({
+        roleName: t.roleName,
+        experienceLevel: t.experienceLevel,
+        location: t.location,
+      });
+      return acc + hours * rate;
+    }, 0);
+    return { budget: Math.round(totalCost * 100) / 100, totalHours };
+  }
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     @Inject(DELIVERABLES_ADAPTER)
@@ -39,194 +154,68 @@ export class ProjectSyncService {
     const payloadId = String(dto.id);
     const row = await this.toRow(dto);
 
-    const existing = await this.dataSource.query(
-      `SELECT id FROM public.projects WHERE "payloadId" = $1 LIMIT 1`,
-      [payloadId],
-    );
+    // Local dev uses a TypeORM-managed `projects` table (entity: Project).
+    // Keep the CMS sync path aligned with that table so changes are visible
+    // via `/v1/projects` immediately without requiring a separate SQL schema.
+    const repo = this.dataSource.getRepository(Project);
+    const existing = await repo.findOne({ where: { payloadId } });
+    const project = existing ?? repo.create({ payloadId });
 
-    if (existing.length === 0) {
-      const result = await this.dataSource.query(
-        `INSERT INTO public.projects (
-           "payloadId", title, slug, description, "shortDescription",
-           category, categories, subcategories, tags, skills,
-           "programmingLanguages", "developmentTech",
-           "mediaUrls", "videoUrl", deliverables, faqs,
-           "estimatedHours", budget, duration, featured, status,
-           "pricingModel", "priceViewMode", "priceMax", "projectType",
-           "klarnaEnabled", "recentQuestions", "skillsAndTools",
-           "chatEnabled", "reportButtonEnabled", "shareButtonEnabled", "helpButtonEnabled",
-           "scope", industries, "relatedProjectIds",
-           "createdBy", "createdAt", "updatedAt"
-         ) VALUES (
-           $1, $2, $3, $4, $5,
-           $6, $7::text[], $8::text[], $9::text[], $10::text[],
-           $11::text[], $12::text[],
-           $13::text[], $14, $15::jsonb, $16::jsonb,
-           $17, $18, $19, $20, $21::listing_status_enum,
-           $22, $23, $24, $25,
-           $26, $27::jsonb, $28::jsonb,
-           $29, $30, $31, $32,
-           $33::jsonb, $34::text[], $35::text[],
-           $36,
-           COALESCE($37::timestamptz, NOW()),
-           NOW()
-         ) RETURNING id`,
-        [
-          payloadId,
-          row.title,
-          row.slug,
-          row.description,
-          row.shortDescription,
-          row.category,
-          row.categories,
-          row.subcategories,
-          row.tags,
-          row.skills,
-          row.programmingLanguages,
-          row.developmentTech,
-          row.mediaUrls,
-          row.videoUrl,
-          row.deliverables,
-          row.faqs,
-          row.estimatedHours,
-          row.budget,
-          row.duration,
-          row.featured,
-          row.status,
-          row.pricingModel,
-          row.priceViewMode,
-          row.priceMax,
-          row.projectType,
-          row.klarnaEnabled,
-          row.recentQuestions,
-          row.skillsAndTools,
-          row.chatEnabled,
-          row.reportButtonEnabled,
-          row.shareButtonEnabled,
-          row.helpButtonEnabled,
-          row.scope,
-          row.industries,
-          row.relatedProjectIds,
-          // Owner identity — prefer the CMS-authored `ownerId` so
-          // `projectHistoryRatings` (§14.14) can group by the same
-          // owner across projects. Fall back to `cms-sync` for legacy
-          // documents that were synced before the field existed.
-          dto.ownerId?.trim() || "cms-sync",
-          dto.datePublished ?? null,
-        ],
-      );
-      const id = result[0]?.id as string;
-      this.logger.log(
-        `Project created from CMS: id=${id} payloadId=${payloadId} slug=${row.slug}`,
-      );
-      return { id, payloadId, action: "created" };
+    project.title = row.title;
+    project.slug = row.slug ?? undefined;
+    project.description = row.description;
+    project.shortDescription = row.shortDescription ?? undefined;
+    project.category = row.category ?? null;
+    project.categories = row.categories ?? [];
+    project.subcategories = row.subcategories ?? [];
+    project.tags = row.tags ?? [];
+    project.skills = row.skills ?? [];
+    project.programmingLanguages = row.programmingLanguages ?? [];
+    project.developmentTech = row.developmentTech ?? [];
+    project.mediaUrls = row.mediaUrls ?? [];
+    project.videoUrl = row.videoUrl ?? undefined;
+    project.deliverables = row.deliverables;
+    project.faqs = row.faqs;
+    project.scope = row.scope;
+    project.estimatedHours = row.estimatedHours ?? undefined;
+    project.budget = row.budget ?? undefined;
+    project.duration = row.duration ?? undefined;
+    project.recentQuestions = row.recentQuestions ?? [];
+    project.relatedProjectIds = row.relatedProjectIds ?? [];
+    project.chatEnabled = row.chatEnabled ?? false;
+    project.reportButtonEnabled = row.reportButtonEnabled ?? true;
+    project.shareButtonEnabled = row.shareButtonEnabled ?? true;
+    project.helpButtonEnabled = row.helpButtonEnabled ?? false;
+    project.featured = row.featured ?? false;
+    project.status = row.status as ListingStatus;
+    project.industry = row.industries ?? [];
+    project.createdBy =
+      dto.ownerId?.trim() || project.createdBy || "cms-sync";
+
+    if (!existing && dto.datePublished) {
+      const publishedAt = new Date(dto.datePublished);
+      if (!Number.isNaN(publishedAt.getTime())) {
+        project.createdAt = publishedAt;
+      }
     }
 
-    const id = existing[0].id as string;
-    await this.dataSource.query(
-      `UPDATE public.projects SET
-         title = $2,
-         slug = $3,
-         description = $4,
-         "shortDescription" = $5,
-         category = $6,
-         categories = $7::text[],
-         subcategories = $8::text[],
-         tags = $9::text[],
-         skills = $10::text[],
-         "programmingLanguages" = $11::text[],
-         "developmentTech" = $12::text[],
-         "mediaUrls" = $13::text[],
-         "videoUrl" = $14,
-         deliverables = $15::jsonb,
-         faqs = $16::jsonb,
-         "estimatedHours" = $17,
-         budget = $18,
-         duration = $19,
-         featured = $20,
-         status = $21::listing_status_enum,
-         "pricingModel" = $22,
-         "priceViewMode" = $23,
-         "priceMax" = $24,
-         "projectType" = $25,
-         "klarnaEnabled" = $26,
-         "recentQuestions" = $27::jsonb,
-         "skillsAndTools" = $28::jsonb,
-         "chatEnabled" = $29,
-         "reportButtonEnabled" = $30,
-         "shareButtonEnabled" = $31,
-         "helpButtonEnabled" = $32,
-         "scope" = $33::jsonb,
-         industries = $34::text[],
-         "relatedProjectIds" = $35::text[],
-         -- Backfill ownership when the CMS now supplies an ownerId and
-         -- the row still has the legacy 'cms-sync' placeholder. Never
-         -- overwrite a real owner once it's set, so §14.14 history
-         -- doesn't churn when an unrelated field is edited.
-         "createdBy" = CASE
-           WHEN $36::text IS NOT NULL AND $36::text <> '' AND "createdBy" = 'cms-sync'
-             THEN $36::text
-           ELSE "createdBy"
-         END,
-         "updatedAt" = NOW()
-       WHERE id = $1`,
-      [
-        id,
-        row.title,
-        row.slug,
-        row.description,
-        row.shortDescription,
-        row.category,
-        row.categories,
-        row.subcategories,
-        row.tags,
-        row.skills,
-        row.programmingLanguages,
-        row.developmentTech,
-        row.mediaUrls,
-        row.videoUrl,
-        row.deliverables,
-        row.faqs,
-        row.estimatedHours,
-        row.budget,
-        row.duration,
-        row.featured,
-        row.status,
-        row.pricingModel,
-        row.priceViewMode,
-        row.priceMax,
-        row.projectType,
-        row.klarnaEnabled,
-        row.recentQuestions,
-        row.skillsAndTools,
-        row.chatEnabled,
-        row.reportButtonEnabled,
-        row.shareButtonEnabled,
-        row.helpButtonEnabled,
-        row.scope,
-        row.industries,
-        row.relatedProjectIds,
-        dto.ownerId?.trim() || null,
-      ],
-    );
+    const saved = await repo.save(project);
+    const action: "created" | "updated" = existing ? "updated" : "created";
+
     this.logger.log(
-      `Project updated from CMS: id=${id} payloadId=${payloadId} slug=${row.slug}`,
+      `Project ${action} from CMS: id=${saved.id} payloadId=${payloadId} slug=${row.slug}`,
     );
-    return { id, payloadId, action: "updated" };
+    return { id: saved.id, payloadId, action };
   }
 
   async deleteByPayloadId(payloadId: string): Promise<{ deleted: boolean }> {
-    const result = await this.dataSource.query(
-      `UPDATE public.projects
-          SET status = 'archived'::listing_status_enum, "updatedAt" = NOW()
-        WHERE "payloadId" = $1`,
-      [payloadId],
-    );
-    const affected = Array.isArray(result) ? result[1] ?? 0 : 0;
-    this.logger.log(
-      `Project soft-deleted from CMS: payloadId=${payloadId} affected=${affected}`,
-    );
-    return { deleted: affected > 0 };
+    const repo = this.dataSource.getRepository(Project);
+    const existing = await repo.findOne({ where: { payloadId } });
+    if (!existing) return { deleted: false };
+    existing.status = "archived" as any;
+    await repo.save(existing);
+    this.logger.log(`Project soft-deleted from CMS: payloadId=${payloadId}`);
+    return { deleted: true };
   }
 
   // ── Internal mapping ─────────────────────────────────────────────────
@@ -313,20 +302,22 @@ export class ProjectSyncService {
     // author-declared timelineValue/Unit pair only when scope is empty.
     const duration =
       dto.projectDurationLabel ??
-      (dto.timelineValue && dto.timelineUnit
-        ? `${dto.timelineValue} ${dto.timelineUnit}`
-        : null);
-    const budget = dto.priceRangeMin ?? null;
-    const priceMax = dto.priceRangeMax ?? null;
+      null;
+    // Budget — prefer CMS computed total (startingPriceTotal), otherwise derive from scope.
+    const scopeBudget = this.budgetFromScope(scope);
+    const budget = dto.startingPriceTotal ?? scopeBudget.budget ?? null;
 
     const recentQuestions = (dto.recentQuestions ?? [])
-      .map((q) => q.question)
-      .filter(Boolean);
-
-    const skillsAndTools = (dto.skillsAndTools ?? []).map((s) => ({
-      title: s.title,
-      iconUrl: this.resolveMediaUrl(s.icon),
-    }));
+      .map((q) => ({
+        question: q.question,
+        answer:
+          typeof (q as any).answer === "string"
+            ? (q as any).answer
+            : (q as any).answer
+              ? this.lexicalToHtml((q as any).answer)
+              : null,
+      }))
+      .filter((q) => typeof q.question === "string" && q.question.length > 0);
 
     const status = this.resolveStatus(dto);
     const industries = (dto.industries ?? [])
@@ -360,21 +351,16 @@ export class ProjectSyncService {
       industries,
       mediaUrls,
       videoUrl,
-      deliverables: JSON.stringify(deliverables),
-      scope: JSON.stringify(scope),
-      faqs: JSON.stringify(faqs),
-      estimatedHours: dto.totalEstimatedHours ?? null,
+      deliverables,
+      scope,
+      faqs,
+      estimatedHours:
+        scopeBudget.totalHours > 0 ? Math.round(scopeBudget.totalHours) : null,
       budget,
       duration,
       featured: dto.featured ?? false,
       status,
-      pricingModel: dto.pricingModel ?? null,
-      priceViewMode: dto.priceViewMode ?? null,
-      priceMax,
-      projectType: dto.projectType ?? null,
-      klarnaEnabled: dto.klarnaPaymentEnabled ?? false,
-      recentQuestions: JSON.stringify(recentQuestions),
-      skillsAndTools: JSON.stringify(skillsAndTools),
+      recentQuestions,
       relatedProjectIds,
       chatEnabled: dto.chatEnabled ?? false,
       reportButtonEnabled: dto.reportButtonEnabled ?? true,
@@ -452,12 +438,35 @@ export class ProjectSyncService {
           : typeof (t as any).experience_level === "string"
           ? ((t as any).experience_level as string)
           : "Medior";
-      const estimatedHours =
-        typeof t.estimatedHours === "number"
-          ? t.estimatedHours
-          : typeof (t as any).estimated_hours === "number"
-          ? ((t as any).estimated_hours as number)
-          : 0;
+      const parseFinite = (v: unknown): number | null => {
+        if (typeof v === "number" && Number.isFinite(v)) return v;
+        if (typeof v === "string" && v.trim()) {
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        }
+        return null;
+      };
+
+      let estimatedHours =
+        parseFinite(t.estimatedHours) ??
+        parseFinite((t as any).estimated_hours) ??
+        0;
+
+      // CMS scope authoring stores duration as {durationValue, durationType}
+      // and computes totalEstimatedHours in a hook; during sync we still need
+      // per-task hours for pricing and downstream adapters.
+      if (!Number.isFinite(estimatedHours) || estimatedHours <= 0) {
+        const dv = Number((t as any).durationValue);
+        const dt =
+          typeof (t as any).durationType === "string"
+            ? String((t as any).durationType)
+            : "";
+        if (Number.isFinite(dv) && dv > 0 && dt) {
+          if (dt === "hours") estimatedHours = dv;
+          else if (dt === "days") estimatedHours = dv * 24;
+          else estimatedHours = dv * 168; // weeks (default)
+        }
+      }
       if (!title || !roleName) return null;
       const assigneeEmail =
         typeof t.assigneeEmail === "string" && t.assigneeEmail.trim()
@@ -531,6 +540,22 @@ export class ProjectSyncService {
         (p): p is { phaseLabel: string; phaseName: string; items: string[] } =>
           !!p,
       );
+  }
+
+  async deriveDeliverablesFromScope(scope: unknown) {
+    const phases = this.scopePhases(scope);
+    const adapterInput = phases.map((p) => ({
+      phaseName: p.phaseName,
+      order: p.order,
+      tasks: p.tasks.map((t) => ({
+        title: t.title,
+        roleName: t.roleName,
+        // CMS scope schema doesn't currently have a description field, but
+        // accept it for forward-compat / legacy payloads.
+        description: (t as any).description,
+      })),
+    }));
+    return await this.deliverablesAdapter.deriveDeliverables(adapterInput);
   }
 
   /**

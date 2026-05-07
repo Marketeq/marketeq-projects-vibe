@@ -39,6 +39,7 @@ export interface Conversation {
   lastReadAt: string | null
   group?: GroupInfo // only if isGroup is true
   messages?: Message[]
+  participantName?: string
   participantUsername?: string
   participantAvatarUrl?: string
   lastMessagePreview?: string

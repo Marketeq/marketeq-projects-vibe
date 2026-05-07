@@ -16,6 +16,7 @@ import {
   type ProjectStaticContent,
   type ProjectStaticIcon,
 } from "@/lib/project-details/project-static-content-from-api"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -476,6 +477,12 @@ const renderProjectStaticIcon = (
   }
 }
 
+const Shimmer = ({ className }: { className?: string }) => (
+  <div className={cn("relative bg-gray-100 rounded overflow-hidden", className)}>
+    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+  </div>
+)
+
 export default function ProjectDetails() {
   const params = useParams()
   const router = useRouter()
@@ -522,7 +529,7 @@ export default function ProjectDetails() {
 
         // Try fetching from listings-service via gateway
         const apiBase =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+          getPublicApiUrl() || "http://localhost:4000"
         let res: Response | null = null
         let slug = rawSlug
         for (const candidate of candidates) {
@@ -562,6 +569,17 @@ export default function ProjectDetails() {
           ...data,
           role: data.category || "Software Development",
           summary: data.shortDescription || data.description,
+          // UI mapping: reuse existing arrays so the "Project Details" panel
+          // stays populated even when the backend doesn't provide separate
+          // programmingLanguages/developmentTech lists.
+          programmingLanguages:
+            Array.isArray(data.skills) && data.skills.length > 0
+              ? data.skills
+              : data.programmingLanguages,
+          developmentTech:
+            Array.isArray(data.industries) && data.industries.length > 0
+              ? data.industries
+              : data.developmentTech,
           rating: 4.9,
           reviewCount: 14,
           listingType: "project",
@@ -588,51 +606,64 @@ export default function ProjectDetails() {
   if (loading) {
     return (
       <div className="min-h-screen bg-white px-[100px] py-10">
-        <div className="max-w-[1240px] animate-pulse">
+        <div className="max-w-[1240px]">
           {/* breadcrumb */}
           <div className="flex items-center gap-x-3">
-            <div className="h-3 w-3 rounded-full bg-gray-200" />
-            <div className="h-3 w-16 rounded bg-gray-200" />
-            <div className="h-3 w-24 rounded bg-gray-200" />
-            <div className="h-3 w-32 rounded bg-gray-200" />
+            <Shimmer className="h-3 w-3 rounded-full" />
+            <Shimmer className="h-3 w-16" />
+            <Shimmer className="h-3 w-24" />
+            <Shimmer className="h-3 w-32" />
           </div>
           <div className="flex items-start gap-x-8 mt-8">
             <div className="max-w-[818px] flex-auto space-y-6">
-              {/* title + meta */}
+              {/* title + categories */}
               <div className="space-y-3">
-                <div className="h-8 w-2/3 rounded bg-gray-200" />
-                <div className="h-4 w-1/3 rounded bg-gray-200" />
+                <Shimmer className="h-8 w-2/3" />
+                <div className="flex items-center gap-x-3">
+                  <Shimmer className="h-4 w-24" />
+                  <Shimmer className="h-4 w-28" />
+                </div>
               </div>
               {/* hero media */}
-              <div className="h-[460px] w-full rounded-lg bg-gray-200" />
+              <Shimmer className="h-[460px] w-full rounded-lg" />
               {/* tabs */}
               <div className="flex gap-x-4">
-                {["Details", "Phases", "Reviews", "Q&A"].map((t) => (
-                  <div key={t} className="h-8 w-20 rounded-full bg-gray-200" />
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Shimmer key={i} className="h-8 w-20 rounded-full" />
                 ))}
               </div>
               {/* body paragraphs */}
               <div className="space-y-3">
-                <div className="h-4 w-full rounded bg-gray-200" />
-                <div className="h-4 w-11/12 rounded bg-gray-200" />
-                <div className="h-4 w-10/12 rounded bg-gray-200" />
-                <div className="h-4 w-9/12 rounded bg-gray-200" />
+                <Shimmer className="h-4 w-full" />
+                <Shimmer className="h-4 w-11/12" />
+                <Shimmer className="h-4 w-10/12" />
+                <Shimmer className="h-4 w-9/12" />
               </div>
+              {/* deliverables section */}
+              <div className="space-y-4">
+                <Shimmer className="h-6 w-40" />
+                <div className="grid grid-cols-3 gap-4">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <Shimmer key={i} className="h-10 rounded-lg" />
+                  ))}
+                </div>
+              </div>
+              {/* more paragraphs */}
               <div className="space-y-3">
-                <div className="h-4 w-full rounded bg-gray-200" />
-                <div className="h-4 w-11/12 rounded bg-gray-200" />
-                <div className="h-4 w-8/12 rounded bg-gray-200" />
+                <Shimmer className="h-4 w-full" />
+                <Shimmer className="h-4 w-11/12" />
+                <Shimmer className="h-4 w-8/12" />
               </div>
             </div>
             {/* sidebar card */}
             <div className="w-[360px] shrink-0 rounded-lg border border-gray-200 p-6 space-y-4">
-              <div className="h-6 w-32 rounded bg-gray-200" />
-              <div className="h-10 w-full rounded bg-gray-200" />
-              <div className="h-10 w-full rounded bg-gray-200" />
-              <div className="h-10 w-full rounded bg-gray-200" />
+              <Shimmer className="h-6 w-32" />
+              <Shimmer className="h-10 w-full" />
+              <Shimmer className="h-10 w-full" />
+              <Shimmer className="h-10 w-full" />
               <div className="h-px w-full bg-gray-200" />
-              <div className="h-10 w-full rounded bg-gray-200" />
-              <div className="h-10 w-full rounded bg-gray-200" />
+              <Shimmer className="h-10 w-full" />
+              <Shimmer className="h-10 w-full" />
             </div>
           </div>
         </div>
@@ -1207,7 +1238,7 @@ export default function ProjectDetails() {
                               {project.programmingLanguages?.length > 0 && (
                                 <div className="space-y-3">
                                   <h3 className="text-sm leading-none font-medium text-dark-blue-400">
-                                    Programming Languages
+                                    Skills
                                   </h3>
                                   <div className="flex items-center flex-wrap gap-1">
                                     {project.programmingLanguages.map(
@@ -1233,7 +1264,7 @@ export default function ProjectDetails() {
                               {project.developmentTech?.length > 0 && (
                                 <div className="space-y-3">
                                   <h3 className="text-sm leading-none font-medium text-dark-blue-400">
-                                    Development Tech
+                                    Industries
                                   </h3>
                                   <div className="flex items-center flex-wrap gap-1">
                                     {project.developmentTech.map(
@@ -1360,8 +1391,7 @@ export default function ProjectDetails() {
                             const visibleSkills = allSkills.slice(0, 5)
                             const extraSkillCount =
                               allSkills.length - visibleSkills.length
-                            const headerLabel =
-                              members.length > 1 ? "Current Team" : "Created By"
+                            const headerLabel = "Current Team"
                             return (
                               <div className="p-6">
                                 <h3 className="text-base leading-none font-semibold text-dark-blue-400">
@@ -1800,9 +1830,15 @@ export default function ProjectDetails() {
 
                             <TabsContent value="FAQs">
                               {!project.faqs || project.faqs.length === 0 ? (
-                                <p className="pt-6 text-sm text-gray-500">
-                                  No FAQs yet for this project.
-                                </p>
+                                <div className="flex flex-col items-center justify-center py-10 text-center">
+                                  <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
+                                    <HelpCircle className="size-5 text-gray-400" />
+                                  </div>
+                                  <h3 className="text-sm font-semibold text-dark-blue-400">No FAQ&apos;s yet</h3>
+                                  <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
+                                    Frequently asked questions will appear here once the project owner adds them.
+                                  </p>
+                                </div>
                               ) : (
                                 <ShowMoreLessRoot>
                                   {({
@@ -1900,9 +1936,15 @@ export default function ProjectDetails() {
                             <TabsContent value="Recently Asked Questions">
                               {!project.recentQuestions ||
                               project.recentQuestions.length === 0 ? (
-                                <p className="pt-6 text-sm text-gray-500">
-                                  No recently asked questions for this project.
-                                </p>
+                                <div className="flex flex-col items-center justify-center py-10 text-center">
+                                  <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
+                                    <HelpCircle className="size-5 text-gray-400" />
+                                  </div>
+                                  <h3 className="text-sm font-semibold text-dark-blue-400">No questions yet</h3>
+                                  <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
+                                    When people ask questions on this listing, they&apos;ll show up here.
+                                  </p>
+                                </div>
                               ) : (
                                 <Accordion
                                   type="single"
@@ -3422,6 +3464,27 @@ export default function ProjectDetails() {
               */}
               {Array.isArray(project.scope) && project.scope.length > 0 ? (
                 (() => {
+                  const locationToFlag = (
+                    location: string | null | undefined
+                  ): string => {
+                    const v = (location || "").trim().toLowerCase()
+                    if (!v) return ""
+                    // Minimal mapping for current seed/demo data + common markets.
+                    if (v === "united states" || v === "usa" || v === "us")
+                      return "🇺🇸"
+                    if (v === "united kingdom" || v === "uk" || v === "u.k.")
+                      return "🇬🇧"
+                    if (v === "brazil") return "🇧🇷"
+                    if (v === "canada") return "🇨🇦"
+                    if (v === "australia") return "🇦🇺"
+                    if (v === "india") return "🇮🇳"
+                    if (v === "germany") return "🇩🇪"
+                    if (v === "france") return "🇫🇷"
+                    if (v === "spain") return "🇪🇸"
+                    if (v === "netherlands") return "🇳🇱"
+                    return ""
+                  }
+
                   type ScopeTask = {
                     title: string
                     roleName: string
@@ -3507,6 +3570,7 @@ export default function ProjectDetails() {
                                   <TableRow className="hover:bg-transparent">
                                     <TableHead>Task</TableHead>
                                     <TableHead>Role</TableHead>
+                                    <TableHead>Location</TableHead>
                                     <TableHead>Experience</TableHead>
                                     <TableHead>Duration</TableHead>
                                   </TableRow>
@@ -3522,9 +3586,24 @@ export default function ProjectDetails() {
                                       <TableCell className="py-4 px-6">
                                         <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
                                           {task.roleName}
-                                          {task.location
-                                            ? ` · ${task.location}`
-                                            : ""}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell className="py-4 px-6">
+                                        <span className="text-sm font-extralight text-dark-blue-400">
+                                          {task.location ? (
+                                            <span className="inline-flex items-center gap-x-2">
+                                              {locationToFlag(task.location) ? (
+                                                <span aria-hidden="true">
+                                                  {locationToFlag(
+                                                    task.location
+                                                  )}
+                                                </span>
+                                              ) : null}
+                                              <span>{task.location}</span>
+                                            </span>
+                                          ) : (
+                                            "-"
+                                          )}
                                         </span>
                                       </TableCell>
                                       <TableCell className="py-4 px-6">
@@ -4371,33 +4450,40 @@ export default function ProjectDetails() {
                         Edit Scope
                       </Button>
                     </DialogClose>
-                    <Button
-                      onClick={() => router.push(`/checkout/${params.slug}`)}
-                    >
+                    <Button onClick={() => router.push(`/checkout/${params.slug}`)}>
                       Continue to Checkout
                     </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
 
-              <div className="flex items-center gap-x-1 mt-6">
-                <span className="text-sm font-medium leading-none text-dark-blue-400">
+              <div className="mt-6 flex items-center gap-x-2">
+                <span className="text-sm font-medium leading-none text-dark-blue-400 whitespace-nowrap">
                   Additional payment plans available with
                 </span>
 
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger className="focus-visible:outline-none text-gray-500">
-                      <Info className="size-[17px]" />
-                    </TooltipTrigger>
+                <div className="flex items-center gap-x-2">
+                  <span
+                    className="inline-flex items-center rounded-[6px] px-2 py-1 text-xs font-bold leading-none text-dark-blue-400"
+                    style={{ backgroundColor: "#FFB3C7" }}
+                  >
+                    Klarna
+                  </span>
 
-                    <TooltipContent className="max-w-[286px]" visual="gray">
-                      Select Klarna at checkout to split your purchase into
-                      smaller payments over time. Klarna makes it easy to buy
-                      now and pay later, with no impact on your credit score.
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger className="focus-visible:outline-none text-gray-500">
+                        <Info className="size-[17px]" />
+                      </TooltipTrigger>
+
+                      <TooltipContent className="max-w-[286px]" visual="gray">
+                        Select Klarna at checkout to split your purchase into
+                        smaller payments over time. Klarna makes it easy to buy
+                        now and pay later, with no impact on your credit score.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
               </div>
             </div>
 

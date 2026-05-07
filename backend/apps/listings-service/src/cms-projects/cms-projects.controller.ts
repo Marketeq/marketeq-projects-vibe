@@ -38,9 +38,8 @@ export class CmsProjectsController {
       `SELECT id, title, slug, "shortDescription", description, category,
               categories, subcategories, skills, tags, "programmingLanguages", "developmentTech",
               "mediaUrls", "videoUrl", deliverables, faqs, scope, industries, "relatedProjectIds",
-              budget, "priceMax", "pricingModel", "priceViewMode", "projectType", "klarnaEnabled",
-              "estimatedHours", duration,
-              "recentQuestions", "skillsAndTools",
+              budget, "estimatedHours", duration,
+              "recentQuestions",
               "chatEnabled", "reportButtonEnabled", "shareButtonEnabled", "helpButtonEnabled",
               rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
               status, "createdAt", "updatedAt"
@@ -58,9 +57,8 @@ export class CmsProjectsController {
       `SELECT id, title, slug, "shortDescription", description, category,
               categories, subcategories, skills, tags, "programmingLanguages", "developmentTech",
               "mediaUrls", "videoUrl", deliverables, faqs, scope, industries, "relatedProjectIds",
-              budget, "priceMax", "pricingModel", "priceViewMode", "projectType", "klarnaEnabled",
-              "estimatedHours", duration,
-              "recentQuestions", "skillsAndTools",
+              budget, "estimatedHours", duration,
+              "recentQuestions",
               "chatEnabled", "reportButtonEnabled", "shareButtonEnabled", "helpButtonEnabled",
               rating, "reviewCount", "completionsCount", "views90d", "adminBoost", featured,
               status, "createdBy", "createdAt", "updatedAt"
@@ -453,13 +451,45 @@ function shapeProject(row: any) {
     if (typeof value !== "string") return null;
     const trimmed = value.trim();
     if (!trimmed) return null;
-    // Hide the internal `/cms-media` prefix from the UI.
+    // Frontend serves CMS media via `/media/<filename>` rewrite to MinIO/CDN.
+    // Always normalize any CMS-produced `/cms-media/...` paths to `/media/...`
+    // so Next.js Image optimizer sees a real image response.
     if (trimmed.startsWith("/cms-media/")) {
       return "/media/" + trimmed.slice("/cms-media/".length);
     }
     return trimmed;
   };
 
+  const deriveBudgetFromScope = (scope: unknown): number | null => {
+    if (!Array.isArray(scope) || scope.length === 0) return null;
+    const RATE_BY_LEVEL: Record<string, number> = {
+      Student: 25,
+      Junior: 55,
+      Medior: 85,
+      Senior: 125,
+      Guru: 175,
+    };
+    let total = 0;
+    for (const phase of scope) {
+      if (!phase || typeof phase !== "object") continue;
+      const tasks = Array.isArray((phase as any).tasks) ? (phase as any).tasks : [];
+      for (const task of tasks) {
+        if (!task || typeof task !== "object") continue;
+        const hours = Number((task as any).estimatedHours);
+        if (!Number.isFinite(hours) || hours <= 0) continue;
+        const level =
+          typeof (task as any).experienceLevel === "string"
+            ? String((task as any).experienceLevel)
+            : "Medior";
+        const rate = RATE_BY_LEVEL[level] ?? RATE_BY_LEVEL.Medior;
+        total += hours * rate;
+      }
+    }
+    return total > 0 ? Math.round(total) : null;
+  };
+
+  const budget =
+    row.budget != null ? Number(row.budget) : deriveBudgetFromScope(row.scope);
   return {
     id: String(row.id),
     title: row.title,
@@ -472,13 +502,8 @@ function shapeProject(row: any) {
     status: row.status,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    budget: row.budget != null ? Number(row.budget) : null,
-    priceMin: row.budget != null ? Number(row.budget) : null,
-    priceMax: row.priceMax != null ? Number(row.priceMax) : null,
-    pricingModel: row.pricingModel ?? null,
-    priceViewMode: row.priceViewMode ?? null,
-    projectType: row.projectType ?? null,
-    klarnaEnabled: row.klarnaEnabled ?? false,
+    budget,
+    priceMin: budget,
     estimatedHours: row.estimatedHours ?? null,
     duration: row.duration,
     mediaUrls: Array.isArray(row.mediaUrls)
@@ -511,11 +536,10 @@ function shapeProject(row: any) {
     // §12 L68 + §01 L65 — derived from the same scoring columns.
     badges: deriveBadges(row),
     recentQuestions: row.recentQuestions ?? [],
-    skillsAndTools: row.skillsAndTools ?? [],
-    chatEnabled: row.chatEnabled ?? false,
-    reportButtonEnabled: row.reportButtonEnabled ?? true,
-    shareButtonEnabled: row.shareButtonEnabled ?? true,
-    helpButtonEnabled: row.helpButtonEnabled ?? false,
+    chatEnabled: row.chatEnabled,
+    reportButtonEnabled: row.reportButtonEnabled,
+    shareButtonEnabled: row.shareButtonEnabled,
+    helpButtonEnabled: row.helpButtonEnabled,
     rating: row.rating != null ? Number(row.rating) : 0,
     reviewCount: row.reviewCount ?? 0,
     completionsCount: row.completionsCount ?? 0,

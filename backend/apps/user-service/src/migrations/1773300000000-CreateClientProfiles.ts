@@ -28,11 +28,17 @@ export class CreateClientProfiles1773300000000 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
-      ALTER TABLE "client"
-      ADD CONSTRAINT "FK_client_userId_users_id"
-      FOREIGN KEY ("userId") REFERENCES "users"("id")
-      ON DELETE CASCADE
-      ON UPDATE NO ACTION
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'FK_client_userId_users_id'
+        ) THEN
+          ALTER TABLE "client"
+          ADD CONSTRAINT "FK_client_userId_users_id"
+          FOREIGN KEY ("userId") REFERENCES "users"("id")
+          ON DELETE CASCADE
+          ON UPDATE NO ACTION;
+        END IF;
+      END $$;
     `);
   }
 

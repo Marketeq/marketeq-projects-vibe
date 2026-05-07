@@ -1,18 +1,18 @@
 import { cache } from "react"
 import { cookies } from "next/headers"
 import type { Metadata } from "next"
+import { getPublicHomepageUrl } from "@/lib/runtime-urls"
 import type { HomepagePayload } from "@/types/homepage"
 import { HomepageClient } from "./homepage-client"
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+const HOMEPAGE_BASE = getPublicHomepageUrl() || "http://localhost:4000"
 
 const fetchHomepage = cache(async (): Promise<HomepagePayload | null> => {
   try {
     const cookieStore = await cookies()
     const variant = cookieStore.get("mktq_hp_variant")?.value ?? ""
 
-    const res = await fetch(`${API_BASE}/homepage`, {
+    const res = await fetch(`${HOMEPAGE_BASE}/homepage`, {
       headers: variant ? { Cookie: `mktq_hp_variant=${variant}` } : {},
       next: { revalidate: 60 },
     })

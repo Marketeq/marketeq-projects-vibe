@@ -1,3 +1,5 @@
+> STOP. Read [CONFIDENTIALITY.md](CONFIDENTIALITY.md) before doing any work in this repo.
+
 # Marketeq Projects — Claude Project Instructions
 
 This file is automatically loaded by every Claude Code session and agent working in this repo.

@@ -34,7 +34,7 @@ export const Success = () => {
       <Button
         onClick={() =>
           toast({
-            title: "Phase added below",
+            title: "Phase Added Below",
             variant: "success",
             action: (
               <ToastAction

@@ -34,6 +34,10 @@ const nextConfig = {
       },
       {
         protocol: "https",
+        hostname: "94ccb1ac46d66f225f369bd07f044f56.r2.cloudflarestorage.com",
+      },
+      {
+        protocol: "https",
         hostname: "randomuser.me",
       },
       {
@@ -76,6 +80,12 @@ const nextConfig = {
     // can point at the real Cloudflare R2 / CDN host.
     const cmsMediaOrigin =
       process.env.CMS_MEDIA_ORIGIN || "http://localhost:9000/marketeq-media"
+    // Back-compat: some APIs still return `/cms-media/<file>` paths.
+    // Alias them to `/media/<file>` so Next/Image always gets a real image.
+    rewrites.push({
+      source: "/cms-media/:path*",
+      destination: "/media/:path*",
+    })
     rewrites.push({
       source: "/media/:path*",
       destination: `${cmsMediaOrigin}/:path*`,

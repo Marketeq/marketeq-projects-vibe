@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useState } from "react"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 
 export interface FeaturedProject {
   id: string
@@ -26,7 +27,7 @@ let cache: Promise<FeaturedProject[]> | null = null
 
 function fetchFeaturedProjects(): Promise<FeaturedProject[]> {
   if (cache) return cache
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+  const apiBase = getPublicApiUrl() || "http://localhost:4000"
   cache = (async () => {
     try {
       const res = await fetch(`${apiBase}/v1/projects`)

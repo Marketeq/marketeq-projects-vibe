@@ -2,10 +2,12 @@
 
 import React, { useState } from "react"
 import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { getCurrentUser } from "@/utils/auth"
 import { apiFetch } from "@/src/lib/api"
 import { Conversation } from "@/types/conversation"
 import { UserProfile } from "@/types/user"
+import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import {
   AlertTriangle,
   Archive,
@@ -26,6 +28,7 @@ import {
   UploadCloud,
   X,
 } from "@blend-metrics/icons"
+import { HireMeButton } from "@/components/hire-me-button"
 import {
   DropboxBrand,
   GoogleDrive1Brand,
@@ -43,11 +46,13 @@ import {
   AvatarImage,
   Badge,
   Button,
+  buttonVariants,
   CircularProgressDropzone,
   CircularProgressDropzoneState,
   Dialog,
   DialogClose,
   DialogContent,
+  DialogTitle,
   DialogTrigger,
   DropdownMenu,
   DropdownMenuContent,
@@ -56,7 +61,6 @@ import {
   DropdownMenuRadioTrigger,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  Favorite,
   IconButton,
   Input,
   InputGroup,
@@ -65,6 +69,7 @@ import {
   ScrollArea,
   ScrollBar,
   Textarea,
+  Toggle,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -76,9 +81,77 @@ interface RightSidebarProps {
   jwtToken: string
 }
 
+const SaveButton = () => {
+  const [isOpen, toggleIsOpen] = useToggle(false)
+  const [value, setValue] = useState("")
+
+  return (
+    <div className="flex items-center">
+      <Toggle
+        className={buttonVariants({
+          className:
+            "group border-r-0 xs:max-lg:gap-x-[5.1px] xs:max-lg:leading-[12.75px] xs:max-lg:text-[8.93px] xs:max-lg:h-[25.75px] rounded-r-none",
+          variant: "outlined",
+          visual: "gray",
+          size: "md",
+        })}
+      >
+        <Star className="size-[12.75px] lg:size-5 text-gray-300 transition duration-300 group-hover:text-gray-500 group-hover:group-data-[state=on]:text-primary-500 group-data-[state=on]:text-primary-500  group-data-[state=on]:fill-primary-500" />
+        <span className="group-data-[state=off]:inline-block hidden">Save</span>
+        <span className="hidden group-data-[state=on]:inline-block">Saved</span>
+      </Toggle>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <IconButton
+            className="group rounded-l-none xs:max-lg:size-[25.5px] text-gray-500"
+            variant="outlined"
+            visual="gray"
+            size="md"
+          >
+            <ChevronDown className="duration transition group-data-[state=open]:-rotate-180 size-[12.75px] lg:size-5" />
+          </IconButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" side="bottom">
+          <DropdownMenuRadioGroup value={value} onValueChange={setValue}>
+            <DropdownMenuRadioTrigger value="Digital Marketing">
+              Digital Marketing
+            </DropdownMenuRadioTrigger>
+            <DropdownMenuRadioTrigger value="Customer Service">
+              Customer Service
+            </DropdownMenuRadioTrigger>
+            <DropdownMenuRadioTrigger value="Email Marketing">
+              Email Marketing
+            </DropdownMenuRadioTrigger>
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => toggleIsOpen()}
+            className="text-primary-500"
+          >
+            <Plus className="size-4" /> Create New List
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
+        <DialogContent>
+          <DialogTitle className="sr-only">Save to List</DialogTitle>
+          <form className="flex items-center gap-x-3">
+            <Input placeholder="Enter List Name" className="flex-auto" />
+            <Button size="lg">Save</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => {
   const [user, setUser] = useState<UserProfile | null>(null)
   const currentUser = getCurrentUser()
+  const router = useRouter()
+  const { isOnline } = useOnlineUsers()
 
   useEffect(() => {
     setUser(null)
@@ -110,10 +183,7 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
     )
   }
 
-  const fullName =
-    [user.firstName?.trim(), user.lastName?.trim()].filter(Boolean).join(" ") ||
-    user.username ||
-    "Unknown"
+  const fullName = user.firstName?.trim() || user.username || "Unknown"
   const username = user.username || ""
   const avatarUrl = user.avatarUrl
   const initials = fullName.charAt(0).toUpperCase()
@@ -124,7 +194,7 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
   return (
     <div className="w-[300px] bg-white flex flex-col shrink-0 pt-10 pb-6 px-5 border-l border-gray-200">
       <div className="pb-5 flex flex-col items-center border-b border-gray-200">
-        <Avatar size="2xl">
+        <Avatar size="2xl" isOnline={isOnline(user?.id)}>
           <AvatarImage src={avatarUrl || undefined} alt={fullName} />
           <AvatarFallback delayMs={0}>{initials}</AvatarFallback>
         </Avatar>
@@ -141,50 +211,8 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
         </div>
 
         <div className="mt-5 flex items-center gap-x-2 justify-center">
-          <div className="flex items-center">
-            <div className="inline-flex items-center gap-x-1 border border-gray-300 rounded-l-[5px] h-9 xs:max-lg:h-[25.5px] px-3 shadow-xs cursor-pointer hover:bg-gray-50 text-gray-800">
-              <Favorite
-                starClassName="size-[12.75px] lg:size-5"
-                className="size-[12.75px] lg:size-5"
-              />
-              <span className="xs:max-lg:text-[8.93px] xs:max-lg:leading-[12.75px] text-sm">Save</span>
-            </div>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <IconButton
-                  className="group rounded-l-none xs:max-lg:size-[25.5px] text-gray-500"
-                  variant="outlined"
-                  visual="gray"
-                >
-                  <ChevronDown className="duration transition group-data-[state=open]:-rotate-180 size-[12.75px] lg:size-5" />
-                </IconButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" side="bottom">
-                <DropdownMenuRadioGroup>
-                  <DropdownMenuRadioTrigger value="Customer Service">
-                    Customer Service
-                  </DropdownMenuRadioTrigger>
-                  <DropdownMenuRadioTrigger value="Digital Marketing">
-                    Digital Marketing
-                  </DropdownMenuRadioTrigger>
-                  <DropdownMenuRadioTrigger value="Email Marketing">
-                    Email Marketing
-                  </DropdownMenuRadioTrigger>
-                  <DropdownMenuRadioTrigger value="React Developers">
-                    React Developers
-                  </DropdownMenuRadioTrigger>
-                </DropdownMenuRadioGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-primary-500">
-                  <Plus className="size-4" /> Create New List
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-          <Button visual="primary" variant="filled">
-            Hire Me
-          </Button>
+          <SaveButton />
+          <HireMeButton profile={user} />
         </div>
       </div>
 
@@ -205,7 +233,7 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
         )}
         {user?.clientSuccessRating && (
           <div className="flex items-center gap-x-2">
-            <span className="inline-flex text-dark-blue-400 items-center text-xs leading-[14.52px] font-medium gap-x-1 py-1 px-2 bg-primary-50 rounded-[4px]">
+            <span className="inline-flex text-dark-blue-400 items-center text-xs leading-[14.52px] font-medium gap-x-1 py-1 px-2 bg-primary-50 rounded">
               <Star className="size-3 fill-dark-blue-400" /> {user.clientSuccessRating}
             </span>
             {user.totalProjectsCompleted != null && (
@@ -229,7 +257,15 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
       )}
 
       <div className="mt-auto flex flex-col gap-y-6">
-        <Button visual="gray" variant="outlined">
+        <Button
+          visual="gray"
+          variant="outlined"
+          disabled={!user?.username}
+          onClick={() => {
+            if (!user?.username) return
+            router.push(`/talent-profile?username=${encodeURIComponent(user.username)}`)
+          }}
+        >
           View Full Profile
         </Button>
 

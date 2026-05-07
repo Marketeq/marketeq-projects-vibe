@@ -1,19 +1,19 @@
-import { DeliverableGroup, ScopePhaseInput } from './deliverables.types';
+import { DeliverableGroup, ProjectContext, ScopePhaseInput } from './deliverables.types';
 
 /**
  * DeliverablesAdapter — abstract seam for deriving deliverables from
- * a project's scope tree, matching spec §01 Deliverables.
+ * a project's scope tree using an LLM.
  *
- * Mirrors the pattern already in the repo: `category-service`'s
- * `SuggestionsAdapter` (abstract) + `SuggestionsAdapterMock`
- * (DB-backed heuristic) + `SuggestionsAdapterReal` (ready-to-swap).
- * Heuristic and HuggingFace implementations plug into the same seam
- * here — the caller (ProjectSyncService.toRow) never changes when the
- * backing model evolves.
+ * Inputs per task: task title, job title (role), task description.
+ * Project-level context: project type (category), project description.
+ *
+ * The LLM evaluates each task and generates between 3-6 contextually
+ * relevant deliverables per phase based on the richness of the input.
  */
 export abstract class DeliverablesAdapter {
   abstract deriveDeliverables(
     scope: ScopePhaseInput[],
+    projectContext?: ProjectContext,
   ): Promise<DeliverableGroup[]>;
 }
 

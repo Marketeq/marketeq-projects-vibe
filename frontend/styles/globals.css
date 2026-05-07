@@ -95,3 +95,25 @@ body {
 .avatar-carousel .swiper-slide {
   @apply w-[230px];
 }
+
+/* Rich text content — read-only display of TipTap-generated HTML */
+.rich-text-content p + h1,
+.rich-text-content p + h2,
+.rich-text-content p + h3 {
+  margin-top: 1rem;
+}
+
+/* Inbox — brief highlight when jumping to a message from search */
+@keyframes inbox-highlight-flash {
+  0% {
+    background-color: theme(colors.primary.100);
+    box-shadow: 0 0 0 4px theme(colors.primary.100);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.inbox-highlight-flash {
+  animation: inbox-highlight-flash 2s ease-out;
+}

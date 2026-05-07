@@ -19,16 +19,21 @@ export type User = {
   firstName?: string | null
   lastName?: string | null
   avatarUrl?: string | null
+  phone?: string | null
   role: ROLE
   userType?: string | null
   accountType?: ROLE
   provider: AUTH_PROVIDERS
   hasPassword?: boolean
+  twoFactorEnabled?: boolean
+  twoFactorMethod?: 'totp' | 'sms' | null
   socialId?: string | null
   emailVerified: boolean
   onboardingDismissed: boolean
   gettingStartedStep?: number | null
   customAvailability?: CustomAvailabilityDay[] | null
+  recentJobTitle?: string | null
+  jobTitles?: string[] | null
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null

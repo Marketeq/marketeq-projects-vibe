@@ -172,9 +172,7 @@ export function ForwardMessageDialog({
             })
 
             const displayName =
-              [user.firstName?.trim(), user.lastName?.trim()].filter(Boolean).join(" ") ||
-              user.username ||
-              "Unknown"
+              user.firstName?.trim() || user.username || "Unknown"
 
             contactList.push({
               userId: otherId,
@@ -372,10 +370,8 @@ export function ForwardMessageDialog({
     ? currentUserProfile
     : receiverUser
   const senderFullName =
-    [senderProfile?.firstName?.trim(), senderProfile?.lastName?.trim()]
-      .filter(Boolean)
-      .join(" ") || (isMyMessage ? "Me" : "Unknown")
-  const senderLabel = isMyMessage ? "Me" : senderFullName.split(" ")[0] || senderFullName
+    senderProfile?.firstName?.trim() || (isMyMessage ? "Me" : "Unknown")
+  const senderLabel = isMyMessage ? "Me" : senderFullName
   const senderUsername = senderProfile?.username || ""
   const senderAvatarUrl = senderProfile?.avatarUrl || undefined
 
@@ -402,7 +398,7 @@ export function ForwardMessageDialog({
           {/* Search input with inline chips */}
           <div className="px-6 pb-3 relative" ref={searchContainerRef}>
             <div
-              className={`min-h-[44px] px-2 py-1.5 border rounded-lg flex flex-wrap items-center gap-1.5 transition cursor-text ${
+              className={`min-h-11 px-2 py-1.5 border rounded-lg flex flex-wrap items-center gap-1.5 transition cursor-text ${
                 isDropdownOpen
                   ? "border-primary-500 ring-2 ring-primary-100"
                   : "border-gray-300"
@@ -560,7 +556,7 @@ export function ForwardMessageDialog({
 
           {/* Add message textarea */}
           <div className="px-6 pb-3">
-            <div className="border border-gray-300 rounded-lg px-3 py-2 min-h-[96px]">
+            <div className="border border-gray-300 rounded-lg px-3 py-2 min-h-24">
               <textarea
                 className="w-full bg-transparent outline-none border-0 p-0 m-0 focus:ring-0 focus:outline-none resize-none text-sm leading-5 placeholder:text-gray-400"
                 placeholder="Add a message..."

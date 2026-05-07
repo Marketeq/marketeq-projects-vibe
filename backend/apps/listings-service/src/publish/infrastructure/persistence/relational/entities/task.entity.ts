@@ -26,6 +26,9 @@ export class TaskEntity extends EntityRelationalHelper implements Task {
   @Column({ type: String, length: 255, nullable: false })
   role: string;
 
+  @Column({ type: 'text', nullable: true })
+  description?: string | null;
+
   @Column({ type: 'text', array: true, nullable: false, default: [] })
   location: string[];
 

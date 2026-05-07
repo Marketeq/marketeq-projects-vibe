@@ -6,6 +6,7 @@ export class ProjectMapper {
     const project = new Project();
     project.id = raw.id;
     project.cmsId = raw.cmsId;
+    project.slug = raw.slug;
     project.title = raw.title;
     project.subtitle = raw.subtitle;
     project.shortDescription = raw.shortDescription;
@@ -18,6 +19,7 @@ export class ProjectMapper {
     project.industries = raw.industries;
     project.tags = raw.tags;
     project.skills = raw.skills;
+    project.listingType = raw.listingType;
     project.categories = raw.categories;
     project.subCategories = raw.subCategories;
     project.categorySelections = raw.categorySelections;
@@ -27,6 +29,10 @@ export class ProjectMapper {
     project.createdAt = raw.createdAt;
     project.updatedAt = raw.updatedAt;
     project.deletedAt = raw.deletedAt;
+    project.deliverables = raw.deliverables ?? null;
+    if (raw.media) {
+      project.media = raw.media;
+    }
 
     return project;
   }
@@ -39,6 +45,7 @@ export class ProjectMapper {
     }
 
     projectEntity.cmsId = project.cmsId ?? undefined;
+    projectEntity.slug = project.slug ?? undefined;
     projectEntity.title = project.title;
     projectEntity.subtitle = project.subtitle!;
     projectEntity.shortDescription = project.shortDescription!;
@@ -51,9 +58,11 @@ export class ProjectMapper {
     projectEntity.industries = project.industries!;
     projectEntity.tags = project.tags!;
     projectEntity.skills = project.skills!;
+    projectEntity.listingType = project.listingType!;
     projectEntity.categories = project.categories!;
     projectEntity.subCategories = project.subCategories!;
     projectEntity.categorySelections = project.categorySelections ?? [];
+    projectEntity.deliverables = project.deliverables ?? null;
     projectEntity.status = project.status ?? undefined;
     projectEntity.projectDatePublished = project.projectDatePublished ?? undefined;
     projectEntity.userId = project.userId;

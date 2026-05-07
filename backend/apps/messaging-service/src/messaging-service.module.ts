@@ -14,10 +14,13 @@ import { ConversationRawKey } from './encryption/entities/conversation-raw-key.e
 import { AblyService } from './ably/ably.service';
 import { MessagesService } from './messages/messages.service';
 import { MessagesController } from './messages/messages.controller';
+import { AttachmentsController } from './messages/attachments.controller';
 import { ThreadsService } from './threads/threads.service';
 import { ThreadsController } from './threads/threads.controller';
 import { EncryptionModule } from './encryption/encryption.module';
 import { TrashCleanupService } from './threads/trash-cleanup.service';
+import { StorageModule } from './storage/storage.module';
+import { BlocksModule } from './blocks/blocks.module';
 
 @Module({
   imports: [
@@ -35,8 +38,10 @@ import { TrashCleanupService } from './threads/trash-cleanup.service';
     }),
     TypeOrmModule.forFeature([Thread, ThreadUserState, ThreadList, ThreadListAssignment, Message, Attachment, ConversationKey]),
     EncryptionModule,
+    StorageModule,
+    BlocksModule,
   ],
-  controllers: [MessagesController, ThreadsController],
+  controllers: [MessagesController, AttachmentsController, ThreadsController],
   providers: [AblyService, MessagesService, ThreadsService, TrashCleanupService],
 })
 export class MessagingServiceModule {}

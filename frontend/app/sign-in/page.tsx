@@ -1,8 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { resolveDashboardRoute, useAuth } from "@/contexts/auth"
+import {
+  mergeDashboardUserFields,
+  resolveDashboardRoute,
+  useAuth,
+} from "@/contexts/auth"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import UnauthenticatedRoute from "@/hoc/UnauthenticatedRoute"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
@@ -52,7 +57,22 @@ export default function SignIn() {
   const [isVisible, toggleIsVisible] = useToggle(false)
 
   const [isLoading, setIsLoading] = useState(false)
+  const [isDevLoading, setIsDevLoading] = useState(false)
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false)
+  const [partialToken, setPartialToken] = useState("")
+  const [twoFactorMethod, setTwoFactorMethod] = useState<string>("totp")
+  const [twoFactorCode, setTwoFactorCode] = useState("")
+  const [isVerifying2FA, setIsVerifying2FA] = useState(false)
+  const [useBackupCode, setUseBackupCode] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
   const [loginError, setLoginError] = useState<string | null>(null)
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => Math.max(0, prev - 1))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [resendCooldown])
   const redirectTarget = searchParams.get("redirect")
   const nextRoute =
     redirectTarget && redirectTarget.startsWith("/") && !redirectTarget.startsWith("//")
@@ -73,19 +93,95 @@ export default function SignIn() {
       rememberMe: false,
     },
   })
+  const handleVerify2FA = async () => {
+    if (twoFactorCode.length < 6) return
+    setIsVerifying2FA(true)
+    try {
+      const res = await AuthAPI.VerifyTwoFactor({ code: twoFactorCode, partialToken })
+      if (res?.data?.access_token) {
+        Cookies.set("access_token", res.data.access_token, { path: "/" })
+        if (res.data.refresh_token) {
+          Cookies.set("refresh_token", res.data.refresh_token, { path: "/" })
+        }
+        if (res.data.sessionId) {
+          Cookies.set("session_id", res.data.sessionId, { path: "/" })
+        }
+
+        let nextUser = res.data.user
+        try {
+          const meResponse = await UserAPI.me()
+          if (meResponse?.status === 200) {
+            const profileUser =
+              meResponse?.data?.user ??
+              meResponse?.data?.data?.user ??
+              meResponse?.data
+
+            if (profileUser && typeof profileUser === "object") {
+              nextUser = mergeDashboardUserFields(nextUser, profileUser)
+            }
+          }
+        } catch {
+          // fall back to auth payload
+        }
+
+        if (nextUser && typeof nextUser === "object") {
+          setUser(nextUser)
+        }
+
+        const destination = redirectTarget ? nextRoute : resolveDashboardRoute(nextUser)
+        router.push(destination)
+        reset()
+      } else {
+        toast({ title: "Invalid response from server", variant: "destructive" })
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "Invalid verification code"
+      toast({ title: msg, variant: "destructive" })
+      setTwoFactorCode("")
+    } finally {
+      setIsVerifying2FA(false)
+    }
+  }
+
+  const handleResendLoginCode = async () => {
+    if (resendCooldown > 0) return
+    try {
+      await AuthAPI.ResendTwoFactorCode({ partialToken })
+      setResendCooldown(60)
+      toast({ title: "Verification code resent" })
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "Failed to resend code"
+      toast({ title: msg, variant: "destructive" })
+    }
+  }
+
   const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password }) => {
     setIsLoading(true)
 
     setLoginError(null)
     AuthAPI.LoginWithEmail({ email, password })
       .then(async (response) => {
+        if (response?.status === 200 && response?.data?.requiresTwoFactor) {
+          setPartialToken(response.data.partialToken)
+          setTwoFactorMethod(response.data.twoFactorMethod ?? "totp")
+          setTwoFactorRequired(true)
+          if (response.data.twoFactorMethod === "sms") {
+            setResendCooldown(60)
+          }
+          setIsLoading(false)
+          return
+        }
+
         if (response?.status === 200 && response?.data?.access_token) {
-          Cookies.set("access_token", response?.data?.access_token, { path: "/" })
-          if (response?.data?.refresh_token) {
+          Cookies.set("access_token", response.data.access_token, { path: "/" })
+          if (response.data.refresh_token) {
             Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
           }
+          if (response.data.sessionId) {
+            Cookies.set("session_id", response.data.sessionId, { path: "/" })
+          }
 
-          let nextUser = response?.data?.user
+          let nextUser = response.data.user
           try {
             const meResponse = await UserAPI.me()
             if (meResponse?.status === 200) {
@@ -95,30 +191,11 @@ export default function SignIn() {
                 meResponse?.data
 
               if (profileUser && typeof profileUser === "object") {
-                // Merge profileUser over nextUser, but never let a
-                // null/undefined `role`, `accountType`, or `userType`
-                // from /me clobber a truthy value from the auth-service
-                // login payload — otherwise the downstream
-                // resolveDashboardRoute() falls through to /onboarding.
-                const merged: Record<string, unknown> = {
-                  ...nextUser,
-                  ...profileUser,
-                }
-                const preserveIfMissing = [
-                  "role",
-                  "accountType",
-                  "userType",
-                ] as const
-                for (const key of preserveIfMissing) {
-                  if (merged[key] == null && (nextUser as any)?.[key] != null) {
-                    merged[key] = (nextUser as any)[key]
-                  }
-                }
-                nextUser = merged as typeof nextUser
+                nextUser = mergeDashboardUserFields(nextUser, profileUser)
               }
             }
           } catch {
-            // noop: fall back to auth payload when profile refresh is unavailable
+            // fall back to auth payload
           }
 
           if (nextUser && typeof nextUser === "object") {
@@ -195,6 +272,127 @@ export default function SignIn() {
         </div>
 
         <div className="flex-auto grid place-content-center px-5 md:px-10 py-16">
+          {twoFactorRequired ? (
+          <div className="max-w-[400px] w-full mx-auto">
+            <h1 className="text-center text-2xl leading-9 font-semibold text-dark-blue-400">
+              Two-Factor Authentication
+            </h1>
+            <p className="text-center text-base mt-2 leading-[19.36px] font-light text-dark-blue-400">
+              {useBackupCode
+                ? "Enter one of your backup codes"
+                : twoFactorMethod === "sms"
+                  ? "We sent a verification code to your phone"
+                  : "Enter the 6-digit code from your authenticator app"}
+            </p>
+
+            <div className="mt-10 space-y-6">
+              {useBackupCode ? (
+                <div className="space-y-1.5">
+                  <Label className="text-dark-blue-500" size="sm">Backup Code</Label>
+                  <Input
+                    placeholder="xxxx-xxxx"
+                    value={twoFactorCode}
+                    onChange={(e) => setTwoFactorCode(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <div className="flex gap-2 justify-center">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <input
+                      key={i}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={twoFactorCode[i] || ""}
+                      onChange={(e) => {
+                        const char = e.target.value
+                        if (!/^\d?$/.test(char)) return
+                        const arr = twoFactorCode.split("")
+                        while (arr.length < 6) arr.push("")
+                        arr[i] = char
+                        const next = arr.join("").slice(0, 6)
+                        setTwoFactorCode(next)
+                        if (char && i < 5) {
+                          const nextInput = e.target.parentElement?.children[i + 1] as HTMLInputElement
+                          nextInput?.focus()
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Backspace" && !twoFactorCode[i] && i > 0) {
+                          const prevInput = (e.target as HTMLElement).parentElement?.children[i - 1] as HTMLInputElement
+                          prevInput?.focus()
+                        }
+                      }}
+                      disabled={isVerifying2FA}
+                      className="w-11 h-12 text-center text-lg font-semibold border border-gray-200 rounded-lg focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition-colors disabled:opacity-50"
+                    />
+                  ))}
+                </div>
+              )}
+
+              <Button
+                className="w-full"
+                size="lg"
+                disabled={isVerifying2FA || twoFactorCode.length < 6}
+                onClick={handleVerify2FA}
+              >
+                {isVerifying2FA ? (
+                  <Spinner
+                    size={24}
+                    className="stroke-white"
+                    trackClassName="stroke-primary-500"
+                    strokeWidth={2}
+                  />
+                ) : (
+                  "Verify"
+                )}
+              </Button>
+
+              {twoFactorMethod === "sms" && !useBackupCode && (
+                <p className="text-sm text-center text-gray-500">
+                  Not seeing the code?{" "}
+                  {resendCooldown > 0 ? (
+                    <span className="text-gray-400">Resend in {resendCooldown}s</span>
+                  ) : (
+                    <button type="button" onClick={handleResendLoginCode} className="text-primary-500 hover:underline font-medium">
+                      Resend
+                    </button>
+                  )}
+                </p>
+              )}
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  className="text-sm text-primary-500 hover:underline"
+                  onClick={() => {
+                    setUseBackupCode(!useBackupCode)
+                    setTwoFactorCode("")
+                  }}
+                >
+                  {useBackupCode
+                    ? twoFactorMethod === "sms" ? "Use SMS code instead" : "Use authenticator app instead"
+                    : "Use a backup code"}
+                </button>
+              </div>
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  className="text-sm text-gray-500 hover:underline"
+                  onClick={() => {
+                    setTwoFactorRequired(false)
+                    setPartialToken("")
+                    setTwoFactorCode("")
+                    setUseBackupCode(false)
+                  }}
+                >
+                  Back to login
+                </button>
+              </div>
+            </div>
+          </div>
+          ) : (
           <div className="max-w-[560px]">
             <h1 className="md:text-left text-center text-2xl leading-9 font-semibold text-dark-blue-400">
               Welcome Changemakers!
@@ -338,6 +536,65 @@ export default function SignIn() {
                 )}
               </Button>
 
+              {process.env.NODE_ENV !== "production" && (
+                <Button
+                  className="mt-3 w-full border-dashed border-2 border-orange-400 text-orange-600 hover:bg-orange-50"
+                  size="lg"
+                  variant="outlined"
+                  visual="gray"
+                  type="button"
+                  disabled={isDevLoading}
+                  onClick={async () => {
+                    setIsDevLoading(true)
+                    try {
+                      const gateway = getPublicApiUrl() || "http://localhost:4000"
+                      const res = await fetch(`${gateway}/auth/dev-login`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email: "CHRISTOPHERTORRES17@GMAIL.COM" }),
+                      })
+                      if (!res.ok) throw new Error("Dev login failed")
+                      const data = await res.json()
+                      if (data.access_token) {
+                        Cookies.set("access_token", data.access_token, { path: "/" })
+                        if (data.refresh_token) {
+                          Cookies.set("refresh_token", data.refresh_token, { path: "/" })
+                        }
+                        if (data.sessionId) {
+                          Cookies.set("session_id", data.sessionId, { path: "/" })
+                        }
+                        let nextUser = data.user
+                        try {
+                          const meResponse = await UserAPI.me()
+                          if (meResponse?.status === 200) {
+                            const profileUser = meResponse?.data?.user ?? meResponse?.data?.data?.user ?? meResponse?.data
+                            if (profileUser && typeof profileUser === "object") {
+                              nextUser = mergeDashboardUserFields(nextUser, profileUser)
+                            }
+                          }
+                        } catch {}
+                        if (nextUser) {
+                          nextUser.role = nextUser.role || "CLIENT"
+                          nextUser.onboardingDismissed = true
+                          setUser(nextUser)
+                        }
+                        router.push("/client-dashboard")
+                      }
+                    } catch (err) {
+                      toast({ title: "Dev login failed", variant: "destructive" })
+                    } finally {
+                      setIsDevLoading(false)
+                    }
+                  }}
+                >
+                  {isDevLoading ? (
+                    <Spinner size={24} className="stroke-orange-500" trackClassName="stroke-orange-200" strokeWidth={2} />
+                  ) : (
+                    "Dev Login (CLIENT)"
+                  )}
+                </Button>
+              )}
+
               <div className="flex gap-x-1 mt-10 md:mt-[50px] items-center">
                 <span className="text-sm leading-6 text-[#68707B]">
                   Don't have an account?
@@ -351,6 +608,7 @@ export default function SignIn() {
               </div>
             </form>
           </div>
+          )}
         </div>
       </div>
     </UnauthenticatedRoute>

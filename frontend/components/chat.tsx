@@ -1,10 +1,15 @@
 "use client"
 
 import { useState } from "react"
+import Cookies from "js-cookie"
 import { apiFetch } from "@/src/lib/api"
+import { BlockReportDialog } from "@/app/(group)/inbox/components/block-report-dialog"
 import { cn } from "@/utils/functions"
+import { getCurrentUser } from "@/utils/auth"
+import { getOtherParticipantId } from "@/utils/conversation"
 import { useControllableState, useUncontrolledState } from "@/utils/hooks"
 import { createContext } from "@/utils/react-utils"
+import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import {
   AlertCircle,
   AlertTriangle,
@@ -120,11 +125,19 @@ export const UserDetail = ({
 }: UserDetailProps) => {
   const { onChatPinned, showPinnedIcon, onChatChecked, checkedChats } =
     useChatsContext()
+  const { isOnline } = useOnlineUsers()
+  // Avatar dot reflects whether the OTHER 1:1 participant is currently
+  // present on the global presence:online channel. Group conversations:
+  // show online if any non-self participant is online.
+  const me = getCurrentUser()?.id
+  const otherId = me ? getOtherParticipantId(conversation, me) : undefined
+  const showOnlineDot = conversation.isGroup
+    ? (conversation.participantIds ?? []).some((id) => id !== me && isOnline(id))
+    : isOnline(otherId)
 
   //jwt token
   const jwtToken = (() => {
     if (typeof window === "undefined") return null
-    const Cookies = require("js-cookie")
     return Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("token") || null
   })()
 
@@ -165,6 +178,7 @@ export const UserDetail = ({
     },
   })
   const [open, toggle] = useToggle(false)
+  const [blockOpen, setBlockOpen] = useState(false)
   const showCheckbox = checkedChats > 0
 
   return (
@@ -173,7 +187,7 @@ export const UserDetail = ({
         <Avatar
           size="md"
           className="hover:ring-0 active:ring-primary-100"
-          isOnline
+          isOnline={showOnlineDot}
           containerClassName={cn(
             "group-hover:hidden",
             showCheckbox && "hidden"
@@ -181,7 +195,7 @@ export const UserDetail = ({
         >
           <AvatarImage
             src={(conversation as any).participantAvatarUrl || undefined}
-            alt={conversation.participantUsername || "User"}
+            alt={conversation.participantName || conversation.participantUsername || "User"}
           />
           <AvatarFallbackIcon />
         </Avatar>
@@ -199,17 +213,23 @@ export const UserDetail = ({
           />
         </div>
       </div>
-      <div className="pr-3.5 flex flex-col flex-auto gap-y-0.5 items-start py-[18px] border-b border-gray-200 relative">
-        <div className="flex self-stretch items-center justify-between">
+      <div className="pr-3.5 flex flex-col flex-auto min-w-0 gap-y-0.5 items-start py-[18px] border-b border-gray-200 relative">
+        <div className="flex self-stretch items-center justify-between gap-x-2">
           <h3 className={cn(
-            "group-data-[state=active]/chat:font-bold text-[13px] leading-[18.88px] text-dark-blue-400",
+            "group-data-[state=active]/chat:font-bold text-[13px] leading-[18.88px] text-dark-blue-400 min-w-0 flex-1 truncate",
             conversation.markedUnread ? "font-semibold group-hover/chat:font-bold" : "font-medium"
           )}>
-            {conversation.participantUsername || "Unknown"}
+            {conversation.participantName || conversation.participantUsername || "Unknown"}
+            {conversation.participantUsername &&
+              conversation.participantUsername !== conversation.participantName && (
+              <span className="ml-1 text-xs leading-[14.52px] font-normal text-gray-700">
+                @{conversation.participantUsername}
+              </span>
+            )}
           </h3>
 
           <span className={cn(
-            "transition duration-300 group-data-[state=active]/chat:font-bold group-hover/chat:opacity-0 opacity-100 text-xs leading-[14.52px] text-dark-blue-400",
+            "transition duration-300 shrink-0 group-data-[state=active]/chat:font-bold group-hover/chat:opacity-0 opacity-100 text-xs leading-[14.52px] text-dark-blue-400",
             conversation.markedUnread ? "font-semibold" : "font-medium"
           )}>
             {formatConversationDate(conversation.createdAt)}
@@ -231,7 +251,7 @@ export const UserDetail = ({
               align="end"
               side="bottom"
               sideOffset={4}
-              avoidCollisions={false}
+              collisionPadding={8}
             >
               <DropdownMenuItem onSelect={() => onMarkUnread?.()}>
                 <EyeOff className="h-4 w-4" /> {conversation.markedUnread ? "Mark as Read" : "Mark Unread"}
@@ -247,9 +267,16 @@ export const UserDetail = ({
               <DropdownMenuItem onSelect={() => onArchive?.()}>
                 <Archive className="h-4 w-4" /> {conversation.isArchived ? "Unarchive" : "Archive"}
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <AlertTriangle className="h-4 w-4" /> Block / Report
-              </DropdownMenuItem>
+              {!conversation.isGroup && otherId && (
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    setBlockOpen(true)
+                  }}
+                >
+                  <AlertTriangle className="h-4 w-4" /> Block / Report
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 visual={conversation.isTrashed ? undefined : "destructive"}
@@ -259,6 +286,16 @@ export const UserDetail = ({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <BlockReportDialog
+            open={blockOpen}
+            onOpenChange={setBlockOpen}
+            targetUserId={otherId ?? null}
+            targetDisplayName={
+              conversation.participantName || conversation.participantUsername
+            }
+            contextThreadId={conversation.id}
+          />
 
           <Dialog open={open} onOpenChange={toggle}>
             <DialogContent className="max-w-[348px] p-7 rounded-xl">
@@ -284,7 +321,7 @@ export const UserDetail = ({
 
         <div className="flex gap-x-1.5 self-stretch items-center justify-between">
           <span className={cn(
-            "group-data-[state=active]/chat:text-dark-blue-500 text-[11px] line-clamp-2 leading-[13.31px] flex-1 min-w-0 group-data-[state=active]/chat:font-medium",
+            "group-data-[state=active]/chat:text-dark-blue-500 text-[11px] line-clamp-2 leading-[13.31px] flex-1 min-w-0 break-words [overflow-wrap:anywhere] group-data-[state=active]/chat:font-medium",
             conversation.markedUnread ? "text-dark-blue-400 font-medium" : "text-gray-500"
           )}>
             {(conversation as any).lastMessagePreview ||
@@ -389,7 +426,7 @@ export const Chat = ({
     variant,
     className,
     conversation,
-    name: conversation.participantUsername || "Unknown",
+    name: conversation.participantName || conversation.participantUsername || "Unknown",
   } as const
 
   if (showPinnedIcon) {

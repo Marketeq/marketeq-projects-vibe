@@ -10,10 +10,10 @@ type GetParams = ConstructorParameters<typeof GetObjectCommand>[0];
 export class R2Service {
   private s3: S3ClientInstance | null = null;
 
-  private get bucket()    { return process.env.R2_BUCKET    || ''; }
-  private get endpoint()  { return process.env.R2_ENDPOINT  || ''; }
-  private get accessKey() { return process.env.R2_ACCESS_KEY || ''; }
-  private get secretKey() { return process.env.R2_SECRET_KEY || ''; }
+  private get bucket()    { return process.env.CLOUDFLARE_R2_BUCKET    || process.env.R2_BUCKET    || ''; }
+  private get endpoint()  { return process.env.CLOUDFLARE_R2_ENDPOINT  || process.env.R2_ENDPOINT  || ''; }
+  private get accessKey() { return process.env.CLOUDFLARE_R2_ACCESS_KEY || process.env.R2_ACCESS_KEY || ''; }
+  private get secretKey() { return process.env.CLOUDFLARE_R2_SECRET_KEY || process.env.R2_SECRET_KEY || ''; }
   private get expires()   { return Number(process.env.PRESIGN_EXPIRES_SECONDS || 600); }
 
   missingEnv() {

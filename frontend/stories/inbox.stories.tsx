@@ -2,7 +2,6 @@ import { useEffect, useState } from "react"
 import Image from "next/image"
 import { apiFetch } from "@/src/lib/api"
 import { CurrentUser } from "@/utils/auth"
-import { isNotUndefined } from "@/utils/functions"
 import { useUncontrolledState } from "@/utils/hooks"
 import { createContext } from "@/utils/react-utils"
 import {
@@ -20,12 +19,12 @@ import {
   Trash2,
 } from "@blend-metrics/icons"
 import { GoogleDrive1Brand } from "@blend-metrics/icons/brands"
-import { Meta } from "@storybook/react"
+import { Meta } from "@storybook/nextjs"
 import { format, isToday, isYesterday, parseISO } from "date-fns"
 import { useIsomorphicLayoutEffect, useToggle } from "react-use"
 import type { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
-import { Chat } from "@/components/chat"
+import { Chat, ChatsContextProvider } from "@/components/chat"
 import {
   Avatar,
   AvatarFallbackIcon,
@@ -43,11 +42,8 @@ const meta: Meta = {
 
 export default meta
 
-const getJwtToken = () => {
-  if (typeof window === "undefined") return null
-  const Cookies = require("js-cookie")
-  return Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("token") || null
-}
+const getJwtToken = () =>
+  typeof window !== "undefined" ? localStorage.getItem("token") : null
 
 const formatConversationDate = (isoDateStr: string) => {
   const date = parseISO(isoDateStr)
@@ -72,7 +68,7 @@ const handlePinMessage = async (messageId: string) => {
   const jwtToken = getJwtToken()
   try {
     await apiFetch<{ message: string }>(
-      `/v1/messages/${messageId}/pin`,
+      `/api/messaging/messages/${messageId}/pin`,
       {
         method: "POST",
         headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
@@ -87,24 +83,10 @@ export const Bubble = ({
   message,
   currentUser,
   participantUsername,
-  participantName,
-  onForward,
-  onReply,
-  onEdit,
-  replyToMessage,
-  onLocalDelete,
-  onLocalRestore,
 }: {
   message: Message
   currentUser: CurrentUser
   participantUsername?: string
-  participantName?: string
-  onForward?: (message: Message) => void
-  onReply?: (message: Message) => void
-  onEdit?: (message: Message) => void
-  replyToMessage?: Message | null
-  onLocalDelete?: (messageId: string) => void
-  onLocalRestore?: (messageId: string) => void
 }) => {
   const [value, setValue] = useState(message.content)
   const { onChatChange, chat, isSaved, onUnsave } = useEditContext()
@@ -115,14 +97,10 @@ export const Bubble = ({
 
   // Determine sender name
   const isMe = message.senderId === currentUser.id
-  const senderName = isMe
-    ? "Me"
-    : participantName || participantUsername || "Unknown"
+  const senderName = isMe ? "You" : participantUsername || "Unknown"
   const senderUsername = isMe
-    ? (currentUser.username ? "@" + currentUser.username : "")
-    : participantUsername
-      ? "@" + participantUsername
-      : ""
+    ? "@" + currentUser.username
+    : "@" + participantUsername
 
   // Format timestamp
   const formattedTime = formatConversationDate(message.createdAt)
@@ -153,10 +131,6 @@ export const Bubble = ({
     setIsDeleted(!!message.isDeleted)
   }, [message.isDeleted])
 
-  useEffect(() => {
-    setValue(message.content)
-  }, [message.content])
-
   useIsomorphicLayoutEffect(() => {
     if (chat && isSaved) {
       setValue(chat)
@@ -171,7 +145,7 @@ export const Bubble = ({
       setIsPinned((prev) => !prev)
 
       await apiFetch<{ message: string }>(
-        `/v1/messages/${message.id}/pin`,
+        `/api/messaging/messages/${message.id}/pin`,
         {
           method: "POST",
           headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
@@ -188,15 +162,13 @@ export const Bubble = ({
     try {
       setIsDeleted(true) // Optimistic UI
       setDeletedAt(Date.now())
-      onLocalDelete?.(message.id)
-      await apiFetch(`/v1/messages/${message.id}`, {
-        method: "DELETE",
+      await apiFetch(`/api/messaging/messages/${message.id}/delete`, {
+        method: "PATCH",
         headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
       })
     } catch (err) {
       console.error("Failed to delete message:", err)
       setIsDeleted(false) // revert if failed
-      onLocalRestore?.(message.id)
     }
   }
 
@@ -204,15 +176,13 @@ export const Bubble = ({
     const jwtToken = getJwtToken()
     try {
       setIsDeleted(false) // Optimistic UI
-      onLocalRestore?.(message.id)
-      await apiFetch(`/v1/messages/${message.id}/restore`, {
+      await apiFetch(`/api/messaging/messages/${message.id}/undo-delete`, {
         method: "PATCH",
         headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
       })
     } catch (err) {
       console.error("Failed to restore message:", err)
       setIsDeleted(true) // revert if failed
-      onLocalDelete?.(message.id)
     }
   }
 
@@ -229,10 +199,7 @@ export const Bubble = ({
 
           {!isDeleted && (
             <div className="inline-flex transition duration-300 opacity-0 group-hover:opacity-100 items-center gap-x-0.5">
-              <button
-                className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0"
-                onClick={() => onReply?.(message)}
-              >
+              <button className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
                 <CornerUpLeft className="size-4" />
               </button>
               <button className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
@@ -248,13 +215,14 @@ export const Bubble = ({
                   align="start"
                   className="min-w-[142px]"
                 >
-                  <DropdownMenuItem onSelect={() => onEdit?.(message)}>
+                  <DropdownMenuItem>
+                    {/* //onSelect={() => onChatChange(value)}> */}
                     <Edit03 className="h-4 w-4" /> Edit
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={handlePinMessage}>
                     <Edit03 className="h-4 w-4" /> {isPinned ? "Unpin" : "Pin"}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => onForward?.(message)}>
+                  <DropdownMenuItem>
                     <Send03 className="h-4 w-4" /> Forward
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
@@ -273,30 +241,6 @@ export const Bubble = ({
         {/* <span className="text-sm leading-[16.94px] text-dark-blue-400">
           {value}
         </span> */}
-
-        {message.forwardedFromId && !isDeleted && (
-          <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">
-            <p className="inline-flex items-center gap-x-1 text-xs font-semibold text-primary-600">
-              <Send03 className="size-3" /> Forwarded
-            </p>
-            {message.quotedContent && (
-              <p className="text-xs text-gray-600 line-clamp-3 mt-0.5">
-                {message.quotedContent}
-              </p>
-            )}
-          </div>
-        )}
-
-        {replyToMessage && !isDeleted && (
-          <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">
-            <p className="text-xs font-semibold text-primary-600">
-              Replying to {replyToMessage.senderId === currentUser.id ? "yourself" : (participantName || participantUsername || "Unknown")}
-            </p>
-            <p className="text-xs text-gray-500 line-clamp-2">
-              {replyToMessage.content || "Encrypted message"}
-            </p>
-          </div>
-        )}
 
         {isDeleted ? (
           <div className="text-gray-400 italic flex gap-2 items-center">
@@ -323,9 +267,6 @@ export const Bubble = ({
 
       <span className="inline-flex self-end text-[11px] leading-[15.47px] text-gray-500 items-center gap-x-1">
         Sent <span className="font-bold">{formattedTime}</span>
-        {message.edited && !isDeleted && (
-          <span className="text-gray-400 italic">(edited)</span>
-        )}
       </span>
     </article>
   )
@@ -345,20 +286,10 @@ export const YourBubble = ({
   message,
   currentUser,
   participantUsername,
-  participantName,
-  participantAvatarUrl,
-  onForward,
-  onReply,
-  replyToMessage,
 }: {
   message: Message
   currentUser: CurrentUser
   participantUsername?: string
-  participantName?: string
-  participantAvatarUrl?: string
-  onForward?: (message: Message) => void
-  onReply?: (message: Message) => void
-  replyToMessage?: Message | null
 }) => {
   const [isPinned, setIsPinned] = useState(!!message.isPinned)
   const [isDeleted, setIsDeleted] = useState(!!message.isDeleted)
@@ -372,10 +303,6 @@ export const YourBubble = ({
     setIsPinned(!!message.isPinned)
   }, [message.isPinned])
 
-  useEffect(() => {
-    setValue(message.content)
-  }, [message.content])
-
   const handlePinMessage = async () => {
     const jwtToken = getJwtToken()
     try {
@@ -383,7 +310,7 @@ export const YourBubble = ({
       setIsPinned((prev) => !prev)
 
       await apiFetch<{ message: string }>(
-        `/v1/messages/${message.id}/pin`,
+        `/api/messaging/messages/${message.id}/pin`,
         {
           method: "POST",
           headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
@@ -396,14 +323,10 @@ export const YourBubble = ({
   }
 
   const isMe = message.senderId === currentUser.id
-  const senderName = isMe
-    ? "Me"
-    : participantName || participantUsername || "Unknown"
+  const senderName = isMe ? "You" : participantUsername || "Unknown"
   const senderUsername = isMe
-    ? (currentUser.username ? "@" + currentUser.username : "")
-    : participantUsername
-      ? "@" + participantUsername
-      : ""
+    ? "@" + currentUser.username
+    : "@" + participantUsername
 
   // Format timestamp
   const formattedTime = formatConversationDate(message.createdAt)
@@ -415,10 +338,7 @@ export const YourBubble = ({
         className="hover:ring-0 active:ring-primary-100"
         isOnline
       >
-        <AvatarImage
-          src={participantAvatarUrl || undefined}
-          alt={participantName || "User"}
-        />
+        <AvatarImage src="/man.jpg" alt="Man" />
         <AvatarFallbackIcon />
       </Avatar>
 
@@ -433,10 +353,7 @@ export const YourBubble = ({
             </h3>
 
             <div className="inline-flex transition duration-300 opacity-0 group-hover:opacity-100 items-center gap-x-0.5">
-              <button
-                className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0"
-                onClick={() => onReply?.(message)}
-              >
+              <button className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
                 <CornerUpLeft className="size-4" />
               </button>
               <button className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
@@ -452,40 +369,27 @@ export const YourBubble = ({
                   align="start"
                   className="min-w-[142px]"
                 >
+                  <DropdownMenuItem>
+                    <Edit03 className="h-4 w-4" /> Edit
+                  </DropdownMenuItem>
                   <DropdownMenuItem onSelect={handlePinMessage}>
                     <Edit03 className="h-4 w-4" /> {isPinned ? "Unpin" : "Pin"}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => onForward?.(message)}>
+                  <DropdownMenuItem>
                     <Send03 className="h-4 w-4" /> Forward
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem visual="destructive">
+                    <Trash2 className="h-4 w-4" /> Delete
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
           </div>
 
-          {message.forwardedFromId && !isDeleted && (
-            <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">
-              <p className="inline-flex items-center gap-x-1 text-xs font-semibold text-primary-600">
-                <Send03 className="size-3" /> Forwarded
-              </p>
-              {message.quotedContent && (
-                <p className="text-xs text-gray-600 line-clamp-3 mt-0.5">
-                  {message.quotedContent}
-                </p>
-              )}
-            </div>
-          )}
-
-          {replyToMessage && !isDeleted && (
-            <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">
-              <p className="text-xs font-semibold text-primary-600">
-                Replying to {replyToMessage.senderId === currentUser.id ? "yourself" : (participantName || participantUsername || "Unknown")}
-              </p>
-              <p className="text-xs text-gray-500 line-clamp-2">
-                {replyToMessage.content || "Encrypted message"}
-              </p>
-            </div>
-          )}
+          {/* <span className="text-sm leading-[16.94px] text-dark-blue-400">
+            {message.content}
+          </span> */}
 
           {isDeleted ? (
             <div className="text-gray-400 italic flex gap-2 items-center">
@@ -504,9 +408,6 @@ export const YourBubble = ({
 
         <span className="inline-flex self-start text-[11px] leading-[15.47px] text-gray-500 items-center gap-x-1">
           Sent <span className="font-bold">{formattedTime}</span>
-          {message.edited && !isDeleted && (
-            <span className="text-gray-400 italic">(edited)</span>
-          )}
         </span>
       </div>
     </article>
@@ -531,30 +432,81 @@ const dummyConv: Conversation & { participantUsername: string } = {
   messages: [],
 }
 
+const mockMessage: Message = {
+  id: "msg-1",
+  conversationId: "conv-1",
+  threadId: "conv-1",
+  senderId: "user-2",
+  content: "Hello! This is a sample message rendered in Storybook.",
+  ciphertext: "",
+  isRead: true,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  isPinned: false,
+} as Message
+
+const mockCurrentUser: CurrentUser = {
+  id: "user-1",
+  username: "uxguy297$",
+} as CurrentUser
+
+const editCtxValue = {
+  chat: "",
+  onChatChange: () => {},
+  isSaved: false,
+  onSave: () => {},
+  onUnsave: () => {},
+}
+
+const chatsCtxValue = {
+  pinnedChats: 0,
+  onChatPinned: () => {},
+  onChatChecked: () => {},
+  showPinnedIcon: false,
+  toggleShowPinnedIcon: () => {},
+  checkedChats: 0,
+}
+
+// `as any` because Bubble/YourBubble are typed as React components, not stories.
+;(Bubble as any).args = {
+  message: mockMessage,
+  currentUser: mockCurrentUser,
+  participantUsername: "alice",
+}
+;(Bubble as any).decorators = [
+  (Story: any) => (
+    <EditContextProvider value={editCtxValue}>
+      <Story />
+    </EditContextProvider>
+  ),
+]
+
+;(YourBubble as any).args = {
+  message: mockMessage,
+  currentUser: mockCurrentUser,
+  participantUsername: "alice",
+}
+
 export const ChatDefault = () => (
-  <Chat
-    conversation={dummyConv}
-    currentUserId="user-1"
-    onClick={() => console.log("Chat clicked")}
-  />
+  <ChatsContextProvider value={chatsCtxValue}>
+    <Chat
+      conversation={dummyConv}
+      currentUserId="user-1"
+      onClick={() => console.log("Chat clicked")}
+    />
+  </ChatsContextProvider>
 )
 
 export const ChatActive = () => (
-  <Chat
-    conversation={dummyConv}
-    currentUserId="user-1"
-    variant="active"
-    onClick={() => console.log("Chat clicked")}
-  />
+  <ChatsContextProvider value={chatsCtxValue}>
+    <Chat
+      conversation={dummyConv}
+      currentUserId="user-1"
+      variant="active"
+      onClick={() => console.log("Chat clicked")}
+    />
+  </ChatsContextProvider>
 )
-
-// export const ChatDefault = () => {
-//   return <Chat />
-// }
-
-// export const ChatActive = () => {
-//   return <Chat variant="active" />
-// }
 
 export const BubbleWithPicture = () => {
   return (

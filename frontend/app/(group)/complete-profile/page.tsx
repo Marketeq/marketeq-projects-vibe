@@ -59,7 +59,7 @@ import {
   CreateYourOwnProject,
   Footer,
   LeftSidebar,
-  RecentProjects,
+  RecentListings,
   RecommendedForYou,
   TakeCareersToNextLevel,
   Tasks,
@@ -308,11 +308,11 @@ function TalentDashboard() {
     <>
       <div className="flex bg-gray-50">
         <LeftSidebar />
-        <div className="flex-auto p-6 gap-x-8 flex justify-center min-[1024px]:py-8 min-[1024px]:pl-[256px] min-[1024px]:pr-8 xl:pr-[50px] xl:pl-[274px] 2xl:pr-[150px] 2xl:pl-[374px] overflow-hidden">
+        <div className="flex-auto p-6 gap-x-8 flex justify-center min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-8 xl:pr-[50px] xl:pl-[248px] 2xl:pr-[150px] 2xl:pl-[348px] overflow-hidden">
           <div className="max-w-[1042px] space-y-3 md:space-y-5 min-w-0">
             <Welcome onToggle={toggleIsOpen} />
 
-            <RecentProjects />
+            <RecentListings />
 
             <CreateYourOwnProject />
 

@@ -52,7 +52,7 @@ module.exports = {
       watch: false,
       max_restarts: 10,
       restart_delay: 2000,
-      env: { PORT: 3004, NODE_ENV: 'development' },
+      env: { PORT: 3004, NODE_ENV: 'development', LISTINGS_DATABASE_SYNCHRONIZE: 'false' },
     },
     {
       name: 'checkout-service',

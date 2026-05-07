@@ -11,7 +11,7 @@ import {
   CreateYourOwnProject,
   Footer,
   LeftSidebar,
-  RecentProjects,
+  RecentListings,
   RecommendedForYou,
   RightDrawer,
   RightSidebar,
@@ -70,7 +70,7 @@ export default function TalentDashboard() {
             <div className="flex-auto space-y-3 md:space-y-5 min-w-0">
               <Welcome onToggle={() => setIsOpen(true)} />
 
-              <RecentProjects />
+              <RecentListings />
 
               <CreateYourOwnProject />
 
@@ -85,7 +85,10 @@ export default function TalentDashboard() {
               <Footer />
             </div>
 
-            <RightSidebar onCompleteProfile={handleCompleteProfile} profileProgress={profileProgress} />
+            <RightSidebar
+              onCompleteProfile={handleCompleteProfile}
+              profileProgress={profileProgress}
+            />
           </div>
 
           <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -121,7 +124,10 @@ export default function TalentDashboard() {
                 className="w-full h-[calc(theme(size.full)-theme(size.12))]"
                 scrollBar={<ScrollBar className="w-4 p-1" />}
               >
-                <RightDrawer onCompleteProfile={handleCompleteProfile} profileProgress={profileProgress} />
+                <RightDrawer
+                  onCompleteProfile={handleCompleteProfile}
+                  profileProgress={profileProgress}
+                />
               </ScrollArea>
             </DialogContent>
           </Dialog>

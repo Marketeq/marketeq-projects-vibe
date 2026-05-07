@@ -1,24 +1,58 @@
-import { CollectionConfig, FieldHook } from 'payload/types';
+import type { CollectionConfig, FieldHook } from "payload/types";
 
-import {
-  isAdmin,
-  isEditor,
-  readPublishedOrCmsUser,
-} from '../access/roles';
+import { isAdmin, isAdminField, isEditor, readPublishedOrCmsUser } from "../access/roles";
 import {
   syncProjectToListings,
   deleteProjectFromListings,
-} from '../hooks/afterChange/syncProjects';
-import { computeProjectFields } from '../hooks/beforeChange/computeProjectFields';
+} from "../hooks/afterChange/syncProjects";
+import { computeProjectFields } from "../hooks/beforeChange/computeProjectFields";
+import {
+  ProjectIndustriesChipField,
+  ProjectSkillsTagsField,
+  ProjectTagsChipField,
+} from "../components/ChipArrayTagsField";
+import ProjectCategoriesField from "../components/ProjectCategoriesField";
+import VideoUrlField from "../components/VideoUrlField";
+import { COUNTRIES } from "../constants/countries";
+import GenerateDeliverablesFromListingsButton from "../components/GenerateDeliverablesFromListingsButton";
+import { timingSafeEqual } from "crypto";
+
+function hasValidCmsApiKey(req: any): boolean {
+  const configured = process.env.CMS_API_KEY;
+  if (!configured) return false;
+  const header = req?.headers?.authorization;
+  if (typeof header !== "string") return false;
+  const match = header.match(/^API-Key\s+(.+)$/);
+  if (!match) return false;
+  const provided = match[1];
+  if (provided.length !== configured.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(provided), Buffer.from(configured));
+  } catch {
+    return false;
+  }
+}
+
+function hasValidSyncToken(req: any): boolean {
+  const configured = process.env.CMS_SYNC_TOKEN;
+  if (!configured) return false;
+  const header = req?.headers?.authorization;
+  if (typeof header !== "string") return false;
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  if (!match) return false;
+  const provided = match[1];
+  if (provided.length !== configured.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(provided), Buffer.from(configured));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Projects — dedicated CMS collection for the "Projects" listing type.
  *
- * Sources:
- *   - docs/md/CMS Service/projects/details/Strapi Collection Type_ Project Listings ...
- *   - docs/md/CMS Service/projects/details/data-dictionary.csv  (37 fields)
- *
- * Architectural notes:
+ * Sources: docs/md/CMS Service/projects/** (Strapi integration, data dictionary, GAP-ANALYSIS).
  *
  *   1. This collection is INDEPENDENT from any other listing type. Per the
  *      project's decoupled-listings decision, Services / Teams / Talent /
@@ -41,32 +75,42 @@ import { computeProjectFields } from '../hooks/beforeChange/computeProjectFields
  *      user-service / favorites-service / suggestions-service.
  */
 
-const slugifyFromTitle: FieldHook = ({ value, originalDoc, data }) => {
-  if (typeof value === 'string' && value.length > 0) {
+const slugifyFromTitle: FieldHook = ({ value, originalDoc, data }: any) => {
+  if (typeof value === "string" && value.length > 0) {
     return value
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '')
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
   }
-  const fallback = (data?.title ?? originalDoc?.title) as string | undefined
-  if (!fallback) return value
+  // On updates, the slug field is typically omitted (hidden in admin UI).
+  // Preserve the existing slug to avoid re-slugifying the title into a
+  // non-unique value.
+  if (typeof originalDoc?.slug === "string" && originalDoc.slug.trim()) {
+    return originalDoc.slug;
+  }
+  const fallback = (data?.title ?? originalDoc?.title) as string | undefined;
+  if (!fallback) return value;
   return fallback
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-}
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+};
 
 export const Projects: CollectionConfig = {
-  slug: 'projects',
+  slug: "projects",
   labels: {
-    singular: 'Project',
-    plural: 'Projects',
+    singular: "Project",
+    plural: "Projects",
   },
   admin: {
-    useAsTitle: 'title',
-    defaultColumns: ['title', 'projectType', 'pricingModel', 'featured', 'updatedAt'],
+    useAsTitle: "title",
+    defaultColumns: [
+      "title",
+      "featured",
+      "updatedAt",
+    ],
     description:
-      'Project listings shown on the marketplace. Edits sync to listings-service via RabbitMQ.',
+      "Project listings shown on the marketplace. Edits sync to listings-service via RabbitMQ.",
   },
   versions: {
     drafts: {
@@ -80,110 +124,440 @@ export const Projects: CollectionConfig = {
     update: isEditor,
     delete: isAdmin,
   },
-  fields: [
-    // ── Identity ────────────────────────────────────────────────────────────
+  endpoints: [
     {
-      name: 'title',
-      type: 'text',
-      required: true,
-      maxLength: 140,
-      admin: { description: 'Used as the main heading on the project card and details page.' },
+      path: "/:id/generate-deliverables",
+      method: "post",
+      handler: async (req, res) => {
+        if (!req.user && !hasValidCmsApiKey(req) && !hasValidSyncToken(req)) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
+
+        const listingsUrl = process.env.LISTINGS_SERVICE_URL;
+        const token = process.env.CMS_SYNC_TOKEN;
+        if (!listingsUrl || !token) {
+          return res.status(500).json({
+            message: "LISTINGS_SERVICE_URL / CMS_SYNC_TOKEN not configured",
+          });
+        }
+
+        const id = (req.params as any)?.id;
+        const doc = await req.payload.findByID({
+          collection: "projects",
+          id,
+          overrideAccess: true,
+          depth: 0,
+        });
+
+        const base = listingsUrl.endsWith("/")
+          ? listingsUrl.slice(0, -1)
+          : listingsUrl;
+        const deliverablesTimeoutMs = Number(
+          process.env.DELIVERABLES_REQUEST_TIMEOUT_MS ?? 8000,
+        );
+        const controller = new AbortController();
+        const timeout = setTimeout(
+          () => controller.abort(),
+          deliverablesTimeoutMs,
+        );
+        const upstream = await fetch(`${base}/internal/project-deliverables`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ scope: (doc as any)?.scope ?? [] }),
+          signal: controller.signal,
+        }).finally(() => clearTimeout(timeout));
+
+        if (!upstream.ok) {
+          const text = await upstream.text();
+          return res.status(502).json({
+            message: `deliverables generation failed (${upstream.status})`,
+            detail: text,
+          });
+        }
+
+        const json = (await upstream.json()) as {
+          deliverables?: Array<{
+            phaseLabel: string;
+            phaseName: string;
+            items: string[];
+          }>;
+        };
+
+        const deliverables = Array.isArray(json.deliverables)
+          ? json.deliverables
+              .map((g) => {
+                const phaseLabel =
+                  typeof g.phaseLabel === "string" ? g.phaseLabel.trim() : "";
+                const phaseName =
+                  typeof g.phaseName === "string" ? g.phaseName.trim() : "";
+                const items = Array.isArray(g.items)
+                  ? g.items
+                      .map((t) => (typeof t === "string" ? t.trim() : ""))
+                      .filter(Boolean)
+                      .map((text) => ({ text }))
+                  : [];
+
+                // Match Payload validation: phaseLabel + phaseName required; items required with minRows=1.
+                if (!phaseLabel || !phaseName || items.length === 0)
+                  return null;
+                return { phaseLabel, phaseName, items };
+              })
+              .filter((p): p is NonNullable<typeof p> => !!p)
+          : [];
+
+        // Best-effort persistence:
+        // generation itself should never fail due unrelated project validation
+        // (categories/media/etc). If persistence fails, return generated data
+        // anyway so the admin UI can still populate the field.
+        try {
+          await req.payload.update({
+            collection: "projects",
+            id,
+            // Do NOT force publish here — generation should work for drafts too.
+            data: { deliverables } as any,
+            overrideAccess: true,
+            draft: true,
+            context: {
+              skipEnsureDeliverables: true,
+            },
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          const data =
+            err && typeof err === "object" && "data" in err
+              ? (err as any).data
+              : undefined;
+          return res.json({
+            status: "ok",
+            persisted: false,
+            warning: "Generated deliverables, but failed to persist automatically.",
+            detail: message,
+            data,
+            deliverables,
+          });
+        }
+
+        return res.json({ status: "ok", persisted: true, deliverables });
+      },
+    },
+  ],
+  fields: [
+    // ── Computed (read-only) ───────────────────────────────────────────────
+    // Populated by `computeProjectFields` (beforeChange). These fields must
+    // exist in the schema or Payload will drop them during writes.
+    {
+      name: "startingPriceTotal",
+      type: "number",
+      admin: { readOnly: true, hidden: true },
     },
     {
-      name: 'slug',
-      type: 'text',
+      name: "priceViewAmount",
+      type: "number",
+      admin: { readOnly: true, hidden: true },
+    },
+    {
+      name: "teamMemberCount",
+      type: "number",
+      admin: { readOnly: true, hidden: true },
+    },
+    {
+      name: "projectDurationTotal",
+      type: "number",
+      admin: { readOnly: true, hidden: true },
+    },
+    {
+      name: "projectDurationLabel",
+      type: "text",
+      admin: { readOnly: true, hidden: true },
+    },
+    {
+      name: "datePublished",
+      type: "text",
+      admin: { readOnly: true, hidden: true },
+    },
+
+    // ── Identity ────────────────────────────────────────────────────────────
+    {
+      name: "title",
+      type: "text",
+      required: true,
+      maxLength: 120,
+      validate: (value) => {
+        if (typeof value !== "string" || !value.trim()) return true;
+        // Enforce the same rule for admin UI + REST API:
+        // only letters, numbers, spaces, and hyphens.
+        if (!/^[A-Za-z0-9 -]+$/.test(value.trim())) {
+          return "Title can only contain letters, numbers, spaces, and hyphens.";
+        }
+        if (value.trim().length < 10) {
+          return "Please enter at least 10 character(s).";
+        }
+        return true;
+      },
+      admin: {
+        description:
+          "Used as the main heading on the project card and details page.",
+      },
+    },
+    {
+      name: "featured",
+      type: "checkbox",
+      defaultValue: false,
+      admin: {
+        description: "Highlight this project on the homepage / category pages.",
+      },
+    },
+    {
+      name: "slug",
+      type: "text",
       required: true,
       unique: true,
       index: true,
       admin: {
-        position: 'sidebar',
-        description: 'Auto-generated from the title. Used in URLs and preview links.',
+        hidden: true,
       },
       hooks: {
         beforeValidate: [slugifyFromTitle],
       },
     },
 
-    // ── Tabs: editorial / categorization / media / system / computed ───────
+    // ── Tabs: project info first, then FAQs, pricing, deliverables, media… ─
     {
-      type: 'tabs',
+      type: "tabs",
       tabs: [
-        // ── 1. Editorial ───────────────────────────────────────────────────
+        // ── 1. Project info (Publish Project flow parity) ─────────────────
         {
-          label: 'Content',
+          label: "Project Info",
+          admin: {
+            description:
+              "Field order matches the Publish Project flow: categories → industries → descriptions → tags → skills. Programming languages and frameworks are not collected in that flow; use Tags and Skills instead.",
+          },
           fields: [
             {
-              name: 'shortDescription',
-              type: 'textarea',
+              name: "categories",
+              type: "array",
+              maxRows: 3,
+              minRows: 3,
               required: true,
-              maxLength: 320,
-              admin: { description: 'Summary used on cards and meta tags.' },
-            },
-            {
-              name: 'fullDescription',
-              type: 'richText',
-              required: true,
-              admin: {
-                description:
-                  'Rich-text overview shown on the project details page. No external links or custom fonts; must pass content moderation.',
+              validate: (value) => {
+                if (!Array.isArray(value) || value.length !== 3) {
+                  return "Please select all required categories (exactly 3).";
+                }
+
+                for (const entry of value as Array<{
+                  value?: unknown;
+                  subcategories?: Array<{ value?: unknown }>;
+                }>) {
+                  const categoryValue =
+                    typeof entry?.value === "string" ? entry.value.trim() : "";
+
+                  if (!categoryValue) {
+                    return "Each category row must have a category selected.";
+                  }
+
+                  const selectedSubcategories = Array.isArray(
+                    entry?.subcategories,
+                  )
+                    ? entry.subcategories.filter(
+                        (subEntry) =>
+                          typeof subEntry?.value === "string" &&
+                          subEntry.value.trim().length > 0,
+                      )
+                    : [];
+
+                  if (!selectedSubcategories.length) {
+                    return `Category "${categoryValue}" must include at least one subcategory.`;
+                  }
+
+                  if (selectedSubcategories.length > 5) {
+                    return `Category "${categoryValue}" can include at most 5 subcategories.`;
+                  }
+
+                  // Duplicate prevention is handled in admin UI state management.
+                }
+
+                return true;
               },
-            },
-            {
-              name: 'deliverables',
-              type: 'array',
-              labels: { singular: 'Phase', plural: 'Phases' },
+              labels: { singular: "Category", plural: "Categories" },
               admin: {
                 description:
-                  'Project deliverables grouped by phase. Each phase has a label (e.g. "Phase One"), a name (e.g. "Research"), and a list of check items rendered on the project details page.',
+                  "Exactly 3 category groups. Each must include at least one unique subcategory (max 5 per group).",
+                components: {
+                  Field: ProjectCategoriesField,
+                },
               },
               fields: [
                 {
-                  name: 'phaseLabel',
-                  type: 'text',
+                  name: "value",
+                  type: "text",
                   required: true,
-                  admin: { description: 'e.g. "Phase One", "Phase Two"' },
                 },
                 {
-                  name: 'phaseName',
-                  type: 'text',
-                  required: true,
-                  admin: { description: 'e.g. "Research", "Design", "Front-End"' },
-                },
-                {
-                  name: 'items',
-                  type: 'array',
-                  labels: { singular: 'Item', plural: 'Items' },
+                  name: "subcategories",
+                  type: "array",
                   required: true,
                   minRows: 1,
+                  maxRows: 5,
+                  labels: { singular: "Subcategory", plural: "Subcategories" },
+                  admin: {
+                    description:
+                      "At least one subcategory is required for each category.",
+                  },
                   fields: [
-                    { name: 'text', type: 'text', required: true },
+                    {
+                      name: "value",
+                      type: "text",
+                      required: true,
+                    },
                   ],
                 },
               ],
             },
             {
-              name: 'faqQuestions',
-              type: 'array',
-              labels: { singular: 'FAQ', plural: 'FAQs' },
-              admin: { description: 'Common questions answered by the team. Editable by team lead, must pass moderation.' },
+              name: "industries",
+              type: "array",
+              minRows: 1,
+              maxRows: 5,
+              required: true,
+              labels: { singular: "Industry", plural: "Industries" },
+              admin: {
+                description: "Min 1, max 5.",
+                components: {
+                  Field: ProjectIndustriesChipField,
+                },
+              },
+              fields: [
+                {
+                  name: "value",
+                  type: "text",
+                  required: true,
+                },
+              ],
+            },
+            {
+              name: "shortDescription",
+              type: "textarea",
+              required: true,
+              maxLength: 300,
+              validate: (value) => {
+                if (typeof value !== "string") return true;
+                const t = value.trim();
+                if (t.length > 0 && t.length < 50) {
+                  return "Please enter at least 50 character(s).";
+                }
+                return true;
+              },
+              admin: { description: "Summary used on cards and meta tags." },
+            },
+            {
+              name: "fullDescription",
+              type: "richText",
+              required: true,
+              admin: {
+                description: "Rich-text overview.",
+              },
+            },
+            {
+              name: "tags",
+              type: "array",
+              minRows: 1,
+              maxRows: 10,
+              required: true,
+              labels: { singular: "Tag", plural: "Tags" },
+              admin: {
+                description: "Min 1, max 10.",
+                components: {
+                  Field: ProjectTagsChipField,
+                },
+              },
+              fields: [{ name: "value", type: "text", required: true }],
+            },
+            {
+              // Per data-dictionary.csv:11 — "Generated by AI based on
+              // task breakdown and assigned roles." Spec says computed,
+              // but we keep it editable as a manual fallback until the
+              // AI skill-extraction pipeline (§14.11 HuggingFace) lands.
+              // Once that's wired, flip to `admin: { readOnly: true }`.
+              name: "projectSkills",
+              type: "array",
+              minRows: 1,
+              maxRows: 10,
+              required: true,
+              labels: { singular: "Skill", plural: "Skills" },
+              admin: {
+                description: "Min 1, max 10.",
+                components: {
+                  Field: ProjectSkillsTagsField,
+                },
+              },
+              fields: [
+                {
+                  name: "value",
+                  type: "text",
+                  required: true,
+                },
+              ],
+            },
+          ],
+        },
+
+        // ── 2. FAQs & public questions ─────────────────────────────────────
+        {
+          label: "Questions",
+          admin: {
+            description: "Q&A blocks.",
+          },
+          fields: [
+            {
+              name: "faqQuestions",
+              type: "array",
+              labels: { singular: "FAQ", plural: "FAQs" },
+              admin: { description: "Common questions answered by the team." },
               // Per docs/md/.../creation/Strapi Integration:196 §FAQItem the
               // answer is spec'd as Rich Text, so editors can add bold,
               // lists, inline links etc. — listings-service reuses the same
               // Lexical→HTML converter used for fullDescription (no extra
               // code path, same sanitiser).
               fields: [
-                { name: 'question', type: 'text', required: true },
-                { name: 'answer', type: 'richText', required: true },
+                { name: "question", type: "text", required: true },
+                { name: "answer", type: "richText", required: true },
               ],
             },
             {
-              name: 'recentQuestions',
-              type: 'array',
+              name: "recentQuestions",
+              type: "array",
               admin: {
-                description:
-                  'Recently asked public questions. Must pass content moderation and be approved by team lead or project owner.',
+                description: "Recently asked public questions.",
+                condition: (_data: any, siblingData: any) => {
+                  const items = Array.isArray(siblingData?.recentQuestions)
+                    ? siblingData.recentQuestions
+                    : [];
+                  return items.some((q: any) => !q?.answer);
+                },
               },
-              fields: [{ name: 'question', type: 'text', required: true }],
+              labels: { singular: "Question", plural: "Recent Questions" },
+              fields: [
+                {
+                  name: "question",
+                  type: "text",
+                  required: true,
+                  admin: {
+                    readOnly: true,
+                    description: "Editors can only add an answer.",
+                  },
+                },
+                {
+                  name: "answer",
+                  type: "richText",
+                  admin: {
+                    description:
+                      "Editor answer shown publicly on the project page.",
+                  },
+                },
+              ],
             },
             // NOTE: The "About the Team" section is intentionally NOT a CMS
             // field. Per docs/md/CMS Service/projects/details/03 PHASE 1 §1
@@ -195,199 +569,202 @@ export const Projects: CollectionConfig = {
           ],
         },
 
-        // ── 2. Pricing & scope ─────────────────────────────────────────────
+        // ── 3. Pricing & scope ─────────────────────────────────────────────
         {
-          label: 'Pricing & Scope',
+          label: "Scope",
           fields: [
             {
-              name: 'totalEstimatedHours',
-              type: 'number',
+              name: "scope",
+              type: "array",
               required: true,
-              min: 1,
-              admin: { description: 'Total scope hours used for pricing logic.' },
-            },
-            {
-              type: 'row',
-              fields: [
-                {
-                  name: 'timelineValue',
-                  type: 'number',
-                  required: true,
-                  min: 1,
-                  admin: { width: '50%' },
-                },
-                {
-                  name: 'timelineUnit',
-                  type: 'select',
-                  required: true,
-                  defaultValue: 'weeks',
-                  options: [
-                    { label: 'Weeks', value: 'weeks' },
-                    { label: 'Months', value: 'months' },
-                  ],
-                  admin: { width: '50%' },
-                },
-              ],
-            },
-            {
-              name: 'pricingModel',
-              type: 'select',
-              required: true,
-              defaultValue: 'biweekly',
-              options: [
-                { label: 'Weekly', value: 'weekly' },
-                { label: 'Biweekly', value: 'biweekly' },
-                { label: 'Monthly', value: 'monthly' },
-                { label: 'Quarterly', value: 'quarterly' },
-                { label: 'Yearly', value: 'yearly' },
-              ],
-              admin: { description: 'How project pricing is broken down for the buyer.' },
-            },
-            {
-              name: 'priceViewMode',
-              type: 'select',
-              defaultValue: 'biweekly',
-              options: [
-                { label: 'Weekly', value: 'weekly' },
-                { label: 'Biweekly', value: 'biweekly' },
-                { label: 'Monthly', value: 'monthly' },
-                { label: 'Quarterly', value: 'quarterly' },
-                { label: 'Yearly', value: 'yearly' },
-              ],
+              minRows: 1,
+              labels: { singular: "Phase", plural: "Scope (phases)" },
               admin: {
                 description:
-                  'Default payment view mode shown to the buyer on the project page.',
-              },
-            },
-            {
-              type: 'row',
-              fields: [
-                {
-                  name: 'priceRangeMin',
-                  type: 'number',
-                  required: true,
-                  min: 0,
-                  admin: { width: '50%', description: 'Minimum total price (USD).' },
-                },
-                {
-                  name: 'priceRangeMax',
-                  type: 'number',
-                  required: true,
-                  min: 0,
-                  admin: { width: '50%', description: 'Maximum total price (USD).' },
-                },
-              ],
-            },
-            {
-              name: 'projectType',
-              type: 'select',
-              required: true,
-              defaultValue: 'team',
-              options: [
-                { label: 'Single', value: 'single' },
-                { label: 'Team', value: 'team' },
-                { label: 'Custom', value: 'custom' },
-              ],
-            },
-            {
-              name: 'klarnaPaymentEnabled',
-              type: 'checkbox',
-              defaultValue: false,
-              admin: { description: 'Show Klarna installment options at checkout.' },
-            },
-            // ── Scope Builder ────────────────────────────────────────────────
-            // Per docs/md/CMS Service/projects/creation/Strapi Integration §Step 3
-            // Scope Builder. Phase { phase_name, order, tasks[] } and
-            // Task { title, role_name, location, experience_level, estimated_hours }
-            // are the primary data the entire pricing + deliverables +
-            // skills + duration pipeline derives from.
-            //
-            // The spec's warning applies verbatim:
-            //   ⛔ Do NOT add editable fields for duration, weeks, start day,
-            //      or end day. These are calculated automatically based on
-            //      task hours and work schedules.
-            {
-              name: 'scope',
-              type: 'array',
-              labels: { singular: 'Phase', plural: 'Scope (phases)' },
-              admin: {
-                description:
-                  'Ordered list of phases. Each phase contains tasks with role, experience, and estimated hours. Pricing and duration are computed from this tree — do not add duration fields here.',
+                  "Ordered list of phases. Each phase contains tasks with role, experience, and estimated hours.",
               },
               fields: [
                 {
-                  name: 'phaseName',
-                  type: 'text',
+                  name: "phaseName",
+                  type: "text",
                   required: true,
-                  admin: { description: 'e.g. "Research", "Design", "Front-End"' },
-                },
-                {
-                  name: 'order',
-                  type: 'number',
-                  required: true,
-                  min: 1,
                   admin: {
-                    description:
-                      'Phase order (1-indexed). Used to sort phases on the project details page.',
+                    description: 'e.g. "Research", "Design", "Front-End"',
                   },
                 },
                 {
-                  name: 'tasks',
-                  type: 'array',
+                  name: "order",
+                  type: "number",
+                  admin: {
+                    readOnly: true,
+                    hidden: true,
+                    description: "Auto-calculated phase order (1-indexed).",
+                  },
+                },
+                {
+                  name: "tasks",
+                  type: "array",
                   required: true,
                   minRows: 1,
-                  labels: { singular: 'Task', plural: 'Tasks' },
+                  labels: { singular: "Task", plural: "Tasks" },
                   fields: [
-                    { name: 'title', type: 'text', required: true },
                     {
-                      name: 'roleName',
-                      type: 'text',
+                      name: "title",
+                      type: "text",
                       required: true,
-                      admin: { description: 'Role required for this task (e.g. "Senior Designer").' },
+                      label: "Task Name",
                     },
                     {
-                      name: 'location',
-                      type: 'text',
-                      admin: { description: 'Country preference (optional).' },
-                    },
-                    {
-                      name: 'experienceLevel',
-                      type: 'select',
+                      // Same options as the frontend ROLES constant in publish-project/page.tsx
+                      name: "roleName",
+                      type: "select",
                       required: true,
-                      defaultValue: 'Medior',
+                      label: "Role",
                       options: [
-                        { label: 'Student', value: 'Student' },
-                        { label: 'Junior', value: 'Junior' },
-                        { label: 'Medior', value: 'Medior' },
-                        { label: 'Senior', value: 'Senior' },
-                        { label: 'Guru', value: 'Guru' },
+                        {
+                          label: "Frontend Developer",
+                          value: "Frontend Developer",
+                        },
+                        {
+                          label: "Backend Developer",
+                          value: "Backend Developer",
+                        },
+                        {
+                          label: "Full Stack Developer",
+                          value: "Full Stack Developer",
+                        },
+                        { label: "DevOps Engineer", value: "DevOps Engineer" },
+                        { label: "Data Scientist", value: "Data Scientist" },
+                        {
+                          label: "Machine Learning Engineer",
+                          value: "Machine Learning Engineer",
+                        },
+                        { label: "Cloud Engineer", value: "Cloud Engineer" },
+                        {
+                          label: "Database Administrator",
+                          value: "Database Administrator",
+                        },
+                        {
+                          label: "Security Engineer",
+                          value: "Security Engineer",
+                        },
+                        {
+                          label: "Mobile Developer",
+                          value: "Mobile Developer",
+                        },
+                        { label: "QA Engineer", value: "QA Engineer" },
+                        {
+                          label: "System Architect",
+                          value: "System Architect",
+                        },
+                        {
+                          label: "Network Engineer",
+                          value: "Network Engineer",
+                        },
+                        {
+                          label: "Site Reliability Engineer (SRE)",
+                          value: "Site Reliability Engineer (SRE)",
+                        },
+                        {
+                          label: "Software Engineer",
+                          value: "Software Engineer",
+                        },
+                        { label: "UI/UX Designer", value: "UI/UX Designer" },
+                        {
+                          label: "Graphic Designer",
+                          value: "Graphic Designer",
+                        },
+                        {
+                          label: "Product Designer",
+                          value: "Product Designer",
+                        },
+                        {
+                          label: "Interaction Designer",
+                          value: "Interaction Designer",
+                        },
+                        { label: "Visual Designer", value: "Visual Designer" },
+                        { label: "Motion Designer", value: "Motion Designer" },
+                        { label: "Web Designer", value: "Web Designer" },
+                        { label: "Brand Designer", value: "Brand Designer" },
+                        { label: "Illustrator", value: "Illustrator" },
+                        {
+                          label: "Information Architect",
+                          value: "Information Architect",
+                        },
+                        { label: "User Researcher", value: "User Researcher" },
+                        {
+                          label: "Content Strategist",
+                          value: "Content Strategist",
+                        },
+                        {
+                          label: "Design Technologist",
+                          value: "Design Technologist",
+                        },
+                        {
+                          label: "Experience Designer",
+                          value: "Experience Designer",
+                        },
+                        {
+                          label: "Service Designer",
+                          value: "Service Designer",
+                        },
                       ],
                     },
                     {
-                      name: 'estimatedHours',
-                      type: 'number',
+                      name: "location",
+                      type: "select",
                       required: true,
-                      min: 1,
-                      admin: { description: 'Estimated hours for this task. Drives pricing + duration.' },
+                      options: COUNTRIES,
+                      label: "Location",
+                      admin: { description: "Country preference." },
                     },
-                    // Hybrid team model (see GAP-ANALYSIS §3.3): the
-                    // assignee lives on the Task, not in a separate
-                    // assignedTeam component. The team emerges as
-                    // unique(scope[].tasks[].assigneeEmail).
-                    //
-                    // Per spec §16 TeamMemberAssignment L96: the author
-                    // types `user_email`, NOT a UUID. Emails are safe
-                    // to expose in the admin (editors already know them)
-                    // and don't leak the internal UUID space. The sync
-                    // hook and hydrateTeam both resolve emails →
-                    // user-service profiles at read time.
                     {
-                      name: 'assigneeEmail',
-                      type: 'email',
-                      admin: {
-                        description:
-                          'Email of the user assigned to this task. Resolved to a profile at render time via user-service. Leave empty if unassigned.',
-                      },
+                      // Mirrors frontend EXPERIENCE_LEVELS constant
+                      name: "experienceLevel",
+                      type: "select",
+                      required: true,
+                      defaultValue: "Medior",
+                      label: "Experience",
+                      options: [
+                        { label: "Student", value: "Student" },
+                        { label: "Junior", value: "Junior" },
+                        { label: "Medior", value: "Medior" },
+                        { label: "Senior", value: "Senior" },
+                        { label: "Guru", value: "Guru" },
+                      ],
+                    },
+                    {
+                      // Mirrors frontend duration: { value, type } shape.
+                      // The computeProjectFields hook converts this to estimatedHours
+                      // for pricing/duration calculations.
+                      type: "row",
+                      fields: [
+                        {
+                          name: "durationValue",
+                          type: "number",
+                          required: true,
+                          min: 1,
+                          label: "Duration",
+                          admin: {
+                            width: "50%",
+                            description:
+                              'Duration amount (e.g. 2 for "2 weeks").',
+                          },
+                        },
+                        {
+                          name: "durationType",
+                          type: "select",
+                          required: true,
+                          defaultValue: "weeks",
+                          label: "Unit",
+                          options: [
+                            { label: "Hours", value: "hours" },
+                            { label: "Days", value: "days" },
+                            { label: "Weeks", value: "weeks" },
+                          ],
+                          admin: { width: "50%" },
+                        },
+                      ],
                     },
                   ],
                 },
@@ -396,478 +773,118 @@ export const Projects: CollectionConfig = {
           ],
         },
 
-        // ── 3. Categorization ──────────────────────────────────────────────
+        // ── 4. Deliverables ────────────────────────────────────────────────
         {
-          label: 'Categorization',
+          label: "Deliverables",
           fields: [
             {
-              name: 'categories',
-              type: 'array',
-              maxRows: 3,
-              required: true,
-              labels: { singular: 'Category', plural: 'Categories' },
-              admin: { description: 'Top-level categories used for discovery (max 3).' },
-              fields: [{ name: 'value', type: 'text', required: true }],
-            },
-            {
-              name: 'subcategories',
-              type: 'array',
-              maxRows: 5,
-              labels: { singular: 'Subcategory', plural: 'Subcategories' },
-              admin: { description: 'Secondary classifications selected during creation (max 5).' },
-              fields: [{ name: 'value', type: 'text', required: true }],
-            },
-            {
-              name: 'tags',
-              type: 'array',
-              maxRows: 10,
-              admin: { description: 'Custom tags added by the project creator (max 10).' },
-              fields: [{ name: 'value', type: 'text', required: true }],
-            },
-            {
-              // Per data-dictionary.csv:11 — "Generated by AI based on
-              // task breakdown and assigned roles." Spec says computed,
-              // but we keep it editable as a manual fallback until the
-              // AI skill-extraction pipeline (§14.11 HuggingFace) lands.
-              // Once that's wired, flip to `admin: { readOnly: true }`.
-              name: 'projectSkills',
-              type: 'array',
-              maxRows: 25,
-              labels: { singular: 'Skill', plural: 'Skills' },
+              name: "generateDeliverablesButton",
+              type: "ui",
               admin: {
-                description:
-                  'Spec: AI-generated from task breakdown (§14.11). Currently editable as manual fallback — will flip to readOnly when AI pipeline lands.',
+                components: {
+                  Field: GenerateDeliverablesFromListingsButton,
+                },
               },
-              fields: [{ name: 'value', type: 'text', required: true }],
             },
             {
-              name: 'programmingLanguages',
-              type: 'array',
-              maxRows: 10,
-              admin: { description: 'Languages used in the project (max 10).' },
-              fields: [{ name: 'value', type: 'text', required: true }],
-            },
-            {
-              name: 'developmentTechnologies',
-              type: 'array',
-              maxRows: 10,
-              labels: { singular: 'Technology', plural: 'Technologies' },
-              admin: { description: 'Frameworks and tools used in the project (max 10).' },
-              fields: [{ name: 'value', type: 'text', required: true }],
-            },
-            {
-              name: 'skillsAndTools',
-              type: 'array',
-              labels: { singular: 'Skill / Tool', plural: 'Skills & Tools' },
-              admin: { description: 'Skill or tool with an icon shown on the project details page.' },
+              name: "deliverables",
+              type: "array",
+              labels: { singular: "Phase", plural: "Phases" },
+              access: {
+                update: isAdminField,
+              },
+              // Always show; the Generate button will populate it.
               fields: [
-                { name: 'title', type: 'text', required: true },
                 {
-                  name: 'icon',
-                  type: 'upload',
-                  relationTo: 'media',
-                  required: false,
+                  name: "phaseLabel",
+                  type: "text",
+                  required: true,
+                  admin: { description: 'e.g. "Phase One", "Phase Two"' },
+                },
+                {
+                  name: "phaseName",
+                  type: "text",
+                  required: true,
+                  admin: {
+                    description: 'e.g. "Research", "Design", "Front-End"',
+                  },
+                },
+                {
+                  name: "items",
+                  type: "array",
+                  labels: { singular: "Item", plural: "Items" },
+                  required: true,
+                  minRows: 1,
+                  fields: [{ name: "text", type: "text", required: true }],
                 },
               ],
-            },
-            // Per creation/Strapi Integration §60 + creation/Fields That
-            // Require Autocomplete §3: industries are distinct from
-            // categories and rendered as "industry badges" on the details
-            // page (doc §13 L52). Sourced from the same autocomplete
-            // library as categories (filterLevel=1 or 2).
-            {
-              name: 'industries',
-              type: 'array',
-              maxRows: 5,
-              labels: { singular: 'Industry', plural: 'Industries' },
-              admin: {
-                description:
-                  'Industry tags shown as badges. Max 5. Distinct from project categories.',
-              },
-              fields: [{ name: 'value', type: 'text', required: true }],
-            },
-            // Per spec §16 L139 + creation §208: editor-curated list of
-            // related projects. M2M self-reference so the admin can pick
-            // from the same Projects collection.
-            {
-              name: 'relatedProjects',
-              type: 'relationship',
-              relationTo: 'projects' as any,
-              hasMany: true,
-              admin: {
-                description:
-                  'Manually curated related projects. Shown in the "You might also like" rail on the details page.',
-              },
             },
           ],
         },
 
-        // ── 4. Media ───────────────────────────────────────────────────────
+        // ── 5. Media ───────────────────────────────────────────────────────
         {
-          label: 'Media',
+          label: "Media",
           fields: [
             {
-              name: 'thumbnail',
-              type: 'upload',
-              relationTo: 'media',
+              name: "thumbnail",
+              label: "Featured Image",
+              type: "upload",
+              relationTo: "media",
               required: true,
-              admin: { description: 'Card thumbnail. Stored in Cloudflare R2.' },
+              admin: {
+                description: "Card Featured Image. Stored in Cloudflare R2.",
+              },
             },
             {
-              name: 'gallery',
-              type: 'array',
-              labels: { singular: 'Gallery image', plural: 'Gallery images' },
+              name: "additionalImages",
+              label: "Additional Images",
+              type: "array",
+              labels: {
+                singular: "Additional Image",
+                plural: "Additional Images",
+              },
               fields: [
                 {
-                  name: 'image',
-                  type: 'upload',
-                  relationTo: 'media',
+                  name: "image",
+                  type: "upload",
+                  relationTo: "media",
                   required: true,
                 },
-                { name: 'caption', type: 'text' },
+                { name: "caption", type: "text" },
               ],
             },
             {
-              name: 'videoWalkthrough',
-              type: 'group',
+              name: "videoWalkthrough",
+              type: "group",
               admin: {
                 description:
-                  'Optional. Either upload a video or supply an external URL — not both.',
+                  "Optional. Paste a YouTube, Vimeo, or other external video URL.",
               },
               fields: [
                 {
-                  name: 'upload',
-                  type: 'upload',
-                  relationTo: 'media',
+                  name: "externalUrl",
+                  type: "text",
+                  admin: {
+                    description: "e.g. https://www.youtube.com/watch?v=...",
+                    components: {
+                      Field: VideoUrlField,
+                    },
+                  },
                 },
-                { name: 'externalUrl', type: 'text' },
               ],
             },
           ],
         },
 
-        // ── 5. Computed (read-only, set by NestJS workers via local API) ───
+        // ── 7. SEO ─────────────────────────────────────────────────────────
+        // For now, SEO metadata is derived from the main `title` and
+        // `description` fields (no separate SEO override fields).
         {
-          label: 'Computed',
-          description:
-            'Auto-calculated by NestJS workers and surfaced here for visibility. Not editable.',
-          fields: [
-            {
-              name: 'startingPriceTotal',
-              type: 'number',
-              admin: {
-                readOnly: true,
-                description:
-                  'Total project price based on assigned resources and scope hours.',
-              },
-            },
-            {
-              name: 'priceViewAmount',
-              type: 'number',
-              admin: {
-                readOnly: true,
-                description: 'Displayed cost according to the selected payment view mode.',
-              },
-            },
-            {
-              name: 'teamMemberCount',
-              type: 'number',
-              admin: { readOnly: true },
-            },
-            {
-              name: 'projectDurationTotal',
-              type: 'number',
-              admin: {
-                readOnly: true,
-                description: 'Total weeks across all phases (auto-calculated from scope).',
-              },
-            },
-            {
-              name: 'projectDurationLabel',
-              type: 'text',
-              admin: {
-                readOnly: true,
-                description:
-                  'Human-readable duration. Unit pivots per spec §01 L98-104: <7 days → "N days", <4 weeks → "N weeks", else "N months".',
-              },
-            },
-            {
-              name: 'projectHistoryRatings',
-              type: 'number',
-              min: 0,
-              max: 5,
-              admin: {
-                readOnly: true,
-                description: 'Average rating of the client\u2019s past projects.',
-              },
-            },
-            {
-              // Derived in computeProjectFields from
-              // unique(scope[].tasks[].assigneeEmail). The gateway
-              // hydrates each email into a full profile via
-              // user-service at request time. Emails (not UUIDs)
-              // match spec §16 L96 and avoid leaking the UUID space
-              // to CMS editors.
-              name: 'teamEmails',
-              type: 'json',
-              admin: {
-                readOnly: true,
-                description:
-                  'Derived from scope task assignees. Array of email addresses — the canonical team identifiers per spec §16.',
-              },
-            },
-            {
-              name: 'datePublished',
-              type: 'date',
-              admin: {
-                readOnly: true,
-                description: 'Auto-set when the project is first published.',
-              },
-            },
-          ],
-        },
-
-        // ── 6. Admin & moderation ─────────────────────────────────────────
-        // Per docs/md/.../16 - Strapi Integration §Basic Project Info L44-51
-        // + §SEO & Admin L137-149. Fields here are internal-only (not
-        // synced to listings or rendered on the frontend) except where
-        // the sync hook explicitly reads them.
-        {
-          label: 'Admin & Moderation',
-          description:
-            'Internal fields for project governance. Not shown to public visitors.',
-          fields: [
-            {
-              type: 'row',
-              fields: [
-                {
-                  name: 'visibility',
-                  type: 'select',
-                  defaultValue: 'public',
-                  options: [
-                    { label: 'Public', value: 'public' },
-                    { label: 'Private', value: 'private' },
-                    { label: 'Unlisted', value: 'unlisted' },
-                  ],
-                  admin: {
-                    width: '33%',
-                    description:
-                      'Distinct from draft/published. "Private" hides from search; "Unlisted" is accessible by direct URL only.',
-                  },
-                },
-                {
-                  name: 'moderationStatus',
-                  type: 'select',
-                  defaultValue: 'approved',
-                  options: [
-                    { label: 'Pending', value: 'pending' },
-                    { label: 'Approved', value: 'approved' },
-                    { label: 'Rejected', value: 'rejected' },
-                    { label: 'Escalated', value: 'escalated' },
-                  ],
-                  admin: {
-                    width: '33%',
-                    description:
-                      'Content-moderation status, separate from Payload\'s draft/published workflow. Set automatically by the FlagScore hook (§14.12).',
-                  },
-                },
-                {
-                  name: 'ownerId',
-                  type: 'text',
-                  admin: {
-                    width: '33%',
-                    description:
-                      'UUID of the project owner from user-service. Links this project to a real user for team, audit, and permissions.',
-                  },
-                },
-              ],
-            },
-            {
-              type: 'row',
-              fields: [
-                {
-                  name: 'isFlagged',
-                  type: 'checkbox',
-                  defaultValue: false,
-                  admin: {
-                    width: '33%',
-                    description: 'Internal flag for admin review.',
-                  },
-                },
-                {
-                  name: 'forceReviewOnEdit',
-                  type: 'checkbox',
-                  defaultValue: true,
-                  admin: {
-                    width: '33%',
-                    description:
-                      'When true, editing sensitive fields (title, description, deliverables, tags, skills, video) sets moderationStatus back to "pending" (§14.13).',
-                  },
-                },
-                {
-                  name: 'previewToken',
-                  type: 'text',
-                  admin: {
-                    width: '33%',
-                    readOnly: true,
-                    description:
-                      'Auto-generated shareable token for previewing unpublished drafts. Set on first create by the beforeChange hook.',
-                  },
-                },
-              ],
-            },
-            {
-              name: 'adminNotes',
-              type: 'richText',
-              admin: {
-                description:
-                  'Internal notes visible only to admins. Not synced to listings or shown publicly.',
-              },
-            },
-            {
-              name: 'adminTags',
-              type: 'array',
-              labels: { singular: 'Admin Tag', plural: 'Admin Tags' },
-              admin: {
-                description: 'Internal categorization tags for admin use only.',
-              },
-              fields: [
-                { name: 'value', type: 'text', required: true },
-              ],
-            },
-            {
-              name: 'activityLog',
-              type: 'array',
-              labels: { singular: 'Entry', plural: 'Activity Log' },
-              admin: {
-                readOnly: true,
-                description:
-                  'Audit trail appended automatically on every save. Shape per spec §14.16 / §11.',
-                components: {
-                  RowLabel: ({ data, index }: { data?: Record<string, unknown>; index?: number }) => {
-                    const row = (data ?? {}) as {
-                      actionType?: string;
-                      performedBy?: string;
-                      timestamp?: string;
-                      fieldChanged?: string;
-                    };
-                    const num = String((index ?? 0) + 1).padStart(2, '0');
-                    const when = row.timestamp
-                      ? new Date(row.timestamp).toLocaleString(undefined, {
-                          month: 'short',
-                          day: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                      : '—';
-                    const action = row.actionType
-                      ? row.actionType.charAt(0).toUpperCase() + row.actionType.slice(1)
-                      : 'Change';
-                    const actor = row.performedBy || 'system';
-                    const field = row.fieldChanged && row.fieldChanged !== '(save)' ? ` · ${row.fieldChanged}` : '';
-                    return `#${num}  ·  ${when}  ·  ${action}  ·  ${actor}${field}`;
-                  },
-                },
-              },
-              fields: [
-                {
-                  name: 'actionType',
-                  type: 'select',
-                  options: [
-                    { label: 'Create', value: 'create' },
-                    { label: 'Update', value: 'update' },
-                    { label: 'Publish', value: 'publish' },
-                    { label: 'Unpublish', value: 'unpublish' },
-                    { label: 'Flag', value: 'flag' },
-                    { label: 'Moderate', value: 'moderate' },
-                  ],
-                },
-                { name: 'performedBy', type: 'text' },
-                { name: 'timestamp', type: 'date' },
-                { name: 'fieldChanged', type: 'text' },
-              ],
-            },
-            // SEO — per spec §16 L137-138. The @payloadcms/plugin-seo is
-            // installed globally but not targeted at this collection, so
-            // adding inline fields for now.
-            {
-              type: 'row',
-              fields: [
-                {
-                  name: 'seoTitle',
-                  type: 'text',
-                  maxLength: 70,
-                  admin: { width: '50%', description: 'Max 70 chars. Defaults to project title if empty.' },
-                },
-                {
-                  name: 'seoDescription',
-                  type: 'textarea',
-                  maxLength: 160,
-                  admin: { width: '50%', description: 'Max 160 chars. Defaults to shortDescription if empty.' },
-                },
-              ],
-            },
-          ],
+          label: "SEO",
+          fields: [],
         },
       ],
-    },
-
-    // ── Sidebar toggles ────────────────────────────────────────────────────
-    {
-      name: 'featured',
-      type: 'checkbox',
-      defaultValue: false,
-      admin: {
-        position: 'sidebar',
-        description: 'Highlight this project on the homepage / category pages.',
-      },
-    },
-    {
-      // Per data-dictionary.csv:14 — "True only if at least one assigned
-      // team member is online." Spec says runtime-computed, but we keep
-      // it as an admin override toggle so editors can force-disable the
-      // widget for specific projects. The frontend ANDs this with the
-      // real-time presence check when messaging-service lands.
-      name: 'chatEnabled',
-      type: 'checkbox',
-      defaultValue: false,
-      admin: {
-        position: 'sidebar',
-        description:
-          'Spec: runtime-computed from team online status. Currently an admin override — frontend will AND with real-time presence when messaging-service lands.',
-      },
-    },
-    {
-      // Per data-dictionary.csv:25 — "Visible to logged-in users only."
-      // Spec treats this as a frontend feature, not a per-project CMS
-      // toggle. Kept for backwards compat with the sync pipeline, but
-      // the spec intent is that the report button always exists for
-      // logged-in users.
-      name: 'reportButtonEnabled',
-      type: 'checkbox',
-      defaultValue: true,
-      admin: {
-        position: 'sidebar',
-        description: 'Spec: frontend-only feature. Kept as admin override for edge cases (e.g. disable on internal projects).',
-      },
-    },
-    {
-      // Per data-dictionary.csv:26 — "Always true for public projects."
-      // Spec says not configurable. Kept for backwards compat; default
-      // true matches spec intent.
-      name: 'shareButtonEnabled',
-      type: 'checkbox',
-      defaultValue: true,
-      admin: {
-        position: 'sidebar',
-        description: 'Spec: always true for public projects. Kept as admin override; default matches spec.',
-      },
-    },
-    {
-      name: 'helpButtonEnabled',
-      type: 'checkbox',
-      defaultValue: false,
-      admin: { position: 'sidebar' },
     },
   ],
 
@@ -878,4 +895,4 @@ export const Projects: CollectionConfig = {
     afterChange: [syncProjectToListings],
     afterDelete: [deleteProjectFromListings],
   },
-}
+};

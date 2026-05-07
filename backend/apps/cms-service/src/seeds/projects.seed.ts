@@ -1,4 +1,6 @@
 import type { Payload } from 'payload';
+import { seedCategories } from "./categories.seed";
+import { stableHashInt, upsertPlaceholderMedia } from "./seed-utils";
 
 // Fixture arrays are duplicated into cms-service (TypeScript rootDir
 // blocks cross-package imports). The listings-service seed now only
@@ -24,8 +26,7 @@ import {
  * from the cms-service package.
  *
  * Required fields on the Projects collection that the listings fixtures
- * don't carry (totalEstimatedHours, timelineValue, pricingModel, priceRange,
- * projectType, deliverables, fullDescription) are filled with sensible
+ * don't carry (deliverables, fullDescription) are filled with sensible
  * defaults so validation passes. Editors can tweak them in admin later.
  *
  * Scoring signals (rating / reviewCount / completionsCount / views90d /
@@ -241,112 +242,200 @@ async function upsertExternalMedia(
   }
 }
 
+type SeededCategoryParent = { id: number; name: string; slug: string };
+type SeededCategoryChild = { id: number; name: string; slug: string; parent: number };
+
+async function loadSeededProjectCategories(payload: Payload): Promise<{
+  parents: SeededCategoryParent[];
+  childrenByParentId: Map<number, SeededCategoryChild[]>;
+}> {
+  const parentsRes = await payload.find({
+    collection: "categories",
+    where: {
+      and: [
+        { parent: { exists: false } },
+        { listingTypes: { contains: "project" } } as any,
+        { status: { equals: "active" } },
+      ],
+    },
+    limit: 200,
+    overrideAccess: true,
+  });
+
+  const parents = (parentsRes.docs as any[]).map((d) => ({
+    id: d.id as number,
+    name: String(d.name ?? ""),
+    slug: String(d.slug ?? ""),
+  }));
+
+  const childrenByParentId = new Map<number, SeededCategoryChild[]>();
+  if (parents.length === 0) return { parents, childrenByParentId };
+
+  const childrenRes = await payload.find({
+    collection: "categories",
+    where: {
+      and: [
+        { parent: { exists: true } },
+        { listingTypes: { contains: "project" } } as any,
+        { status: { equals: "active" } },
+      ],
+    },
+    limit: 1000,
+    overrideAccess: true,
+  });
+
+  for (const d of childrenRes.docs as any[]) {
+    const parentId = typeof d.parent === "number" ? d.parent : Number(d.parent?.id);
+    if (!Number.isFinite(parentId)) continue;
+    const row: SeededCategoryChild = {
+      id: d.id as number,
+      name: String(d.name ?? ""),
+      slug: String(d.slug ?? ""),
+      parent: parentId,
+    };
+    const arr = childrenByParentId.get(parentId) ?? [];
+    arr.push(row);
+    childrenByParentId.set(parentId, arr);
+  }
+
+  return { parents, childrenByParentId };
+}
+
+function pickThreeParents(
+  seeded: SeededCategoryParent[],
+  key: string,
+): SeededCategoryParent[] {
+  if (seeded.length <= 3) return seeded.slice(0, 3);
+  const start = stableHashInt(key) % seeded.length;
+  const out: SeededCategoryParent[] = [];
+  for (let i = 0; i < seeded.length && out.length < 3; i++) {
+    out.push(seeded[(start + i) % seeded.length]);
+  }
+  return out;
+}
+
+function pickChildName(
+  childrenByParentId: Map<number, SeededCategoryChild[]>,
+  parentId: number,
+  key: string,
+): string | null {
+  const children = childrenByParentId.get(parentId) ?? [];
+  if (children.length === 0) return null;
+  const idx = stableHashInt(`${key}:${parentId}`) % children.length;
+  return children[idx]?.name ?? null;
+}
+
 // ── Category → stack mapping ──────────────────────────────────────────────
 // Keyed off the first category on each fixture. Gives every seeded project
-// plausible tags / programming languages / dev techs / subcategories /
-// skillsAndTools without 89 bespoke entries. Editors can refine in admin.
+// plausible tags / subcategories
+// without 89 bespoke entries. Editors can refine in admin.
 interface CategoryStack {
   subcategories: string[];
   tags: string[];
-  programmingLanguages: string[];
-  developmentTechnologies: string[];
-  skillsAndTools: string[];
-  galleryPool: string[]; // Unsplash photo IDs used for the gallery tab
+  galleryPool: string[]; // Unsplash photo IDs used for Additional Images
+  industries: string[];
 }
 
 const CATEGORY_STACKS: Record<string, CategoryStack> = {
   web: {
     subcategories: ['Frontend Engineering', 'Full-Stack', 'Performance'],
     tags: ['react', 'nextjs', 'a11y', 'seo', 'responsive'],
-    programmingLanguages: ['TypeScript', 'JavaScript', 'HTML', 'CSS'],
-    developmentTechnologies: ['Next.js', 'React', 'Tailwind CSS', 'Vercel', 'PostgreSQL'],
-    skillsAndTools: ['Figma', 'GitHub Actions', 'Playwright', 'Vercel'],
     galleryPool: ['1551288049-bebda4e38f71', '1461749280684-dccba630e2f6', '1486312338219-ce68d2c6f44d'],
+    industries: ['Technology', 'E-commerce', 'SaaS', 'Media'],
   },
   mobile: {
     subcategories: ['iOS', 'Android', 'Cross-platform'],
     tags: ['swift', 'kotlin', 'react-native', 'offline', 'push-notifications'],
-    programmingLanguages: ['Swift', 'Kotlin', 'TypeScript'],
-    developmentTechnologies: ['React Native', 'Expo', 'Fastlane', 'Firebase'],
-    skillsAndTools: ['Xcode', 'Android Studio', 'TestFlight', 'Firebase'],
     galleryPool: ['1542831371-29b0f74f9713', '1581091226825-a6a2a5aee158', '1517180102446-f3ece451e9d8'],
+    industries: ['Consumer App', 'Fintech', 'Health & Fitness', 'Logistics'],
   },
   cloud: {
     subcategories: ['Platform Engineering', 'DevOps', 'SRE'],
     tags: ['kubernetes', 'terraform', 'observability', 'cost-optimisation'],
-    programmingLanguages: ['Go', 'TypeScript', 'Python'],
-    developmentTechnologies: ['Kubernetes', 'Terraform', 'AWS', 'Grafana', 'Prometheus'],
-    skillsAndTools: ['AWS', 'Datadog', 'Terraform', 'ArgoCD'],
     galleryPool: ['1614064641938-3bbee52942c7', '1518770660439-4636190af475', '1504868584819-f8e8b4b6d7e3'],
+    industries: ['Cloud Computing', 'Financial Services', 'Cybersecurity', 'Public Sector'],
   },
   design: {
     subcategories: ['Brand', 'Product Design', 'Design Systems'],
     tags: ['figma', 'design-system', 'illustration', 'accessibility'],
-    programmingLanguages: [],
-    developmentTechnologies: ['Figma', 'Framer', 'Storybook'],
-    skillsAndTools: ['Figma', 'Framer', 'Notion', 'Loom'],
     galleryPool: ['1558655146-9f40138edfeb', '1454165804606-c3d57bc86b40', '1455390582262-044cdead277a'],
+    industries: ['Creative Agency', 'E-commerce', 'Startup', 'Education'],
   },
   development: {
     subcategories: ['Backend Engineering', 'Data Engineering', 'AI/ML'],
     tags: ['backend', 'api', 'postgres', 'ml', 'automation'],
-    programmingLanguages: ['TypeScript', 'Python', 'Go'],
-    developmentTechnologies: ['Node.js', 'NestJS', 'PostgreSQL', 'Redis', 'Docker'],
-    skillsAndTools: ['Postman', 'Grafana', 'GitHub Actions', 'Docker'],
     galleryPool: ['1517180102446-f3ece451e9d8', '1551288049-bebda4e38f71', '1581094794329-c8112a89af12'],
+    industries: ['Enterprise', 'Automotive', 'Logistics', 'Manufacturing'],
   },
   security: {
     subcategories: ['AppSec', 'Identity', 'Compliance'],
     tags: ['soc2', 'pentest', 'oauth', 'audit'],
-    programmingLanguages: ['Go', 'TypeScript'],
-    developmentTechnologies: ['Vault', 'Auth0', 'Okta', 'SIEM'],
-    skillsAndTools: ['Vault', 'Okta', 'Semgrep', 'Snyk'],
-    galleryPool: ['1518770660439-4636190af475', '1486406146926-c627a92ad1ab', '1555066931-4365d14bab8c'],
+    galleryPool: ['1563986768609-322da13575f3', '1550751827-4bd374c3f58b', '1510511459019-5dee211c6d27'],
+    industries: ['Cybersecurity', 'Financial Services', 'Defense', 'Healthcare'],
   },
   'digital-marketing': {
     subcategories: ['SEO', 'Paid Media', 'CRO'],
     tags: ['seo', 'ppc', 'attribution', 'content'],
-    programmingLanguages: [],
-    developmentTechnologies: ['HubSpot', 'GA4', 'Segment', 'Looker'],
-    skillsAndTools: ['HubSpot', 'GA4', 'Segment', 'Mixpanel'],
     galleryPool: ['1557838923-2985c318be48', '1432888622747-4eb9a8efeb07', '1533750516457-a7f992034fec'],
+    industries: ['Marketing', 'E-commerce', 'Entertainment', 'SaaS'],
   },
   'sales-funnels': {
     subcategories: ['Landing Pages', 'Email Funnels', 'Checkout Optimization'],
     tags: ['landing-page', 'ab-test', 'funnel', 'upsell'],
-    programmingLanguages: [],
-    developmentTechnologies: ['Webflow', 'ConvertKit', 'Stripe'],
-    skillsAndTools: ['Webflow', 'Klaviyo', 'Stripe', 'Hotjar'],
     galleryPool: ['1557838923-2985c318be48', '1460925895917-afdab827c52f', '1486312338219-ce68d2c6f44d'],
+    industries: ['E-commerce', 'Real Estate', 'Education', 'Direct to Consumer'],
   },
   'customer-service': {
     subcategories: ['Helpdesk', 'Live Chat', 'Knowledge Base'],
     tags: ['helpdesk', 'csat', 'sla', 'automation'],
-    programmingLanguages: ['TypeScript', 'Python'],
-    developmentTechnologies: ['Zendesk', 'Intercom', 'Twilio'],
-    skillsAndTools: ['Zendesk', 'Intercom', 'Twilio', 'Notion'],
     galleryPool: ['1486406146926-c627a92ad1ab', '1542744173-8e7e53415bb0', '1517180102446-f3ece451e9d8'],
+    industries: ['SaaS', 'Retail', 'Healthcare', 'Logistics'],
   },
   'cloud-software': {
     subcategories: ['Internal Tools', 'Integrations', 'Admin Dashboards'],
     tags: ['saas', 'internal-tools', 'integrations', 'admin'],
-    programmingLanguages: ['TypeScript', 'Python'],
-    developmentTechnologies: ['Retool', 'Hasura', 'Postgres', 'GraphQL'],
-    skillsAndTools: ['Retool', 'Hasura', 'Postgres', 'Sentry'],
     galleryPool: ['1461749280684-dccba630e2f6', '1542831371-29b0f74f9713', '1551288049-bebda4e38f71'],
+    industries: ['SaaS', 'Enterprise', 'Financial Services', 'Legal'],
   },
   'mobile-apps': {
     subcategories: ['Consumer Mobile', 'Lifestyle', 'Utilities'],
     tags: ['mobile', 'ux', 'notifications', 'health'],
-    programmingLanguages: ['Swift', 'Kotlin', 'TypeScript'],
-    developmentTechnologies: ['React Native', 'Expo', 'Firebase'],
-    skillsAndTools: ['Xcode', 'Android Studio', 'Firebase', 'Figma'],
     galleryPool: ['1558655146-9f40138edfeb', '1542831371-29b0f74f9713', '1576086213369-97a306d36557'],
+    industries: ['Lifestyle', 'Health', 'Productivity', 'Entertainment'],
   },
 };
 
 function stackFor(p: ProjectSeed): CategoryStack {
   const key = p.categories?.[0] ?? 'web';
+  return CATEGORY_STACKS[key] ?? CATEGORY_STACKS.web;
+}
+
+const CATEGORY_STACK_KEYS = Object.keys(CATEGORY_STACKS);
+
+/** Publish-project requires exactly 3 distinct category groups. */
+function ensureThreeCategorySlugs(seed: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of seed) {
+    const t = (raw || '').trim();
+    if (!t) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+    if (out.length >= 3) return out.slice(0, 3);
+  }
+  for (const key of CATEGORY_STACK_KEYS) {
+    if (out.length >= 3) break;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out.slice(0, 3);
+}
+
+function stackForCategorySlug(slug: string): CategoryStack {
+  const key = (slug || 'web').toLowerCase();
   return CATEGORY_STACKS[key] ?? CATEGORY_STACKS.web;
 }
 
@@ -429,6 +518,81 @@ function buildFaqs(p: ProjectSeed) {
   ];
 }
 
+function buildScope(_p: ProjectSeed) {
+  // Matches the current Projects collection schema:
+  // tasks require roleName, location, experienceLevel, durationValue, durationType.
+  // We keep a deterministic template so all 89 fixtures validate.
+  const location = "United States";
+  return [
+    {
+      phaseName: "Discovery & Design",
+      order: 1,
+      tasks: [
+        {
+          title: "Requirements & User Research",
+          roleName: "User Researcher",
+          location,
+          experienceLevel: "Senior",
+          durationValue: 1,
+          durationType: "weeks",
+        },
+        {
+          title: "UI/UX High-fidelity Prototyping",
+          roleName: "UI/UX Designer",
+          location,
+          experienceLevel: "Senior",
+          durationValue: 1,
+          durationType: "weeks",
+        },
+      ],
+    },
+    {
+      phaseName: "Implementation",
+      order: 2,
+      tasks: [
+        {
+          title: "Core System Architecture",
+          roleName: "System Architect",
+          location,
+          experienceLevel: "Guru",
+          durationValue: 1,
+          durationType: "weeks",
+        },
+        {
+          title: "Feature Development & API Integration",
+          roleName: "Full Stack Developer",
+          location,
+          experienceLevel: "Medior",
+          durationValue: 2,
+          durationType: "weeks",
+        },
+      ],
+    },
+    {
+      phaseName: "Launch Readiness",
+      order: 3,
+      tasks: [
+        {
+          title: "QA, UAT & Performance Tuning",
+          roleName: "QA Engineer",
+          location,
+          experienceLevel: "Medior",
+          durationValue: 3,
+          durationType: "days",
+        },
+        {
+          title: "Production Deployment & Handover",
+          roleName: "DevOps Engineer",
+          location,
+          experienceLevel: "Senior",
+          durationValue: 2,
+          durationType: "days",
+        },
+      ],
+    },
+  ];
+}
+
 /**
  * Build the Payload `data` object for a single seeded project. Every
  * optional editorial field gets filled in so the admin UI and the
@@ -438,54 +602,91 @@ function buildProjectData(
   p: ProjectSeed,
   thumbnailMediaId: number,
   galleryMediaIds: number[],
+  seededCategories: {
+    parents: SeededCategoryParent[];
+    childrenByParentId: Map<number, SeededCategoryChild[]>;
+  },
 ): Record<string, unknown> {
-  const short = p.shortDescription ?? p.description;
+  const normalizeTitle = (raw: string): string => {
+    // Projects collection enforces: letters, numbers, spaces, hyphens only.
+    return raw
+      .replace(/[^A-Za-z0-9 -]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+
+  let short = (p.shortDescription ?? p.description).trim();
+  const shortPad =
+    ' Scope covers discovery, delivery, QA, and launch support for buyer confidence.';
+  while (short.length < 50) {
+    short = (short + shortPad).trim();
+  }
+  short = short.slice(0, 300);
   const stack = stackFor(p);
+  const pickedParents = pickThreeParents(seededCategories.parents, p.title);
+  const scope = buildScope(p);
+  const title = normalizeTitle(p.title);
+
+  const toHours = (task: any): number => {
+    const dv = Number(task?.durationValue);
+    const dt = typeof task?.durationType === "string" ? task.durationType : "";
+    if (Number.isFinite(dv) && dv > 0 && dt) {
+      if (dt === "hours") return dv;
+      if (dt === "days") return dv * 24;
+      return dv * 168;
+    }
+    return 0;
+  };
+
+  const totalHours = scope.reduce((acc, phase) => {
+    const tasks = Array.isArray((phase as any).tasks) ? (phase as any).tasks : [];
+    return acc + tasks.reduce((tAcc: number, task: any) => tAcc + toHours(task), 0);
+  }, 0);
+
   return {
-    title: p.title,
-    slug: slugify(p.title),
+    title,
+    slug: slugify(title),
     shortDescription: short,
-    fullDescription: richFullDescription(p),
+    fullDescription: richFullDescription({ ...p, title } as any),
     thumbnail: thumbnailMediaId,
-    gallery: galleryMediaIds.map((id, i) => ({
+    additionalImages: galleryMediaIds.map((id, i) => ({
       image: id,
       caption: `${p.title} — view ${i + 1}`,
     })),
     videoWalkthrough: {
       externalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     },
-    categories: (p.categories ?? []).slice(0, 3).map((value) => ({ value })),
-    subcategories: stack.subcategories.slice(0, 5).map((value) => ({ value })),
-    tags: stack.tags.slice(0, 10).map((value) => ({ value })),
-    projectSkills: (p.skills ?? []).slice(0, 25).map((value) => ({ value })),
-    programmingLanguages: stack.programmingLanguages
-      .slice(0, 10)
-      .map((value) => ({ value })),
-    developmentTechnologies: stack.developmentTechnologies
-      .slice(0, 10)
-      .map((value) => ({ value })),
-    skillsAndTools: stack.skillsAndTools.slice(0, 10).map((title) => ({ title })),
+    categories: pickedParents.map((parent, index) => {
+      const rowStack = stackForCategorySlug(parent.slug || parent.name);
+      const childName = pickChildName(seededCategories.childrenByParentId, parent.id, p.title);
+      return {
+        value: parent.name,
+        subcategories: [
+          {
+            value:
+              childName ??
+              (rowStack.subcategories.length
+                ? rowStack.subcategories[index % rowStack.subcategories.length]
+                : parent.name),
+          },
+        ],
+      };
+    }),
+    tags: (stack.tags.length ? stack.tags : ['marketplace']).slice(0, 10).map((value) => ({ value })),
+    projectSkills: ((p.skills ?? []).length ? p.skills! : ['JavaScript']).slice(0, 10).map((value) => ({ value })),
+    industries: stack.industries.slice(0, 5).map((value) => ({ value })),
     deliverables: buildDeliverables(p),
     faqQuestions: buildFaqs(p),
     recentQuestions: [
       { question: 'Can you onboard additional team members mid-project?' },
       { question: 'Do you offer fixed-price engagements for MVPs?' },
     ],
-    totalEstimatedHours: 100,
-    timelineValue: 12,
-    timelineUnit: 'weeks',
-    pricingModel: 'biweekly',
-    priceViewMode: 'biweekly',
-    priceRangeMin: p.budget ?? 10000,
-    priceRangeMax: (p.budget ?? 10000) * 2,
-    projectType: 'team',
-    klarnaPaymentEnabled: false,
+    scope,
     featured: p.featured ?? false,
-    chatEnabled: false,
-    reportButtonEnabled: true,
-    shareButtonEnabled: true,
-    helpButtonEnabled: false,
     _status: 'published',
+    visibility: 'public',
+    moderationStatus: 'approved',
+    ownerId: '00000000-0000-0000-0000-000000000000', // System user
   };
 }
 
@@ -513,6 +714,13 @@ export async function seedProjects(payload: Payload): Promise<void> {
     `projects seed: inserting ${allFixtures.length} fixtures via Payload Local API`,
   );
 
+  let seededCategories = await loadSeededProjectCategories(payload);
+  if (seededCategories.parents.length < 3) {
+    payload.logger.info("projects seed: categories missing — seeding categories first");
+    await seedCategories(payload);
+    seededCategories = await loadSeededProjectCategories(payload);
+  }
+
   // Track scoring signals to overlay on public.projects after sync.
   // Keyed by slug so we can match the row the hook upserted.
   const scoringBySlug = new Map<
@@ -532,17 +740,10 @@ export async function seedProjects(payload: Payload): Promise<void> {
     const slug = slugify(fixture.title);
     try {
       const thumbnailUrl = fixture.mediaUrls?.[0];
-      if (!thumbnailUrl) {
-        payload.logger.warn(`projects seed: ${slug} has no thumbnail URL, skipping`);
-        continue;
-      }
-      const thumbnailId = await upsertExternalMedia(payload, thumbnailUrl);
-      if (thumbnailId == null) {
-        payload.logger.warn(
-          `projects seed: ${slug} could not upload thumbnail — skipping`,
-        );
-        continue;
-      }
+      const thumbnailId =
+        thumbnailUrl ? await upsertExternalMedia(payload, thumbnailUrl) : null;
+      const resolvedThumbnailId =
+        thumbnailId == null ? await upsertPlaceholderMedia(payload) : thumbnailId;
 
       // Gallery: pull 3 URLs from the category-specific pool, drop the
       // thumbnail if it happens to overlap, and upsert each into cms.media
@@ -561,7 +762,12 @@ export async function seedProjects(payload: Payload): Promise<void> {
 
       await payload.create({
         collection: 'projects',
-        data: buildProjectData(fixture, thumbnailId, galleryIds) as any,
+        data: buildProjectData(
+          fixture,
+          resolvedThumbnailId,
+          galleryIds,
+          seededCategories,
+        ) as any,
         overrideAccess: true,
       });
       scoringBySlug.set(slug, {
@@ -632,26 +838,39 @@ async function overlayScoringSignals(
 
   let updated = 0;
   for (const [slug, signals] of scoring.entries()) {
-    const res = await pool.query(
-      `UPDATE public.projects SET
-         rating = $1,
-         "reviewCount" = $2,
-         "completionsCount" = $3,
-         "views90d" = $4,
-         "adminBoost" = $5,
-         "createdAt" = COALESCE($6, "createdAt")
-       WHERE slug = $7`,
-      [
-        signals.rating,
-        signals.reviewCount,
-        signals.completionsCount,
-        signals.views90d,
-        signals.adminBoost,
-        signals.createdAt ?? null,
-        slug,
-      ],
-    );
-    if (res.rowCount && res.rowCount > 0) updated++;
+    try {
+      const res = await pool.query(
+        `UPDATE public.projects SET
+           rating = $1,
+           "reviewCount" = $2,
+           "completionsCount" = $3,
+           "views90d" = $4,
+           "adminBoost" = $5,
+           "createdAt" = COALESCE($6, "createdAt")
+         WHERE slug = $7`,
+        [
+          signals.rating,
+          signals.reviewCount,
+          signals.completionsCount,
+          signals.views90d,
+          signals.adminBoost,
+          signals.createdAt ?? null,
+          slug,
+        ],
+      );
+      if (res.rowCount && res.rowCount > 0) updated++;
+    } catch (err) {
+      // Fresh DBs may not have the listings table yet; seeding projects should
+      // still succeed in the CMS even if we can't overlay scoring signals.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('public.projects') && msg.includes('does not exist')) {
+        payload.logger.warn(
+          'projects seed: public.projects table missing — skipping scoring overlay',
+        );
+        return;
+      }
+      throw err;
+    }
   }
   payload.logger.info(
     `projects seed: overlaid scoring signals on ${updated} / ${scoring.size} listings rows`,

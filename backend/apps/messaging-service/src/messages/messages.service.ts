@@ -1,25 +1,33 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Message } from './entities/message.entity';
+import { Attachment } from './entities/attachment.entity';
 import { Thread } from '../threads/entities/thread.entity';
 import { AblyService } from '../ably/ably.service';
+import { BlockEnforcementService } from '../blocks/block-enforcement.service';
+import { R2Service } from '../storage/r2.service';
 
 @Injectable()
 export class MessagesService {
   constructor(
     @InjectRepository(Message) private readonly messageRepo: Repository<Message>,
+    @InjectRepository(Attachment) private readonly attachmentRepo: Repository<Attachment>,
     @InjectRepository(Thread) private readonly threadRepo: Repository<Thread>,
     private readonly ablyService: AblyService,
+    private readonly r2Service: R2Service,
+    private readonly dataSource: DataSource,
+    private readonly blockEnforcement: BlockEnforcementService,
   ) {}
 
   async getThreadMessages(threadId: string, userId: string) {
-    await this.assertParticipant(threadId, userId);
-    return this.messageRepo.find({
+    const thread = await this.assertParticipant(threadId, userId);
+    const messages = await this.messageRepo.find({
       where: { threadId, deleted: false },
       relations: ['attachments'],
       order: { createdAt: 'ASC' },
     });
+    return this.blockEnforcement.filterMessagesForBlocks(userId, thread, messages);
   }
 
   private async assertParticipant(threadId: string, userId: string): Promise<Thread> {
@@ -37,18 +45,79 @@ export class MessagesService {
     if (!thread.participantIds.includes(dto.senderId)) {
       throw new ForbiddenException('Not a participant of this thread');
     }
+    const { shadow } = await this.blockEnforcement.assertCanSend(dto.senderId, thread);
 
     const message = this.messageRepo.create({ ...dto, status: 'sent' });
     const saved = await this.messageRepo.save(message);
 
-    // Strip plaintext from Ably payload when ciphertext is present
-    if (saved.ciphertext) {
-      const { content: _plaintext, ...ciphertextOnly } = saved;
-      await this.ablyService.publishMessageNew(dto.threadId, ciphertextOnly);
-    } else {
-      await this.ablyService.publishMessageNew(dto.threadId, saved);
+    if (!shadow) {
+      if (saved.ciphertext) {
+        const { content: _plaintext, ...ciphertextOnly } = saved;
+        await this.ablyService.publishMessageNew(dto.threadId, ciphertextOnly);
+      } else {
+        await this.ablyService.publishMessageNew(dto.threadId, saved);
+      }
     }
     return saved;
+  }
+
+  async uploadAttachment(params: {
+    threadId: string;
+    senderId: string;
+    file: Express.Multer.File;
+    ciphertext?: string;
+  }) {
+    const { threadId, senderId, file, ciphertext } = params;
+    if (!file) throw new BadRequestException('file is required');
+    const thread = await this.assertParticipant(threadId, senderId);
+    const { shadow } = await this.blockEnforcement.assertCanSend(senderId, thread);
+
+    const { key, url: fileUrl } = await this.r2Service.uploadMessageAttachment(
+      threadId,
+      file,
+    );
+
+    let result: { message: Message; attachment: Attachment };
+    try {
+      result = await this.dataSource.transaction(async (em) => {
+        const msg = em.getRepository(Message).create({
+          threadId,
+          senderId,
+          ciphertext: ciphertext ?? undefined,
+          messageType: 'file',
+          status: 'sent',
+        });
+        const savedMsg = await em.getRepository(Message).save(msg);
+
+        const att = em.getRepository(Attachment).create({
+          messageId: savedMsg.id,
+          fileUrl,
+          fileType: file.mimetype,
+          fileName: file.originalname,
+          fileSize: file.size,
+        });
+        const savedAtt = await em.getRepository(Attachment).save(att);
+
+        return { message: savedMsg, attachment: savedAtt };
+      });
+    } catch (error) {
+      await this.r2Service.deleteObject(key).catch(() => undefined);
+      throw error;
+    }
+
+    const payload = {
+      ...result.message,
+      attachments: [result.attachment],
+    } as any;
+    if (!shadow) {
+      if (result.message.ciphertext) {
+        const { content: _plaintext, ...ciphertextOnly } = payload;
+        await this.ablyService.publishMessageNew(threadId, ciphertextOnly);
+      } else {
+        await this.ablyService.publishMessageNew(threadId, payload);
+      }
+    }
+    return result;
   }
 
   async edit(id: string, content: string, userId: string, ciphertext?: string) {
@@ -97,6 +166,38 @@ export class MessagesService {
     await this.ablyService.publishMessageRead(message.senderId, messageId);
   }
 
+  async toggleReaction(messageId: string, emoji: string, userId: string) {
+    const trimmed = (emoji ?? '').trim();
+    if (!trimmed || trimmed.length > 32) {
+      throw new ForbiddenException('Invalid emoji');
+    }
+
+    const message = await this.messageRepo.findOne({ where: { id: messageId } });
+    if (!message) throw new NotFoundException('Message not found');
+    await this.assertParticipant(message.threadId, userId);
+
+    const current = Array.isArray(message.reactions) ? [...message.reactions] : [];
+    const idx = current.findIndex(
+      (r) => r.userId === userId && r.emoji === trimmed,
+    );
+    if (idx >= 0) {
+      current.splice(idx, 1);
+    } else {
+      current.push({
+        userId,
+        emoji: trimmed,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    await this.messageRepo.update(messageId, { reactions: current });
+    await this.ablyService.publishMessageReaction(message.threadId, {
+      messageId,
+      reactions: current,
+    });
+    return current;
+  }
+
   async forward(messageId: string, toUserIds: string[], senderId: string) {
     if (toUserIds.length > 5) throw new ForbiddenException('Cannot forward to more than 5 users');
     const original = await this.messageRepo.findOne({ where: { id: messageId } });
@@ -111,6 +212,8 @@ export class MessagesService {
         .where('t.isGroup = false')
         .andWhere(':senderId = ANY(t.participantIds)', { senderId })
         .andWhere(':userId = ANY(t.participantIds)', { userId })
+        .orderBy('t.createdAt', 'ASC')
+        .limit(1)
         .getOne();
 
       if (!thread) {

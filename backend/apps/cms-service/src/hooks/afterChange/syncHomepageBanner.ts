@@ -17,10 +17,11 @@ interface HomepageBannerDoc {
  * this hook the banner update only surfaces after the 300 s cache TTL
  * (Cache Strategy §6 documented limitation).
  */
-export const syncHomepageBannerToBroadcast: GlobalAfterChangeHook<HomepageBannerDoc> = async ({
+export const syncHomepageBannerToBroadcast: GlobalAfterChangeHook = async ({
   doc,
   req,
 }) => {
+  const homepageBanner = (doc ?? {}) as HomepageBannerDoc;
   const publisher = CmsEventPublisher.getInstance();
   if (!publisher.isConnected()) {
     req.payload.logger.warn('[syncHomepageBannerToBroadcast] publisher not connected — skipping');
@@ -28,12 +29,12 @@ export const syncHomepageBannerToBroadcast: GlobalAfterChangeHook<HomepageBanner
   }
   try {
     await publisher.publishHomepageBannerSaved({
-      enabled: doc.enabled ?? false,
-      message: doc.message ?? null,
-      ctaLabel: doc.ctaLabel ?? null,
-      ctaUrl: doc.ctaUrl ?? null,
-      expiresAt: (doc.expiresAt as string | null) ?? null,
-      bannerType: doc.bannerType ?? null,
+      enabled: homepageBanner.enabled ?? false,
+      message: homepageBanner.message ?? null,
+      ctaLabel: homepageBanner.ctaLabel ?? null,
+      ctaUrl: homepageBanner.ctaUrl ?? null,
+      expiresAt: homepageBanner.expiresAt ?? null,
+      bannerType: homepageBanner.bannerType ?? null,
     });
     req.payload.logger.info('Published homepage-banner.saved');
   } catch (err) {

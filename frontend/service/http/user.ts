@@ -1,7 +1,8 @@
 import AxiosRequest from ".."
 import Cookies from "js-cookie"
+import { getPublicUserUrl } from "@/lib/runtime-urls"
 
-const USER_BASE = process.env.NEXT_PUBLIC_USER_URL ?? ""
+const USER_BASE = getPublicUserUrl()
 
 const authHeaders = () => {
   const token = Cookies.get("access_token")
@@ -84,7 +85,7 @@ export const UserAPI = {
     // profile card view.
     AxiosRequest.get(`${USER_BASE}/talent/users/${username}`),
   updateProfile: (userId: string, data: UserProfilePayload) =>
-    AxiosRequest.put(`${USER_BASE}/v1/users/${userId}`, data, {
+    AxiosRequest.patch(`${USER_BASE}/v1/users/${userId}`, data, {
       headers: authHeaders(),
     }),
   dismissOnboarding: (userId: string) =>

@@ -1,15 +1,14 @@
 # render.yaml — Render Blueprint for marketeq-projects-vibe
 #
-# TWO services: staging backend + production backend.
-# Both run the same container (gateway + all microservices).
-#
-#   staging  → deploys from `staging` branch  → https://marketeq-vibe-backend-staging.onrender.com
-#   live     → deploys from `live-mvp` branch → https://marketeq-backend.onrender.com
+# SINGLE shared backend service.
+# The backend deploys from `live-mvp` and serves every Vercel
+# environment. `staging` is a frontend promotion branch, not a second
+# Render target.
 #
 # Vercel frontend mapping:
-#   marketeq-projects-dev      (dev-main)  → staging Render backend
-#   marketeq-projects-staging  (staging)   → staging Render backend
-#   marketeq-projects-live-mvp (live-mvp)  → live Render backend
+#   marketeq-projects-dev      (dev-main)  → shared Render backend
+#   marketeq-projects-staging  (staging)   → shared Render backend
+#   marketeq-projects-live-mvp (live-mvp)  → shared Render backend
 #
 # Deploy: Render Dashboard → New → Blueprint → connect marketeq-projects-vibe repo
 #
@@ -18,25 +17,7 @@
 #   2. Set NEXT_PUBLIC_API_URL on each Vercel project to the matching Render URL
 
 services:
-  # ── Staging backend ──
-  - type: web
-    name: marketeq-vibe-backend-staging
-    runtime: docker
-    repo: https://github.com/Marketeq/marketeq-projects-vibe.git
-    branch: staging
-    dockerfilePath: backend/Dockerfile.all
-    dockerContext: backend
-    region: oregon
-    plan: starter
-    healthCheckPath: /health
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: FRONTEND_URL
-        value: https://live-marketeq-projects.vercel.app,https://staging-marketeq-projects.vercel.app,https://dev-marketeq-projects.vercel.app,https://marketeq-mvp-live.vercel.app,https://marketeq-mvp-dev.vercel.app,https://marketeq-mvp-staging.vercel.app,http://localhost:3000
-      - fromGroup: marketeq-secrets
-
-  # ── Production backend ──
+  # ── Shared backend ──
   - type: web
     name: marketeq-backend
     runtime: docker
