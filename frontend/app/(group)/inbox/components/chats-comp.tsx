@@ -132,7 +132,7 @@ interface ChatsProps {
 
 const COMPOSER_MAX_CHARS = 8000
 
-const MAX_FILE_BYTES = 500 * 1024 * 1024
+const MAX_FILE_BYTES = 50 * 1024 * 1024
 
 const ALLOWED_MIME = new Set([
   "image/png",
@@ -1891,8 +1891,8 @@ export function Chats({
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
               {uploadModalMode === "image"
-                ? "Supported formats: PNG, JPG, GIF, SVG. Max 500 MB per file."
-                : "Supported formats: PDF, DOC, JPG, PNG, MP4. Max 500 MB per file."}
+                ? "Supported formats: PNG, JPG, GIF, SVG. Max 50 MB per file."
+                : "Supported formats: PDF, DOC, JPG, PNG, MP4. Max 50 MB per file."}
             </p>
             <div className="mt-8 grid grid-cols-2 gap-x-3">
               <Button

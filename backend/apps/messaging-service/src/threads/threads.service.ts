@@ -59,6 +59,44 @@ export class ThreadsService {
       : [];
     const stateByThread = new Map(states.map((s) => [s.threadId, s]));
 
+    // Batch unread counts in a single query instead of N+1
+    const unreadCountMap = new Map<string, number>();
+    if (threadIds.length) {
+      const unreadRows: { threadId: string; cnt: string }[] = await this.repo.manager
+        .createQueryBuilder()
+        .select('m."threadId"', 'threadId')
+        .addSelect('COUNT(*)', 'cnt')
+        .from('messaging.messages', 'm')
+        .where('m."threadId" IN (:...threadIds)', { threadIds })
+        .andWhere('m.deleted = false')
+        .andWhere('m."senderId" != :userId', { userId })
+        .groupBy('m."threadId"')
+        .getRawMany();
+
+      for (const row of unreadRows) {
+        unreadCountMap.set(row.threadId, parseInt(row.cnt, 10));
+      }
+
+      // For threads with a lastReadAt, re-query only those to filter by time
+      const threadsWithReadAt = threadIds.filter((id) => stateByThread.get(id)?.lastReadAt);
+      if (threadsWithReadAt.length) {
+        // Clear and re-count for threads that have been partially read
+        for (const tid of threadsWithReadAt) {
+          const s = stateByThread.get(tid)!;
+          const cnt = await this.repo.manager
+            .createQueryBuilder()
+            .select('COUNT(*)', 'cnt')
+            .from('messaging.messages', 'm')
+            .where('m."threadId" = :tid', { tid })
+            .andWhere('m.deleted = false')
+            .andWhere('m."senderId" != :userId', { userId })
+            .andWhere('m."createdAt" > :lastReadAt', { lastReadAt: s.lastReadAt })
+            .getRawOne();
+          unreadCountMap.set(tid, parseInt(cnt?.cnt ?? '0', 10));
+        }
+      }
+    }
+
     const enriched = await Promise.all(
       threads.map(async (t) => {
         const lastMessage = await this.repo.manager
@@ -81,19 +119,6 @@ export class ThreadsService {
         }
         const s = stateByThread.get(t.id);
 
-        const unreadQb = this.repo.manager
-          .createQueryBuilder('messaging.messages', 'm')
-          .where('m."threadId" = :tid', { tid: t.id })
-          .andWhere('m.deleted = false')
-          .andWhere('m."senderId" != :userId', { userId });
-        if (s?.lastReadAt) {
-          unreadQb.andWhere(
-            `(m."createdAt" AT TIME ZONE 'UTC') > :lastReadAt`,
-            { lastReadAt: s.lastReadAt },
-          );
-        }
-        const unreadCount = await unreadQb.getCount();
-
         return {
           ...t,
           lastMessage: lastMessage
@@ -107,7 +132,7 @@ export class ThreadsService {
           isTrashed: s?.isTrashed ?? false,
           markedUnread: s?.markedUnread ?? false,
           lastReadAt: s?.lastReadAt ?? null,
-          unreadCount,
+          unreadCount: unreadCountMap.get(t.id) ?? 0,
         };
       }),
     );

@@ -15,7 +15,8 @@ export class AddReportsDedupIndex1777800000000 implements MigrationInterface {
               PARTITION BY
                 "reporterId",
                 "reportedId",
-                COALESCE("contextMessageId", "contextThreadId", '00000000-0000-0000-0000-000000000000'::uuid)
+                COALESCE("contextMessageId", '00000000-0000-0000-0000-000000000000'::uuid),
+                COALESCE("contextThreadId", '00000000-0000-0000-0000-000000000000'::uuid)
               ORDER BY "createdAt" ASC, "id" ASC
             ) AS rn
           FROM "user_service"."reports"
@@ -30,7 +31,8 @@ export class AddReportsDedupIndex1777800000000 implements MigrationInterface {
       ON "user_service"."reports" (
         "reporterId",
         "reportedId",
-        (COALESCE("contextMessageId", "contextThreadId", '00000000-0000-0000-0000-000000000000'::uuid))
+        (COALESCE("contextMessageId", '00000000-0000-0000-0000-000000000000'::uuid)),
+        (COALESCE("contextThreadId", '00000000-0000-0000-0000-000000000000'::uuid))
       )
     `);
   }
