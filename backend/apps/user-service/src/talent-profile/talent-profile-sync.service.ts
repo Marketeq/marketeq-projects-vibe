@@ -41,8 +41,6 @@ export class TalentProfileSyncService {
       headline: event.headline ?? null,
       availability: event.availability ?? null,
       rate: event.rate ?? null,
-      rateMin: event.rateMin ?? null,
-      rateMax: event.rateMax ?? null,
       jobTitles: event.jobTitles ?? [],
       overview: event.overview ?? null,
       skills: event.skills ?? [],

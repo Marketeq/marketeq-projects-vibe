@@ -95,9 +95,8 @@ export class UserEventConsumer {
 
     const data: Record<string, any> = {
       username: event.username,
-      name: event.firstName && event.lastName ? `${event.firstName} ${event.lastName}` : (event.firstName || event.lastName || event.username),
-      location: event.location,
-      timezone: event.timezone,
+      firstName: event.firstName || event.username,
+      lastName: event.lastName || '',
       availability: event.availability,
       rate: event.rate,
     };

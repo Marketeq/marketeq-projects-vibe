@@ -7,8 +7,6 @@ export interface TalentProfileSavedEvent {
   headline: string | null;
   availability: string | null;
   rate: number | null;
-  rateMin: number | null;
-  rateMax: number | null;
   jobTitles: { headline: string; rate: number }[];
   location: string | null;
   timezone: string | null;

@@ -44,12 +44,6 @@ export class TalentProfile {
   @Column({ type: 'int', nullable: true })
   rate: number | null;
 
-  @Column({ type: 'int', nullable: true })
-  rateMin: number | null;
-
-  @Column({ type: 'int', nullable: true })
-  rateMax: number | null;
-
   @Column({ type: 'jsonb', nullable: true })
   overview: Record<string, any> | null;
 

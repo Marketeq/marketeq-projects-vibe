@@ -27,12 +27,6 @@ export function mapProfileToEvent(doc: any) {
     })),
     availability: doc.availability || null,
     rate: doc.jobTitles?.[0]?.rate ?? null,
-    rateMin: doc.jobTitles?.length
-      ? Math.min(...doc.jobTitles.map((jt: any) => jt.rate))
-      : null,
-    rateMax: doc.jobTitles?.length
-      ? Math.max(...doc.jobTitles.map((jt: any) => jt.rate))
-      : null,
     overview: doc.overview || null,
     skills: (doc.skills || []).map((s: any) => s.name),
     industryExpertise: (doc.industries || doc.industryExpertise || []).map(
@@ -73,6 +67,5 @@ export function mapProfileToEvent(doc: any) {
     status: doc.status || "active",
   };
 
-  console.log(`[DEBUG] Mapping profile ${username}: headline=${result.headline}, rate=${result.rate}, jobTitlesCount=${result.jobTitles.length}`);
   return result;
 }
