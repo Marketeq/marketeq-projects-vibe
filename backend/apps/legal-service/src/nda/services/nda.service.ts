@@ -17,7 +17,6 @@ import { NdaSigningEvent } from '../entities/nda-signing-event.entity';
 import { OutboxEvent } from '../../outbox/entities/outbox-event.entity';
 import { DocumentType } from '../enums/document-type.enum';
 import { DisplayNameFormat } from '../enums/display-name-format.enum';
-import { v4 as uuidv4 } from 'uuid';
 import { GenerateNdaDto } from '../dto/generate-nda.dto';
 import { SignNdaDto } from '../dto/sign-nda.dto';
 import { UpdateNdaSettingsDto } from '../dto/update-nda-settings.dto';
@@ -37,6 +36,8 @@ export class NdaService {
     private readonly ndaSettingsRepo: Repository<NdaSettings>,
     @InjectRepository(NdaSigningEvent)
     private readonly signingEventRepo: Repository<NdaSigningEvent>,
+    @InjectRepository(OutboxEvent)
+    private readonly outboxRepo: Repository<OutboxEvent>,
     private readonly dataSource: DataSource,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
@@ -80,83 +81,72 @@ export class NdaService {
 
     const version = this.configService.get<string>('NDA_TEMPLATE_VERSION', '1.0.0');
 
-    // Pre-generate the document ID so it can be used in the R2 key
-    // before any DB write occurs (makes the PDF step pre-transactional).
-    const docId = uuidv4();
+    // 1. Save NdaDocument (ID needed for R2 key)
+    const doc = this.ndaDocumentRepo.create({
+      documentType: DocumentType.NDA,
+      templateVersion: version,
+      jobListingId: dto.jobListingId,
+      clientUserId: dto.clientUserId,
+      clientDisplayName,
+      listingTitle: dto.listingTitle ?? null,
+      unsignedPdfR2Key: null, // set after PDF generation
+      status: 'generated',
+    });
+    const savedDoc = await this.ndaDocumentRepo.save(doc);
 
-    // 1. Generate unsigned PDF BEFORE the transaction.
-    //    If R2 upload fails here → no DB records are written, no orphans.
-    //    If DB writes later fail → the R2 object is an orphan but gets
-    //    overwritten on retry. This is the correct failure order.
-    const displayNameFormat =
-      dto.displayNameFormat ?? DisplayNameFormat.FIRST_NAME_USERNAME;
+    // 2. Save NdaSettings
+    const settings = this.ndaSettingsRepo.create({
+      ndaDocumentId: savedDoc.id,
+      displayNameFormat:
+        dto.displayNameFormat ?? DisplayNameFormat.FIRST_NAME_USERNAME,
+      companyId: dto.companyId ?? null,
+      jobTitleVisible: dto.jobTitleVisible ?? true,
+      requireNdaToViewScope: false,
+    });
+    const savedSettings = await this.ndaSettingsRepo.save(settings);
+
+    // 3. Generate unsigned PDF and upload to R2
     const unsignedPdfR2Key = await this.generationService.generateUnsignedNda(
-      {
-        id: docId,
-        clientDisplayName,
-        listingTitle: dto.listingTitle ?? null,
-        templateVersion: version,
-      } as NdaDocument,
-      {
-        displayNameFormat,
-        requireNdaToViewScope: false,
-        jobTitleVisible: dto.jobTitleVisible ?? true,
-      } as NdaSettings,
+      savedDoc,
+      savedSettings,
     );
 
-    // 2. Atomic transaction: NdaDocument + NdaSettings + OutboxEvent written together.
-    //    If any step fails the entire transaction rolls back — no orphaned records.
-    await this.dataSource.transaction(async (manager) => {
-      await manager.save(NdaDocument, {
-        id: docId,
-        documentType: DocumentType.NDA,
-        templateVersion: version,
-        jobListingId: dto.jobListingId,
-        clientUserId: dto.clientUserId,
-        clientDisplayName,
-        listingTitle: dto.listingTitle ?? null,
-        unsignedPdfR2Key,
-        status: 'generated',
-      });
-
-      await manager.save(NdaSettings, {
-        ndaDocumentId: docId,
-        displayNameFormat,
-        companyId: dto.companyId ?? null,
-        jobTitleVisible: dto.jobTitleVisible ?? true,
-        requireNdaToViewScope: false,
-      });
-
-      await manager.save(OutboxEvent, {
-        exchange: 'marketeq.legal',
-        routingKey: 'nda.generated',
-        payload: {
-          documentId: docId,
-          jobListingId: dto.jobListingId,
-          clientUserId: dto.clientUserId,
-          templateVersion: version,
-          status: 'generated',
-        },
-        status: 'pending',
-        attemptCount: 0,
-        scheduledAt: new Date(),
-      });
-    });
+    // 4. Update doc with the R2 key
+    await this.ndaDocumentRepo.update(
+      { id: savedDoc.id },
+      { unsignedPdfR2Key },
+    );
 
     this.logger.log(
-      `NDA generated: documentId=${docId} listingId=${dto.jobListingId} ` +
+      `NDA generated: documentId=${savedDoc.id} listingId=${dto.jobListingId} ` +
       `templateVersion=${version} r2Key=[REDACTED]`,
     );
 
+    // 5. Write outbox event + emit directly
+    await this.outboxRepo.save({
+      exchange: 'marketeq.legal',
+      routingKey: 'nda.generated',
+      payload: {
+        documentId: savedDoc.id,
+        jobListingId: dto.jobListingId,
+        clientUserId: dto.clientUserId,
+        templateVersion: version,
+        status: 'generated',
+      },
+      status: 'pending',
+      attemptCount: 0,
+      scheduledAt: new Date(),
+    });
+
     this.eventsPublisher.emit('nda.generated', {
-      documentId: docId,
+      documentId: savedDoc.id,
       jobListingId: dto.jobListingId,
       clientUserId: dto.clientUserId,
       templateVersion: version,
       status: 'generated',
     });
 
-    return { documentId: docId, status: 'generated', version };
+    return { documentId: savedDoc.id, status: savedDoc.status, version };
   }
 
   // ─── Find One ──────────────────────────────────────────────────────────────

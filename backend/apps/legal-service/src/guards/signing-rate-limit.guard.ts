@@ -4,7 +4,6 @@ import {
   ExecutionContext,
   HttpException,
   HttpStatus,
-  UnauthorizedException,
 } from '@nestjs/common';
 
 /**
@@ -23,16 +22,8 @@ export class SigningRateLimitGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest();
-    // JwtAuthGuard runs before this guard and must have already authenticated the user.
-    // Reject here rather than fall through to an 'anonymous' shared bucket — a shared
-    // bucket allows unauthenticated callers to consume the rate limit quota of all
-    // legitimately authenticated users.
-    const userId: string | undefined =
-      (req.user?.sub as string | undefined) ??
-      (req.user?.userId as string | undefined);
-    if (!userId) {
-      throw new UnauthorizedException('Authentication required to sign an NDA');
-    }
+    const userId: string =
+      (req.user?.sub as string) ?? (req.user?.userId as string) ?? 'anonymous';
     const now = Date.now();
 
     const entry = this.window.get(userId);

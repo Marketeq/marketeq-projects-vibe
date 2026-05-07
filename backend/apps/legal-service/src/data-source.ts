@@ -16,9 +16,7 @@ export const AppDataSource = new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL,
   synchronize: false,
-  ssl: (process.env.DATABASE_SSL_ENABLED ?? 'false').toLowerCase() === 'true'
-    ? { rejectUnauthorized: false }
-    : false,
+  ssl: false,                           // port 5433 = PgBouncer pooler — does not support SSL
   migrationsTableName: 'ls_migrations', // uses ls_migrations to avoid conflicting with public.migrations (owned by other services)
   entities: [__dirname + '/**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],

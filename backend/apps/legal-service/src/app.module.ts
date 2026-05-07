@@ -28,9 +28,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
         url: config.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
         synchronize: false,
-        ssl: (config.get<string>('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true'
-          ? { rejectUnauthorized: false }
-          : false,
+        ssl: false, // port 5433 = Supabase PgBouncer pooler — SSL not supported on this port
       }),
     }),
 

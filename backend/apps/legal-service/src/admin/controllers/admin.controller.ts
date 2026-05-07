@@ -3,7 +3,6 @@ import {
   Get,
   Post,
   Param,
-  ParseUUIDPipe,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -46,7 +45,7 @@ export class AdminController {
 
   /** Full unredacted signing event — all PII visible to admin. */
   @Get('signing-events/:id')
-  async getSigningEvent(@Param('id', ParseUUIDPipe) id: string): Promise<NdaSigningEvent> {
+  async getSigningEvent(@Param('id') id: string): Promise<NdaSigningEvent> {
     const event = await this.signingEventRepo.findOne({ where: { id } });
     if (!event) throw new NotFoundException('Signing event not found');
     return event;
@@ -60,7 +59,7 @@ export class AdminController {
   @Post('signing-events/:id/retry-pdf')
   @HttpCode(HttpStatus.OK)
   async retryPdf(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
   ): Promise<{ signedPdfUrl: string | null }> {
     const event = await this.signingEventRepo.findOne({ where: { id } });
     if (!event) throw new NotFoundException('Signing event not found');
@@ -102,7 +101,7 @@ export class AdminController {
   @Post('signing-events/:id/replay-event')
   @HttpCode(HttpStatus.OK)
   async replayEvent(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
   ): Promise<{ replayed: boolean; routingKey: string }> {
     const event = await this.signingEventRepo.findOne({ where: { id } });
     if (!event) throw new NotFoundException('Signing event not found');
@@ -128,7 +127,7 @@ export class AdminController {
   @Post('users/:userId/pseudonymize')
   @HttpCode(HttpStatus.OK)
   async pseudonymizeUser(
-    @Param('userId', ParseUUIDPipe) userId: string,
+    @Param('userId') userId: string,
   ): Promise<{ pseudonymized: boolean; rowsAffected: number }> {
     // NOT NULL columns use pseudonymous token '[PSEUDONYMIZED]' per LS-06 §7.6
     // ("null or a pseudonymous token" — DB constraints require the token form)

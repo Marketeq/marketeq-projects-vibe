@@ -4,7 +4,6 @@ import {
   Post,
   Patch,
   Param,
-  ParseUUIDPipe,
   Body,
   UseGuards,
   Req,
@@ -53,14 +52,14 @@ export class NdaController {
   @UseGuards(InternalAuthGuard)
   @Post(':id/void')
   @HttpCode(HttpStatus.OK)
-  voidNda(@Param('id', ParseUUIDPipe) id: string) {
+  voidNda(@Param('id') id: string) {
     return this.ndaService.voidNda(id);
   }
 
   // ─── JWT-protected routes ──────────────────────────────────────────────────
 
   @Get(':id')
-  findOne(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
+  findOne(@Req() req: Request, @Param('id') id: string) {
     const userId = (req as any).user?.sub as string;
     return this.ndaService.findOne(userId, id);
   }
@@ -70,7 +69,7 @@ export class NdaController {
   @UseGuards(SigningRateLimitGuard)
   sign(
     @Req() req: Request,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() dto: SignNdaDto,
   ) {
     const userId = (req as any).user?.sub as string;
@@ -84,7 +83,7 @@ export class NdaController {
   }
 
   @Get(':id/audit')
-  getAuditTrail(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
+  getAuditTrail(@Req() req: Request, @Param('id') id: string) {
     const userId = (req as any).user?.sub as string;
     return this.ndaService.getAuditTrail(userId, id);
   }
@@ -92,7 +91,7 @@ export class NdaController {
   @Patch(':id/settings')
   updateSettings(
     @Req() req: Request,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() dto: UpdateNdaSettingsDto,
   ) {
     const userId = (req as any).user?.sub as string;
@@ -100,7 +99,7 @@ export class NdaController {
   }
 
   @Get(':id/preview')
-  preview(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
+  preview(@Req() req: Request, @Param('id') id: string) {
     const userId = (req as any).user?.sub as string;
     return this.ndaService.preview(userId, id);
   }
