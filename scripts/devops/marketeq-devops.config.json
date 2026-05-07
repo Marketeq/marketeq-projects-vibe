@@ -12,14 +12,23 @@
     "webhookPath": "marketeq-vibe-deploy",
     "runnerGistId": "9d941b835aebce2651ab892f13f23b6c",
     "runnerSourcePath": "scripts/devops/marketeq_orchestrator_node.js",
-    "runnerRawUrl": "https://gist.githubusercontent.com/CTorres9800/9d941b835aebce2651ab892f13f23b6c/raw/eef91918f6d3d6c6870d0990957efe6f1659aece/marketeq_orchestrator_node.js",
+    "runnerRawUrl": "https://gist.githubusercontent.com/CTorres9800/9d941b835aebce2651ab892f13f23b6c/raw/714d4e2ff5cd1970aed390f9ba1524bbd30261ca/marketeq_orchestrator_node.js",
     "runtimeEnvFilePath": "/home/node/.n8n/marketeq-devops.env",
+    "stagingEnvBaselinePath": "scripts/devops/marketeq-staging-env-baseline.json",
     "runtimeSecretKeys": [
       "GH_TOKEN",
       "VERCEL_TOKEN",
       "RENDER_TOKEN",
       "SMOKE_USER_EMAIL",
-      "SMOKE_USER_PASSWORD"
+      "SMOKE_USER_PASSWORD",
+      "RENDER_ENV_DATABASE_URL",
+      "RENDER_ENV_INTERNAL_SERVICE_TOKEN",
+      "RENDER_ENV_AUTH_REFRESH_SECRET",
+      "RENDER_ENV_AUTH_JWT_PRIVATE_KEY",
+      "RENDER_ENV_AUTH_JWT_PUBLIC_KEY",
+      "RENDER_ENV_BREVO_API_KEY",
+      "RENDER_ENV_BREVO_FROM_EMAIL",
+      "RENDER_ENV_BREVO_FROM_NAME"
     ]
   },
   "render": {

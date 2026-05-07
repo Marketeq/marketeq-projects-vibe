@@ -9,6 +9,12 @@ const repoRoot = path.resolve(__dirname, "..", "..")
 const config = JSON.parse(
   fs.readFileSync(path.join(__dirname, "marketeq-devops.config.json"), "utf8"),
 )
+const baseline = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, config.n8n.stagingEnvBaselinePath), "utf8"),
+)
+
+const vercelToken = process.env.VERCEL_TOKEN
+const renderToken = process.env.RENDER_TOKEN
 
 function parseEnvTemplate(filePath) {
   const content = fs.readFileSync(filePath, "utf8")
@@ -24,14 +30,12 @@ function parseEnvTemplate(filePath) {
   return [...new Set(keys)].sort()
 }
 
-function diffKeys(expectedKeys, liveKeys) {
-  const expected = new Set(expectedKeys)
-  const live = new Set(liveKeys)
+function toSortedUniqueStrings(values) {
+  return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))].sort()
+}
 
-  return {
-    missing: expectedKeys.filter((key) => !live.has(key)),
-    extra: liveKeys.filter((key) => !expected.has(key)),
-  }
+function parseOriginList(value) {
+  return toSortedUniqueStrings(String(value || "").split(","))
 }
 
 async function fetchJson(url, headers = {}) {
@@ -51,13 +55,67 @@ async function fetchJson(url, headers = {}) {
   return parsed
 }
 
-async function fetchRenderKeys() {
-  const token = process.env.RENDER_TOKEN
-  if (!token) {
+async function fetchVercelEnv() {
+  if (!vercelToken) {
+    return {
+      available: false,
+      reason: "VERCEL_TOKEN not set",
+      report: null,
+    }
+  }
+
+  try {
+    const payload = await fetchJson(
+      `https://api.vercel.com/v9/projects/${baseline.vercelStaging.projectId}/env?teamId=${config.vercel.teamId}`,
+      {
+        Authorization: `Bearer ${vercelToken}`,
+      },
+    )
+
+    const target = JSON.stringify(baseline.vercelStaging.target.slice().sort())
+    const live = new Map()
+    for (const entry of payload?.envs || []) {
+      const entryTarget = JSON.stringify((entry?.target || []).slice().sort())
+      if (entryTarget !== target || !entry?.key) continue
+      live.set(entry.key, String(entry.value ?? ""))
+    }
+
+    const drift = []
+    for (const [key, value] of Object.entries(baseline.vercelStaging.values)) {
+      const actual = live.has(key) ? live.get(key) : null
+      if (actual === null) {
+        drift.push({ key, reason: "missing", expected: value, actual: null })
+      } else if (String(actual) !== String(value)) {
+        drift.push({ key, reason: "value-mismatch", expected: value, actual })
+      }
+    }
+
+    return {
+      available: true,
+      reason: "",
+      report: {
+        ok: drift.length === 0,
+        drift,
+        liveValues: Object.fromEntries(
+          Object.keys(baseline.vercelStaging.values).map((key) => [key, live.get(key) ?? null]),
+        ),
+      },
+    }
+  } catch (error) {
+    return {
+      available: false,
+      reason: error.message || String(error),
+      report: null,
+    }
+  }
+}
+
+async function fetchRenderEnv() {
+  if (!renderToken) {
     return {
       available: false,
       reason: "RENDER_TOKEN not set",
-      keys: [],
+      report: null,
     }
   }
 
@@ -65,64 +123,66 @@ async function fetchRenderKeys() {
     const payload = await fetchJson(
       `https://api.render.com/v1/services/${config.render.serviceId}/env-vars?limit=100`,
       {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${renderToken}`,
         Accept: "application/json",
       },
     )
 
-    const keys = Array.isArray(payload)
-      ? payload
-          .map((entry) => entry?.envVar?.key)
-          .filter(Boolean)
-          .sort()
-      : []
-
-    return {
-      available: true,
-      reason: "",
-      keys,
-    }
-  } catch (error) {
-    return {
-      available: false,
-      reason: error.message || String(error),
-      keys: [],
-    }
-  }
-}
-
-async function fetchVercelKeys(projectId) {
-  const token = process.env.VERCEL_TOKEN
-  if (!token) {
-    return {
-      available: false,
-      reason: "VERCEL_TOKEN not set",
-      keys: [],
-    }
-  }
-
-  try {
-    const payload = await fetchJson(
-      `https://api.vercel.com/v9/projects/${projectId}/env?teamId=${config.vercel.teamId}`,
-      {
-        Authorization: `Bearer ${token}`,
-      },
+    const live = new Map(
+      (Array.isArray(payload) ? payload : [])
+        .map((entry) => [entry?.envVar?.key, entry?.envVar?.value])
+        .filter(([key]) => Boolean(key)),
     )
 
-    const keys = Array.isArray(payload?.envs)
-      ? [...new Set(payload.envs.map((entry) => entry?.key).filter(Boolean))].sort()
-      : []
+    const drift = []
+    for (const [key, value] of Object.entries(baseline.renderSharedBackend.values)) {
+      const actual = String(live.get(key) ?? "")
+      if (actual !== String(value)) {
+        drift.push({ key, reason: actual ? "value-mismatch" : "missing", expected: value, actual })
+      }
+    }
+
+    const requiredOrigins = toSortedUniqueStrings(baseline.renderSharedBackend.requiredOriginList)
+    const actualOrigins = parseOriginList(live.get("FRONTEND_URL") ?? "")
+    const missingOrigins = requiredOrigins.filter((origin) => !actualOrigins.includes(origin))
+    const extraOrigins = actualOrigins.filter((origin) => !requiredOrigins.includes(origin))
+    if (missingOrigins.length > 0 || extraOrigins.length > 0) {
+      drift.push({
+        key: "FRONTEND_URL",
+        reason: "origin-mismatch",
+        expected: requiredOrigins,
+        actual: actualOrigins,
+        missingOrigins,
+        extraOrigins,
+      })
+    }
+
+    const missingSecrets = Object.entries(baseline.renderSharedBackend.requiredSecrets)
+      .filter(([key]) => !String(live.get(key) ?? ""))
+      .map(([key, backupEnv]) => ({
+        key,
+        backupEnv,
+        backupPresent: Boolean(process.env[backupEnv]),
+      }))
 
     return {
       available: true,
       reason: "",
-      keys,
+      report: {
+        ok: drift.length === 0 && missingSecrets.length === 0,
+        drift,
+        missingSecrets,
+        liveValues: {
+          DATABASE_SSL: String(live.get("DATABASE_SSL") ?? ""),
+          FRONTEND_URL: String(live.get("FRONTEND_URL") ?? ""),
+        },
+      },
     }
   } catch (error) {
     return {
       available: false,
       reason: error.message || String(error),
-      keys: [],
+      report: null,
     }
   }
 }
@@ -137,52 +197,35 @@ async function main() {
     render: parseEnvTemplate(path.join(repoRoot, "backend/.env.production.example")),
   }
 
-  const renderLive = await fetchRenderKeys()
-  const vercelReports = {}
-  for (const branchName of ["dev-main", "staging", "live-mvp"]) {
-    const projectId = config.vercel.projects[branchName].projectId
-    const live = await fetchVercelKeys(projectId)
-    vercelReports[branchName] = {
-      available: live.available,
-      reason: live.reason,
-      expectedKeys: expectations.vercel[branchName],
-      liveKeys: live.keys,
-      ...diffKeys(expectations.vercel[branchName], live.keys),
-    }
-  }
-
-  const renderReport = {
-    available: renderLive.available,
-    reason: renderLive.reason,
-    expectedKeys: expectations.render,
-    liveKeys: renderLive.keys,
-    ...diffKeys(expectations.render, renderLive.keys),
-  }
-
+  const vercel = await fetchVercelEnv()
+  const render = await fetchRenderEnv()
   const failures = []
 
-  for (const [branchName, report] of Object.entries(vercelReports)) {
-    if (!report.available) {
-      failures.push(`Vercel env read unavailable for ${branchName}: ${report.reason}`)
-      continue
-    }
-
-    if (report.missing.length > 0) {
-      failures.push(`Vercel ${branchName} missing env keys: ${report.missing.join(", ")}`)
-    }
+  if (!vercel.available) {
+    failures.push(`Vercel staging env read unavailable: ${vercel.reason}`)
+  } else if (!vercel.report.ok) {
+    failures.push(`Vercel staging drift detected: ${vercel.report.drift.map((item) => item.key).join(", ")}`)
   }
 
-  if (!renderReport.available) {
-    failures.push(`Render env read unavailable: ${renderReport.reason}`)
-  } else if (renderReport.missing.length > 0) {
-    failures.push(`Render missing env keys: ${renderReport.missing.join(", ")}`)
+  if (!render.available) {
+    failures.push(`Render env read unavailable: ${render.reason}`)
+  } else {
+    if (render.report.drift.length > 0) {
+      failures.push(`Render drift detected: ${render.report.drift.map((item) => item.key).join(", ")}`)
+    }
+    if (render.report.missingSecrets.length > 0) {
+      failures.push(
+        `Render missing required secrets: ${render.report.missingSecrets.map((item) => item.key).join(", ")}`,
+      )
+    }
   }
 
   const report = {
     ok: failures.length === 0,
     failures,
-    vercel: vercelReports,
-    render: renderReport,
+    expectations,
+    vercelStaging: vercel,
+    renderSharedBackend: render,
   }
 
   console.log(JSON.stringify(report, null, 2))
