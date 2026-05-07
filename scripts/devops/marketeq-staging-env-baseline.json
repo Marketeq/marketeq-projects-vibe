@@ -39,7 +39,7 @@
       "https://marketeq.com"
     ],
     "values": {
-      "DATABASE_SSL": "true"
+      "DATABASE_SSL": "false"
     },
     "requiredSecrets": {
       "DATABASE_URL": "RENDER_ENV_DATABASE_URL",

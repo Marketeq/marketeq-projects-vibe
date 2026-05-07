@@ -12,7 +12,7 @@
     "webhookPath": "marketeq-vibe-deploy",
     "runnerGistId": "9d941b835aebce2651ab892f13f23b6c",
     "runnerSourcePath": "scripts/devops/marketeq_orchestrator_node.js",
-    "runnerRawUrl": "https://gist.githubusercontent.com/CTorres9800/9d941b835aebce2651ab892f13f23b6c/raw/a6bed815922cfb82f036f673e5ceb881a7dbe9c3/marketeq_orchestrator_node.js",
+    "runnerRawUrl": "https://gist.githubusercontent.com/CTorres9800/9d941b835aebce2651ab892f13f23b6c/raw/714d4e2ff5cd1970aed390f9ba1524bbd30261ca/marketeq_orchestrator_node.js",
     "runtimeEnvFilePath": "/home/node/.n8n/marketeq-devops.env",
     "stagingEnvBaselinePath": "scripts/devops/marketeq-staging-env-baseline.json",
     "runtimeSecretKeys": [

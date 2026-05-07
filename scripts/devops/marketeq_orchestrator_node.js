@@ -98,7 +98,7 @@ const RENDER_SHARED_BACKEND_BASELINE = {
     "https://staging.marketeq.com",
     "https://marketeq.com",
   ],
-  DATABASE_SSL: "true",
+  DATABASE_SSL: "false",
 };
 const RENDER_REQUIRED_SECRET_BACKUPS = {
   DATABASE_URL: { env: "RENDER_ENV_DATABASE_URL", value: RENDER_ENV_DATABASE_URL },
@@ -1020,9 +1020,16 @@ async function ensureSmokeAccount(backendBase) {
     }),
   });
 
-  if (![201, 409].includes(response.status)) {
+  const alreadyExists =
+    response.status === 409 ||
+    (response.status === 400 &&
+      body &&
+      typeof body === "object" &&
+      String(body.message || "").toLowerCase() === "user already exists");
+
+  if (response.status !== 201 && !alreadyExists) {
     throw new Error(
-      `smoke-register expected 201/409 but got ${response.status}: ${formatSmokeBody(body)}`,
+      `smoke-register expected 201/existing-user but got ${response.status}: ${formatSmokeBody(body)}`,
     );
   }
 
