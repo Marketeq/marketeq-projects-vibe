@@ -7,6 +7,9 @@ import { PublishController } from './publish.controller';
 import { PublishService } from './publish.service';
 import { ProjectModerationService } from './project-moderation.service';
 import { CloudflareStorageService } from './cloudflare-storage.service';
+import { DELIVERABLES_ADAPTER } from '../project-sync/deliverables/deliverables.adapter';
+import { DeliverablesAdapterHeuristic } from '../project-sync/deliverables/deliverables.adapter.heuristic';
+import { DeliverablesAdapterHuggingFace } from '../project-sync/deliverables/deliverables.adapter.huggingface';
 
 @Module({
   imports: [HttpModule, RelationalProjectPersistenceModule],
@@ -15,6 +18,12 @@ import { CloudflareStorageService } from './cloudflare-storage.service';
     PublishService,
     ProjectModerationService,
     CloudflareStorageService,
+    DeliverablesAdapterHeuristic,
+    DeliverablesAdapterHuggingFace,
+    {
+      provide: DELIVERABLES_ADAPTER,
+      useExisting: DeliverablesAdapterHuggingFace,
+    },
     {
       provide: ImageValidator,
       useFactory: () => {

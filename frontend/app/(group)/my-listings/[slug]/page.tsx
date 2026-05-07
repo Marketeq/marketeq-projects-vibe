@@ -198,6 +198,23 @@ import {
   useToast,
 } from "@/components/ui"
 
+const Shimmer = ({ className }: { className?: string }) => (
+  <div className={cn("relative bg-gray-100 rounded overflow-hidden", className)}>
+    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+  </div>
+)
+
+const formatDeliverable = (text: string) => {
+  const cleaned = text
+    .replace(/[^a-zA-Z0-9\s&]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\bAnd\b/g, "&")
+  const words = cleaned.split(" ")
+  return words.length > 3 ? words.slice(0, 3).join(" ") : cleaned
+}
+
 const FALLBACK_CATEGORY_OPTIONS = [
   "Web Development",
   "Mobile Development",
@@ -642,7 +659,7 @@ export default function ProjectDetails() {
     recentQuestions: [],
     scope: [],
   })
-  const [loading, setLoading] = React.useState(false)
+  const [loading, setLoading] = React.useState(true)
   const [hasChanges, setHasChanges] = React.useState(false)
   const [selected, setSelected] = React.useState<string>("Details")
   const [descDialogOpen, setDescDialogOpen] = React.useState(false)
@@ -1142,7 +1159,7 @@ export default function ProjectDetails() {
           const newId = draftRes.data.id
           setProject((prev: any) => ({ ...prev, id: newId }))
           // Update the URL so reloads fetch the real draft
-          router.replace(`/my-listing/${newId}`, { scroll: false })
+          router.replace(`/my-listings/${newId}`, { scroll: false })
         }
       } catch (createErr) {
         console.error("Failed to create project draft:", createErr)
@@ -1232,7 +1249,7 @@ export default function ProjectDetails() {
 
         const rawSlug = params.slug as string
         // The URL param is typically a UUID (draft ID), not a slug.
-        // e.g. /my-listing/abc123-def456-...
+        // e.g. /my-listings/abc123-def456-...
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawSlug)
 
         // Helper to hydrate project state from publish draft data
@@ -1410,6 +1427,7 @@ export default function ProjectDetails() {
         })
         if (data.listingType) setInfoProjectType(data.listingType)
         if (data.shortDescription) setInfoSummary(data.shortDescription)
+        setLoading(false)
         return
       } catch (err) {
         console.error(err)
@@ -1428,7 +1446,7 @@ export default function ProjectDetails() {
           const newId = draftRes.data.id
           setProject((prev: any) => ({ ...prev, id: newId }))
           // Replace URL with the real backend UUID so reloads work
-          router.replace(`/my-listing/${newId}`, { scroll: false })
+          router.replace(`/my-listings/${newId}`, { scroll: false })
         }
       } catch (createErr) {
         console.error("Failed to create initial draft:", createErr)
@@ -1452,51 +1470,64 @@ export default function ProjectDetails() {
   if (loading) {
     return (
       <div className="min-h-screen bg-white px-[100px] py-10">
-        <div className="max-w-[1240px] animate-pulse">
+        <div className="max-w-[1240px]">
           {/* breadcrumb */}
           <div className="flex items-center gap-x-3">
-            <div className="h-3 w-3 rounded-full bg-gray-200" />
-            <div className="h-3 w-16 rounded bg-gray-200" />
-            <div className="h-3 w-24 rounded bg-gray-200" />
-            <div className="h-3 w-32 rounded bg-gray-200" />
+            <Shimmer className="h-3 w-3 rounded-full" />
+            <Shimmer className="h-3 w-16" />
+            <Shimmer className="h-3 w-24" />
+            <Shimmer className="h-3 w-32" />
           </div>
           <div className="flex items-start gap-x-8 mt-8">
             <div className="max-w-[818px] flex-auto space-y-6">
-              {/* title + meta */}
+              {/* title + categories */}
               <div className="space-y-3">
-                <div className="h-8 w-2/3 rounded bg-gray-200" />
-                <div className="h-4 w-1/3 rounded bg-gray-200" />
+                <Shimmer className="h-8 w-2/3" />
+                <div className="flex items-center gap-x-3">
+                  <Shimmer className="h-4 w-24" />
+                  <Shimmer className="h-4 w-28" />
+                </div>
               </div>
               {/* hero media */}
-              <div className="h-[460px] w-full rounded-lg bg-gray-200" />
+              <Shimmer className="h-[460px] w-full rounded-lg" />
               {/* tabs */}
               <div className="flex gap-x-4">
-                {["Details", "Phases", "Reviews", "Q&A"].map((t) => (
-                  <div key={t} className="h-8 w-20 rounded-full bg-gray-200" />
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Shimmer key={i} className="h-8 w-20 rounded-full" />
                 ))}
               </div>
               {/* body paragraphs */}
               <div className="space-y-3">
-                <div className="h-4 w-full rounded bg-gray-200" />
-                <div className="h-4 w-11/12 rounded bg-gray-200" />
-                <div className="h-4 w-10/12 rounded bg-gray-200" />
-                <div className="h-4 w-9/12 rounded bg-gray-200" />
+                <Shimmer className="h-4 w-full" />
+                <Shimmer className="h-4 w-11/12" />
+                <Shimmer className="h-4 w-10/12" />
+                <Shimmer className="h-4 w-9/12" />
               </div>
+              {/* deliverables section */}
+              <div className="space-y-4">
+                <Shimmer className="h-6 w-40" />
+                <div className="grid grid-cols-3 gap-4">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <Shimmer key={i} className="h-10 rounded-lg" />
+                  ))}
+                </div>
+              </div>
+              {/* more paragraphs */}
               <div className="space-y-3">
-                <div className="h-4 w-full rounded bg-gray-200" />
-                <div className="h-4 w-11/12 rounded bg-gray-200" />
-                <div className="h-4 w-8/12 rounded bg-gray-200" />
+                <Shimmer className="h-4 w-full" />
+                <Shimmer className="h-4 w-11/12" />
+                <Shimmer className="h-4 w-8/12" />
               </div>
             </div>
             {/* sidebar card */}
             <div className="w-[360px] shrink-0 rounded-lg border border-gray-200 p-6 space-y-4">
-              <div className="h-6 w-32 rounded bg-gray-200" />
-              <div className="h-10 w-full rounded bg-gray-200" />
-              <div className="h-10 w-full rounded bg-gray-200" />
-              <div className="h-10 w-full rounded bg-gray-200" />
+              <Shimmer className="h-6 w-32" />
+              <Shimmer className="h-10 w-full" />
+              <Shimmer className="h-10 w-full" />
+              <Shimmer className="h-10 w-full" />
               <div className="h-px w-full bg-gray-200" />
-              <div className="h-10 w-full rounded bg-gray-200" />
-              <div className="h-10 w-full rounded bg-gray-200" />
+              <Shimmer className="h-10 w-full" />
+              <Shimmer className="h-10 w-full" />
             </div>
           </div>
         </div>
@@ -1766,18 +1797,39 @@ export default function ProjectDetails() {
                     />
                   </div>
 
-                  <button
-                    className="inline-flex items-center gap-x-1.5 text-sm font-semibold text-dark-blue-400 hover:underline transition duration-300"
-                    onClick={() => {
-                      setInfoTitle(project.title === "Enter Project Title" ? "" : project.title || "")
-                      setInfoSummary(project.summary || "")
-                      setInfoTab("Categories")
-                      setProjectInfoOpen(true)
-                    }}
-                  >
-                    <Plus className="size-4" />
-                    Add Categories
-                  </button>
+                  {(project.categories || []).length > 0 ? (
+                    <div className="flex items-center gap-x-3">
+                      {(project.categories || []).map((cat: string) => {
+                        const catSlug = cat
+                          .toLowerCase()
+                          .replace(/&/g, "and")
+                          .replace(/\s+/g, "-")
+                          .replace(/[^a-z0-9-]/g, "")
+                        return (
+                          <NextLink
+                            key={cat}
+                            href={`/c/${catSlug}`}
+                            className="text-sm font-semibold text-gray-500 hover:text-dark-blue-400 hover:underline transition duration-300"
+                          >
+                            {cat}
+                          </NextLink>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <button
+                      className="inline-flex items-center gap-x-1.5 text-sm font-semibold text-dark-blue-400 hover:underline transition duration-300"
+                      onClick={() => {
+                        setInfoTitle(project.title === "Enter Project Title" ? "" : project.title || "")
+                        setInfoSummary(project.summary || "")
+                        setInfoTab("Categories")
+                        setProjectInfoOpen(true)
+                      }}
+                    >
+                      <Plus className="size-4" />
+                      Add Categories
+                    </button>
+                  )}
                 </div>
 
                 <IconButton
@@ -2691,7 +2743,7 @@ export default function ProjectDetails() {
                                     </span>
                                   </p>
                                   <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
-                                    {phase.items.map((item, i) => (
+                                    {phase.items.slice(0, 6).map((item, i) => (
                                       <div
                                         key={`${item}-${i}`}
                                         className="flex items-center gap-x-3"
@@ -2700,7 +2752,7 @@ export default function ProjectDetails() {
                                           <Check className="size-2" />
                                         </span>
                                         <p className="text-sm font-extralight leading-tight text-dark-blue-400">
-                                          {item}
+                                          {formatDeliverable(item)}
                                         </p>
                                       </div>
                                     ))}
@@ -4050,6 +4102,22 @@ export default function ProjectDetails() {
                           </div>
                           )}
                         </div>
+
+                        {!(project.faqs?.length > 0 || project.recentQuestions?.length > 0) && (
+                          <div className="flex flex-col items-center justify-center py-10 text-center">
+                            <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
+                              <HelpCircle className="size-5 text-gray-400" />
+                            </div>
+                            <h3 className="text-sm font-semibold text-dark-blue-400">No questions yet</h3>
+                            <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
+                              Add FAQ&apos;s to help clients learn more about your project, or wait for questions to come in from visitors.
+                            </p>
+                            <Button variant="outlined" visual="gray" size="sm" className="mt-4" onClick={() => setQuestionsDialogOpen(true)}>
+                              <Plus className="size-[15px]" />
+                              Add FAQ&apos;s
+                            </Button>
+                          </div>
+                        )}
                       </div>
 
                       {/* Questions Dialog */}
@@ -4094,6 +4162,17 @@ export default function ProjectDetails() {
                                   </Button>
                                 </div>
 
+                                {(!project.faqs || project.faqs.length === 0) ? (
+                                  <div className="mt-6 flex flex-col items-center justify-center py-10 text-center">
+                                    <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
+                                      <HelpCircle className="size-5 text-gray-400" />
+                                    </div>
+                                    <h3 className="text-sm font-semibold text-dark-blue-400">No FAQ&apos;s yet</h3>
+                                    <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
+                                      Add questions that clients commonly ask about your project, or generate them with AI.
+                                    </p>
+                                  </div>
+                                ) : (
                                 <Accordion
                                   type="single"
                                   collapsible
@@ -4101,12 +4180,7 @@ export default function ProjectDetails() {
                                   value={openFaqIndex !== null ? `faq-${openFaqIndex}` : ""}
                                   onValueChange={(val) => setOpenFaqIndex(val ? Number(val.replace("faq-", "")) : null)}
                                 >
-                                  {[
-                                    { q: "How will you involve me in the process?", a: "We offer a comprehensive range of IT consulting services, including IT strategy development, software development, network infrastructure design and implementation, cybersecurity assessment and solutions, cloud computing solutions, and IT project management." },
-                                    { q: "Can I request changes after the project starts?", a: "" },
-                                    { q: "How do you handle communication during the project?", a: "" },
-                                    { q: "What tools and technologies do you use?", a: "" },
-                                  ].map((faq, idx) => (
+                                  {(project.faqs as Array<{ question: string; answer: string }>).map((faq, idx) => (
                                     <AccordionItem key={idx} value={`faq-${idx}`} className="rounded-lg border border-gray-200 bg-white">
                                       <AccordionTrigger className="w-full p-4 flex items-center gap-3 [&[data-state=open]_.closed-icons]:hidden [&[data-state=closed]_.open-icons]:hidden [&[data-state=open]_.closed-text]:hidden [&[data-state=open]_.open-text]:inline">
                                         <button type="button" className="cursor-grab text-gray-400 hover:text-gray-600" onClick={(e) => e.stopPropagation()}>
@@ -4115,7 +4189,7 @@ export default function ProjectDetails() {
                                         <div className="min-w-0 flex-1 text-left">
                                           <span className="text-sm font-bold text-dark-blue-400">Question {idx + 1}<span className="closed-text">:</span></span>
                                           <span className="closed-text"> </span>
-                                          <span className="closed-text text-sm text-dark-blue-400">{faq.q}</span>
+                                          <span className="closed-text text-sm text-dark-blue-400">{faq.question}</span>
                                         </div>
                                         <div className="flex items-center gap-1">
                                           <span className="open-icons">
@@ -4137,7 +4211,7 @@ export default function ProjectDetails() {
                                         <p className="text-sm font-light text-dark-blue-400">
                                           Make this clear and concise, this is what your visitors will see first.
                                         </p>
-                                        <Input className="mt-2" defaultValue={faq.q} />
+                                        <Input className="mt-2" defaultValue={faq.question} />
                                         <div className="mt-4 flex items-center justify-between">
                                           <div>
                                             <h3 className="text-sm font-bold text-dark-blue-400">Answer</h3>
@@ -4150,12 +4224,13 @@ export default function ProjectDetails() {
                                             Answer With AI
                                           </Button>
                                         </div>
-                                        <Textarea className="mt-2" rows={4} defaultValue={faq.a} maxLength={300} />
-                                        <p className="mt-1 text-right text-xs text-gray-500">{faq.a.length}/300</p>
+                                        <Textarea className="mt-2" rows={4} defaultValue={faq.answer} maxLength={300} />
+                                        <p className="mt-1 text-right text-xs text-gray-500">{(faq.answer || "").length}/300</p>
                                       </DisclosureContent>
                                     </AccordionItem>
                                   ))}
                                 </Accordion>
+                                )}
                               </RadixTabs.Content>
 
                               <RadixTabs.Content value="RecentlyAsked" className="focus-visible:outline-none">

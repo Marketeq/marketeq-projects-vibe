@@ -2,6 +2,7 @@ export interface Task {
   id: string;
   taskName: string;
   role: string;
+  description?: string | null;
   location: string[];
   experience: string[];
   experienceLevel: string;

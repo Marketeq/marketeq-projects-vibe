@@ -32,6 +32,7 @@ export class Project {
   projectDatePublished?: Date | null;
   userId: string;
 
+  deliverables?: any[] | null;
   media?: any[];
 
   createdAt?: Date;

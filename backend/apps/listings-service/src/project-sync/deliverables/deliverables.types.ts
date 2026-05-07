@@ -25,3 +25,8 @@ export interface ScopePhaseInput {
     description?: string;
   }>;
 }
+
+export interface ProjectContext {
+  projectType?: string | null;
+  projectDescription?: string | null;
+}

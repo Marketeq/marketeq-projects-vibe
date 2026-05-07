@@ -7,6 +7,7 @@ export class TaskMapper {
       id: raw.id,
       taskName: raw.taskName,
       role: raw.role,
+      description: raw.description ?? null,
       location: raw.location,
       experience: raw.experience,
       experienceLevel: raw.experienceLevel,
@@ -28,6 +29,7 @@ export class TaskMapper {
 
     taskEntity.taskName = task.taskName;
     taskEntity.role = task.role;
+    taskEntity.description = task.description ?? undefined;
     taskEntity.location = task.location ?? [];
     taskEntity.experience = task.experience ?? [];
     taskEntity.experienceLevel = task.experienceLevel;

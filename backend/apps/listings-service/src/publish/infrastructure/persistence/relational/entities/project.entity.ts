@@ -85,6 +85,9 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   @Column({ type: 'timestamptz', nullable: true })
   projectDatePublished?: Date;
 
+  @Column({ type: 'jsonb', nullable: true, default: null })
+  deliverables: any[] | null;
+
   @OneToMany(() => MediaEntity, (media) => media.project, { cascade: true })
   media: MediaEntity[];
 

@@ -1288,10 +1288,10 @@ const columnHelper = createColumnHelper<PhaseRow>()
 const columns = [
   columnHelper.accessor("task", {
     cell: ({ getValue, row: { id } }) => (
-      <TableCell className="py-4 px-6">
-        <span className="inline-flex items-center gap-x-1.5">
+      <TableCell className="py-4 px-6 max-w-[220px]">
+        <span className="inline-flex items-center gap-x-1.5 max-w-full">
           <RowDragHandleCell rowId={id} />
-          <span className="text-sm font-semibold text-gray-900">
+          <span className="text-sm font-semibold text-gray-900 truncate">
             {getValue()}
           </span>
         </span>

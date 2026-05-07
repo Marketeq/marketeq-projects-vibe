@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   HttpException,
   HttpStatus,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -41,6 +42,11 @@ import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategor
 import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
 import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
 import { slugify } from '../shared/utils/slugify';
+import {
+  DELIVERABLES_ADAPTER,
+  DeliverablesAdapter,
+} from '../project-sync/deliverables/deliverables.adapter';
+import { ScopePhaseInput } from '../project-sync/deliverables/deliverables.types';
 
 @Injectable()
 export class PublishService {
@@ -54,6 +60,8 @@ export class PublishService {
     private readonly projectModerationService: ProjectModerationService,
     private readonly cloudflareStorageService: CloudflareStorageService,
     private readonly httpService: HttpService,
+    @Inject(DELIVERABLES_ADAPTER)
+    private readonly deliverablesAdapter: DeliverablesAdapter,
   ) {}
 
   private get shouldSkipModeration(): boolean {
@@ -306,6 +314,7 @@ export class PublishService {
             await this.taskRepository.create({
               taskName: taskDto.taskName,
               role: taskDto.role,
+              description: taskDto.description,
               location: taskDto.location,
               experience: taskDto.experience,
               experienceLevel: taskDto.experienceLevel,
@@ -521,6 +530,7 @@ export class PublishService {
         await this.taskRepository.create({
           taskName: taskDto.taskName,
           role: taskDto.role,
+          description: taskDto.description,
           location: taskDto.location,
           experience: taskDto.experience,
           experienceLevel: taskDto.experienceLevel,
@@ -533,6 +543,30 @@ export class PublishService {
       const phaseWithTasks =
         (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
       scope.push(phaseWithTasks);
+    }
+
+    // Auto-derive deliverables from the new scope
+    try {
+      const project = await this.projectRepository.findOne({ id: projectId });
+      const projectContext = {
+        projectType: project?.categories?.[0] ?? null,
+        projectDescription: project?.shortDescription || project?.fullDescription || null,
+      };
+
+      const adapterInput: ScopePhaseInput[] = scope.map((phase, index) => ({
+        phaseName: phase.name || phase.stageName || `Phase ${index + 1}`,
+        order: phase.order ?? index,
+        tasks: (phase.task ?? []).map((t) => ({
+          title: t.taskName,
+          roleName: t.role,
+          description: t.description ?? undefined,
+        })),
+      }));
+
+      const deliverables = await this.deliverablesAdapter.deriveDeliverables(adapterInput, projectContext);
+      await this.projectRepository.update(projectId, { deliverables });
+    } catch (err) {
+      this.logger.warn(`Failed to derive deliverables for project ${projectId}: ${(err as Error).message}`);
     }
 
     return { scope };
@@ -616,6 +650,7 @@ export class PublishService {
           await this.taskRepository.create({
             taskName: task.taskName,
             role: task.role,
+            description: task.description,
             location: task.location,
             experience: task.experience,
             experienceLevel: task.experienceLevel,
@@ -678,6 +713,7 @@ export class PublishService {
         await this.taskRepository.create({
           taskName: task.taskName,
           role: task.role,
+          description: task.description,
           location: task.location,
           experience: task.experience,
           experienceLevel: task.experienceLevel,
