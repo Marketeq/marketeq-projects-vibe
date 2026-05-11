@@ -13,7 +13,7 @@ export class SearchController {
     return this.svc.search(dto)
   }
 
-  // Index management (called by other services via RabbitMQ or REST)
+  // Index management — called by other services via REST or RabbitMQ
   @Post('index')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)

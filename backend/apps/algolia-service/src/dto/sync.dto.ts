@@ -6,7 +6,7 @@ export enum SyncOperation {
 }
 
 export enum AlgoliaIndex {
-  TALENT = 'talent',
+  TALENT = 'talent_profiles',
   PROJECTS = 'projects',
   SERVICES = 'services',
   TEAMS = 'teams',

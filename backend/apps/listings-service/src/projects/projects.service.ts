@@ -3,18 +3,25 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Logger,
+  Inject,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Not, Repository } from 'typeorm';
+import { ClientProxy } from '@nestjs/microservices';
 import { Project } from './entities/project.entity';
 import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
 
 @Injectable()
 export class ProjectsService {
+  private readonly logger = new Logger(ProjectsService.name);
+
   constructor(
     @InjectRepository(Project)
     private readonly repo: Repository<Project>,
+    @Inject('ALGOLIA_CLIENT')
+    private readonly algoliaClient: ClientProxy,
   ) {}
 
   async findAll(status = ListingStatus.Published) {
@@ -82,6 +89,7 @@ export class ProjectsService {
     });
 
     const saved = await this.repo.save(item);
+    this.emitUpsert('listing.created', saved);
     return this.shapeProject(saved);
   }
 
@@ -109,7 +117,9 @@ export class ProjectsService {
     }
 
     await this.repo.update(id, writable);
-    return this.findOne(id);
+    const updated = (await this.repo.findOne({ where: { id } }))!;
+    this.emitUpsert('listing.updated', updated);
+    return this.shapeProject(updated);
   }
 
   async publish(id: string, userId: string) {
@@ -117,7 +127,9 @@ export class ProjectsService {
     if (!existing) throw new NotFoundException('Project not found');
     this.assertOwnership(existing, userId);
     await this.repo.update(id, { status: ListingStatus.Published });
-    return this.findOne(id);
+    const published = (await this.repo.findOne({ where: { id } }))!;
+    this.emitUpsert('listing.updated', published);
+    return this.shapeProject(published);
   }
 
   async remove(id: string, userId: string) {
@@ -125,6 +137,10 @@ export class ProjectsService {
     if (!existing) throw new NotFoundException('Project not found');
     this.assertOwnership(existing, userId);
     await this.repo.delete(id);
+    this.algoliaClient.emit<void>('listing.deleted', { id, type: 'project' }).subscribe({
+      error: (err: Error) =>
+        this.logger.warn(`Failed to emit listing.deleted for project ${id}: ${err.message}`),
+    });
   }
 
   private assertOwnership(project: Project, userId: string): void {
@@ -350,5 +366,50 @@ export class ProjectsService {
     }
 
     return overlap / source.size;
+  }
+
+  private emitUpsert(event: string, project: Project): void {
+    const payload = this.buildPayload(project);
+    this.algoliaClient.emit<void>(event, payload).subscribe({
+      error: (err: Error) =>
+        this.logger.warn(`Failed to emit ${event} for project ${project.id}: ${err.message}`),
+    });
+  }
+
+  private buildPayload(project: Project) {
+    const budget = project.budget != null ? Number(project.budget) : null;
+    return {
+      id: project.id,
+      type: 'project' as const,
+      ownerId: project.createdBy,
+      createdAt: project.createdAt.toISOString(),
+      rating: project.rating ? Number(project.rating) : null,
+      title: project.title,
+      description: project.description ?? null,
+      skills: project.skills ?? [],
+      category: project.category ?? project.categories?.[0] ?? null,
+      industry: project.industry?.[0] ?? null,
+      tags: project.tags ?? [],
+      subtitle: project.shortDescription ?? null,
+      overview: null,
+      technologies: [
+        ...(project.programmingLanguages ?? []),
+        ...(project.developmentTech ?? []),
+      ],
+      subcategories: project.subcategories ?? [],
+      projectLead: null,
+      deliverables: null,
+      projectType: null,
+      budgetMin: budget,
+      budgetMax: null,
+      projectDurationRange: project.duration ?? null,
+      teamSizeRange: null,
+      additionalTags: [],
+      timeline: project.duration ?? null,
+      pricingModel: null,
+      deliveryTime: null,
+      priceMin: budget,
+      priceMax: null,
+    };
   }
 }
