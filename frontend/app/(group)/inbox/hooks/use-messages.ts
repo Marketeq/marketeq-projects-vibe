@@ -4,6 +4,7 @@ import { decryptAES } from "@/src/crypto/e2ee"
 import { loadKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
 import type { Message } from "@/types/message"
+import { UNDECRYPTABLE_PLACEHOLDER } from "../constants"
 
 const PAGE_SIZE = 50
 
@@ -26,11 +27,11 @@ async function decryptPage(convId: string, rows: Message[] | undefined | null): 
     rows.map(async (m) => {
       const decryptIfNeeded = async (cipher?: string | null) => {
         if (!cipher) return null
-        if (!key) return "Unable to decrypt this message"
+        if (!key) return UNDECRYPTABLE_PLACEHOLDER
         try {
           return await decryptAES(cipher, key)
         } catch {
-          return "Unable to decrypt this message"
+          return UNDECRYPTABLE_PLACEHOLDER
         }
       }
       const [content, quotedContent] = await Promise.all([

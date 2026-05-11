@@ -14,6 +14,14 @@ import { ThreadListAssignment } from '../src/threads/entities/thread-list-assign
 import { ConversationKey } from '../src/encryption/entities/conversation-key.entity';
 import { AblyService } from '../src/ably/ably.service';
 import { R2Service } from '../src/storage/r2.service';
+import { BlockEnforcementService } from '../src/blocks/block-enforcement.service';
+
+const blockEnforcementMock = {
+  filterThreadsForBlocks: jest.fn(async (_uid: string, threads: any[]) => threads),
+  filterMessagesForBlocks: jest.fn(async (_uid: string, _t: any, messages: any[]) => messages),
+  assertCanSend: jest.fn(async () => ({ shadow: false })),
+  assertCanCreate: jest.fn(async () => undefined),
+};
 
 const USER_A = 'user-a';
 const USER_B = 'user-b';
@@ -96,6 +104,7 @@ describe('Messaging regressions (PR #123)', () => {
           },
           { provide: R2Service, useValue: r2Service },
           { provide: DataSource, useValue: dataSource },
+          { provide: BlockEnforcementService, useValue: blockEnforcementMock },
         ],
       }).compile();
 
@@ -146,6 +155,7 @@ describe('Messaging regressions (PR #123)', () => {
           { provide: getRepositoryToken(ThreadList), useValue: {} },
           { provide: getRepositoryToken(ThreadListAssignment), useValue: {} },
           { provide: AblyService, useValue: {} },
+          { provide: BlockEnforcementService, useValue: blockEnforcementMock },
         ],
       }).compile();
 
@@ -195,6 +205,7 @@ describe('Messaging regressions (PR #123)', () => {
           { provide: getRepositoryToken(ThreadList), useValue: {} },
           { provide: getRepositoryToken(ThreadListAssignment), useValue: {} },
           { provide: AblyService, useValue: {} },
+          { provide: BlockEnforcementService, useValue: blockEnforcementMock },
         ],
       }).compile();
 

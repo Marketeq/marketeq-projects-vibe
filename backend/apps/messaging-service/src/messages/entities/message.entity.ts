@@ -65,7 +65,7 @@ export class Message {
   @OneToMany(() => Attachment, (a) => a.message, { cascade: true })
   attachments: Attachment[];
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
   @UpdateDateColumn()

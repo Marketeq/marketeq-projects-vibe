@@ -1,12 +1,13 @@
 "use client"
 
-import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react"
+import React, { useCallback, useMemo, useRef, useState } from "react"
 import { useEffect } from "react"
 import { decryptAES, decryptWithPrivateKey } from "@/src/crypto/e2ee"
 import { exportPrivateKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
 import { Bubble, YourBubble } from "./message-components"
+import { UNDECRYPTABLE_PLACEHOLDER } from "../constants"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
@@ -15,7 +16,7 @@ import {
   noop,
   toPxIfNumber,
 } from "@/utils/functions"
-import { useControllableState } from "@/utils/hooks"
+import { useControllableState, useIsomorphicLayoutEffect } from "@/utils/hooks"
 import { useAblyChannel } from "@/utils/useAblyChannel"
 import { useAblyPresence } from "@/utils/useAblyPresence"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
@@ -533,7 +534,7 @@ export function Chats({
     return () => viewport.removeEventListener("scroll", onScroll)
   }, [hasMore, loadingOlder, loadOlder])
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!preLoadOlderHeightRef.current) return
     if (loadingOlder) return
     const viewport = messagesScrollRef.current?.querySelector(
@@ -688,7 +689,7 @@ export function Chats({
           quotedPlain = await decryptAES(incoming.quotedCiphertext, key)
         } catch (err) {
           console.error("Failed to decrypt quoted content:", err)
-          quotedPlain = "Unable to decrypt this message"
+          quotedPlain = UNDECRYPTABLE_PLACEHOLDER
         }
       }
       setLocalMsgs((prev) => {
@@ -755,7 +756,7 @@ export function Chats({
         }
       } catch (err) {
         console.error("Failed to decrypt edited message:", err)
-        plain = "Unable to decrypt this message"
+        plain = UNDECRYPTABLE_PLACEHOLDER
       }
       updateMessage(incoming.id, {
         content: plain,
@@ -845,7 +846,7 @@ export function Chats({
       } catch (err) {
         console.error("Failed to decrypt uploaded attachment caption:", err)
         if (result.message.ciphertext) {
-          displayContent = "Unable to decrypt this message"
+          displayContent = UNDECRYPTABLE_PLACEHOLDER
         }
       }
 
@@ -1175,11 +1176,11 @@ export function Chats({
               isPinned: (m as any).isPinned ?? (m as any).pinned ?? false,
             }
             if (!m.ciphertext) return normalized
-            if (!key) return { ...normalized, content: "Unable to decrypt this message" }
+            if (!key) return { ...normalized, content: UNDECRYPTABLE_PLACEHOLDER }
             try {
               return { ...normalized, content: await decryptAES(m.ciphertext, key) }
             } catch {
-              return { ...normalized, content: "Unable to decrypt this message" }
+              return { ...normalized, content: UNDECRYPTABLE_PLACEHOLDER }
             }
           })
         )

@@ -4,6 +4,7 @@ import { decryptAES } from "@/src/crypto/e2ee"
 import { loadKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
 import type { Message } from "@/types/conversation"
+import { UNDECRYPTABLE_PLACEHOLDER } from "../constants"
 
 export function usePinnedMessages(convId: string, token: string) {
   const [messages, setMessages] = useState<Message[]>([])
@@ -36,11 +37,11 @@ export function usePinnedMessages(convId: string, token: string) {
             }
             const ct = (m as any).ciphertext
             if (!ct) return normalized // legacy plaintext row
-            if (!key) return { ...normalized, content: "Unable to decrypt this message" }
+            if (!key) return { ...normalized, content: UNDECRYPTABLE_PLACEHOLDER }
             try {
               return { ...normalized, content: await decryptAES(ct, key) }
             } catch {
-              return { ...normalized, content: "Unable to decrypt this message" }
+              return { ...normalized, content: UNDECRYPTABLE_PLACEHOLDER }
             }
           })
         )
