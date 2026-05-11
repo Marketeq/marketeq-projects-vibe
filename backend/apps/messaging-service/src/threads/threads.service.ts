@@ -59,41 +59,31 @@ export class ThreadsService {
       : [];
     const stateByThread = new Map(states.map((s) => [s.threadId, s]));
 
-    // Batch unread counts in a single query instead of N+1
+    // Single query: count unread messages per thread, joining
+    // thread_user_state so the lastReadAt filter is applied in SQL
+    // instead of looping per thread. Both sides of the comparison
+    // are timestamptz (see Promote… migration), so no cast needed.
     const unreadCountMap = new Map<string, number>();
     if (threadIds.length) {
       const unreadRows: { threadId: string; cnt: string }[] = await this.repo.manager
-        .createQueryBuilder()
+        .createQueryBuilder(Message, 'm')
         .select('m."threadId"', 'threadId')
         .addSelect('COUNT(*)', 'cnt')
-        .from('messaging.messages', 'm')
+        .leftJoin(
+          ThreadUserState,
+          's',
+          's."threadId" = m."threadId" AND s."userId" = :userId',
+          { userId },
+        )
         .where('m."threadId" IN (:...threadIds)', { threadIds })
         .andWhere('m.deleted = false')
         .andWhere('m."senderId" != :userId', { userId })
+        .andWhere('(s."lastReadAt" IS NULL OR m."createdAt" > s."lastReadAt")')
         .groupBy('m."threadId"')
         .getRawMany();
 
       for (const row of unreadRows) {
         unreadCountMap.set(row.threadId, parseInt(row.cnt, 10));
-      }
-
-      // For threads with a lastReadAt, re-query only those to filter by time
-      const threadsWithReadAt = threadIds.filter((id) => stateByThread.get(id)?.lastReadAt);
-      if (threadsWithReadAt.length) {
-        // Clear and re-count for threads that have been partially read
-        for (const tid of threadsWithReadAt) {
-          const s = stateByThread.get(tid)!;
-          const cnt = await this.repo.manager
-            .createQueryBuilder()
-            .select('COUNT(*)', 'cnt')
-            .from('messaging.messages', 'm')
-            .where('m."threadId" = :tid', { tid })
-            .andWhere('m.deleted = false')
-            .andWhere('m."senderId" != :userId', { userId })
-            .andWhere('m."createdAt" > :lastReadAt', { lastReadAt: s.lastReadAt })
-            .getRawOne();
-          unreadCountMap.set(tid, parseInt(cnt?.cnt ?? '0', 10));
-        }
       }
     }
 
