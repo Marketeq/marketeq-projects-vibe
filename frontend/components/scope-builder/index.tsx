@@ -35,6 +35,7 @@ import {
   MoreHorizontal,
   PlayCircle,
   Plus,
+  RefreshCcw05,
   SearchMd,
   Trash2,
   Type,
@@ -87,7 +88,7 @@ import { Network1 } from "@/components/icons/network-1"
 import { Network2 } from "@/components/icons/network-2"
 import { Network3 } from "@/components/icons/network-3"
 import { Network4 } from "@/components/icons/network-4"
-import { CountriesCombobox, OwnCombobox } from "@/components/own-combobox"
+import { CountriesCombobox, OwnCombobox, getFlagUrlByName } from "@/components/own-combobox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -102,7 +103,13 @@ import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
   Button,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Dialog,
   DialogClose,
   DialogContent,
@@ -131,6 +138,10 @@ import {
   TableRow,
   ToastAction,
   Toaster,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   useToast,
 } from "@/components/ui"
 
@@ -235,12 +246,68 @@ type PhaseNameFormValues = z.infer<typeof phaseNameFormSchema>
 
 type TaskFormValues = z.infer<typeof taskFormSchema>
 
+export interface TeamMember {
+  id: string
+  firstName: string
+  username: string
+  avatarUrl: string | null
+  role: string
+  /** Up to 3 job titles with optional per-role rates */
+  jobTitles?: string[]
+  /** Hourly rate in USD (e.g. 85 = $85/hr) */
+  hourlyRate?: number | null
+  /** "full_time" | "part_time" | "custom" */
+  workSchedule?: string | null
+  /** Custom hours per week (only relevant when workSchedule = "custom") */
+  customHoursPerWeek?: number | null
+  /** Team member's location/country */
+  location?: string | null
+  /** Experience level */
+  experience?: string | null
+}
+
+/** Convert a duration to billable hours based on work schedule */
+function durationToHours(
+  durationValue: number,
+  durationType: string,
+  workSchedule?: string | null,
+  customHoursPerWeek?: number | null,
+): number {
+  const hoursPerWeek =
+    workSchedule === "part_time" ? 20 :
+    workSchedule === "custom" && customHoursPerWeek ? customHoursPerWeek :
+    40 // full_time default
+  const hoursPerDay = hoursPerWeek / 5
+
+  if (durationType === "hours") return durationValue
+  if (durationType === "weeks") return durationValue * hoursPerWeek
+  // days
+  return durationValue * hoursPerDay
+}
+
+/** Calculate task cost for an assigned team member */
+export function calculateTaskCost(
+  member: TeamMember,
+  durationValue: number,
+  durationType: string,
+): number | null {
+  if (!member.hourlyRate) return null
+  const hours = durationToHours(
+    durationValue,
+    durationType,
+    member.workSchedule,
+    member.customHoursPerWeek,
+  )
+  return Math.round(member.hourlyRate * hours * 100) // USD cents
+}
+
 export type PhaseRow = Prettify<
   {
     id: string
     role?: string
     location?: string
     experience?: string
+    assignedMember?: TeamMember | null
   } & TaskFormValues
 >
 
@@ -255,8 +322,10 @@ declare module "@tanstack/react-table" {
   // @ts-expect-error
   interface TableMeta<TData extends PhaseRow> {
     updateData: (rowIndex: number, columnId: string, value: unknown) => void
+    batchUpdateData?: (rowIndex: number, updates: Record<string, unknown>) => void
     openDurationDialog: (index: number) => void
     roles: string[]
+    teamMembers?: TeamMember[]
   }
 }
 
@@ -321,6 +390,30 @@ const numberToWord = (num: number) => {
     "Ten",
   ]
   return words[num] || num + 1 // fallback for numbers > 10
+}
+
+// ─── Country code lookup (static fallback for flags before API loads) ────
+const COUNTRY_CODES: Record<string, string> = {
+  "United States": "us", "United Kingdom": "gb", "Canada": "ca", "India": "in",
+  "Germany": "de", "Australia": "au", "Brazil": "br", "Philippines": "ph",
+  "Ukraine": "ua", "Poland": "pl", "France": "fr", "Japan": "jp",
+  "South Korea": "kr", "China": "cn", "Mexico": "mx", "Spain": "es",
+  "Italy": "it", "Netherlands": "nl", "Sweden": "se", "Norway": "no",
+  "Denmark": "dk", "Finland": "fi", "Switzerland": "ch", "Austria": "at",
+  "Belgium": "be", "Ireland": "ie", "New Zealand": "nz", "Singapore": "sg",
+  "Israel": "il", "Portugal": "pt", "Argentina": "ar", "Colombia": "co",
+  "Chile": "cl", "Romania": "ro", "Czech Republic": "cz", "Hungary": "hu",
+  "Turkey": "tr", "Thailand": "th", "Vietnam": "vn", "Indonesia": "id",
+  "Malaysia": "my", "Nigeria": "ng", "Kenya": "ke", "South Africa": "za",
+  "Egypt": "eg", "Pakistan": "pk", "Bangladesh": "bd", "Sri Lanka": "lk",
+  "Russia": "ru", "Estonia": "ee", "Latvia": "lv", "Lithuania": "lt",
+  "Croatia": "hr", "Serbia": "rs", "Bulgaria": "bg", "Greece": "gr",
+}
+
+function getStaticFlagUrl(countryName: string): string | null {
+  const code = COUNTRY_CODES[countryName]
+  if (code) return `https://flagcdn.com/36x27/${code}.png`
+  return getFlagUrlByName(countryName)
 }
 
 // ─── Roles ──────────────────────────────────────────────────────────────
@@ -1283,59 +1376,454 @@ const RowDragHandleCell = ({ rowId }: { rowId: string }) => {
   )
 }
 
+// ─── Role Picker (team member or vacant role) ───────────────────────────
+
+const WORK_SCHEDULES = ["Full-time", "Part-time", "Custom"] as const
+const CUSTOM_PERIODS = ["per day", "per week", "per month", "per quarter"] as const
+
+function AddRoleDialog({
+  open,
+  onOpenChange,
+  roles,
+  onDone,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  roles: string[]
+  onDone: (role: string, schedule: string, customHours?: number, customPeriod?: string) => void
+}) {
+  const [roleValue, setRoleValue] = useState("")
+  const [roleSearch, setRoleSearch] = useState("")
+  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false)
+  const [schedule, setSchedule] = useState("")
+  const [customHours, setCustomHours] = useState<number>(15)
+  const [customPeriod, setCustomPeriod] = useState("per week")
+
+  const lowerSearch = roleSearch.toLowerCase()
+  const filteredRoles = roles.filter((r) => r.toLowerCase().includes(lowerSearch))
+
+  const handleDone = () => {
+    if (!roleValue || !schedule) return
+    const scheduleKey = schedule === "Full-time" ? "full_time" : schedule === "Part-time" ? "part_time" : "custom"
+    onDone(
+      roleValue,
+      scheduleKey,
+      schedule === "Custom" ? customHours : undefined,
+      schedule === "Custom" ? customPeriod : undefined,
+    )
+    // Reset
+    setRoleValue("")
+    setRoleSearch("")
+    setSchedule("")
+    setCustomHours(15)
+    setCustomPeriod("per week")
+    onOpenChange(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[360px] p-6 gap-0">
+        <div>
+          <Label className="text-sm font-medium text-gray-700">Role</Label>
+          <div className="mt-1.5 relative">
+            <Input
+              placeholder="Enter role"
+              value={roleValue}
+              onChange={(e) => {
+                setRoleValue(e.target.value)
+                setRoleSearch(e.target.value)
+                setRoleDropdownOpen(true)
+              }}
+              onFocus={() => setRoleDropdownOpen(true)}
+            />
+            {roleDropdownOpen && roleSearch.length > 0 && filteredRoles.length > 0 && (
+              <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)] overflow-hidden">
+                <div className="flex items-center border-b border-gray-200 pl-3 px-2.5">
+                  <input
+                    className="flex h-8 w-full bg-transparent focus:ring-0 p-0 border-0 text-sm focus-visible:outline-none outline-none text-gray-900 placeholder:text-gray-500"
+                    placeholder="Search"
+                    value={roleSearch}
+                    onChange={(e) => setRoleSearch(e.target.value)}
+                  />
+                  <SearchMd className="size-3.5 shrink-0 text-gray-400" />
+                </div>
+                <div className="max-h-[180px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 py-1">
+                  {filteredRoles.map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      className={cn(
+                        "w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition duration-150 cursor-pointer",
+                        role === roleValue ? "font-semibold text-gray-900 bg-gray-50" : "text-gray-600"
+                      )}
+                      onClick={() => {
+                        setRoleValue(role)
+                        setRoleSearch(role)
+                        setRoleDropdownOpen(false)
+                      }}
+                    >
+                      {role}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <Label className="text-sm font-medium text-gray-700">Work Schedule</Label>
+          <div className="mt-1.5">
+            <Listbox value={schedule} onChange={setSchedule}>
+              <ListboxButton className="w-full h-[44px]" placeholder="Select one" />
+              <ListboxOptions className="w-full">
+                {WORK_SCHEDULES.map((ws) => (
+                  <ListboxOption key={ws} value={ws}>{ws}</ListboxOption>
+                ))}
+              </ListboxOptions>
+            </Listbox>
+          </div>
+        </div>
+
+        {schedule === "Custom" && (
+          <div className="mt-4">
+            <Label className="text-sm font-medium text-gray-700">Estimated hours</Label>
+            <div className="mt-1.5 flex items-center gap-x-2">
+              <div className="flex items-center gap-x-1.5">
+                <Input
+                  type="number"
+                  min={1}
+                  className="w-[60px] text-center"
+                  value={customHours}
+                  onChange={(e) => setCustomHours(Number(e.target.value) || 0)}
+                />
+                <span className="text-sm text-gray-500">hours</span>
+              </div>
+              <Listbox value={customPeriod} onChange={setCustomPeriod}>
+                <ListboxButton className="h-[44px] min-w-[120px]" placeholder="per week" />
+                <ListboxOptions>
+                  {CUSTOM_PERIODS.map((p) => (
+                    <ListboxOption key={p} value={p}>{p}</ListboxOption>
+                  ))}
+                </ListboxOptions>
+              </Listbox>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-6 flex items-center gap-x-3">
+          <Button
+            variant="outlined"
+            visual="gray"
+            className="flex-1"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            className="flex-1"
+            disabled={!roleValue || !schedule}
+            onClick={handleDone}
+          >
+            Done
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function RolePicker({
+  teamMembers,
+  roles,
+  onSelectMember,
+  onSelectRole,
+  onAddRole,
+}: {
+  teamMembers: TeamMember[]
+  roles: string[]
+  onSelectMember: (member: TeamMember) => void
+  onSelectRole: (role: string) => void
+  onAddRole: () => void
+}) {
+  const [search, setSearch] = useState("")
+  const lowerSearch = search.toLowerCase()
+
+  const filteredMembers = teamMembers.filter(
+    (m) =>
+      m.firstName.toLowerCase().includes(lowerSearch) ||
+      m.username.toLowerCase().includes(lowerSearch) ||
+      m.role.toLowerCase().includes(lowerSearch)
+  )
+
+  return (
+    <div>
+      <div className="flex items-center border-b border-gray-200 pl-3 px-2.5">
+        <input
+          className="flex h-9 w-full bg-transparent focus:ring-0 p-0 border-0 text-sm focus-visible:outline-none outline-none text-gray-900 placeholder:text-gray-500"
+          placeholder="Search team..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          autoFocus
+        />
+        <SearchMd className="size-4 shrink-0 text-gray-400" />
+      </div>
+      <div className="max-h-[232px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 pt-1">
+        {filteredMembers.length > 0 ? (
+          filteredMembers.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className="w-full flex items-center gap-x-2 px-3 py-2 text-left hover:bg-gray-50 transition duration-150 cursor-pointer"
+              onClick={() => onSelectMember(m)}
+            >
+              <Avatar className="size-6 shrink-0">
+                {m.avatarUrl ? (
+                  <AvatarImage src={m.avatarUrl} alt={m.firstName} />
+                ) : null}
+                <AvatarFallback className="text-[10px]">
+                  {m.firstName.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-medium text-gray-900 truncate leading-tight">
+                  {m.firstName}
+                  <span className="text-gray-400 font-normal ml-0.5">@{m.username}</span>
+                </p>
+                <p className="text-[11px] text-gray-500 truncate leading-tight">
+                  {m.role}
+                </p>
+              </div>
+            </button>
+          ))
+        ) : (
+          <p className="py-4 text-center text-sm text-gray-400">
+            {search ? "No team members found." : "No team members yet."}
+          </p>
+        )}
+      </div>
+      <div className="border-t border-gray-100 px-3 py-2">
+        <button
+          type="button"
+          className="text-[13px] font-medium text-dark-blue-400 hover:underline transition duration-150 cursor-pointer"
+          onClick={onAddRole}
+        >
+          + Add Role
+        </button>
+      </div>
+    </div>
+  )
+}
+
 const columnHelper = createColumnHelper<PhaseRow>()
 
 const columns = [
   columnHelper.accessor("task", {
-    cell: ({ getValue, row: { id } }) => (
-      <TableCell className="py-4 px-6 max-w-[220px]">
-        <span className="inline-flex items-center gap-x-1.5 max-w-full">
-          <RowDragHandleCell rowId={id} />
-          <span className="text-sm font-semibold text-gray-900 truncate">
-            {getValue()}
-          </span>
-        </span>
-      </TableCell>
-    ),
-    header: "Task Name",
-  }),
-  columnHelper.accessor("role", {
-    cell: ({ getValue, row: { index }, column: { id }, table }) => {
+    cell: ({ row: { id, index, original }, column, table }) => {
       // eslint-disable-next-line
-      const [value, setValue] = useUncontrolledState({
-        defaultValue: getValue(),
-        onChange: (value) => table.options.meta?.updateData(index, id, value),
-      })
+      const [editing, setEditing] = useState(false)
+      // eslint-disable-next-line
+      const [draft, setDraft] = useState(original.task)
+      // eslint-disable-next-line
+      const inputRef = useRef<HTMLInputElement>(null)
+
+      // eslint-disable-next-line
+      useEffect(() => {
+        if (editing) {
+          setDraft(original.task)
+          setTimeout(() => inputRef.current?.focus(), 0)
+        }
+      }, [editing, original.task])
+
+      const commit = () => {
+        const trimmed = draft.trim()
+        if (trimmed && trimmed !== original.task) {
+          table.options.meta?.updateData(index, column.id, trimmed)
+        }
+        setEditing(false)
+      }
 
       return (
-        <TableCell className="py-4 px-6">
-          <OwnCombobox
-            value={value}
-            onValueChange={setValue}
-            placeholder="Add Role"
-            options={table.options.meta?.roles}
-            triggerClassName="max-w-full"
-          />
+        <TableCell className="py-4 px-6 max-w-[220px]">
+          <span className="inline-flex items-center gap-x-1.5 max-w-full">
+            <RowDragHandleCell rowId={id} />
+            {editing ? (
+              <input
+                ref={inputRef}
+                className="text-sm font-semibold text-gray-900 bg-transparent border-b border-primary-500 outline-none w-full py-0 px-0"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commit()
+                  if (e.key === "Escape") setEditing(false)
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="text-sm font-semibold text-gray-900 truncate text-left cursor-text hover:underline hover:decoration-gray-300 focus-visible:outline-none"
+                onClick={() => setEditing(true)}
+              >
+                {original.task}
+              </button>
+            )}
+          </span>
         </TableCell>
       )
     },
-    header: "Role",
+    header: "Task Name",
+  }),
+  columnHelper.accessor("role", {
+    cell: ({ row: { index, original }, column: { id }, table }) => {
+      const value = original.role ?? ""
+      const member = original.assignedMember ?? null
+      // eslint-disable-next-line
+      const [popoverOpen, setPopoverOpen] = useState(false)
+      // eslint-disable-next-line
+      const [addRoleOpen, setAddRoleOpen] = useState(false)
+
+      const teamMembers = table.options.meta?.teamMembers ?? []
+      const allRoles = table.options.meta?.roles ?? []
+
+      const handleSelectMember = (tm: TeamMember) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role: tm.role,
+          assignedMember: tm,
+          location: tm.location ?? "",
+          experience: tm.experience ?? "",
+        })
+        setPopoverOpen(false)
+      }
+
+      const handleSelectVacantRole = (role: string) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role,
+          assignedMember: null,
+          location: "",
+          experience: "",
+        })
+        setPopoverOpen(false)
+      }
+
+      const handleAddRole = () => {
+        setPopoverOpen(false)
+        setAddRoleOpen(true)
+      }
+
+      const handleAddRoleDone = (role: string, schedule: string, customHours?: number, customPeriod?: string) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role,
+          assignedMember: null,
+          location: "",
+          experience: "",
+          workSchedule: schedule,
+          ...(customHours != null ? { customHours, customPeriod } : {}),
+        })
+      }
+
+      // eslint-disable-next-line
+      const taskCostCents = member
+        ? calculateTaskCost(member, original.duration.value, original.duration.type)
+        : null
+
+      const pickerPopover = (
+        <>
+          <PopoverContent className="w-[220px] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
+            <RolePicker
+              teamMembers={teamMembers}
+              roles={allRoles}
+              onSelectMember={handleSelectMember}
+              onSelectRole={handleSelectVacantRole}
+              onAddRole={handleAddRole}
+            />
+          </PopoverContent>
+          <AddRoleDialog
+            open={addRoleOpen}
+            onOpenChange={setAddRoleOpen}
+            roles={allRoles}
+            onDone={handleAddRoleDone}
+          />
+        </>
+      )
+
+      if (member) {
+        return (
+          <TableCell className="py-4 px-3">
+            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <PopoverTrigger asChild>
+                <button className="focus-visible:outline-none inline-flex items-center gap-x-2 max-w-full transition duration-300 hover:bg-gray-50 rounded-md px-1.5 py-1 -mx-1.5 -my-1">
+                  <Avatar className="size-6 shrink-0">
+                    {member.avatarUrl ? (
+                      <AvatarImage src={member.avatarUrl} alt={member.firstName} />
+                    ) : null}
+                    <AvatarFallback className="text-[10px]">
+                      {member.firstName.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 text-left">
+                    <p className="text-xs font-medium text-gray-900 truncate leading-tight">
+                      {member.firstName}
+                      <span className="text-gray-400 font-normal ml-0.5">@{member.username}...</span>
+                    </p>
+                    <p className="text-[11px] text-gray-500 truncate leading-tight">
+                      {member.role}
+                    </p>
+                  </div>
+                </button>
+              </PopoverTrigger>
+              {pickerPopover}
+            </Popover>
+          </TableCell>
+        )
+      }
+
+      return (
+        <TableCell className="py-4 px-3">
+          <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+            <PopoverTrigger asChild>
+              <button className={cn(
+                "focus-visible:outline-none transition duration-300 border border-transparent hover:border-gray-300 h-7 px-[8px] rounded-[5px] border-dashed hover:bg-gray-100 shrink-0 text-sm leading-[16.94px] truncate whitespace-nowrap max-w-full",
+                value ? "text-gray-600" : "text-gray-400"
+              )}>
+                <span className="block truncate">{value || "Add Role"}</span>
+              </button>
+            </PopoverTrigger>
+            {pickerPopover}
+          </Popover>
+        </TableCell>
+      )
+    },
+    header: "Team Member",
   }),
   columnHelper.accessor("location", {
-    cell: ({ getValue, row: { index }, column: { id }, table }) => {
-      // eslint-disable-next-line
-      const [value, setValue] = useUncontrolledState({
-        defaultValue: getValue(),
-        onChange: () => {
-          table.options.meta?.updateData(index, id, value)
-        },
-      })
+    cell: ({ row: { index, original }, column: { id }, table }) => {
+      const assigned = original.assignedMember
+      const currentValue = original.location ?? ""
+      if (assigned) {
+        const flagUrl = assigned.location ? getStaticFlagUrl(assigned.location) : null
+        return (
+          <TableCell className="px-3 py-4">
+            <span className="inline-flex items-center gap-x-1.5 px-2 py-[5px] border border-gray-300 rounded-[5px] bg-white text-xs leading-[18px] font-medium text-gray-700 cursor-default">
+              {flagUrl && (
+                <span className="inline-flex items-center justify-center w-[18px] h-[14px] shrink-0 rounded-sm overflow-hidden">
+                  <img className="w-full h-full object-cover" src={flagUrl} alt={assigned.location || ""} />
+                </span>
+              )}
+              {assigned.location || "—"}
+            </span>
+          </TableCell>
+        )
+      }
+
       return (
         <TableCell className="px-3 py-4">
           <CountriesCombobox
             placeholder="Location"
-            value={value}
-            onValueChange={setValue}
+            value={currentValue}
+            onValueChange={(v) => {
+              table.options.meta?.updateData(index, id, v)
+            }}
           />
         </TableCell>
       )
@@ -1343,22 +1831,28 @@ const columns = [
     header: "Location",
   }),
   columnHelper.accessor("experience", {
-    cell: ({ getValue, row: { index }, column: { id }, table }) => {
-      // eslint-disable-next-line
-      const [value, setValue] = useUncontrolledState<
-        ExperienceLevel | undefined
-      >({
-        defaultValue: getValue(),
-        onChange: (value) => table.options.meta?.updateData(index, id, value),
-      })
+    cell: ({ row: { index, original }, column: { id }, table }) => {
+      const assigned = original.assignedMember
+      const currentValue = (original.experience ?? "") as ExperienceLevel | ""
+
+      if (assigned) {
+        return (
+          <TableCell className="py-4 px-6">
+            <span className="inline-flex items-center px-2 py-[5px] border border-gray-300 rounded-[5px] bg-white text-xs leading-[18px] font-medium text-gray-700 cursor-default">
+              {assigned.experience || "—"}
+            </span>
+          </TableCell>
+        )
+      }
+
       return (
         <TableCell className="py-4 px-6">
           <Dropdown
             placeholder="Experience"
-            value={value}
+            value={currentValue || undefined}
             onValueChange={(nextValue) => {
               if (!nextValue) return
-              setValue(nextValue)
+              table.options.meta?.updateData(index, id, nextValue)
             }}
           />
         </TableCell>
@@ -1387,12 +1881,14 @@ interface PhaseTableProps {
   rows: PhaseRow[]
   onRowsChange: (rows: PhaseRow[]) => void
   openDurationDialog: (index: number) => void
+  teamMembers: TeamMember[]
 }
 
 const PhaseTable = ({
   rows,
   onRowsChange,
   openDurationDialog,
+  teamMembers,
 }: PhaseTableProps) => {
   const [data, setData] = useControllableState({
     value: rows,
@@ -1421,8 +1917,19 @@ const PhaseTable = ({
           })
         )
       },
+      batchUpdateData: (rowIndex, updates) => {
+        setData((prev) =>
+          prev.map((row, index) => {
+            if (index === rowIndex) {
+              return { ...row, ...updates }
+            }
+            return row
+          })
+        )
+      },
       openDurationDialog,
       roles: ROLES,
+      teamMembers,
     },
   })
 
@@ -1585,14 +2092,22 @@ const DurationDialog = ({
 
 // ─── Main ScopeBuilder component ────────────────────────────────────────
 
+export type ScopeType = "project" | "service"
+
 export interface ScopeBuilderProps {
   phases?: Phase[]
   onPhasesChange?: (phases: Phase[]) => void
   /** When true, renders without the ScrollArea wrapper and tip sidebar (for embedding in other pages) */
   embedded?: boolean
+  /** Current scope type — defaults to "project" */
+  scopeType?: ScopeType
+  /** Called when the user confirms switching scope type */
+  onScopeTypeChange?: (type: ScopeType) => void
+  /** Team members available for task assignment */
+  teamMembers?: TeamMember[]
 }
 
-export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded }: ScopeBuilderProps) {
+export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, scopeType = "project", onScopeTypeChange, teamMembers = [] }: ScopeBuilderProps) {
   const { toast } = useToast()
   const lastUndo = useRef<null | (() => void)>(null)
   const [taskDialogState, setTaskDialogState] = useState<TaskDialogState>({
@@ -1609,6 +2124,9 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded }
     phaseNameDialogReducer,
     defaultPhaseNameDialogState
   )
+  const [scopeTypeDropdownOpen, setScopeTypeDropdownOpen] = useState(false)
+  const [scopeTypeConfirmOpen, setScopeTypeConfirmOpen] = useState(false)
+  const [pendingScopeType, setPendingScopeType] = useState<ScopeType | null>(null)
   const [accordionState, setAccordionState] = useState(["item-0"])
 
   // Local state for phases — replaces useProjectScopeContext
@@ -1990,27 +2508,95 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded }
           <div className="space-y-6 flex-auto min-w-0">
             <div className="flex md:flex-row flex-col gap-y-6 md:gap-y-0 md:items-center justify-between">
               <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
-                Project Scope
+                {scopeType === "service" ? "Service" : "Project"} Scope
               </h1>
 
               <div className="flex items-center md:gap-x-3">
+                <DropdownMenu open={scopeTypeDropdownOpen} onOpenChange={setScopeTypeDropdownOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outlined" visual="gray">
+                      <RefreshCcw05 className="size-[15px]" />
+                      {scopeType === "service" ? "Service" : "Project"}
+                      <ChevronDown className="size-[15px]" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[280px]">
+                    <DropdownMenuItem
+                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      onClick={() => {
+                        if (scopeType !== "project") {
+                          setPendingScopeType("project")
+                          setScopeTypeConfirmOpen(true)
+                        }
+                        setScopeTypeDropdownOpen(false)
+                      }}
+                    >
+                      <div className="flex items-center gap-x-2 w-full">
+                        {scopeType === "project" && <Check className="size-4 text-primary-500 shrink-0" />}
+                        <span className="font-semibold text-sm text-gray-900">
+                          Project{scopeType === "project" ? " (current)" : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 ml-6">
+                        One-time job with a defined duration
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      onClick={() => {
+                        if (scopeType !== "service") {
+                          setPendingScopeType("service")
+                          setScopeTypeConfirmOpen(true)
+                        }
+                        setScopeTypeDropdownOpen(false)
+                      }}
+                    >
+                      <div className="flex items-center gap-x-2 w-full">
+                        {scopeType === "service" && <Check className="size-4 text-primary-500 shrink-0" />}
+                        <span className="font-semibold text-sm text-gray-900">
+                          Service{scopeType === "service" ? " (current)" : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 ml-6">
+                        Recurring work with consistent needs
+                      </span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                 <div className="flex items-center">
-                  <Button
-                    className="border-r-0 rounded-r-none"
-                    variant="outlined"
-                    visual="gray"
-                    onClick={expandAll}
-                  >
-                    <ChevronsDown className="size-[15px]" /> Expand All
-                  </Button>
-                  <Button
-                    className="rounded-l-none md:rounded-r-[5px] rounded-r-none"
-                    variant="outlined"
-                    visual="gray"
-                    onClick={collapseAll}
-                  >
-                    <ChevronsUp className="size-[15px]" /> Collapse All
-                  </Button>
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          className="border-r-0 rounded-r-none"
+                          variant="outlined"
+                          visual="gray"
+                          size="md"
+                          onClick={expandAll}
+                        >
+                          <ChevronsDown className="size-[15px]" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Expand All</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          className="rounded-l-none md:rounded-r-[5px] rounded-r-none"
+                          variant="outlined"
+                          visual="gray"
+                          size="md"
+                          onClick={collapseAll}
+                        >
+                          <ChevronsUp className="size-[15px]" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Collapse All</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
 
                 <Button
@@ -2023,6 +2609,61 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded }
                 </Button>
               </div>
             </div>
+
+            {/* Scope type change confirmation dialog */}
+            <Dialog open={scopeTypeConfirmOpen} onOpenChange={setScopeTypeConfirmOpen}>
+              <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
+                <div className="max-w-[371px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]">
+                  <DialogTitle>
+                    Change to {pendingScopeType === "service" ? "Service" : "Project"}?
+                  </DialogTitle>
+                  <DialogDescription>
+                    This action will modify the entire {scopeType} scope. You&apos;ll need to manually
+                    update the {pendingScopeType === "service" ? "service" : "project"} plan details,
+                    including time intervals for each phase and other related settings. You can undo
+                    this at anytime.
+                  </DialogDescription>
+
+                  <DialogFooter className="mt-8 grid gap-x-3">
+                    <DialogClose asChild>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() => setPendingScopeType(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </DialogClose>
+
+                    <Button
+                      onClick={() => {
+                        const previousType = scopeType
+                        if (pendingScopeType) {
+                          onScopeTypeChange?.(pendingScopeType)
+                          toast({
+                            variant: "success",
+                            title: `Your ${previousType} has been changed to a ${pendingScopeType}`,
+                            action: (
+                              <ToastAction
+                                altText="Undo"
+                                className="ml-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
+                                onClick={() => onScopeTypeChange?.(previousType)}
+                              >
+                                Undo
+                              </ToastAction>
+                            ),
+                          })
+                        }
+                        setPendingScopeType(null)
+                        setScopeTypeConfirmOpen(false)
+                      }}
+                    >
+                      Yes, Change
+                    </Button>
+                  </DialogFooter>
+                </div>
+              </DialogContent>
+            </Dialog>
 
             <InputGroup>
               <Input type="text" placeholder="Find a phase or task" />
@@ -2125,6 +2766,7 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded }
                                 open: true,
                               })
                             }
+                            teamMembers={teamMembers}
                           />
                         </DisclosureContent>
                       </div>

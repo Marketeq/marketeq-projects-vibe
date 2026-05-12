@@ -261,12 +261,20 @@ const getCountries = async <TData,>(url: string) => {
 export interface Country {
   flags: Flags
   name: Name
+  cca2: string
 }
 
 export interface Flags {
   png: string
   svg: string
   alt: string
+}
+
+/** Primary flag source — flagcdn.com with exact dimensions */
+function getFlagUrl(country: Country): string {
+  const code = country.cca2?.toLowerCase()
+  if (code) return `https://flagcdn.com/36x27/${code}.png`
+  return country.flags.svg
 }
 
 export interface Name {
@@ -278,6 +286,59 @@ export interface Name {
 export interface NativeName {
   official: string
   common: string
+}
+
+// Top freelance markets — pinned at the top of the dropdown.
+// Order: US first, then by freelance platform volume.
+const POPULAR_COUNTRIES = [
+  'United States',
+  'United Kingdom',
+  'Canada',
+  'India',
+  'Germany',
+  'Australia',
+  'Brazil',
+  'Philippines',
+  'Ukraine',
+  'Poland',
+]
+
+const popularSet = new Set(POPULAR_COUNTRIES)
+
+// Cache fetched countries so we don't re-fetch on every mount.
+export let countriesCache: Country[] | null = null
+
+/** Get flag image URL for a country name (requires countries to be loaded) */
+export function getFlagUrlByName(countryName: string): string | null {
+  if (!countriesCache) return null
+  const country = countriesCache.find(
+    (c) => c.name.common.toLowerCase() === countryName.toLowerCase()
+  )
+  if (!country) return null
+  return getFlagUrl(country)
+}
+
+function sortCountries(countries: Country[]): { popular: Country[]; rest: Country[] } {
+  const popular: Country[] = []
+  const rest: Country[] = []
+
+  for (const c of countries) {
+    if (popularSet.has(c.name.common)) {
+      popular.push(c)
+    } else {
+      rest.push(c)
+    }
+  }
+
+  // Sort popular by the predefined order
+  popular.sort(
+    (a, b) => POPULAR_COUNTRIES.indexOf(a.name.common) - POPULAR_COUNTRIES.indexOf(b.name.common)
+  )
+
+  // Sort rest alphabetically
+  rest.sort((a, b) => a.name.common.localeCompare(b.name.common))
+
+  return { popular, rest }
 }
 
 export const CountriesCombobox = ({
@@ -294,18 +355,72 @@ export const CountriesCombobox = ({
   defaultValue?: string
 }) => {
   const data = useAsync(async () => {
-    return await getCountries<Country[]>("/all?fields=id,name,flags")
+    if (countriesCache) return countriesCache
+    const result = await getCountries<Country[]>("/all?fields=id,name,flags,cca2")
+    countriesCache = result
+    return result
   }, [])
 
   const [open, setOpen] = React.useState(false)
+  const [searchQuery, setSearchQuery] = React.useState("")
   const [state, setState] = useControllableState({
     value,
     onChange: onValueChange,
     defaultValue,
   })
 
+  React.useEffect(() => {
+    if (!open) setSearchQuery("")
+  }, [open])
+
   const selectedCountry = data.value?.find(
     (country) => country.name.common === state
+  )
+
+  const sorted = React.useMemo(() => {
+    if (!data.value) return { popular: [], rest: [] }
+    return sortCountries(data.value)
+  }, [data.value])
+
+  const listRef = React.useRef<HTMLDivElement>(null)
+  const isSearching = searchQuery.trim().length > 0
+
+  React.useEffect(() => {
+    listRef.current?.scrollTo({ top: 0 })
+  }, [searchQuery])
+
+  const renderItem = (option: Country) => (
+    <CommandItem
+      key={option.name.common}
+      value={option.name.common}
+      onSelect={(currentValue) => {
+        setState(currentValue)
+        setOpen(false)
+      }}
+    >
+      <span className="inline-flex items-center justify-center w-[18px] h-[14px] shrink-0 rounded-sm overflow-hidden bg-gray-100">
+        <img
+          className="w-full h-full object-cover"
+          src={getFlagUrl(option)}
+          alt={option.name.common}
+          onError={(e) => {
+            const img = e.currentTarget
+            if (!img.dataset.fallback) {
+              img.dataset.fallback = "1"
+              img.src = option.flags.svg
+            } else if (img.dataset.fallback === "1") {
+              img.dataset.fallback = "2"
+              img.src = option.flags.png
+            } else {
+              img.style.display = "none"
+            }
+          }}
+        />
+      </span>
+      <span className="inline-block flex-grow truncate">
+        {option.name.common}
+      </span>
+    </CommandItem>
   )
 
   return (
@@ -318,16 +433,28 @@ export const CountriesCombobox = ({
           )}
         >
           {selectedCountry ? (
-            <span className="inline-flex items-center justify-center size-[18px] shrink-0 rounded-full overflow-hidden">
+            <span className="inline-flex items-center justify-center w-[18px] h-[14px] shrink-0 rounded-sm overflow-hidden bg-gray-100">
               <img
-                className="size-[18px] shrink-0 object-contain"
-                src={selectedCountry.flags.png}
+                className="w-full h-full object-cover"
+                src={getFlagUrl(selectedCountry)}
                 alt={selectedCountry.name.common}
+                onError={(e) => {
+                  const img = e.currentTarget
+                  if (!img.dataset.fallback) {
+                    img.dataset.fallback = "1"
+                    img.src = selectedCountry.flags.svg
+                  } else if (img.dataset.fallback === "1") {
+                    img.dataset.fallback = "2"
+                    img.src = selectedCountry.flags.png
+                  } else {
+                    img.style.display = "none"
+                  }
+                }}
               />
             </span>
           ) : null}
 
-          <span className="text-xs inline-block truncate leading-[18px] font-medium text-gray-700">
+          <span className="text-xs inline-block truncate max-w-[120px] leading-[18px] font-medium text-gray-700">
             {selectedCountry ? selectedCountry.name.common : placeholder}
           </span>
 
@@ -336,30 +463,31 @@ export const CountriesCombobox = ({
       </PopoverTrigger>
       <PopoverContent className="w-[202px] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
         <Command>
-          <CommandInput placeholder="Search" className="h-9" />
-          <CommandList>
+          <CommandInput
+            placeholder="Search"
+            className="h-9"
+            value={searchQuery}
+            onValueChange={setSearchQuery}
+          />
+          <CommandList ref={listRef}>
             <CommandEmpty>No country found.</CommandEmpty>
-            <CommandGroup>
-              {data.value?.map((option) => (
-                <CommandItem
-                  key={option.name.common}
-                  value={option.name.common}
-                  onSelect={(currentValue) => {
-                    setState(currentValue)
-                    setOpen(false)
-                  }}
-                >
-                  <img
-                    className="size-[18px] shrink-0 object-contain"
-                    src={option.flags.png}
-                    alt={option.name.common}
-                  />
-                  <span className="inline-block flex-grow truncate">
-                    {option.name.common}
-                  </span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            {isSearching ? (
+              <CommandGroup>
+                {[...sorted.popular, ...sorted.rest].map(renderItem)}
+              </CommandGroup>
+            ) : (
+              <>
+                {sorted.popular.length > 0 && (
+                  <CommandGroup heading="Popular">
+                    {sorted.popular.map(renderItem)}
+                  </CommandGroup>
+                )}
+                <CommandSeparator />
+                <CommandGroup heading="All Countries">
+                  {sorted.rest.map(renderItem)}
+                </CommandGroup>
+              </>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

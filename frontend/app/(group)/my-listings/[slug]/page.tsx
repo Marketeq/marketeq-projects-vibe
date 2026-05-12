@@ -12,6 +12,7 @@ import {
 import {
   AutocompleteAPI,
   type AutocompleteCategorySuggestion,
+  type AutocompleteTypeSuggestion,
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
@@ -631,6 +632,15 @@ const renderProjectStaticIcon = (
   }
 }
 
+// Seed team data used until real team data comes from the API
+const SEED_TEAM_MEMBERS = [
+  { id: "seed-1", firstName: "Chris", username: "uxdesignma", avatarUrl: "/man.jpg", role: "Product Manager", jobTitles: ["Product Manager", "Full Stack Designer"], hourlyRate: 95, workSchedule: "full_time", customHoursPerWeek: null, location: "United States", experience: "Senior" },
+  { id: "seed-2", firstName: "Sarah", username: "sarahdev", avatarUrl: "/woman.jpg", role: "Frontend Developer", jobTitles: ["Frontend Developer", "UI/UX Designer"], hourlyRate: 85, workSchedule: "full_time", customHoursPerWeek: null, location: "United Kingdom", experience: "Medior" },
+  { id: "seed-3", firstName: "Laura", username: "lauraops", avatarUrl: "/woman.jpg", role: "DevOps Engineer", jobTitles: ["DevOps Engineer", "Cloud Engineer"], hourlyRate: 110, workSchedule: "full_time", customHoursPerWeek: null, location: "Germany", experience: "Senior" },
+  { id: "seed-4", firstName: "Tina", username: "tinaqa", avatarUrl: "/woman.jpg", role: "QA Engineer", jobTitles: ["QA Engineer"], hourlyRate: 70, workSchedule: "part_time", customHoursPerWeek: null, location: "India", experience: "Junior" },
+  { id: "seed-5", firstName: "Shelly", username: "shellyux", avatarUrl: "/woman.jpg", role: "UI/UX Designer", jobTitles: ["UI/UX Designer", "Product Designer"], hourlyRate: 90, workSchedule: "full_time", customHoursPerWeek: null, location: "Canada", experience: "Medior" },
+]
+
 export default function ProjectDetails() {
   const params = useParams()
   const router = useRouter()
@@ -881,6 +891,7 @@ export default function ProjectDetails() {
   const [teamDialogOpen, setTeamDialogOpen] = React.useState(false)
   const [questionsDialogOpen, setQuestionsDialogOpen] = React.useState(false)
   const [questionsTab, setQuestionsTab] = React.useState("FAQs")
+  const [questionsSectionTab, setQuestionsSectionTab] = React.useState("FAQs")
   const [recentQTab, setRecentQTab] = React.useState("all")
   const [openFaqIndex, setOpenFaqIndex] = React.useState<number | null>(null)
   const [teamTab, setTeamTab] = React.useState("Team Lead")
@@ -891,6 +902,48 @@ export default function ProjectDetails() {
   const [detailsTags, setDetailsTags] = React.useState<string[]>([])
   const [detailsSkills, setDetailsSkills] = React.useState<string[]>([])
   const [detailsTools, setDetailsTools] = React.useState<string[]>([])
+
+  // Autocomplete options for details fields
+  const [langOptions, setLangOptions] = React.useState<string[]>(["JavaScript", "TypeScript", "Python", "Java", "C#", "Go", "Ruby", "PHP", "Swift", "Kotlin"])
+  const [techOptions, setTechOptions] = React.useState<string[]>(["React", "Next.js", "Node.js", "Vue.js", "Angular", "Django", "Express", "PostgreSQL", "MongoDB", "Docker"])
+  const [industryOptions, setIndustryOptions] = React.useState<string[]>(["Technology", "Healthcare", "Finance", "Education", "Retail", "Manufacturing", "Media", "Real Estate", "Energy", "Transportation"])
+  const [tagOptions, setTagOptions] = React.useState<string[]>(["Web App", "Mobile App", "AI", "SaaS", "API", "Dashboard", "Marketplace", "CRM", "E-commerce", "Automation"])
+  const [skillOptions, setSkillOptions] = React.useState<string[]>(["Node.js", "JavaScript", "Wireframing", "TypeScript", "React", "Figma", "Python", "UI Design", "Data Analysis", "API Integration"])
+  const [toolOptions, setToolOptions] = React.useState<string[]>(["Figma", "VS Code", "GitHub", "Jira", "Slack", "Docker", "AWS", "Postman", "Notion", "Linear"])
+  const typeDebounceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const typeRequestRef = React.useRef(0)
+
+  const fetchTypeAutocomplete = React.useCallback(
+    (type: string, query: string, onSuccess: (options: string[]) => void) => {
+      const trimmedQuery = query.trim()
+      if (!trimmedQuery) return
+      if (typeDebounceTimerRef.current) {
+        clearTimeout(typeDebounceTimerRef.current)
+      }
+      typeDebounceTimerRef.current = setTimeout(async () => {
+        const currentRequestId = ++typeRequestRef.current
+        try {
+          const response = await AutocompleteAPI.getByType(type, trimmedQuery)
+          if (currentRequestId !== typeRequestRef.current) return
+          const values: AutocompleteTypeSuggestion[] = Array.isArray(response?.data) ? response.data : []
+          const normalizedOptions = Array.from(new Set(
+            values.map((item) => {
+              if ("value" in item && typeof item.value === "string") return item.value
+              if ("label" in item && typeof item.label === "string") return item.label
+              return ""
+            }).filter((v) => v.length)
+          ))
+          if (normalizedOptions.length > 0) {
+            onSuccess(normalizedOptions)
+          }
+        } catch {
+          // Keep fallback options
+        }
+      }, 250)
+    },
+    []
+  )
+
   const categoryRequestRef = React.useRef(0)
   const categoryDebounceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -1168,11 +1221,29 @@ export default function ProjectDetails() {
     [project?.id, project?.title, project?.summary, project?.description, project?.categories, project?.subcategories, project?.industries, project?.tags, project?.programmingLanguages, project?.skills, project?.listingType, router]
   )
 
+  // Persist team member assignments in localStorage (until backend supports assignedMemberId)
+  const assignmentsKey = `scope-assignments-${project?.id || "draft"}`
+  const saveAssignments = React.useCallback((phases: any[]) => {
+    try {
+      const map: Record<string, string> = {}
+      for (let pi = 0; pi < phases.length; pi++) {
+        for (const row of phases[pi].rows ?? []) {
+          if (row.assignedMember?.id) {
+            const taskKey = `${pi}:${row.task || row.taskName || ""}`
+            map[taskKey] = row.assignedMember.id
+          }
+        }
+      }
+      localStorage.setItem(assignmentsKey, JSON.stringify(map))
+    } catch { /* ignore */ }
+  }, [assignmentsKey])
+
   // Debounced autosave for scope changes
   const scopeSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleScopeChange = React.useCallback(
     (phases: any[]) => {
       setProject((prev: any) => ({ ...prev, scope: phases }))
+      saveAssignments(phases)
       setHasChanges(true)
       if (!project?.id || !isRealBackendId(project.id)) return
 
@@ -1197,10 +1268,21 @@ export default function ProjectDetails() {
                 ? `${row.duration.value} ${row.duration.type}`
                 : row.duration || "1 days",
               estimatedHours: row.estimatedHours || undefined,
+              assignedMemberId: row.assignedMember?.id || null,
               phaseId: "",
             })),
           }))
           await ProjectAPI.ReplaceProjectScope(project.id, scopePayload)
+          // Re-fetch to get updated deliverables from backend
+          try {
+            const res = await ProjectAPI.GetProjectDraft(project.id)
+            const d = res?.data
+            if (d?.deliverables) {
+              setProject((prev: any) => ({ ...prev, deliverables: d.deliverables }))
+            }
+          } catch {
+            // Non-critical — deliverables will update on next page load
+          }
         } catch (err) {
           console.error("Failed to autosave scope:", err)
         }
@@ -1216,7 +1298,108 @@ export default function ProjectDetails() {
     }
   }, [])
 
+  // ── Budget & Duration computed from scope ──────────────────────────────────
+  const [budgetPeriod, setBudgetPeriod] = React.useState("week")
+
+  const { budgetTotalCents, durationLabel, durationDays } = React.useMemo(() => {
+    const phases = project.scope ?? []
+
+    // Duration: tasks within a phase run in parallel (take max), phases are sequential (sum).
+    // Matches the scope builder's getPhaseDurationInDays logic.
+    let totalDays = 0
+    for (const phase of phases) {
+      const taskDurations = (phase.rows ?? [])
+        .map((row: any) => {
+          const dur = row.duration
+          if (!dur) return 0
+          const val = Number(dur.value) || 0
+          if (val <= 0) return 0
+          if (dur.type === "weeks") return val * 7
+          if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+          return val // days
+        })
+        .filter((d: number) => d > 0)
+      if (taskDurations.length > 0) {
+        totalDays += Math.max(...taskDurations)
+      }
+    }
+
+    // Display rules from docs:
+    // < 7 days → show days | < 4 weeks (28 days) → show weeks | otherwise → show months
+    let durationLabel = "—"
+    if (totalDays > 0) {
+      if (totalDays < 7) {
+        durationLabel = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
+      } else if (totalDays < 28) {
+        const weeks = Math.max(1, Math.ceil(totalDays / 7))
+        durationLabel = `${weeks} Week${weeks !== 1 ? "s" : ""}`
+      } else {
+        const months = Math.max(1, Math.ceil(totalDays / 30))
+        durationLabel = `${months} Month${months !== 1 ? "s" : ""}`
+      }
+    }
+
+    const budgetTotalCents = Number(project.budgetAmountUsdCents) || 0
+
+    return { budgetTotalCents, durationLabel, durationDays: totalDays }
+  }, [project.scope, project.budgetAmountUsdCents])
+
+  // Format budget: Cost_Per_Period = Total_Cost / Number_of_Periods
+  const formatBudget = React.useCallback((cents: number, period: string) => {
+    if (cents <= 0) return "$0"
+    const total = cents / 100
+    // Number of periods in the project duration
+    const periodDays: Record<string, number> = {
+      "week": 7,
+      "2-week": 14,
+      "month": 30,
+      "quarter": 90,
+      "year": 365,
+    }
+    const daysPerPeriod = periodDays[period] ?? 7
+    const numPeriods = Math.max(1, Math.ceil(durationDays / daysPerPeriod))
+    const perPeriod = Math.round(total / numPeriods)
+    return `$${perPeriod.toLocaleString()}`
+  }, [durationDays])
+
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
+  const [sectionTab, setSectionTab] = React.useState("Description")
+  const isScrollingToSection = React.useRef(false)
+
+  const scrollToSection = React.useCallback((sectionId: string) => {
+    const el = document.getElementById(`section-${sectionId}`)
+    if (!el) return
+    isScrollingToSection.current = true
+    setSectionTab(sectionId)
+    const offset = 80 // sticky header height
+    const top = el.getBoundingClientRect().top + window.scrollY - offset
+    window.scrollTo({ top, behavior: "smooth" })
+    setTimeout(() => { isScrollingToSection.current = false }, 800)
+  }, [])
+
+  // Track active section on scroll via IntersectionObserver
+  React.useEffect(() => {
+    const sectionIds = ["Description", "Deliverables", "Project Details", "How it Works", "Questions"]
+    const elements = sectionIds.map((id) => document.getElementById(`section-${id}`)).filter(Boolean) as HTMLElement[]
+    if (!elements.length) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (isScrollingToSection.current) return
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const id = entry.target.id.replace("section-", "")
+            setSectionTab(id)
+            break
+          }
+        }
+      },
+      { rootMargin: "-100px 0px -60% 0px", threshold: 0 }
+    )
+    elements.forEach((el) => observer.observe(el))
+    return () => observer.disconnect()
+  }, [loading])
+
   const [isFavorited, setIsFavorited] = React.useState(false)
 
   // Check if this item is already favorited (ensure dev auth first)
@@ -1288,28 +1471,65 @@ export default function ProjectDetails() {
             recentQuestions: d.recentQuestions ?? [],
             team: d.team ?? [],
             deliverables: d.deliverables ?? [],
-            scope: (d.scope ?? []).map((phase: any) => {
-              const rawTasks = phase.rows || phase.task || []
-              return {
-              phaseName: phase.phaseName || phase.name || phase.stageName || "",
-              ...(rawTasks.length > 0 ? { rows: rawTasks.map((t: any) => ({
-                id: t.id || crypto.randomUUID(),
-                task: t.task || t.taskName || "",
-                role: t.role || "",
-                location: Array.isArray(t.location) ? t.location[0] || "" : t.location || "",
-                experience: Array.isArray(t.experience) ? t.experience[0] || "Medior" : t.experience || "Medior",
-                duration: typeof t.duration === "object" && t.duration !== null
-                  ? t.duration
-                  : (() => {
-                      const raw = String(t.duration || "1 days")
-                      const parts = raw.match(/^(\d+)\s*(.*)$/)
-                      const value = parts ? Number(parts[1]) : 1
-                      const unit = parts?.[2]?.toLowerCase() || "days"
-                      const type = unit.startsWith("week") ? "weeks" : unit.startsWith("hour") ? "hours" : "days"
-                      return { value, type }
-                    })(),
-              })) } : {}),
-            }}),
+            scope: (() => {
+              // Build team member lookup for rehydrating assignedMember
+              const teamList = d.team ?? []
+              const allTeam = teamList.length > 0 ? teamList : SEED_TEAM_MEMBERS
+              const teamById = new Map<string, any>()
+              for (const m of allTeam) {
+                const id = m.id || m.userId
+                if (id) teamById.set(id, m)
+              }
+              // Restore assignments from localStorage (until backend supports assignedMemberId)
+              let savedAssignments: Record<string, string> = {}
+              try {
+                const raw = localStorage.getItem(`scope-assignments-${d.id || "draft"}`)
+                if (raw) savedAssignments = JSON.parse(raw)
+              } catch { /* ignore */ }
+              return (d.scope ?? []).map((phase: any, phaseIdx: number) => {
+                const rawTasks = phase.rows || phase.task || []
+                return {
+                  phaseName: phase.phaseName || phase.name || phase.stageName || "",
+                  ...(rawTasks.length > 0 ? { rows: rawTasks.map((t: any) => {
+                    const taskName = t.task || t.taskName || ""
+                    const taskKey = `${phaseIdx}:${taskName}`
+                    const memberId = t.assignedMemberId || t.assignedMember?.id || savedAssignments[taskKey] || null
+                    const teamMate = memberId ? teamById.get(memberId) : null
+                    const assignedMember = teamMate ? {
+                      id: teamMate.id || teamMate.userId || memberId,
+                      firstName: teamMate.firstName || teamMate.name || "User",
+                      username: teamMate.username || teamMate.email?.split("@")[0] || "",
+                      avatarUrl: teamMate.avatarUrl || null,
+                      role: teamMate.role || teamMate.jobTitle || "",
+                      jobTitles: teamMate.jobTitles ?? [],
+                      hourlyRate: teamMate.hourlyRate ?? teamMate.rateMax ?? null,
+                      workSchedule: teamMate.workSchedule ?? teamMate.availability ?? null,
+                      customHoursPerWeek: teamMate.customHoursPerWeek ?? null,
+                      location: teamMate.location ?? teamMate.country ?? null,
+                      experience: teamMate.experience ?? teamMate.experienceLevel ?? null,
+                    } : null
+                    return {
+                      id: t.id || crypto.randomUUID(),
+                      task: t.task || t.taskName || "",
+                      role: t.role || "",
+                      location: Array.isArray(t.location) ? t.location[0] || "" : t.location || "",
+                      experience: Array.isArray(t.experience) ? t.experience[0] || "Medior" : t.experience || "Medior",
+                      duration: typeof t.duration === "object" && t.duration !== null
+                        ? t.duration
+                        : (() => {
+                            const raw = String(t.duration || "1 days")
+                            const parts = raw.match(/^(\d+)\s*(.*)$/)
+                            const value = parts ? Number(parts[1]) : 1
+                            const unit = parts?.[2]?.toLowerCase() || "days"
+                            const type = unit.startsWith("week") ? "weeks" : unit.startsWith("hour") ? "hours" : "days"
+                            return { value, type }
+                          })(),
+                      ...(assignedMember ? { assignedMember } : {}),
+                    }
+                  }) } : {}),
+                }
+              })
+            })(),
             rating: 4.9,
             reviewCount: 14,
             listingType: d.listingType || "project",
@@ -1469,65 +1689,140 @@ export default function ProjectDetails() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white px-[100px] py-10">
-        <div className="max-w-[1240px]">
-          {/* breadcrumb */}
-          <div className="flex items-center gap-x-3">
-            <Shimmer className="h-3 w-3 rounded-full" />
-            <Shimmer className="h-3 w-16" />
-            <Shimmer className="h-3 w-24" />
-            <Shimmer className="h-3 w-32" />
-          </div>
-          <div className="flex items-start gap-x-8 mt-8">
-            <div className="max-w-[818px] flex-auto space-y-6">
-              {/* title + categories */}
-              <div className="space-y-3">
-                <Shimmer className="h-8 w-2/3" />
-                <div className="flex items-center gap-x-3">
-                  <Shimmer className="h-4 w-24" />
-                  <Shimmer className="h-4 w-28" />
+      <div className="px-[100px] pb-[100px] relative bg-white">
+        <div className="max-w-[1240px] flex items-start gap-x-8">
+          <div className="max-w-[818px] flex-auto">
+            {/* gray header area */}
+            <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
+              <div className="relative pt-6 pb-[50px]">
+                <div className="absolute w-screen -translate-x-[100px] top-0 bottom-px bg-gray-50" />
+                {/* breadcrumb */}
+                <div className="flex items-center gap-x-2 relative">
+                  <Shimmer className="size-[18px] rounded" />
+                  <span className="text-xs text-gray-300">/</span>
+                  <Shimmer className="h-3 w-16" />
+                  <span className="text-xs text-gray-300">/</span>
+                  <Shimmer className="h-3 w-32" />
+                </div>
+                {/* hero: thumbnail + title */}
+                <div className="flex gap-x-[13px] items-start mt-8 relative z-[5]">
+                  <Shimmer className="w-[189px] h-[126px] rounded-lg shrink-0" />
+                  <div className="flex flex-col gap-y-3 flex-1">
+                    <Shimmer className="h-5 w-24 rounded" />
+                    <Shimmer className="h-7 w-3/4" />
+                    <div className="flex gap-x-3">
+                      <Shimmer className="h-4 w-24" />
+                      <Shimmer className="h-4 w-20" />
+                      <Shimmer className="h-4 w-20" />
+                    </div>
+                  </div>
+                  <Shimmer className="size-5 rounded shrink-0" />
+                </div>
+                {/* short description */}
+                <div className="mt-5 space-y-2 relative">
+                  <Shimmer className="h-4 w-full" />
+                  <Shimmer className="h-4 w-11/12" />
+                  <Shimmer className="h-4 w-4/5" />
                 </div>
               </div>
-              {/* hero media */}
-              <Shimmer className="h-[460px] w-full rounded-lg" />
-              {/* tabs */}
-              <div className="flex gap-x-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Shimmer key={i} className="h-8 w-20 rounded-full" />
-                ))}
+            </div>
+
+            {/* action bar */}
+            <div className="flex items-center justify-between py-4">
+              <Shimmer className="h-5 w-28" />
+              <Shimmer className="h-5 w-20" />
+              <Shimmer className="h-5 w-32" />
+            </div>
+
+            {/* gallery thumbnails */}
+            <div className="flex gap-x-4 mt-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Shimmer key={i} className="h-[140px] flex-1 rounded-lg" />
+              ))}
+            </div>
+            <div className="mt-3">
+              <Shimmer className="h-4 w-24" />
+            </div>
+
+            {/* tabs */}
+            <div className="flex gap-x-6 mt-6 border-b border-gray-200 pb-2.5">
+              <Shimmer className="h-4 w-20" />
+              <Shimmer className="h-4 w-20" />
+              <Shimmer className="h-4 w-24" />
+              <Shimmer className="h-4 w-20" />
+              <Shimmer className="h-4 w-20" />
+            </div>
+
+            {/* description content */}
+            <div className="mt-6 space-y-6">
+              <div className="rounded-lg border border-gray-200 p-6 space-y-4">
+                <Shimmer className="h-6 w-2/3" />
+                <div className="space-y-2">
+                  <Shimmer className="h-4 w-full" />
+                  <Shimmer className="h-4 w-full" />
+                  <Shimmer className="h-4 w-11/12" />
+                  <Shimmer className="h-4 w-10/12" />
+                  <Shimmer className="h-4 w-9/12" />
+                </div>
               </div>
-              {/* body paragraphs */}
-              <div className="space-y-3">
-                <Shimmer className="h-4 w-full" />
-                <Shimmer className="h-4 w-11/12" />
-                <Shimmer className="h-4 w-10/12" />
-                <Shimmer className="h-4 w-9/12" />
-              </div>
-              {/* deliverables section */}
-              <div className="space-y-4">
-                <Shimmer className="h-6 w-40" />
-                <div className="grid grid-cols-3 gap-4">
+
+              {/* deliverables */}
+              <div className="rounded-lg border border-gray-200 p-6 space-y-4">
+                <Shimmer className="h-6 w-28" />
+                <div className="grid grid-cols-3 gap-3">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <Shimmer key={i} className="h-10 rounded-lg" />
+                    <Shimmer key={i} className="h-9 rounded-md" />
                   ))}
                 </div>
               </div>
-              {/* more paragraphs */}
-              <div className="space-y-3">
-                <Shimmer className="h-4 w-full" />
-                <Shimmer className="h-4 w-11/12" />
-                <Shimmer className="h-4 w-8/12" />
+
+              {/* project details */}
+              <div className="rounded-lg border border-gray-200 p-6 space-y-4">
+                <Shimmer className="h-6 w-32" />
+                <div className="space-y-3">
+                  <Shimmer className="h-4 w-full" />
+                  <Shimmer className="h-4 w-3/4" />
+                </div>
               </div>
             </div>
-            {/* sidebar card */}
-            <div className="w-[360px] shrink-0 rounded-lg border border-gray-200 p-6 space-y-4">
-              <Shimmer className="h-6 w-32" />
-              <Shimmer className="h-10 w-full" />
-              <Shimmer className="h-10 w-full" />
-              <Shimmer className="h-10 w-full" />
-              <div className="h-px w-full bg-gray-200" />
-              <Shimmer className="h-10 w-full" />
-              <Shimmer className="h-10 w-full" />
+          </div>
+
+          {/* sidebar */}
+          <div className="w-[360px] shrink-0 pt-6 space-y-6">
+            {/* pricing card */}
+            <div className="rounded-lg border border-gray-200 p-6 space-y-4">
+              <div className="flex items-center gap-x-2">
+                <Shimmer className="h-4 w-20" />
+                <Shimmer className="h-8 w-12" />
+                <Shimmer className="h-4 w-10" />
+                <Shimmer className="h-8 w-16 rounded-md" />
+              </div>
+              <Shimmer className="h-4 w-full" />
+              <div className="h-px bg-gray-200" />
+              <Shimmer className="h-4 w-24" />
+              <Shimmer className="size-9 rounded-full" />
+              <div className="space-y-2">
+                <Shimmer className="h-4 w-48" />
+                <Shimmer className="h-4 w-52" />
+              </div>
+              <div className="flex gap-x-3 mt-2">
+                <Shimmer className="h-10 w-20 rounded-lg" />
+                <Shimmer className="h-10 flex-1 rounded-lg" />
+                <Shimmer className="size-10 rounded-lg" />
+              </div>
+            </div>
+            {/* tutorials card */}
+            <div className="rounded-lg border border-gray-200 p-6 space-y-4">
+              <Shimmer className="h-5 w-52" />
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex gap-x-3 items-center">
+                  <Shimmer className="w-[100px] h-[65px] rounded-lg shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Shimmer className="h-4 w-full" />
+                    <Shimmer className="h-3 w-20" />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -2189,21 +2484,24 @@ export default function ProjectDetails() {
                             </h3>
                           </div>
                         </div>
-                        <TabsList className="w-full justify-start flex-auto group-data-[position=sticky]/tabs:px-0">
-                          <TabsTrigger value="Description">
-                            Description
-                          </TabsTrigger>
-                          <TabsTrigger value="Delierables">
-                            Delierables
-                          </TabsTrigger>
-                          <TabsTrigger value="Project Details">
-                            Project Details
-                          </TabsTrigger>
-                          <TabsTrigger value="How it Works">
-                            How it Works
-                          </TabsTrigger>
-                          <TabsTrigger value="Questions">Questions</TabsTrigger>
-                        </TabsList>
+                        <div className="inline-flex items-end overflow-x-auto scrollbar-none justify-start gap-4 border-b border-b-gray-200 w-full group-data-[position=sticky]/tabs:px-0">
+                          {["Description", "Deliverables", "Project Details", "How it Works", "Questions"].map((section) => (
+                            <button
+                              key={section}
+                              type="button"
+                              onClick={() => scrollToSection(section)}
+                              className={cn(
+                                "relative inline-flex items-center justify-center whitespace-nowrap px-1 pb-2 pt-px text-sm font-semibold transition-colors focus-visible:outline-none",
+                                sectionTab === section ? "text-primary-500" : "text-gray-500"
+                              )}
+                            >
+                              {section}
+                              {sectionTab === section && (
+                                <span className="absolute bottom-0 inset-x-0 bg-primary-500 h-0.5" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                       <div className="flex items-center gap-x-3 group-data-[position=default]/tabs:hidden">
                         <Button size="md">Star Project</Button>
@@ -2213,6 +2511,7 @@ export default function ProjectDetails() {
                           variant="outlined"
                           visual="gray"
                           size="md"
+                          onClick={() => inviteWindow.toggle(true, "Share Your Project")}
                         >
                           <Share className="size-[20px]" />
                         </IconButton>
@@ -2221,7 +2520,7 @@ export default function ProjectDetails() {
                   </div>
 
                   <TabsContent value="Description">
-                    <div className="pt-6">
+                    <div id="section-Description" className="pt-6">
                       {!project.description && !project.summary && (
                       <Alert variant="primary" className="mb-6 items-center">
                         <AlertIcon>
@@ -2706,6 +3005,7 @@ export default function ProjectDetails() {
                       </Dialog>
 
 
+                      <div id="section-Deliverables">
                       {Array.isArray(project.deliverables) && project.deliverables.length > 0 ? (
                       <ShowMoreLessRoot>
                         {({ isShowing, setIsShowing }) => (
@@ -2815,7 +3115,9 @@ export default function ProjectDetails() {
                         </Button>
                       </div>
                       )}
+                      </div>
 
+                      <div id="section-Project Details">
                       {project.programmingLanguages?.length > 0 || project.developmentTech?.length > 0 || project.subcategories?.length > 0 || project.tags?.length > 0 ? (
                       <div className="mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                         <div className="p-6 border-b border-gray-200">
@@ -3476,12 +3778,12 @@ export default function ProjectDetails() {
 
                           <div className="border-t border-gray-200 px-6 py-6 space-y-6 max-h-[60vh] overflow-y-auto">
                             {[
-                              { label: "Programming Languages", desc: "Add up to 10 tags that best describe your template. Use relevant keywords to highlight its features and make it easier to find.", max: 10, value: detailsLangs, onChange: setDetailsLangs, placeholder: "Add Programming Languages" },
-                              { label: "Development Tech", desc: "Add up to 10 technologies that will be used in this project", max: 10, value: detailsTech, onChange: setDetailsTech, placeholder: "Add Technologies" },
-                              { label: "Industry", desc: "Add up to 5 industries that align with your project scope for targeted visibility.", max: 5, value: detailsIndustry, onChange: setDetailsIndustry, placeholder: "Add Industries" },
-                              { label: "Tags", desc: "Add up to 10 tags that align with your project scope for targeted visibility.", max: 10, value: detailsTags, onChange: setDetailsTags, placeholder: "Add Tags" },
-                              { label: "Skills", desc: "List up to 10 key skills or proficiencies required to implement this template effectively.", max: 10, value: detailsSkills, onChange: setDetailsSkills, placeholder: "Add Skills" },
-                              { label: "Tools", desc: "Add up to 10 tools that align with your project scope for targeted visibility.", max: 10, value: detailsTools, onChange: setDetailsTools, placeholder: "Add Tools" },
+                              { label: "Programming Languages", desc: "Add up to 10 tags that best describe your template. Use relevant keywords to highlight its features and make it easier to find.", max: 10, value: detailsLangs, onChange: setDetailsLangs, placeholder: "Add Programming Languages", acType: "languages", options: langOptions, setOptions: setLangOptions },
+                              { label: "Development Tech", desc: "Add up to 10 technologies that will be used in this project", max: 10, value: detailsTech, onChange: setDetailsTech, placeholder: "Add Technologies", acType: "skills", options: techOptions, setOptions: setTechOptions },
+                              { label: "Industry", desc: "Add up to 5 industries that align with your project scope for targeted visibility.", max: 5, value: detailsIndustry, onChange: setDetailsIndustry, placeholder: "Add Industries", acType: "industries", options: industryOptions, setOptions: setIndustryOptions },
+                              { label: "Tags", desc: "Add up to 10 tags that align with your project scope for targeted visibility.", max: 10, value: detailsTags, onChange: setDetailsTags, placeholder: "Add Tags", acType: "search_keywords", options: tagOptions, setOptions: setTagOptions },
+                              { label: "Skills", desc: "List up to 10 key skills or proficiencies required to implement this template effectively.", max: 10, value: detailsSkills, onChange: setDetailsSkills, placeholder: "Add Skills", acType: "skills", options: skillOptions, setOptions: setSkillOptions },
+                              { label: "Tools", desc: "Add up to 10 tools that align with your project scope for targeted visibility.", max: 10, value: detailsTools, onChange: setDetailsTools, placeholder: "Add Tools", acType: "skills", options: toolOptions, setOptions: setToolOptions },
                             ].map((field) => (
                               <div key={field.label}>
                                 <div className="flex items-start justify-between">
@@ -3515,9 +3817,13 @@ export default function ProjectDetails() {
                                           </TagsInputItem>
                                         ))}
                                         <TagsInputInput
+                                          options={field.options}
                                           placeholder={tagsInput.value.length ? "" : field.placeholder}
                                           allowCreateOption
                                           className="flex-1 min-w-[100px]"
+                                          onInputValueChange={(value) => {
+                                            fetchTypeAutocomplete(field.acType, value, field.setOptions)
+                                          }}
                                         />
                                       </TagsInputControl>
                                     )}
@@ -3774,14 +4080,21 @@ export default function ProjectDetails() {
                         </DialogContent>
                       </Dialog>
 
-{/* How It Works section hidden in edit mode */}
+                      </div>
 
-                      <div className="relative p-6 mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div id="section-How it Works">
+{/* How It Works section hidden in edit mode */}
+                      </div>
+
+                      <div id="section-Questions" className="relative p-6 mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                         <div className="flex items-center justify-between">
                           <h1 className="text-xl font-bold leading-none text-dark-blue-400">
                             Questions
                           </h1>
-                          <IconButton className="rounded-full text-gray-500 hover:text-gray-800" variant="ghost" visual="gray" onClick={() => setQuestionsDialogOpen(true)}>
+                          <IconButton className="rounded-full text-gray-500 hover:text-gray-800" variant="ghost" visual="gray" onClick={() => {
+                            setQuestionsTab(questionsSectionTab === "Recently Asked Questions" ? "RecentlyAsked" : "FAQs")
+                            setQuestionsDialogOpen(true)
+                          }}>
                             <Edit03 className="size-4" />
                           </IconButton>
                         </div>
@@ -3918,7 +4231,7 @@ export default function ProjectDetails() {
                         )}
 
                         <div className="mt-8">
-                          <Tabs defaultValue="FAQs">
+                          <Tabs value={questionsSectionTab} onValueChange={setQuestionsSectionTab}>
                             <RadixTabs.List className="flex items-center justify-between">
                               <div className="flex items-center gap-x-3">
                                 <TabsTrigger
@@ -4103,28 +4416,13 @@ export default function ProjectDetails() {
                           )}
                         </div>
 
-                        {!(project.faqs?.length > 0 || project.recentQuestions?.length > 0) && (
-                          <div className="flex flex-col items-center justify-center py-10 text-center">
-                            <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
-                              <HelpCircle className="size-5 text-gray-400" />
-                            </div>
-                            <h3 className="text-sm font-semibold text-dark-blue-400">No questions yet</h3>
-                            <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
-                              Add FAQ&apos;s to help clients learn more about your project, or wait for questions to come in from visitors.
-                            </p>
-                            <Button variant="outlined" visual="gray" size="sm" className="mt-4" onClick={() => setQuestionsDialogOpen(true)}>
-                              <Plus className="size-[15px]" />
-                              Add FAQ&apos;s
-                            </Button>
-                          </div>
-                        )}
                       </div>
 
                       {/* Questions Dialog */}
                       <Dialog open={questionsDialogOpen} onOpenChange={setQuestionsDialogOpen}>
                         <DialogContent className="max-w-[748px] p-0 gap-0">
-                          <RadixTabs.Root value={questionsTab} onValueChange={setQuestionsTab}>
-                          <div className="px-6 pt-6 pb-4">
+                          <Tabs value={questionsTab} onValueChange={setQuestionsTab}>
+                          <div className="px-6 pt-6 pb-0">
                             <div className="flex items-start justify-between">
                               <div>
                                 <h2 className="text-lg font-bold text-dark-blue-400">Questions</h2>
@@ -4139,14 +4437,14 @@ export default function ProjectDetails() {
                               </DialogClose>
                             </div>
 
-                            <RadixTabs.List className="flex items-center gap-x-3 pt-4">
-                              <RadixTabs.Trigger value="FAQs" className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400 text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300">FAQ&apos;s</RadixTabs.Trigger>
-                              <RadixTabs.Trigger value="RecentlyAsked" className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400 text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300">Recently Asked Questions</RadixTabs.Trigger>
-                            </RadixTabs.List>
+                            <TabsList className="px-0 pt-4 justify-start">
+                              <TabsTrigger value="FAQs">FAQ&apos;s</TabsTrigger>
+                              <TabsTrigger value="RecentlyAsked">Recently Asked Questions</TabsTrigger>
+                            </TabsList>
                           </div>
 
-                          <div className="border-t border-gray-200 px-6 py-6 max-h-[60vh] overflow-y-auto">
-                              <RadixTabs.Content value="FAQs" className="focus-visible:outline-none">
+                          <div className="px-6 py-6 max-h-[60vh] overflow-y-auto">
+                              <TabsContent value="FAQs">
                                 <p className="text-sm font-light text-dark-blue-400">
                                   Write a response for each of the question added to this project. Drag and drop FAQ items to reorder them. The order you set here will be reflected on your project&apos;s public FAQ section.
                                 </p>
@@ -4231,9 +4529,9 @@ export default function ProjectDetails() {
                                   ))}
                                 </Accordion>
                                 )}
-                              </RadixTabs.Content>
+                              </TabsContent>
 
-                              <RadixTabs.Content value="RecentlyAsked" className="focus-visible:outline-none">
+                              <TabsContent value="RecentlyAsked">
                                 <Tabs value={recentQTab} onValueChange={setRecentQTab} unanimated>
                                   <TabsList className="justify-start border-b-0 px-0 pt-0 mb-4">
                                     <TabsTrigger value="all">
@@ -4394,7 +4692,7 @@ export default function ProjectDetails() {
                                     </div>
                                   </TabsContent>
                                 </Tabs>
-                              </RadixTabs.Content>
+                              </TabsContent>
                           </div>
 
                           <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
@@ -4409,7 +4707,7 @@ export default function ProjectDetails() {
                             </Button>
                             <Button onClick={() => setQuestionsDialogOpen(false)}>Save</Button>
                           </div>
-                          </RadixTabs.Root>
+                          </Tabs>
                         </DialogContent>
                       </Dialog>
 
@@ -5893,7 +6191,7 @@ export default function ProjectDetails() {
                         </TooltipProvider>
                       </span>
                       <div className="mt-2 flex items-baseline gap-x-1.5">
-                        <span className="text-[28px] leading-none font-bold text-dark-blue-400">$0</span>
+                        <span className="text-[28px] leading-none font-bold text-dark-blue-400">{formatBudget(budgetTotalCents, "week")}</span>
                         <span className="text-sm text-dark-blue-400">per</span>
                         <Badge visual="gray" className="rounded-[5px]">week</Badge>
                       </div>
@@ -5915,14 +6213,34 @@ export default function ProjectDetails() {
                         </TooltipProvider>
                       </span>
                       <div className="mt-2">
-                        <span className="text-[28px] leading-none font-bold text-dark-blue-400">1 Day</span>
+                        <span className="text-[28px] leading-none font-bold text-dark-blue-400">{durationLabel}</span>
                       </div>
                     </div>
                     <ChartBreakoutCircle className="size-10 text-primary-500" />
                   </div>
                 </div>
 
-                <ScopeBuilder embedded phases={project.scope?.length > 0 ? project.scope : undefined} onPhasesChange={handleScopeChange} />
+                <ScopeBuilder
+                  embedded
+                  phases={project.scope?.length > 0 ? project.scope : undefined}
+                  onPhasesChange={handleScopeChange}
+                  teamMembers={(() => {
+                    const apiTeam = (project.team ?? []).map((m: any) => ({
+                      id: m.id || m.userId || crypto.randomUUID(),
+                      firstName: m.firstName || m.name || "User",
+                      username: m.username || m.email?.split("@")[0] || "",
+                      avatarUrl: m.avatarUrl || null,
+                      role: m.role || m.jobTitle || "",
+                      jobTitles: m.jobTitles ?? [],
+                      hourlyRate: m.hourlyRate ?? m.rateMax ?? null,
+                      workSchedule: m.workSchedule ?? m.availability ?? null,
+                      customHoursPerWeek: m.customHoursPerWeek ?? null,
+                      location: m.location ?? m.country ?? null,
+                      experience: m.experience ?? m.experienceLevel ?? null,
+                    }))
+                    return apiTeam.length > 0 ? apiTeam : SEED_TEAM_MEMBERS
+                  })()}
+                />
               </div>
             </TabsContent>
           </Tabs>
@@ -5938,7 +6256,7 @@ export default function ProjectDetails() {
                   </Badge>
                   <div className="inline-flex items-center gap-x-1.5 ml-2">
                     <span className="text-2xl leading-none font-bold text-dark-blue-400">
-                      $0
+                      {formatBudget(budgetTotalCents, budgetPeriod)}
                     </span>
                     <span className="text-sm font-medium leading-none text-dark-blue-400">
                       per
@@ -5946,14 +6264,14 @@ export default function ProjectDetails() {
                   </div>
 
                   <div className="ml-1.5">
-                    <Listbox defaultValue="week">
+                    <Listbox value={budgetPeriod} onChange={setBudgetPeriod}>
                       <ListboxButton
                         className="text-sm lowercase py-[5px] px-[7px] h-max w-auto"
                         iconClassName="ml-1"
                         placeholder="Select"
                       />
                       <ListboxOptions className="w-[153px]">
-                        {["week", "2-week", "month", "quarter", "year"].map(
+                        {["week", "2-week", "month", "quarter", ...(durationDays >= 365 ? ["year"] : [])].map(
                           (timeline) => (
                             <ListboxOption key={timeline} value={timeline}>
                               {timeline}
@@ -5972,7 +6290,9 @@ export default function ProjectDetails() {
 
               <div className="mt-3">
                 <span className="inline-block text-sm leading-none font-medium text-dark-blue-400">
-                  with an initial payment of $0 to kickoff
+                  {budgetTotalCents > 0
+                    ? `with an initial payment of $${Math.round(budgetTotalCents / 100 * 0.25).toLocaleString()} to kickoff`
+                    : "with an initial payment of $0 to kickoff"}
                 </span>
               </div>
 
@@ -5991,13 +6311,23 @@ export default function ProjectDetails() {
                 <div className="flex items-center gap-x-[6.4px]">
                   <Clock className="size-[18px] text-gray-400" />
                   <span className="text-sm leading-none font-medium text-gray-500">
-                    Add a scope to see duration
+                    {durationDays > 0 ? durationLabel : "Add a scope to see duration"}
                   </span>
                 </div>
                 <div className="flex items-center gap-x-[6.4px]">
                   <Users03 className="size-[18px] text-gray-400" />
                   <span className="text-sm leading-none font-medium text-gray-500">
-                    Add a scope to see team members
+                    {(() => {
+                      const roles = new Set<string>()
+                      for (const phase of project.scope ?? []) {
+                        for (const row of phase.rows ?? []) {
+                          if (row.role) roles.add(row.role)
+                        }
+                      }
+                      return roles.size > 0
+                        ? `${roles.size} team member${roles.size !== 1 ? "s" : ""}`
+                        : "Add a scope to see team members"
+                    })()}
                   </span>
                 </div>
               </div>
@@ -6045,10 +6375,21 @@ export default function ProjectDetails() {
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button variant="outlined" visual="gray" size="md" className="gap-x-1.5">
-                          <span className="size-2 rounded-full bg-gray-400" />
-                          Draft
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outlined" visual="gray" size="md" className="gap-x-1.5">
+                              <span className="size-2 rounded-full bg-gray-400" />
+                              Draft
+                              <ChevronDown className="size-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuItem onSelect={() => setPublishDialogOpen(true)} disabled={isPublishing}>
+                              <Eye className="size-4 mr-2" />
+                              Publish
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TooltipTrigger>
                       <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
                         Saved as draft, not yet visible on the marketplace
@@ -6072,7 +6413,7 @@ export default function ProjectDetails() {
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <IconButton variant="outlined" visual="gray" size="md">
+                      <IconButton variant="outlined" visual="gray" size="md" onClick={() => inviteWindow.toggle(true, "Share Your Project")}>
                         <Share06 className="size-[15px]" />
                       </IconButton>
                     </TooltipTrigger>
