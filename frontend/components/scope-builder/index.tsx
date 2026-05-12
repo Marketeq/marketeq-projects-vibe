@@ -2108,8 +2108,8 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
 
             {/* Scope type change confirmation dialog */}
             <Dialog open={scopeTypeConfirmOpen} onOpenChange={setScopeTypeConfirmOpen}>
-              <DialogContent className="max-w-[480px]">
-                <DialogHeader>
+              <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
+                <div className="max-w-[371px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]">
                   <DialogTitle>
                     Change to {pendingScopeType === "service" ? "Service" : "Project"}?
                   </DialogTitle>
@@ -2119,42 +2119,43 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
                     including time intervals for each phase and other related settings. You can undo
                     this at anytime.
                   </DialogDescription>
-                </DialogHeader>
-                <DialogFooter className="mt-8 grid gap-x-3">
-                  <DialogClose asChild>
-                    <Button
-                      variant="outlined"
-                      visual="gray"
-                      onClick={() => setPendingScopeType(null)}
-                    >
-                      Cancel
-                    </Button>
-                  </DialogClose>
 
-                  <Button
-                    onClick={() => {
-                      const previousType = scopeType
-                      if (pendingScopeType) {
-                        onScopeTypeChange?.(pendingScopeType)
-                        toast({
-                          title: `Your ${previousType} has been changed to a ${pendingScopeType}`,
-                          action: (
-                            <ToastAction
-                              altText="Undo"
-                              onClick={() => onScopeTypeChange?.(previousType)}
-                            >
-                              Undo
-                            </ToastAction>
-                          ),
-                        })
-                      }
-                      setPendingScopeType(null)
-                      setScopeTypeConfirmOpen(false)
-                    }}
-                  >
-                    Yes, Change
-                  </Button>
-                </DialogFooter>
+                  <DialogFooter className="mt-8 grid gap-x-3">
+                    <DialogClose asChild>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() => setPendingScopeType(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </DialogClose>
+
+                    <Button
+                      onClick={() => {
+                        const previousType = scopeType
+                        if (pendingScopeType) {
+                          onScopeTypeChange?.(pendingScopeType)
+                          toast({
+                            title: `Your ${previousType} has been changed to a ${pendingScopeType}`,
+                            action: (
+                              <ToastAction
+                                altText="Undo"
+                                onClick={() => onScopeTypeChange?.(previousType)}
+                              >
+                                Undo
+                              </ToastAction>
+                            ),
+                          })
+                        }
+                        setPendingScopeType(null)
+                        setScopeTypeConfirmOpen(false)
+                      }}
+                    >
+                      Yes, Change
+                    </Button>
+                  </DialogFooter>
+                </div>
               </DialogContent>
             </Dialog>
 
