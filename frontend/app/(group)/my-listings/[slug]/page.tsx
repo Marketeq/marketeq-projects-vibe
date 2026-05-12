@@ -1212,11 +1212,29 @@ export default function ProjectDetails() {
     [project?.id, project?.title, project?.summary, project?.description, project?.categories, project?.subcategories, project?.industries, project?.tags, project?.programmingLanguages, project?.skills, project?.listingType, router]
   )
 
+  // Persist team member assignments in localStorage (until backend supports assignedMemberId)
+  const assignmentsKey = `scope-assignments-${project?.id || "draft"}`
+  const saveAssignments = React.useCallback((phases: any[]) => {
+    try {
+      const map: Record<string, string> = {}
+      for (let pi = 0; pi < phases.length; pi++) {
+        for (const row of phases[pi].rows ?? []) {
+          if (row.assignedMember?.id) {
+            const taskKey = `${pi}:${row.task || row.taskName || ""}`
+            map[taskKey] = row.assignedMember.id
+          }
+        }
+      }
+      localStorage.setItem(assignmentsKey, JSON.stringify(map))
+    } catch { /* ignore */ }
+  }, [assignmentsKey])
+
   // Debounced autosave for scope changes
   const scopeSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleScopeChange = React.useCallback(
     (phases: any[]) => {
       setProject((prev: any) => ({ ...prev, scope: phases }))
+      saveAssignments(phases)
       setHasChanges(true)
       if (!project?.id || !isRealBackendId(project.id)) return
 
@@ -1241,6 +1259,7 @@ export default function ProjectDetails() {
                 ? `${row.duration.value} ${row.duration.type}`
                 : row.duration || "1 days",
               estimatedHours: row.estimatedHours || undefined,
+              assignedMemberId: row.assignedMember?.id || null,
               phaseId: "",
             })),
           }))
@@ -1269,6 +1288,70 @@ export default function ProjectDetails() {
       if (scopeSaveTimerRef.current) clearTimeout(scopeSaveTimerRef.current)
     }
   }, [])
+
+  // ── Budget & Duration computed from scope ──────────────────────────────────
+  const [budgetPeriod, setBudgetPeriod] = React.useState("week")
+
+  const { budgetTotalCents, durationLabel, durationDays } = React.useMemo(() => {
+    const phases = project.scope ?? []
+
+    // Duration: tasks within a phase run in parallel (take max), phases are sequential (sum).
+    // Matches the scope builder's getPhaseDurationInDays logic.
+    let totalDays = 0
+    for (const phase of phases) {
+      const taskDurations = (phase.rows ?? [])
+        .map((row: any) => {
+          const dur = row.duration
+          if (!dur) return 0
+          const val = Number(dur.value) || 0
+          if (val <= 0) return 0
+          if (dur.type === "weeks") return val * 7
+          if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+          return val // days
+        })
+        .filter((d: number) => d > 0)
+      if (taskDurations.length > 0) {
+        totalDays += Math.max(...taskDurations)
+      }
+    }
+
+    // Display rules from docs:
+    // < 7 days → show days | < 4 weeks (28 days) → show weeks | otherwise → show months
+    let durationLabel = "—"
+    if (totalDays > 0) {
+      if (totalDays < 7) {
+        durationLabel = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
+      } else if (totalDays < 28) {
+        const weeks = Math.max(1, Math.ceil(totalDays / 7))
+        durationLabel = `${weeks} Week${weeks !== 1 ? "s" : ""}`
+      } else {
+        const months = Math.max(1, Math.ceil(totalDays / 30))
+        durationLabel = `${months} Month${months !== 1 ? "s" : ""}`
+      }
+    }
+
+    const budgetTotalCents = Number(project.budgetAmountUsdCents) || 0
+
+    return { budgetTotalCents, durationLabel, durationDays: totalDays }
+  }, [project.scope, project.budgetAmountUsdCents])
+
+  // Format budget: Cost_Per_Period = Total_Cost / Number_of_Periods
+  const formatBudget = React.useCallback((cents: number, period: string) => {
+    if (cents <= 0) return "$0"
+    const total = cents / 100
+    // Number of periods in the project duration
+    const periodDays: Record<string, number> = {
+      "week": 7,
+      "2-week": 14,
+      "month": 30,
+      "quarter": 90,
+      "year": 365,
+    }
+    const daysPerPeriod = periodDays[period] ?? 7
+    const numPeriods = Math.max(1, Math.ceil(durationDays / daysPerPeriod))
+    const perPeriod = Math.round(total / numPeriods)
+    return `$${perPeriod.toLocaleString()}`
+  }, [durationDays])
 
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [sectionTab, setSectionTab] = React.useState("Description")
@@ -1379,28 +1462,72 @@ export default function ProjectDetails() {
             recentQuestions: d.recentQuestions ?? [],
             team: d.team ?? [],
             deliverables: d.deliverables ?? [],
-            scope: (d.scope ?? []).map((phase: any) => {
-              const rawTasks = phase.rows || phase.task || []
-              return {
-              phaseName: phase.phaseName || phase.name || phase.stageName || "",
-              ...(rawTasks.length > 0 ? { rows: rawTasks.map((t: any) => ({
-                id: t.id || crypto.randomUUID(),
-                task: t.task || t.taskName || "",
-                role: t.role || "",
-                location: Array.isArray(t.location) ? t.location[0] || "" : t.location || "",
-                experience: Array.isArray(t.experience) ? t.experience[0] || "Medior" : t.experience || "Medior",
-                duration: typeof t.duration === "object" && t.duration !== null
-                  ? t.duration
-                  : (() => {
-                      const raw = String(t.duration || "1 days")
-                      const parts = raw.match(/^(\d+)\s*(.*)$/)
-                      const value = parts ? Number(parts[1]) : 1
-                      const unit = parts?.[2]?.toLowerCase() || "days"
-                      const type = unit.startsWith("week") ? "weeks" : unit.startsWith("hour") ? "hours" : "days"
-                      return { value, type }
-                    })(),
-              })) } : {}),
-            }}),
+            scope: (() => {
+              // Build team member lookup for rehydrating assignedMember
+              const teamList = d.team ?? []
+              const seedTeam = [
+                { id: "seed-1", firstName: "Chris", username: "uxdesignma", avatarUrl: "/man.jpg", role: "Product Manager", jobTitles: ["Product Manager", "Full Stack Designer"], hourlyRate: 95, workSchedule: "full_time", customHoursPerWeek: null, location: "United States", experience: "Senior" },
+                { id: "seed-2", firstName: "Sarah", username: "sarahdev", avatarUrl: "/woman.jpg", role: "Frontend Developer", jobTitles: ["Frontend Developer", "UI/UX Designer"], hourlyRate: 85, workSchedule: "full_time", customHoursPerWeek: null, location: "United Kingdom", experience: "Medior" },
+                { id: "seed-3", firstName: "Laura", username: "lauraops", avatarUrl: "/woman.jpg", role: "DevOps Engineer", jobTitles: ["DevOps Engineer", "Cloud Engineer"], hourlyRate: 110, workSchedule: "full_time", customHoursPerWeek: null, location: "Germany", experience: "Senior" },
+                { id: "seed-4", firstName: "Tina", username: "tinaqa", avatarUrl: "/woman.jpg", role: "QA Engineer", jobTitles: ["QA Engineer"], hourlyRate: 70, workSchedule: "part_time", customHoursPerWeek: null, location: "India", experience: "Junior" },
+                { id: "seed-5", firstName: "Shelly", username: "shellyux", avatarUrl: "/woman.jpg", role: "UI/UX Designer", jobTitles: ["UI/UX Designer", "Product Designer"], hourlyRate: 90, workSchedule: "full_time", customHoursPerWeek: null, location: "Canada", experience: "Medior" },
+              ]
+              const allTeam = teamList.length > 0 ? teamList : seedTeam
+              const teamById = new Map<string, any>()
+              for (const m of allTeam) {
+                const id = m.id || m.userId
+                if (id) teamById.set(id, m)
+              }
+              // Restore assignments from localStorage (until backend supports assignedMemberId)
+              let savedAssignments: Record<string, string> = {}
+              try {
+                const raw = localStorage.getItem(`scope-assignments-${d.id || "draft"}`)
+                if (raw) savedAssignments = JSON.parse(raw)
+              } catch { /* ignore */ }
+              return (d.scope ?? []).map((phase: any, phaseIdx: number) => {
+                const rawTasks = phase.rows || phase.task || []
+                return {
+                  phaseName: phase.phaseName || phase.name || phase.stageName || "",
+                  ...(rawTasks.length > 0 ? { rows: rawTasks.map((t: any) => {
+                    const taskName = t.task || t.taskName || ""
+                    const taskKey = `${phaseIdx}:${taskName}`
+                    const memberId = t.assignedMemberId || t.assignedMember?.id || savedAssignments[taskKey] || null
+                    const teamMate = memberId ? teamById.get(memberId) : null
+                    const assignedMember = teamMate ? {
+                      id: teamMate.id || teamMate.userId || memberId,
+                      firstName: teamMate.firstName || teamMate.name || "User",
+                      username: teamMate.username || teamMate.email?.split("@")[0] || "",
+                      avatarUrl: teamMate.avatarUrl || null,
+                      role: teamMate.role || teamMate.jobTitle || "",
+                      jobTitles: teamMate.jobTitles ?? [],
+                      hourlyRate: teamMate.hourlyRate ?? teamMate.rateMax ?? null,
+                      workSchedule: teamMate.workSchedule ?? teamMate.availability ?? null,
+                      customHoursPerWeek: teamMate.customHoursPerWeek ?? null,
+                      location: teamMate.location ?? teamMate.country ?? null,
+                      experience: teamMate.experience ?? teamMate.experienceLevel ?? null,
+                    } : null
+                    return {
+                      id: t.id || crypto.randomUUID(),
+                      task: t.task || t.taskName || "",
+                      role: t.role || "",
+                      location: Array.isArray(t.location) ? t.location[0] || "" : t.location || "",
+                      experience: Array.isArray(t.experience) ? t.experience[0] || "Medior" : t.experience || "Medior",
+                      duration: typeof t.duration === "object" && t.duration !== null
+                        ? t.duration
+                        : (() => {
+                            const raw = String(t.duration || "1 days")
+                            const parts = raw.match(/^(\d+)\s*(.*)$/)
+                            const value = parts ? Number(parts[1]) : 1
+                            const unit = parts?.[2]?.toLowerCase() || "days"
+                            const type = unit.startsWith("week") ? "weeks" : unit.startsWith("hour") ? "hours" : "days"
+                            return { value, type }
+                          })(),
+                      ...(assignedMember ? { assignedMember } : {}),
+                    }
+                  }) } : {}),
+                }
+              })
+            })(),
             rating: 4.9,
             reviewCount: 14,
             listingType: d.listingType || "project",
@@ -2382,6 +2509,7 @@ export default function ProjectDetails() {
                           variant="outlined"
                           visual="gray"
                           size="md"
+                          onClick={() => inviteWindow.toggle(true, "Share Your Project")}
                         >
                           <Share className="size-[20px]" />
                         </IconButton>
@@ -6061,7 +6189,7 @@ export default function ProjectDetails() {
                         </TooltipProvider>
                       </span>
                       <div className="mt-2 flex items-baseline gap-x-1.5">
-                        <span className="text-[28px] leading-none font-bold text-dark-blue-400">$0</span>
+                        <span className="text-[28px] leading-none font-bold text-dark-blue-400">{formatBudget(budgetTotalCents, "week")}</span>
                         <span className="text-sm text-dark-blue-400">per</span>
                         <Badge visual="gray" className="rounded-[5px]">week</Badge>
                       </div>
@@ -6083,14 +6211,42 @@ export default function ProjectDetails() {
                         </TooltipProvider>
                       </span>
                       <div className="mt-2">
-                        <span className="text-[28px] leading-none font-bold text-dark-blue-400">1 Day</span>
+                        <span className="text-[28px] leading-none font-bold text-dark-blue-400">{durationLabel}</span>
                       </div>
                     </div>
                     <ChartBreakoutCircle className="size-10 text-primary-500" />
                   </div>
                 </div>
 
-                <ScopeBuilder embedded phases={project.scope?.length > 0 ? project.scope : undefined} onPhasesChange={handleScopeChange} />
+                <ScopeBuilder
+                  embedded
+                  phases={project.scope?.length > 0 ? project.scope : undefined}
+                  onPhasesChange={handleScopeChange}
+                  teamMembers={(() => {
+                    const apiTeam = (project.team ?? []).map((m: any) => ({
+                      id: m.id || m.userId || crypto.randomUUID(),
+                      firstName: m.firstName || m.name || "User",
+                      username: m.username || m.email?.split("@")[0] || "",
+                      avatarUrl: m.avatarUrl || null,
+                      role: m.role || m.jobTitle || "",
+                      jobTitles: m.jobTitles ?? [],
+                      hourlyRate: m.hourlyRate ?? m.rateMax ?? null,
+                      workSchedule: m.workSchedule ?? m.availability ?? null,
+                      customHoursPerWeek: m.customHoursPerWeek ?? null,
+                      location: m.location ?? m.country ?? null,
+                      experience: m.experience ?? m.experienceLevel ?? null,
+                    }))
+                    if (apiTeam.length > 0) return apiTeam
+                    // Seed data matching edit-listing Team tab until API returns real members
+                    return [
+                      { id: "seed-1", firstName: "Chris", username: "uxdesignma", avatarUrl: "/man.jpg", role: "Product Manager", jobTitles: ["Product Manager", "Full Stack Designer"], hourlyRate: 95, workSchedule: "full_time", customHoursPerWeek: null, location: "United States", experience: "Senior" },
+                      { id: "seed-2", firstName: "Sarah", username: "sarahdev", avatarUrl: "/woman.jpg", role: "Frontend Developer", jobTitles: ["Frontend Developer", "UI/UX Designer"], hourlyRate: 85, workSchedule: "full_time", customHoursPerWeek: null, location: "United Kingdom", experience: "Medior" },
+                      { id: "seed-3", firstName: "Laura", username: "lauraops", avatarUrl: "/woman.jpg", role: "DevOps Engineer", jobTitles: ["DevOps Engineer", "Cloud Engineer"], hourlyRate: 110, workSchedule: "full_time", customHoursPerWeek: null, location: "Germany", experience: "Senior" },
+                      { id: "seed-4", firstName: "Tina", username: "tinaqa", avatarUrl: "/woman.jpg", role: "QA Engineer", jobTitles: ["QA Engineer"], hourlyRate: 70, workSchedule: "part_time", customHoursPerWeek: null, location: "India", experience: "Junior" },
+                      { id: "seed-5", firstName: "Shelly", username: "shellyux", avatarUrl: "/woman.jpg", role: "UI/UX Designer", jobTitles: ["UI/UX Designer", "Product Designer"], hourlyRate: 90, workSchedule: "full_time", customHoursPerWeek: null, location: "Canada", experience: "Medior" },
+                    ]
+                  })()}
+                />
               </div>
             </TabsContent>
           </Tabs>
@@ -6106,7 +6262,7 @@ export default function ProjectDetails() {
                   </Badge>
                   <div className="inline-flex items-center gap-x-1.5 ml-2">
                     <span className="text-2xl leading-none font-bold text-dark-blue-400">
-                      $0
+                      {formatBudget(budgetTotalCents, budgetPeriod)}
                     </span>
                     <span className="text-sm font-medium leading-none text-dark-blue-400">
                       per
@@ -6114,14 +6270,14 @@ export default function ProjectDetails() {
                   </div>
 
                   <div className="ml-1.5">
-                    <Listbox defaultValue="week">
+                    <Listbox value={budgetPeriod} onChange={setBudgetPeriod}>
                       <ListboxButton
                         className="text-sm lowercase py-[5px] px-[7px] h-max w-auto"
                         iconClassName="ml-1"
                         placeholder="Select"
                       />
                       <ListboxOptions className="w-[153px]">
-                        {["week", "2-week", "month", "quarter", "year"].map(
+                        {["week", "2-week", "month", "quarter", ...(durationDays >= 365 ? ["year"] : [])].map(
                           (timeline) => (
                             <ListboxOption key={timeline} value={timeline}>
                               {timeline}
@@ -6140,7 +6296,9 @@ export default function ProjectDetails() {
 
               <div className="mt-3">
                 <span className="inline-block text-sm leading-none font-medium text-dark-blue-400">
-                  with an initial payment of $0 to kickoff
+                  {budgetTotalCents > 0
+                    ? `with an initial payment of $${Math.round(budgetTotalCents / 100 * 0.25).toLocaleString()} to kickoff`
+                    : "with an initial payment of $0 to kickoff"}
                 </span>
               </div>
 
@@ -6159,13 +6317,23 @@ export default function ProjectDetails() {
                 <div className="flex items-center gap-x-[6.4px]">
                   <Clock className="size-[18px] text-gray-400" />
                   <span className="text-sm leading-none font-medium text-gray-500">
-                    Add a scope to see duration
+                    {durationDays > 0 ? durationLabel : "Add a scope to see duration"}
                   </span>
                 </div>
                 <div className="flex items-center gap-x-[6.4px]">
                   <Users03 className="size-[18px] text-gray-400" />
                   <span className="text-sm leading-none font-medium text-gray-500">
-                    Add a scope to see team members
+                    {(() => {
+                      const roles = new Set<string>()
+                      for (const phase of project.scope ?? []) {
+                        for (const row of phase.rows ?? []) {
+                          if (row.role) roles.add(row.role)
+                        }
+                      }
+                      return roles.size > 0
+                        ? `${roles.size} team member${roles.size !== 1 ? "s" : ""}`
+                        : "Add a scope to see team members"
+                    })()}
                   </span>
                 </div>
               </div>
@@ -6213,10 +6381,21 @@ export default function ProjectDetails() {
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button variant="outlined" visual="gray" size="md" className="gap-x-1.5">
-                          <span className="size-2 rounded-full bg-gray-400" />
-                          Draft
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outlined" visual="gray" size="md" className="gap-x-1.5">
+                              <span className="size-2 rounded-full bg-gray-400" />
+                              Draft
+                              <ChevronDown className="size-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuItem onSelect={() => setPublishDialogOpen(true)} disabled={isPublishing}>
+                              <Eye className="size-4 mr-2" />
+                              Publish
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TooltipTrigger>
                       <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
                         Saved as draft, not yet visible on the marketplace
@@ -6240,7 +6419,7 @@ export default function ProjectDetails() {
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <IconButton variant="outlined" visual="gray" size="md">
+                      <IconButton variant="outlined" visual="gray" size="md" onClick={() => inviteWindow.toggle(true, "Share Your Project")}>
                         <Share06 className="size-[15px]" />
                       </IconButton>
                     </TooltipTrigger>
