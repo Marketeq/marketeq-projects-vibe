@@ -136,18 +136,54 @@ function launchService(svc, env, isGateway = false) {
   return child;
 }
 
+// Auto-discover compiled services in dist/apps/ that aren't in the explicit
+// SERVICES list. Assigns overflow ports starting at AUTO_PORT_START.
+// This ensures new services are always started even if someone forgets to
+// add them to SERVICES — the CI check will catch the missing entry later.
+const AUTO_PORT_START = 3100;
+
+function discoverUnregisteredServices() {
+  const registeredNames = new Set(SERVICES.map((s) => s.name));
+  registeredNames.add(GATEWAY.name);
+
+  const distApps = path.join(__dirname, 'dist', 'apps');
+  if (!fs.existsSync(distApps)) return [];
+
+  const discovered = [];
+  let nextPort = AUTO_PORT_START;
+
+  for (const entry of fs.readdirSync(distApps)) {
+    if (registeredNames.has(entry)) continue;
+
+    const mainCandidates = [
+      path.join(distApps, entry, 'main.js'),
+      path.join(distApps, entry, 'src', 'main.js'),
+      path.join(distApps, entry, entry, 'src', 'main.js'),
+    ];
+    if (mainCandidates.some((c) => fs.existsSync(c))) {
+      const port = String(nextPort++);
+      console.warn(`[boot] WARNING: ${entry} is compiled but not in SERVICES registry — auto-assigning port ${port}. Add it to boot-all.js SERVICES array with a stable port.`);
+      discovered.push({ name: entry, port, dir: `apps/${entry}` });
+    }
+  }
+
+  return discovered;
+}
+
 async function bootstrapAll() {
   console.log('[boot] Launching all services in single container...');
   console.log(`[boot] Gateway will listen on port ${GATEWAY_PORT}`);
 
   launchService(GATEWAY, gatewayEnv, true);
 
+  const autoDiscovered = discoverUnregisteredServices();
+
   // Start the gateway first so Render discovers the public-facing process
   // before the internal services begin listening. Do not hard-fail if the
   // gateway takes time to become healthy while RabbitMQ reconnects.
   setTimeout(() => {
     console.log('[boot] Launching internal services after gateway head start...');
-    for (const svc of SERVICES) {
+    for (const svc of [...SERVICES, ...autoDiscovered]) {
       launchService(svc, buildInternalServiceEnv(svc.port), false);
     }
   }, 4000);
