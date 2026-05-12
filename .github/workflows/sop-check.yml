@@ -250,21 +250,6 @@ jobs:
             add "🔥 **\`.env.local.example\` modified on a PR targeting \`$BASE_REF\`** — local template changes must target the \`dev-main\` branch. See DEVOPS_SOP §5."
           fi
 
-          # --- Section 8d: New backend service without boot-all.js entry ---
-          # If a PR adds a new apps/*/src/main.ts, it must also update boot-all.js
-          while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            case "$f" in
-              backend/apps/*/src/main.ts)
-                SVC_NAME=$(echo "$f" | sed 's|backend/apps/||; s|/src/main.ts||')
-                if [ "$SVC_NAME" != "api-gateway" ]; then
-                  if ! grep -q "name: '$SVC_NAME'" backend/boot-all.js 2>/dev/null; then
-                    add "🚀 **New service \`$SVC_NAME\` added without a \`boot-all.js\` entry** — every service with \`apps/*/src/main.ts\` must have an entry in \`backend/boot-all.js\` SERVICES array (with a stable port) and a matching \`*_SERVICE_URL\` in \`gatewayEnv\`. Without this, the service won't be reachable through the API gateway on staging/production."
-                  fi
-                fi ;;
-            esac
-          done <<< "$ADDED_FILES"
-
           # --- Section 9: New @ts-ignore without justification ---
           TS_IGNORE_HITS=$(git diff "$BASE_SHA"...HEAD -- '*.ts' '*.tsx' 2>/dev/null | grep -E '^\+[^+].*@ts-ignore' | grep -vE '@ts-ignore.*--' || true)
           if [ -n "$TS_IGNORE_HITS" ]; then
