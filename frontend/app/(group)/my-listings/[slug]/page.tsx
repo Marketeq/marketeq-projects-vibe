@@ -1469,65 +1469,140 @@ export default function ProjectDetails() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white px-[100px] py-10">
-        <div className="max-w-[1240px]">
-          {/* breadcrumb */}
-          <div className="flex items-center gap-x-3">
-            <Shimmer className="h-3 w-3 rounded-full" />
-            <Shimmer className="h-3 w-16" />
-            <Shimmer className="h-3 w-24" />
-            <Shimmer className="h-3 w-32" />
-          </div>
-          <div className="flex items-start gap-x-8 mt-8">
-            <div className="max-w-[818px] flex-auto space-y-6">
-              {/* title + categories */}
-              <div className="space-y-3">
-                <Shimmer className="h-8 w-2/3" />
-                <div className="flex items-center gap-x-3">
-                  <Shimmer className="h-4 w-24" />
-                  <Shimmer className="h-4 w-28" />
+      <div className="px-[100px] pb-[100px] relative bg-white">
+        <div className="max-w-[1240px] flex items-start gap-x-8">
+          <div className="max-w-[818px] flex-auto">
+            {/* gray header area */}
+            <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
+              <div className="relative pt-6 pb-[50px]">
+                <div className="absolute w-screen -translate-x-[100px] top-0 bottom-px bg-gray-50" />
+                {/* breadcrumb */}
+                <div className="flex items-center gap-x-2 relative">
+                  <Shimmer className="size-[18px] rounded" />
+                  <span className="text-xs text-gray-300">/</span>
+                  <Shimmer className="h-3 w-16" />
+                  <span className="text-xs text-gray-300">/</span>
+                  <Shimmer className="h-3 w-32" />
+                </div>
+                {/* hero: thumbnail + title */}
+                <div className="flex gap-x-[13px] items-start mt-8 relative z-[5]">
+                  <Shimmer className="w-[189px] h-[126px] rounded-lg shrink-0" />
+                  <div className="flex flex-col gap-y-3 flex-1">
+                    <Shimmer className="h-5 w-24 rounded" />
+                    <Shimmer className="h-7 w-3/4" />
+                    <div className="flex gap-x-3">
+                      <Shimmer className="h-4 w-24" />
+                      <Shimmer className="h-4 w-20" />
+                      <Shimmer className="h-4 w-20" />
+                    </div>
+                  </div>
+                  <Shimmer className="size-5 rounded shrink-0" />
+                </div>
+                {/* short description */}
+                <div className="mt-5 space-y-2 relative">
+                  <Shimmer className="h-4 w-full" />
+                  <Shimmer className="h-4 w-11/12" />
+                  <Shimmer className="h-4 w-4/5" />
                 </div>
               </div>
-              {/* hero media */}
-              <Shimmer className="h-[460px] w-full rounded-lg" />
-              {/* tabs */}
-              <div className="flex gap-x-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Shimmer key={i} className="h-8 w-20 rounded-full" />
-                ))}
+            </div>
+
+            {/* action bar */}
+            <div className="flex items-center justify-between py-4">
+              <Shimmer className="h-5 w-28" />
+              <Shimmer className="h-5 w-20" />
+              <Shimmer className="h-5 w-32" />
+            </div>
+
+            {/* gallery thumbnails */}
+            <div className="flex gap-x-4 mt-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Shimmer key={i} className="h-[140px] flex-1 rounded-lg" />
+              ))}
+            </div>
+            <div className="mt-3">
+              <Shimmer className="h-4 w-24" />
+            </div>
+
+            {/* tabs */}
+            <div className="flex gap-x-6 mt-6 border-b border-gray-200 pb-2.5">
+              <Shimmer className="h-4 w-20" />
+              <Shimmer className="h-4 w-20" />
+              <Shimmer className="h-4 w-24" />
+              <Shimmer className="h-4 w-20" />
+              <Shimmer className="h-4 w-20" />
+            </div>
+
+            {/* description content */}
+            <div className="mt-6 space-y-6">
+              <div className="rounded-lg border border-gray-200 p-6 space-y-4">
+                <Shimmer className="h-6 w-2/3" />
+                <div className="space-y-2">
+                  <Shimmer className="h-4 w-full" />
+                  <Shimmer className="h-4 w-full" />
+                  <Shimmer className="h-4 w-11/12" />
+                  <Shimmer className="h-4 w-10/12" />
+                  <Shimmer className="h-4 w-9/12" />
+                </div>
               </div>
-              {/* body paragraphs */}
-              <div className="space-y-3">
-                <Shimmer className="h-4 w-full" />
-                <Shimmer className="h-4 w-11/12" />
-                <Shimmer className="h-4 w-10/12" />
-                <Shimmer className="h-4 w-9/12" />
-              </div>
-              {/* deliverables section */}
-              <div className="space-y-4">
-                <Shimmer className="h-6 w-40" />
-                <div className="grid grid-cols-3 gap-4">
+
+              {/* deliverables */}
+              <div className="rounded-lg border border-gray-200 p-6 space-y-4">
+                <Shimmer className="h-6 w-28" />
+                <div className="grid grid-cols-3 gap-3">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <Shimmer key={i} className="h-10 rounded-lg" />
+                    <Shimmer key={i} className="h-9 rounded-md" />
                   ))}
                 </div>
               </div>
-              {/* more paragraphs */}
-              <div className="space-y-3">
-                <Shimmer className="h-4 w-full" />
-                <Shimmer className="h-4 w-11/12" />
-                <Shimmer className="h-4 w-8/12" />
+
+              {/* project details */}
+              <div className="rounded-lg border border-gray-200 p-6 space-y-4">
+                <Shimmer className="h-6 w-32" />
+                <div className="space-y-3">
+                  <Shimmer className="h-4 w-full" />
+                  <Shimmer className="h-4 w-3/4" />
+                </div>
               </div>
             </div>
-            {/* sidebar card */}
-            <div className="w-[360px] shrink-0 rounded-lg border border-gray-200 p-6 space-y-4">
-              <Shimmer className="h-6 w-32" />
-              <Shimmer className="h-10 w-full" />
-              <Shimmer className="h-10 w-full" />
-              <Shimmer className="h-10 w-full" />
-              <div className="h-px w-full bg-gray-200" />
-              <Shimmer className="h-10 w-full" />
-              <Shimmer className="h-10 w-full" />
+          </div>
+
+          {/* sidebar */}
+          <div className="w-[360px] shrink-0 pt-6 space-y-6">
+            {/* pricing card */}
+            <div className="rounded-lg border border-gray-200 p-6 space-y-4">
+              <div className="flex items-center gap-x-2">
+                <Shimmer className="h-4 w-20" />
+                <Shimmer className="h-8 w-12" />
+                <Shimmer className="h-4 w-10" />
+                <Shimmer className="h-8 w-16 rounded-md" />
+              </div>
+              <Shimmer className="h-4 w-full" />
+              <div className="h-px bg-gray-200" />
+              <Shimmer className="h-4 w-24" />
+              <Shimmer className="size-9 rounded-full" />
+              <div className="space-y-2">
+                <Shimmer className="h-4 w-48" />
+                <Shimmer className="h-4 w-52" />
+              </div>
+              <div className="flex gap-x-3 mt-2">
+                <Shimmer className="h-10 w-20 rounded-lg" />
+                <Shimmer className="h-10 flex-1 rounded-lg" />
+                <Shimmer className="size-10 rounded-lg" />
+              </div>
+            </div>
+            {/* tutorials card */}
+            <div className="rounded-lg border border-gray-200 p-6 space-y-4">
+              <Shimmer className="h-5 w-52" />
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex gap-x-3 items-center">
+                  <Shimmer className="w-[100px] h-[65px] rounded-lg shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Shimmer className="h-4 w-full" />
+                    <Shimmer className="h-3 w-20" />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -2193,8 +2268,8 @@ export default function ProjectDetails() {
                           <TabsTrigger value="Description">
                             Description
                           </TabsTrigger>
-                          <TabsTrigger value="Delierables">
-                            Delierables
+                          <TabsTrigger value="Deliverables">
+                            Deliverables
                           </TabsTrigger>
                           <TabsTrigger value="Project Details">
                             Project Details
