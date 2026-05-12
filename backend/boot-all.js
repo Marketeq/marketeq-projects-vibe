@@ -37,6 +37,7 @@ const SERVICES = [
   { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service' },
   { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service' },
   { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service' },
+  { name: 'contracts-service',          port: '3010', dir: 'apps/contracts-service' },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway' };
@@ -53,6 +54,7 @@ const gatewayEnv = {
   INVITATIONS_SERVICE_URL:      'http://localhost:3013',
   MODERATION_SERVICE_URL:       'http://localhost:3014',
   TIME_TRACKING_SERVICE_URL:    'http://localhost:3017',
+  CONTRACTS_SERVICE_URL:        'http://localhost:3010',
 };
 
 function buildInternalServiceEnv(port) {

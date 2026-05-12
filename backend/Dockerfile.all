@@ -21,7 +21,8 @@ RUN npx nest build api-gateway \
 RUN npx nest build listings-service \
  && npx nest build notification-service \
  && npx nest build invitations-service \
- && npx nest build content-moderation-service
+ && npx nest build content-moderation-service \
+ && npx nest build contracts-service
 
 # Prune devDependencies for smaller production image
 RUN npm prune --production --legacy-peer-deps
