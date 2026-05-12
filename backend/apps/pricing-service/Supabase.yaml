@@ -1,0 +1,34 @@
+services:
+  - name: pricing-service
+    type: web
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+
+    # Supabase polls this path — must return 200-299 within 10s
+    healthCheckPath: /health
+    healthCheckTimeout: 10
+
+    envVars:
+      # Database — pulled from linked Supabase database automatically
+      - key: DATABASE_URL
+        fromDatabase:
+          name: marketeq-db
+          property: connectionString
+
+      # Non-sensitive values — safe to store in yaml
+      - key: PORT
+        value: 3023
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_SCHEMA
+        value: pricing_service
+
+      # Sensitive values — set manually in Supabase dashboard, never in yaml
+      - key: JWT_SECRET
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: TRANSACTION_SERVICE_URL
+        sync: false
+      - key: FX_API_URL
+        sync: false
