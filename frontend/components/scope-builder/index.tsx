@@ -1308,7 +1308,7 @@ const columns = [
       })
 
       return (
-        <TableCell className="py-4 px-6 max-w-[180px]">
+        <TableCell className="py-4 px-6">
           <OwnCombobox
             value={value}
             onValueChange={setValue}
@@ -1331,7 +1331,7 @@ const columns = [
         },
       })
       return (
-        <TableCell className="px-3 py-4 max-w-[160px]">
+        <TableCell className="px-3 py-4">
           <CountriesCombobox
             placeholder="Location"
             value={value}
@@ -1352,7 +1352,7 @@ const columns = [
         onChange: (value) => table.options.meta?.updateData(index, id, value),
       })
       return (
-        <TableCell className="py-4 px-6 max-w-[150px]">
+        <TableCell className="py-4 px-6">
           <Dropdown
             placeholder="Experience"
             value={value}
@@ -1368,9 +1368,9 @@ const columns = [
   }),
   columnHelper.accessor("duration", {
     cell: ({ getValue, table, row: { index } }) => (
-      <TableCell className="py-4 px-3 text-right">
+      <TableCell className="py-4 px-6">
         <button
-          className="focus-visible:outline-none truncate text-sm"
+          className="focus-visible:outline-none"
           type="button"
           onClick={() => table.options.meta?.openDurationDialog(index)}
         >
@@ -1455,14 +1455,7 @@ const PhaseTable = ({
       onDragEnd={handleDragEnd}
       sensors={sensors}
     >
-      <Table className="table-fixed w-full">
-        <colgroup>
-          <col className="w-[28%]" />
-          <col className="w-[24%]" />
-          <col className="w-[20%]" />
-          <col className="w-[18%]" />
-          <col className="w-[10%]" />
-        </colgroup>
+      <Table>
         <TableHeader className="bg-gray-50">
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow className="hover:bg-transparent" key={headerGroup.id}>
@@ -2119,7 +2112,7 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded }
                           </div>
                         </div>
 
-                        <DisclosureContent className="overflow-hidden">
+                        <DisclosureContent className="overflow-auto">
                           <PhaseTable
                             rows={rows}
                             onRowsChange={(rows) =>
