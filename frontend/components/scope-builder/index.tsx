@@ -35,6 +35,7 @@ import {
   MoreHorizontal,
   PlayCircle,
   Plus,
+  RefreshCcw05,
   SearchMd,
   Trash2,
   Type,
@@ -131,6 +132,10 @@ import {
   TableRow,
   ToastAction,
   Toaster,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   useToast,
 } from "@/components/ui"
 
@@ -1585,14 +1590,20 @@ const DurationDialog = ({
 
 // ─── Main ScopeBuilder component ────────────────────────────────────────
 
+export type ScopeType = "project" | "service"
+
 export interface ScopeBuilderProps {
   phases?: Phase[]
   onPhasesChange?: (phases: Phase[]) => void
   /** When true, renders without the ScrollArea wrapper and tip sidebar (for embedding in other pages) */
   embedded?: boolean
+  /** Current scope type — defaults to "project" */
+  scopeType?: ScopeType
+  /** Called when the user confirms switching scope type */
+  onScopeTypeChange?: (type: ScopeType) => void
 }
 
-export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded }: ScopeBuilderProps) {
+export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, scopeType = "project", onScopeTypeChange }: ScopeBuilderProps) {
   const { toast } = useToast()
   const lastUndo = useRef<null | (() => void)>(null)
   const [taskDialogState, setTaskDialogState] = useState<TaskDialogState>({
@@ -1609,6 +1620,9 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded }
     phaseNameDialogReducer,
     defaultPhaseNameDialogState
   )
+  const [scopeTypeDropdownOpen, setScopeTypeDropdownOpen] = useState(false)
+  const [scopeTypeConfirmOpen, setScopeTypeConfirmOpen] = useState(false)
+  const [pendingScopeType, setPendingScopeType] = useState<ScopeType | null>(null)
   const [accordionState, setAccordionState] = useState(["item-0"])
 
   // Local state for phases — replaces useProjectScopeContext
@@ -1990,27 +2004,95 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded }
           <div className="space-y-6 flex-auto min-w-0">
             <div className="flex md:flex-row flex-col gap-y-6 md:gap-y-0 md:items-center justify-between">
               <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
-                Project Scope
+                {scopeType === "service" ? "Service" : "Project"} Scope
               </h1>
 
               <div className="flex items-center md:gap-x-3">
+                <DropdownMenu open={scopeTypeDropdownOpen} onOpenChange={setScopeTypeDropdownOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outlined" visual="gray">
+                      <RefreshCcw05 className="size-[15px]" />
+                      {scopeType === "service" ? "Service" : "Project"}
+                      <ChevronDown className="size-[15px]" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[280px]">
+                    <DropdownMenuItem
+                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      onClick={() => {
+                        if (scopeType !== "project") {
+                          setPendingScopeType("project")
+                          setScopeTypeConfirmOpen(true)
+                        }
+                        setScopeTypeDropdownOpen(false)
+                      }}
+                    >
+                      <div className="flex items-center gap-x-2 w-full">
+                        {scopeType === "project" && <Check className="size-4 text-primary-500 shrink-0" />}
+                        <span className="font-semibold text-sm text-gray-900">
+                          Project{scopeType === "project" ? " (current)" : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 ml-6">
+                        One-time job with a defined duration
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      onClick={() => {
+                        if (scopeType !== "service") {
+                          setPendingScopeType("service")
+                          setScopeTypeConfirmOpen(true)
+                        }
+                        setScopeTypeDropdownOpen(false)
+                      }}
+                    >
+                      <div className="flex items-center gap-x-2 w-full">
+                        {scopeType === "service" && <Check className="size-4 text-primary-500 shrink-0" />}
+                        <span className="font-semibold text-sm text-gray-900">
+                          Service{scopeType === "service" ? " (current)" : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 ml-6">
+                        Recurring work with consistent needs
+                      </span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                 <div className="flex items-center">
-                  <Button
-                    className="border-r-0 rounded-r-none"
-                    variant="outlined"
-                    visual="gray"
-                    onClick={expandAll}
-                  >
-                    <ChevronsDown className="size-[15px]" /> Expand All
-                  </Button>
-                  <Button
-                    className="rounded-l-none md:rounded-r-[5px] rounded-r-none"
-                    variant="outlined"
-                    visual="gray"
-                    onClick={collapseAll}
-                  >
-                    <ChevronsUp className="size-[15px]" /> Collapse All
-                  </Button>
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          className="border-r-0 rounded-r-none"
+                          variant="outlined"
+                          visual="gray"
+                          size="md"
+                          onClick={expandAll}
+                        >
+                          <ChevronsDown className="size-[15px]" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Expand All</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          className="rounded-l-none md:rounded-r-[5px] rounded-r-none"
+                          variant="outlined"
+                          visual="gray"
+                          size="md"
+                          onClick={collapseAll}
+                        >
+                          <ChevronsUp className="size-[15px]" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Collapse All</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
 
                 <Button
@@ -2023,6 +2105,58 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded }
                 </Button>
               </div>
             </div>
+
+            {/* Scope type change confirmation dialog */}
+            <Dialog open={scopeTypeConfirmOpen} onOpenChange={setScopeTypeConfirmOpen}>
+              <DialogContent className="max-w-[480px]">
+                <DialogHeader>
+                  <DialogTitle>
+                    Change to {pendingScopeType === "service" ? "Service" : "Project"}?
+                  </DialogTitle>
+                  <DialogDescription>
+                    This action will modify the entire {scopeType} scope. You&apos;ll need to manually
+                    update the {pendingScopeType === "service" ? "service" : "project"} plan details,
+                    including time intervals for each phase and other related settings. You can undo
+                    this at anytime.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter className="mt-8 grid gap-x-3">
+                  <DialogClose asChild>
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      onClick={() => setPendingScopeType(null)}
+                    >
+                      Cancel
+                    </Button>
+                  </DialogClose>
+
+                  <Button
+                    onClick={() => {
+                      const previousType = scopeType
+                      if (pendingScopeType) {
+                        onScopeTypeChange?.(pendingScopeType)
+                        toast({
+                          title: `Your ${previousType} has been changed to a ${pendingScopeType}`,
+                          action: (
+                            <ToastAction
+                              altText="Undo"
+                              onClick={() => onScopeTypeChange?.(previousType)}
+                            >
+                              Undo
+                            </ToastAction>
+                          ),
+                        })
+                      }
+                      setPendingScopeType(null)
+                      setScopeTypeConfirmOpen(false)
+                    }}
+                  >
+                    Yes, Change
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             <InputGroup>
               <Input type="text" placeholder="Find a phase or task" />
