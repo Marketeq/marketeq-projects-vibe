@@ -3026,6 +3026,39 @@ const toMinutes = (time?: string, dayPeriod?: string) => {
   return normalizedHours * 60 + minutesPart
 }
 
+const hasOverlappingCustomAvailability = (
+  customAvailability?: Array<z.infer<typeof DaySchema>>
+) =>
+  customAvailability?.some((day) => hasOverlappingTimeSlots(day.times)) ?? false
+
+const hasOverlappingTimeSlots = (times?: Array<z.infer<typeof TimeSchema>>) => {
+  const intervals = (times ?? [])
+    .map((time) => {
+      const startMinutes = toMinutes(time.startTime, time.startTimeDayPeriod)
+      const endMinutes = toMinutes(time.endTime, time.endTimeDayPeriod)
+
+      if (
+        startMinutes == null ||
+        endMinutes == null ||
+        endMinutes <= startMinutes
+      ) {
+        return null
+      }
+
+      return { startMinutes, endMinutes }
+    })
+    .filter(
+      (interval): interval is { startMinutes: number; endMinutes: number } =>
+        interval != null
+    )
+    .sort((a, b) => a.startMinutes - b.startMinutes)
+
+  return intervals.some((interval, index) => {
+    const previous = intervals[index - 1]
+    return previous ? interval.startMinutes < previous.endMinutes : false
+  })
+}
+
 const setYourPreferencesFormSchema = z
   .object({
     projects: optionalStringArray,
@@ -3055,6 +3088,14 @@ const setYourPreferencesFormSchema = z
         message: "End time cannot be earlier than start time",
       })
     }
+
+    if (hasOverlappingCustomAvailability(values.customAvailability)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["customAvailability"],
+        message: "Custom availability times cannot overlap.",
+      })
+    }
   })
 
 type SetYourPreferencesFormValues = z.infer<typeof setYourPreferencesFormSchema>
@@ -3065,6 +3106,7 @@ const CustomAvailabilityTimeSelector = ({
   onValueChange,
   disabled,
   onToggle,
+  error,
 }: {
   label: string
   value?: Array<{
@@ -3091,6 +3133,7 @@ const CustomAvailabilityTimeSelector = ({
       endTimeDayPeriod: string
     }>
   ) => void
+  error?: string
 }) => {
   const defaultSlot = {
     startTime: "09:00",
@@ -3124,190 +3167,194 @@ const CustomAvailabilityTimeSelector = ({
 
   return (
     <article
-      className={cn(
-        "py-3 flex items-start justify-between border-b border-gray-200",
-        !isOn && "opacity-50"
-      )}
+      className={cn("py-3 border-b border-gray-200", !isOn && "opacity-50")}
     >
-      <div className="inline-flex items-center gap-x-3 pt-2.5">
-        <Switch
-          checked={isOn}
-          onCheckedChange={(checked) => onToggle(checked, state)}
-          size="sm"
-          id={label}
-        />
+      <div className="flex items-start justify-between">
+        <div className="inline-flex items-center gap-x-3 pt-2.5">
+          <Switch
+            checked={isOn}
+            onCheckedChange={(checked) => onToggle(checked, state)}
+            size="sm"
+            id={label}
+          />
 
-        <Label size="sm" className="text-dark-blue-400" htmlFor={label}>
-          {label}
-        </Label>
-      </div>
+          <Label size="sm" className="text-dark-blue-400" htmlFor={label}>
+            {label}
+          </Label>
+        </div>
 
-      <div className="flex items-star gap-x-3">
-        <div className="flex flex-col gap-y-3">
-          {state.map((t, index) => (
-            <div className="inline-flex items-center gap-x-3" key={index}>
-              <div className="flex items-center">
-                <Select
-                  disabled={!isOn}
-                  value={t.startTime}
-                  onValueChange={(value) =>
-                    setState((prev) => {
-                      const nextState = prev
-                        .slice()
-                        .map((item, i) =>
-                          i === index ? { ...item, startTime: value } : item
-                        )
+        <div className="flex items-star gap-x-3">
+          <div className="flex flex-col gap-y-3">
+            {state.map((t, index) => (
+              <div className="inline-flex items-center gap-x-3" key={index}>
+                <div className="flex items-center">
+                  <Select
+                    disabled={!isOn}
+                    value={t.startTime}
+                    onValueChange={(value) =>
+                      setState((prev) => {
+                        const nextState = prev
+                          .slice()
+                          .map((item, i) =>
+                            i === index ? { ...item, startTime: value } : item
+                          )
 
-                      return nextState
-                    })
-                  }
-                >
-                  <SelectTrigger indicator={false} className="rounded-r-none">
-                    <SelectValue />
-                  </SelectTrigger>
-
-                  <SelectContent>
-                    <ScrollArea viewportClassName="max-h-[304px]">
-                      {TIMES.map((time, index) => (
-                        <SelectItem value={time} key={index}>
-                          {time}
-                        </SelectItem>
-                      ))}
-                    </ScrollArea>
-                  </SelectContent>
-                </Select>
-                <Select
-                  disabled={!isOn}
-                  value={t.startTimeDayPeriod}
-                  onValueChange={(value) =>
-                    setState((prev) => {
-                      const nextState = prev
-                        .slice()
-                        .map((item, i) =>
-                          i === index
-                            ? { ...item, startTimeDayPeriod: value }
-                            : item
-                        )
-
-                      return nextState
-                    })
-                  }
-                >
-                  <SelectTrigger
-                    indicator={false}
-                    className="rounded-l-none rounded-r-[5px] border-l-0"
+                        return nextState
+                      })
+                    }
                   >
-                    <SelectValue />
-                  </SelectTrigger>
+                    <SelectTrigger indicator={false} className="rounded-r-none">
+                      <SelectValue />
+                    </SelectTrigger>
 
-                  <SelectContent>
-                    <ScrollArea viewportClassName="max-h-[304px]">
-                      {DAY_PERIODS.map((dayPeriod, index) => (
-                        <SelectItem value={dayPeriod} key={index}>
-                          {dayPeriod}
-                        </SelectItem>
-                      ))}
-                    </ScrollArea>
-                  </SelectContent>
-                </Select>
-              </div>
-              <span className="text-base leading-8 font-semibold text-gray-400">
-                to
-              </span>
-              <div className="flex items-center">
-                <Select
-                  disabled={!isOn}
-                  value={t.endTime}
-                  onValueChange={(value) =>
-                    setState((prev) => {
-                      const nextState = prev
-                        .slice()
-                        .map((item, i) =>
-                          i === index ? { ...item, endTime: value } : item
-                        )
+                    <SelectContent>
+                      <ScrollArea viewportClassName="max-h-[304px]">
+                        {TIMES.map((time, index) => (
+                          <SelectItem value={time} key={index}>
+                            {time}
+                          </SelectItem>
+                        ))}
+                      </ScrollArea>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    disabled={!isOn}
+                    value={t.startTimeDayPeriod}
+                    onValueChange={(value) =>
+                      setState((prev) => {
+                        const nextState = prev
+                          .slice()
+                          .map((item, i) =>
+                            i === index
+                              ? { ...item, startTimeDayPeriod: value }
+                              : item
+                          )
 
-                      return nextState
-                    })
-                  }
-                >
-                  <SelectTrigger indicator={false} className="rounded-r-none">
-                    <SelectValue />
-                  </SelectTrigger>
-
-                  <SelectContent>
-                    <ScrollArea viewportClassName="max-h-[304px]">
-                      {TIMES.map((time, index) => (
-                        <SelectItem value={time} key={index}>
-                          {time}
-                        </SelectItem>
-                      ))}
-                    </ScrollArea>
-                  </SelectContent>
-                </Select>
-                <Select
-                  disabled={!isOn}
-                  value={t.endTimeDayPeriod}
-                  onValueChange={(value) =>
-                    setState((prev) => {
-                      const nextState = prev
-                        .slice()
-                        .map((item, i) =>
-                          i === index
-                            ? { ...item, endTimeDayPeriod: value }
-                            : item
-                        )
-
-                      return nextState
-                    })
-                  }
-                >
-                  <SelectTrigger
-                    indicator={false}
-                    className="rounded-l-none rounded-r-[5px] border-l-0"
+                        return nextState
+                      })
+                    }
                   >
-                    <SelectValue />
-                  </SelectTrigger>
+                    <SelectTrigger
+                      indicator={false}
+                      className="rounded-l-none rounded-r-[5px] border-l-0"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
 
-                  <SelectContent>
-                    <ScrollArea viewportClassName="max-h-[304px]">
-                      {DAY_PERIODS.map((dayPeriod, index) => (
-                        <SelectItem value={dayPeriod} key={index}>
-                          {dayPeriod}
-                        </SelectItem>
-                      ))}
-                    </ScrollArea>
-                  </SelectContent>
-                </Select>
+                    <SelectContent>
+                      <ScrollArea viewportClassName="max-h-[304px]">
+                        {DAY_PERIODS.map((dayPeriod, index) => (
+                          <SelectItem value={dayPeriod} key={index}>
+                            {dayPeriod}
+                          </SelectItem>
+                        ))}
+                      </ScrollArea>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <span className="text-base leading-8 font-semibold text-gray-400">
+                  to
+                </span>
+                <div className="flex items-center">
+                  <Select
+                    disabled={!isOn}
+                    value={t.endTime}
+                    onValueChange={(value) =>
+                      setState((prev) => {
+                        const nextState = prev
+                          .slice()
+                          .map((item, i) =>
+                            i === index ? { ...item, endTime: value } : item
+                          )
+
+                        return nextState
+                      })
+                    }
+                  >
+                    <SelectTrigger indicator={false} className="rounded-r-none">
+                      <SelectValue />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      <ScrollArea viewportClassName="max-h-[304px]">
+                        {TIMES.map((time, index) => (
+                          <SelectItem value={time} key={index}>
+                            {time}
+                          </SelectItem>
+                        ))}
+                      </ScrollArea>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    disabled={!isOn}
+                    value={t.endTimeDayPeriod}
+                    onValueChange={(value) =>
+                      setState((prev) => {
+                        const nextState = prev
+                          .slice()
+                          .map((item, i) =>
+                            i === index
+                              ? { ...item, endTimeDayPeriod: value }
+                              : item
+                          )
+
+                        return nextState
+                      })
+                    }
+                  >
+                    <SelectTrigger
+                      indicator={false}
+                      className="rounded-l-none rounded-r-[5px] border-l-0"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      <ScrollArea viewportClassName="max-h-[304px]">
+                        {DAY_PERIODS.map((dayPeriod, index) => (
+                          <SelectItem value={dayPeriod} key={index}>
+                            {dayPeriod}
+                          </SelectItem>
+                        ))}
+                      </ScrollArea>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {index > 0 ? (
+                  <IconButton
+                    className="rounded-full opacity-0 hover:opacity-100"
+                    visual="error"
+                    variant="ghost"
+                    size="md"
+                    type="button"
+                    onClick={() => remove(index)}
+                  >
+                    <Trash03 className="size-[15px]" />
+                  </IconButton>
+                ) : (
+                  <IconButton
+                    className="rounded-[5px] bg-white"
+                    variant="outlined"
+                    visual="gray"
+                    size="md"
+                    type="button"
+                    onClick={isOn ? add : noop}
+                    disabled={!isOn}
+                  >
+                    <Plus className="size-[15px]" />
+                  </IconButton>
+                )}
               </div>
-
-              {index > 0 ? (
-                <IconButton
-                  className="rounded-full opacity-0 hover:opacity-100"
-                  visual="error"
-                  variant="ghost"
-                  size="md"
-                  type="button"
-                  onClick={() => remove(index)}
-                >
-                  <Trash03 className="size-[15px]" />
-                </IconButton>
-              ) : (
-                <IconButton
-                  className="rounded-[5px] bg-white"
-                  variant="outlined"
-                  visual="gray"
-                  size="md"
-                  type="button"
-                  onClick={isOn ? add : noop}
-                  disabled={!isOn}
-                >
-                  <Plus className="size-[15px]" />
-                </IconButton>
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
+      {error ? (
+        <ErrorMessage size="sm" className="mt-2 pl-[46px]">
+          {error}
+        </ErrorMessage>
+      ) : null}
     </article>
   )
 }
@@ -3559,13 +3606,21 @@ const SetYourPreferences = ({
       getValues("customAvailability")?.filter((item) => item?.day !== day) || []
 
     data?.push({ day, times })
-    setValue("customAvailability", data)
+    setValue("customAvailability", data, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    })
   }
 
   const handleCustomAvailabityDisable = (day: string) => {
     const data =
       getValues("customAvailability")?.filter((item) => item?.day !== day) || []
-    setValue("customAvailability", data)
+    setValue("customAvailability", data, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    })
   }
 
   return (
@@ -3650,6 +3705,10 @@ const SetYourPreferences = ({
                         }>
                       | undefined
                     const isDayEnabled = !!dayValue?.length
+                    const dayOverlapError =
+                      isDayEnabled && hasOverlappingTimeSlots(dayValue)
+                        ? "Custom availability times cannot overlap."
+                        : undefined
 
                     return (
                       <CustomAvailabilityTimeSelector
@@ -3667,19 +3726,10 @@ const SetYourPreferences = ({
                             handleCustomAvailabityDisable(lable)
                           }
                         }}
+                        error={dayOverlapError}
                       />
                     )
                   })}
-
-                  <HookFormErrorMessage
-                    name="customAvailability"
-                    errors={errors}
-                    render={({ message }) => (
-                      <ErrorMessage size="sm" className="mt-2">
-                        {message}
-                      </ErrorMessage>
-                    )}
-                  />
                 </div>
               )}
             </div>
