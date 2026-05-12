@@ -10,8 +10,13 @@ import { DataSource } from 'typeorm';
  * Weekly background worker that enforces the 7-year IP address retention policy.
  *
  * Per LS-06 §7.7: IP addresses stored in ls_nda_signing_events must be purged
- * (set to NULL) after 7 years from the signing date. All other audit fields
- * remain intact — the signing record itself is never deleted.
+ * after 7 years from the signing date. All other audit fields remain intact —
+ * the signing record itself is never deleted.
+ *
+ * Implementation note: ipAddress is VARCHAR(45) NOT NULL in the migration.
+ * We use the sentinel value '[PURGED]' instead of NULL to satisfy the constraint
+ * while making the erasure semantically clear. This mirrors the DSAR
+ * pseudonymization path which uses '[PSEUDONYMIZED]' for the same reason.
  *
  * How it works:
  *  1. Runs once on startup to catch any missed executions.
@@ -47,9 +52,9 @@ export class DataRetentionWorker implements OnModuleInit, OnModuleDestroy {
     try {
       const result = await this.dataSource.query(
         `UPDATE ls_nda_signing_events
-         SET "ipAddress" = NULL
+         SET "ipAddress" = '[PURGED]'
          WHERE "signedAtUtc" < NOW() - INTERVAL '7 years'
-           AND "ipAddress" IS NOT NULL`,
+           AND "ipAddress" != '[PURGED]'`,
       );
       const rowsAffected = result[1] ?? 0;
 
@@ -58,7 +63,9 @@ export class DataRetentionWorker implements OnModuleInit, OnModuleDestroy {
           `IP purge: rowsAffected=${rowsAffected} — large batch, verify job cadence`,
         );
       } else if (rowsAffected > 0) {
-        this.logger.log(`IP purge completed: rowsAffected=${rowsAffected}`);
+        this.logger.log(
+          `IP purge completed: rowsAffected=${rowsAffected} (set to [PURGED])`,
+        );
       }
       // rowsAffected === 0 → nothing to purge, no log needed
     } catch (err: unknown) {

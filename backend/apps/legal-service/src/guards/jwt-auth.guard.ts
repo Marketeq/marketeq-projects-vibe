@@ -8,6 +8,14 @@ import { Reflector } from '@nestjs/core';
 import * as jwt from 'jsonwebtoken';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
+/**
+ * UUID v4 regex used to validate the x-user-id header.
+ * Prevents empty strings, arbitrary strings, or malformed values from
+ * being blindly trusted as authenticated user identities.
+ */
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
@@ -23,13 +31,24 @@ export class JwtAuthGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest();
 
-    const gwUserId = req.headers['x-user-id'];
+    // x-user-id bypass — set by the API gateway after verifying the user's JWT.
+    // SECURITY NOTE: This service MUST be deployed behind the API gateway only.
+    // Direct external access must be blocked at the network level (Render internal
+    // network / private service). The x-user-id header is never validated
+    // cryptographically here — we rely on network isolation to ensure only the
+    // trusted API gateway can set it.
+    // We validate UUID format as a minimal sanity check to prevent obviously
+    // malformed or empty values from producing corrupt database records.
+    const gwUserId = req.headers['x-user-id'] as string | undefined;
     if (gwUserId) {
+      if (!UUID_REGEX.test(gwUserId)) {
+        throw new UnauthorizedException('Invalid x-user-id format');
+      }
       req.user = {
         userId: gwUserId,
         sub: gwUserId,
-        email: req.headers['x-user-email'] || '',
-        role: req.headers['x-user-role'] || 'user',
+        email: (req.headers['x-user-email'] as string) || '',
+        role: (req.headers['x-user-role'] as string) || 'user',
       };
       return true;
     }
