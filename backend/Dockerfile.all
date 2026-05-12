@@ -11,18 +11,37 @@ RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
 # Use npm ci to strictly follow the lockfile during Render workspace builds.
 RUN npm ci --include=dev --legacy-peer-deps
 
-# Build time-tracking-service first so it gets a clean heap during Docker builds.
-RUN npx nest build time-tracking-service
-
-# Build remaining staging services in two batches to limit memory pressure.
+# Build ALL backend services. Split into batches to limit memory pressure.
+# Batch 1: gateway + core auth/user
 RUN npx nest build api-gateway \
  && npx nest build auth-service \
  && npx nest build user-service
+
+# Batch 2: listings, notifications, invitations, moderation
 RUN npx nest build listings-service \
  && npx nest build notification-service \
  && npx nest build invitations-service \
- && npx nest build content-moderation-service \
- && npx nest build contracts-service
+ && npx nest build content-moderation-service
+
+# Batch 3: messaging, contracts, checkout, transactions
+RUN npx nest build messaging-service \
+ && npx nest build contracts-service \
+ && npx nest build checkout-service \
+ && npx nest build transaction-service
+
+# Batch 4: search, algolia, autocomplete, suggestions, categories
+RUN npx nest build search-service \
+ && npx nest build algolia-service \
+ && npx nest build autocomplete-service \
+ && npx nest build suggestions-service \
+ && npx nest build category-service
+
+# Batch 5: portfolio, favorites, time-tracking, pricing, billing
+RUN npx nest build portfolio-service \
+ && npx nest build favorites-service \
+ && npx nest build time-tracking-service \
+ && npx nest build pricing-service \
+ && npx nest build billing-service
 
 # Prune devDependencies for smaller production image
 RUN npm prune --production --legacy-peer-deps

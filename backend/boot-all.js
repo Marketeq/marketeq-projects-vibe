@@ -29,20 +29,34 @@ const path = require('path');
 const GATEWAY_PORT = process.env.PORT || '10000';
 
 // Internal ports — only reachable inside the container
+// All backend services — ports must match proxy.service.ts defaults in the gateway.
 const SERVICES = [
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
   { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
+  { name: 'messaging-service',          port: '3005', dir: 'apps/messaging-service' },
   { name: 'notification-service',       port: '3006', dir: 'apps/notification-service' },
+  { name: 'search-service',             port: '3007', dir: 'apps/search-service' },
+  { name: 'algolia-service',            port: '3008', dir: 'apps/algolia-service' },
+  { name: 'checkout-service',           port: '3009', dir: 'apps/checkout-service' },
+  { name: 'contracts-service',          port: '3010', dir: 'apps/contracts-service' },
+  { name: 'favorites-service',          port: '3012', dir: 'apps/favorites-service' },
   { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service' },
   { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service' },
+  { name: 'portfolio-service',          port: '3015', dir: 'apps/portfolio-service' },
+  { name: 'autocomplete-service',       port: '3016', dir: 'apps/autocomplete-service' },
   { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service' },
-  { name: 'contracts-service',          port: '3010', dir: 'apps/contracts-service' },
+  { name: 'transaction-service',        port: '3018', dir: 'apps/transaction-service' },
+  { name: 'suggestions-service',        port: '3020', dir: 'apps/suggestions-service' },
+  { name: 'category-service',           port: '3023', dir: 'apps/category-service' },
+  { name: 'pricing-service',            port: '3024', dir: 'apps/pricing-service' },
+  { name: 'billing-service',            port: '3025', dir: 'apps/billing-service' },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway' };
 
-// Build internal service URLs for the gateway
+// Gateway env — every internal service URL must be listed here so the
+// proxy can reach them. Ports must match the SERVICES array above.
 const gatewayEnv = {
   ...process.env,
   PORT: GATEWAY_PORT,
@@ -50,11 +64,21 @@ const gatewayEnv = {
   AUTH_SERVICE_URL:             'http://localhost:3001',
   USER_SERVICE_URL:             'http://localhost:3002',
   LISTINGS_SERVICE_URL:         'http://localhost:3003',
+  MESSAGING_SERVICE_URL:        'http://localhost:3005',
   NOTIFICATION_SERVICE_URL:     'http://localhost:3006',
+  SEARCH_SERVICE_URL:           'http://localhost:3007',
+  ALGOLIA_SERVICE_URL:          'http://localhost:3008',
+  CHECKOUT_SERVICE_URL:         'http://localhost:3009',
+  CONTRACTS_SERVICE_URL:        'http://localhost:3010',
+  FAVORITES_SERVICE_URL:        'http://localhost:3012',
   INVITATIONS_SERVICE_URL:      'http://localhost:3013',
   MODERATION_SERVICE_URL:       'http://localhost:3014',
+  PORTFOLIO_SERVICE_URL:        'http://localhost:3015',
+  AUTOCOMPLETE_SERVICE_URL:     'http://localhost:3016',
   TIME_TRACKING_SERVICE_URL:    'http://localhost:3017',
-  CONTRACTS_SERVICE_URL:        'http://localhost:3010',
+  TRANSACTION_SERVICE_URL:      'http://localhost:3018',
+  SUGGESTIONS_SERVICE_URL:      'http://localhost:3020',
+  CATEGORY_SERVICE_URL:         'http://localhost:3023',
 };
 
 function buildInternalServiceEnv(port) {
