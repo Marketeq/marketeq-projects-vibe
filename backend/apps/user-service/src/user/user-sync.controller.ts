@@ -70,4 +70,26 @@ export class UserSyncController {
     this.validateInternalToken(token);
     return this.userService.dismissOnboarding(id);
   }
+
+  @ApiOperation({ summary: 'Sync user from CMS' })
+  @Post(':id/cms-sync')
+  syncFromCms(
+    @Headers('x-internal-token') token: string | undefined,
+    @Param('id') id: string,
+    @Body() dto: any, // Using any for flexibility or CmsSyncUserDto if imported
+  ) {
+    this.validateInternalToken(token);
+    const fs = require('fs');
+    const logPath = '/Users/manu042k/Documents/Marketeq/marketeq-projects-vibe/backend/apps/user-service/sync.log';
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] Received sync for user ${id}: ${JSON.stringify(dto)}\n`);
+    
+    // Map userType to role if needed, or just pass the data
+    const updateData: any = { ...dto };
+    if (dto.userType) {
+      updateData.role = dto.userType;
+      delete updateData.userType;
+    }
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] Final updateData: ${JSON.stringify(updateData)}\n`);
+    return this.userService.update(id, updateData);
+  }
 }

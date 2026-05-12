@@ -37,6 +37,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   'time-tracking': 'timeTracking', // time-tracking-service general endpoints
   sessions: 'timeTracking',      // time-tracking-service session endpoints
   metadata: 'timeTracking',      // time-tracking-service metadata/tooltips
+  public: 'users',               // public talent profiles live in user-service
 }
 
 @Controller()

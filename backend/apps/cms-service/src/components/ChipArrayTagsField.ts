@@ -7,6 +7,7 @@ import {
   FALLBACK_SKILL_OPTIONS,
   FALLBACK_TAG_OPTIONS,
   loadAutocompleteOptions,
+  submitAutocompleteEntry,
 } from "./autocompleteOptions";
 
 import "./ChipArrayTagsField.scss";
@@ -35,6 +36,9 @@ export type ChipArrayTagsFieldConfig = {
   suggestedOptions: readonly string[];
   suggestedHeading: string;
   fetchErrorLabel: string;
+  rowValueKey?: string;
+  submitType?: string;
+  submitSource?: string;
   /**
    * Payload v2 often omits `field.required` on custom `Field` overrides for arrays.
    * Set true when the collection marks the field `required: true` so the title shows *.
@@ -75,12 +79,37 @@ function normalizeValueRows(raw: unknown): ValueRow[] {
   return out;
 }
 
-function rowsToFormValue(
+function normalizeRowsWithKey(raw: unknown, rowValueKey: string): ValueRow[] {
+  if (rowValueKey === "value") return normalizeValueRows(raw);
+  let rowsRaw: unknown = raw;
+  if (!Array.isArray(rowsRaw) && rowsRaw && typeof rowsRaw === "object") {
+    const anyRaw = rowsRaw as any;
+    if (Array.isArray(anyRaw.rows)) rowsRaw = anyRaw.rows;
+    else if (Array.isArray(anyRaw.value)) rowsRaw = anyRaw.value;
+  }
+  if (!Array.isArray(rowsRaw)) return [];
+  const out: ValueRow[] = [];
+  for (const row of rowsRaw) {
+    if (!row || typeof row !== "object") continue;
+    const v = (row as Record<string, unknown>)[rowValueKey];
+    if (typeof v !== "string") continue;
+    const trimmed = v.trim();
+    if (!trimmed) continue;
+    const id = (row as { id?: string }).id;
+    out.push(id ? { id, value: trimmed } : { value: trimmed });
+  }
+  return out;
+}
+
+function rowsToFormValueWithKey(
   rows: ValueRow[],
-): Array<{ id?: string; value: string }> {
-  return rows.map((r) =>
-    r.id ? { id: r.id, value: r.value } : { value: r.value },
-  );
+  rowValueKey: string,
+): Array<Record<string, unknown>> {
+  return rows.map((r) => {
+    const base: Record<string, unknown> = { [rowValueKey]: r.value };
+    if (r.id) base.id = r.id;
+    return base;
+  });
 }
 
 export function createChipArrayTagsField(
@@ -91,6 +120,7 @@ export function createChipArrayTagsField(
     field,
     label,
   }) => {
+    const rowValueKey = config.rowValueKey ?? "value";
     const maxRows =
       typeof field?.maxRows === "number"
         ? field.maxRows
@@ -109,7 +139,10 @@ export function createChipArrayTagsField(
       errorMessage: validationErrorMessage,
     } = useField<unknown>({ path });
 
-    const rows = React.useMemo(() => normalizeValueRows(value), [value]);
+    const rows = React.useMemo(
+      () => normalizeRowsWithKey(value, rowValueKey),
+      [rowValueKey, value],
+    );
     const docInfo = useDocumentInfo();
 
     // If Payload admin form state fails to hydrate seeded array values (observed after refresh
@@ -135,9 +168,9 @@ export function createChipArrayTagsField(
           if (!res.ok) return;
           const doc = (await res.json()) as any;
           const nextVal = doc?.[path];
-          const parsed = normalizeValueRows(nextVal);
+          const parsed = normalizeRowsWithKey(nextVal, rowValueKey);
           if (!cancelled && parsed.length > 0) {
-            setValue(rowsToFormValue(parsed));
+            setValue(rowsToFormValueWithKey(parsed, rowValueKey));
           }
         } catch {
           // ignore (best-effort hydration)
@@ -147,7 +180,7 @@ export function createChipArrayTagsField(
       return () => {
         cancelled = true;
       };
-    }, [docInfo, path, rows.length, setValue]);
+    }, [docInfo, path, rowValueKey, rows.length, setValue]);
     const selectedLower = React.useMemo(
       () => new Set(rows.map((r) => r.value.toLowerCase())),
       [rows],
@@ -218,19 +251,28 @@ export function createChipArrayTagsField(
         if (!next) return;
         if (rows.length >= maxRows) return;
         if (selectedLower.has(next.toLowerCase())) return;
-        setValue(rowsToFormValue([...rows, { value: next }]));
+        setValue(rowsToFormValueWithKey([...rows, { value: next }], rowValueKey));
+        if (config.submitType) {
+          void submitAutocompleteEntry({
+            type: config.submitType,
+            value: next,
+            source: config.submitSource,
+          }).catch(() => {
+            // Best-effort signal to autocomplete-service; ignore failures in form UX.
+          });
+        }
         setDraft("");
         setOpen(false);
       },
-      [maxRows, rows, setValue, selectedLower],
+      [config.submitSource, config.submitType, maxRows, rowValueKey, rows, setValue, selectedLower],
     );
 
     const removeAt = React.useCallback(
       (index: number) => {
         const next = rows.filter((_, i) => i !== index);
-        setValue(rowsToFormValue(next));
+        setValue(rowsToFormValueWithKey(next, rowValueKey));
       },
-      [rows, setValue],
+      [rowValueKey, rows, setValue],
     );
 
     return React.createElement(
@@ -436,6 +478,36 @@ export const ProjectIndustriesChipField = createChipArrayTagsField({
   getHelperText: (maxRows) =>
     `Add up to ${String(maxRows)} industries that align with your project.`,
   defaultMaxRows: 5,
+  suggestedOptions: FALLBACK_INDUSTRY_OPTIONS,
+  suggestedHeading: "Suggested Industries",
+  fetchErrorLabel: "Failed to load industry suggestions",
+});
+
+export const TalentSkillsChipField = createChipArrayTagsField({
+  title: "Skills",
+  autocompleteType: "skills",
+  submitType: "skill",
+  submitSource: "cms-service:talent-profiles",
+  rowValueKey: "name",
+  placeholder: "Add Skill",
+  getHelperText: (maxRows) =>
+    `Add up to ${String(maxRows)} skills for this profile.`,
+  defaultMaxRows: 20,
+  suggestedOptions: FALLBACK_SKILL_OPTIONS,
+  suggestedHeading: "Suggested Skills",
+  fetchErrorLabel: "Failed to load skill suggestions",
+});
+
+export const TalentIndustriesChipField = createChipArrayTagsField({
+  title: "Industry Expertise",
+  autocompleteType: "industries",
+  submitType: "industry",
+  submitSource: "cms-service:talent-profiles",
+  rowValueKey: "name",
+  placeholder: "Add Industry",
+  getHelperText: (maxRows) =>
+    `Add up to ${String(maxRows)} industries for this profile.`,
+  defaultMaxRows: 15,
   suggestedOptions: FALLBACK_INDUSTRY_OPTIONS,
   suggestedHeading: "Suggested Industries",
   fetchErrorLabel: "Failed to load industry suggestions",

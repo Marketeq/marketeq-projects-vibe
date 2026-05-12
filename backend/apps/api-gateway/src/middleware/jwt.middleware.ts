@@ -50,6 +50,7 @@ const PUBLIC_PATTERNS = [
   /^\/v1\/projects(?:\/.*)?$/,
   /^\/v1\/services(?:\/.*)?$/,
   /^\/v1\/homepage(?:\/.*)?$/,
+  /^\/public\/talent(?:\/.*)?$/,
   /^\/v1\/users\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
 ]
 

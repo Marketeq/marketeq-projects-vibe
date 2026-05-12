@@ -19,6 +19,7 @@ import {
   TimeZoneResolution,
   TimezoneResolutionService,
 } from "./timezone-resolution.service";
+import { UserEventPublisher } from "./user-event.publisher";
 
 @Injectable()
 export class UserService {
@@ -28,6 +29,7 @@ export class UserService {
     @InjectRepository(Skill)
     private readonly skillRepository: Repository<Skill>,
     private readonly timezoneResolutionService: TimezoneResolutionService,
+    private readonly eventPublisher: UserEventPublisher,
   ) {}
 
   async createUser(dto: CreateUserDto): Promise<User> {
@@ -182,7 +184,13 @@ export class UserService {
   async updateUser(id: string, dto: UpdateUserDto): Promise<User> {
     const user = await this.getUserById(id);
     Object.assign(user, dto);
-    return this.userRepository.save(user);
+    const saved = await this.userRepository.save(user);
+    
+    // Publish sync event for CMS (asynchronous, don't await if you want max performance,
+    // but here we await to ensure consistency in logs)
+    await this.eventPublisher.publishProfileUpdated(saved);
+    
+    return saved;
   }
 
   async updateAvailability(
@@ -241,10 +249,9 @@ export class UserService {
     return this.userRepository.save(user);
   }
 
-  async updateRate(id: string, dto: { rateMin?: number; rateMax?: number }) {
+  async updateRate(id: string, dto: { rate?: number }) {
     return this.updateUser(id, {
-      rateMin: dto.rateMin,
-      rateMax: dto.rateMax,
+      rate: dto.rate,
     });
   }
 
