@@ -109,12 +109,7 @@ export default function InboxRoot() {
   const initialParticipantId = searchParams?.get("participantId") ?? null
 
   const [selectedConversation, setSelectedConversation] =
-    useState<Conversation | null>(() => {
-      try {
-        const cached = sessionStorage.getItem("inbox_selected_conversation")
-        return cached ? JSON.parse(cached) : null
-      } catch { return null }
-    })
+    useState<Conversation | null>(null)
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(
@@ -124,22 +119,40 @@ export default function InboxRoot() {
     Record<string, Message[]>
   >({})
 
-  // Persist selected conversation so back-navigation restores it
-  useEffect(() => {
-    try {
-      if (selectedConversation) {
-        sessionStorage.setItem("inbox_selected_conversation", JSON.stringify(selectedConversation))
-      } else {
-        sessionStorage.removeItem("inbox_selected_conversation")
-      }
-    } catch {}
-  }, [selectedConversation])
-
   const [token, setToken] = useState("")
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
   useEffect(() => {
     setToken(getAccessToken() || "")
   }, [])
+
+  const selectedConversationCacheKey = currentUserProfile?.id
+    ? `inbox_selected_conversation_${currentUserProfile.id}`
+    : ""
+
+  // Hydrate selected conversation AFTER mount — keyed by current user so
+  // a stale snapshot from a different login can't fire chat effects with
+  // the wrong jwt/profile.
+  useEffect(() => {
+    if (!selectedConversationCacheKey) return
+    try {
+      const cached = sessionStorage.getItem(selectedConversationCacheKey)
+      if (cached) setSelectedConversation(JSON.parse(cached))
+    } catch {}
+  }, [selectedConversationCacheKey])
+
+  useEffect(() => {
+    if (!selectedConversationCacheKey) return
+    try {
+      if (selectedConversation) {
+        sessionStorage.setItem(
+          selectedConversationCacheKey,
+          JSON.stringify(selectedConversation)
+        )
+      } else {
+        sessionStorage.removeItem(selectedConversationCacheKey)
+      }
+    } catch {}
+  }, [selectedConversation, selectedConversationCacheKey])
 
   useEffect(() => {
     ;(async () => {

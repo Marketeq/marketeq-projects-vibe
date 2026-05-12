@@ -8,8 +8,22 @@ export class MessagesController {
   constructor(private readonly service: MessagesService) {}
 
   @Get('thread/:threadId')
-  getThreadMessages(@Param('threadId') threadId: string, @Req() req: any) {
-    return this.service.getThreadMessages(threadId, req.user?.id);
+  getThreadMessages(
+    @Param('threadId') threadId: string,
+    @Req() req: any,
+    @Query('limit') limit?: string,
+    @Query('before') before?: string,
+    @Query('all') all?: string,
+  ) {
+    const parsedLimit = limit ? Number(limit) : undefined;
+    return this.service.getThreadMessages(threadId, req.user?.id, {
+      limit:
+        parsedLimit && Number.isFinite(parsedLimit)
+          ? Math.min(Math.max(parsedLimit, 1), 100)
+          : 50,
+      before: before || undefined,
+      all: all === 'true',
+    });
   }
 
   @Post()

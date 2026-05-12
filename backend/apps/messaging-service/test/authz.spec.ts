@@ -13,6 +13,7 @@ import { ThreadListAssignment } from '../src/threads/entities/thread-list-assign
 import { ConversationKey } from '../src/encryption/entities/conversation-key.entity';
 import { AblyService } from '../src/ably/ably.service';
 import { R2Service } from '../src/storage/r2.service';
+import { BlockEnforcementService } from '../src/blocks/block-enforcement.service';
 
 const USER_A = 'user-a';
 const USER_B = 'user-b';
@@ -72,6 +73,7 @@ describe('MessagesService authz (PR-B1)', () => {
         { provide: AblyService, useValue: { publishMessageNew: jest.fn(), publishMessageEdit: jest.fn(), publishMessageDelete: jest.fn(), publishMessageRestore: jest.fn(), publishMessageRead: jest.fn() } },
         { provide: R2Service, useValue: { uploadMessageAttachment: jest.fn() } },
         { provide: DataSource, useValue: { transaction: jest.fn() } },
+        { provide: BlockEnforcementService, useValue: { assertCanSend: jest.fn().mockResolvedValue({ shadow: false }), filterMessagesForBlocks: jest.fn().mockImplementation((_uid: string, _t: any, msgs: any[]) => msgs), filterThreadsForBlocks: jest.fn().mockImplementation((_uid: string, threads: any[]) => threads) } },
       ],
     }).compile();
 
@@ -97,8 +99,8 @@ describe('MessagesService authz (PR-B1)', () => {
     it('returns messages for a participant', async () => {
       threadRepo.findOne.mockResolvedValue(makeThread([USER_A, USER_B]));
       messageRepo.find.mockResolvedValue([makeMessage()]);
-      const result = await service.getThreadMessages(THREAD_ID, USER_A);
-      expect(result).toHaveLength(1);
+      const result = await service.getThreadMessages(THREAD_ID, USER_A, { all: true });
+      expect(result.messages).toHaveLength(1);
     });
   });
 
@@ -198,6 +200,7 @@ describe('ThreadsService authz (PR-B1)', () => {
         { provide: getRepositoryToken(ThreadList), useValue: {} },
         { provide: getRepositoryToken(ThreadListAssignment), useValue: {} },
         { provide: AblyService, useValue: {} },
+        { provide: BlockEnforcementService, useValue: { assertCanCreate: jest.fn(), filterThreadsForBlocks: jest.fn().mockImplementation((_uid: string, threads: any[]) => threads) } },
       ],
     }).compile();
 

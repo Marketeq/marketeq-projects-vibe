@@ -18,6 +18,7 @@ import { getAccessToken } from "@/utils/auth"
 import { useToast } from "@/components/ui/toast/use-toast"
 import type { Conversation } from "@/types/conversation"
 import type { Message } from "@/types/message"
+import { UNDECRYPTABLE_PLACEHOLDER } from "../constants"
 
 interface UserLike {
   id?: string
@@ -290,7 +291,7 @@ export function ForwardMessageDialog({
           throw new Error("Encryption key unavailable for source message.")
         }
         originalText = await decryptAES(message.ciphertext, sourceKey)
-      } else if (originalText.trim() === "🔒 Encrypted message") {
+      } else if (originalText.trim() === UNDECRYPTABLE_PLACEHOLDER) {
         throw new Error("Source message is encrypted and unavailable for forwarding.")
       }
 

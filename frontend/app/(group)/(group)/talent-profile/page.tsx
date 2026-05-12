@@ -65,6 +65,7 @@ import {
 } from "@/components/edit-profile-modals"
 import { LikeDislike } from "@/components/like-dislike"
 import { HireMeButton } from "@/components/hire-me-button"
+import { SaveTalentButton } from "@/components/save-talent-button"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
@@ -134,72 +135,6 @@ import {
   tabsListVariants,
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
-
-const SaveButton = () => {
-  const [isOpen, toggleIsOpen] = useToggle(false)
-  const [value, setValue] = React.useState("")
-
-  return (
-    <div className="flex items-center">
-      <Toggle
-        className={buttonVariants({
-          className:
-            "group border-r-0 xs:max-lg:gap-x-[5.1px] xs:max-lg:leading-[12.75px] xs:max-lg:text-[8.93px] xs:max-lg:h-[25.75px] rounded-r-none",
-          variant: "outlined",
-          visual: "gray",
-          size: "md",
-        })}
-      >
-        <Star className="size-[12.75px] lg:size-5 text-gray-300 transition duration-300 group-hover:text-gray-500 group-hover:group-data-[state=on]:text-primary-500 group-data-[state=on]:text-primary-500  group-data-[state=on]:fill-primary-500" />
-        <span className="group-data-[state=off]:inline-block hidden">Save</span>
-        <span className="hidden group-data-[state=on]:inline-block">Saved</span>
-      </Toggle>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <IconButton
-            className="group rounded-l-none xs:max-lg:size-[25.5px] text-gray-500"
-            variant="outlined"
-            visual="gray"
-            size="md"
-          >
-            <ChevronDown className="duration transition group-data-[state=open]:-rotate-180 size-[12.75px] lg:size-5" />
-          </IconButton>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" side="bottom">
-          <DropdownMenuRadioGroup value={value} onValueChange={setValue}>
-            <DropdownMenuRadioTrigger value="Digital Marketing">
-              Digital Marketing
-            </DropdownMenuRadioTrigger>
-            <DropdownMenuRadioTrigger value="Customer Service">
-              Customer Service
-            </DropdownMenuRadioTrigger>
-            <DropdownMenuRadioTrigger value="Email Marketing">
-              Email Marketing
-            </DropdownMenuRadioTrigger>
-          </DropdownMenuRadioGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => toggleIsOpen()}
-            className="text-primary-500"
-          >
-            <Plus className="size-4" /> Create New List
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
-        <DialogContent>
-          <DialogTitle className="sr-only">Save to List</DialogTitle>
-          <form className="flex items-center gap-x-3">
-            <Input placeholder="Enter List Name" className="flex-auto" />
-            <Button size="lg">Save</Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
-}
 
 const variants: Variants = {
   expanded: {
@@ -914,7 +849,7 @@ function Default() {
                       <>
                         <HireMeButton profile={profile} />
 
-                        <SaveButton />
+                        <SaveTalentButton userId={profile?.id} />
                       </>
                     )}
 
@@ -1155,7 +1090,7 @@ function Default() {
                       <>
                         <HireMeButton profile={profile} />
 
-                        <SaveButton />
+                        <SaveTalentButton userId={profile?.id} />
                       </>
                     )}
 

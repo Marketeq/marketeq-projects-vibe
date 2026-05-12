@@ -40,6 +40,7 @@ export function BlockReportDialog({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [reportSuccess, setReportSuccess] = useState(false)
+  const [alreadyReported, setAlreadyReported] = useState(false)
 
   useEffect(() => {
     if (!open) {
@@ -48,6 +49,7 @@ export function BlockReportDialog({
       setSubmitting(false)
       setError(null)
       setReportSuccess(false)
+      setAlreadyReported(false)
     }
   }, [open])
 
@@ -85,11 +87,12 @@ export function BlockReportDialog({
     setSubmitting(true)
     setError(null)
     try {
-      await reportUser(targetUserId, {
+      const result = await reportUser(targetUserId, {
         reason: trimmed,
         contextThreadId: contextThreadId ?? undefined,
       })
       onReported?.()
+      setAlreadyReported(!!result.wasAlreadyReported)
       setReportSuccess(true)
       setSubmitting(false)
     } catch (err) {
@@ -196,10 +199,13 @@ export function BlockReportDialog({
 
         {view === "report" && reportSuccess && (
           <>
-            <DialogTitle>Report submitted</DialogTitle>
+            <DialogTitle>
+              {alreadyReported ? "Already reported" : "Report submitted"}
+            </DialogTitle>
             <DialogDescription className="mt-2">
-              Thanks for flagging this. Our moderation team will review it
-              shortly.
+              {alreadyReported
+                ? "You've already reported this. Our moderation team is reviewing it."
+                : "Thanks for flagging this. Our moderation team will review it shortly."}
             </DialogDescription>
             <div className="mt-7 flex justify-end">
               <DialogClose asChild>

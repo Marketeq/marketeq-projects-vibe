@@ -35,6 +35,7 @@ import { BlocksModule } from './blocks/blocks.module';
       migrationsRun: true,
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      extra: { options: '-c timezone=UTC' },
     }),
     TypeOrmModule.forFeature([Thread, ThreadUserState, ThreadList, ThreadListAssignment, Message, Attachment, ConversationKey]),
     EncryptionModule,

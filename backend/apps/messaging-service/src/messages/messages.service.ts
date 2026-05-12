@@ -20,14 +20,80 @@ export class MessagesService {
     private readonly blockEnforcement: BlockEnforcementService,
   ) {}
 
-  async getThreadMessages(threadId: string, userId: string) {
+  async getThreadMessages(
+    threadId: string,
+    userId: string,
+    opts: { limit?: number; before?: string; all?: boolean } = {},
+  ) {
     const thread = await this.assertParticipant(threadId, userId);
-    const messages = await this.messageRepo.find({
-      where: { threadId, deleted: false },
-      relations: ['attachments'],
-      order: { createdAt: 'ASC' },
-    });
-    return this.blockEnforcement.filterMessagesForBlocks(userId, thread, messages);
+
+    if (opts.all) {
+      const allRows = await this.messageRepo.find({
+        where: { threadId, deleted: false },
+        relations: ['attachments'],
+        order: { createdAt: 'ASC' },
+      });
+      const filteredAll = await this.blockEnforcement.filterMessagesForBlocks(
+        userId,
+        thread,
+        allRows,
+      );
+      return { messages: filteredAll, hasMore: false, nextCursor: null };
+    }
+
+    const limit = opts.limit ?? 50;
+
+    let beforeCreatedAt: Date | undefined;
+    if (opts.before) {
+      const cursorRow = await this.messageRepo.findOne({
+        where: { id: opts.before, threadId },
+      });
+      if (cursorRow) beforeCreatedAt = cursorRow.createdAt;
+    }
+
+    const idQb = this.messageRepo
+      .createQueryBuilder('m')
+      .select('m.id', 'id')
+      .addSelect('m."createdAt"', 'createdAt')
+      .where('m."threadId" = :threadId', { threadId })
+      .andWhere('m.deleted = false');
+
+    if (beforeCreatedAt) {
+      idQb.andWhere(
+        '(m."createdAt", m.id) < (:beforeCreatedAt, :beforeId)',
+        { beforeCreatedAt, beforeId: opts.before },
+      );
+    }
+
+    const idRows = await idQb
+      .orderBy('m."createdAt"', 'DESC')
+      .addOrderBy('m.id', 'DESC')
+      .limit(limit + 1)
+      .getRawMany<{ id: string; createdAt: Date }>();
+
+    const rows =
+      idRows.length === 0
+        ? []
+        : await this.messageRepo
+            .createQueryBuilder('m')
+            .leftJoinAndSelect('m.attachments', 'a')
+            .where('m.id IN (:...ids)', { ids: idRows.map((r) => r.id) })
+            .orderBy('m."createdAt"', 'DESC')
+            .addOrderBy('m.id', 'DESC')
+            .getMany();
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? page[page.length - 1].id : null;
+
+    const ascending = page.slice().reverse();
+    const filtered = await this.blockEnforcement.filterMessagesForBlocks(
+      userId,
+      thread,
+      ascending,
+    );
+
+    return { messages: filtered, hasMore, nextCursor };
   }
 
   private async assertParticipant(threadId: string, userId: string): Promise<Thread> {
@@ -140,7 +206,7 @@ export class MessagesService {
     if (!message) throw new NotFoundException('Message not found');
     if (message.senderId !== userId) throw new ForbiddenException('Cannot delete others messages');
 
-    await this.messageRepo.update(id, { deleted: true });
+    await this.messageRepo.update(id, { deleted: true, reactions: [] });
     await this.ablyService.publishMessageDelete(message.threadId, id);
   }
 
