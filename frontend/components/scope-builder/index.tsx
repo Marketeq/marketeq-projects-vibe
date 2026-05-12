@@ -1368,9 +1368,9 @@ const columns = [
   }),
   columnHelper.accessor("duration", {
     cell: ({ getValue, table, row: { index } }) => (
-      <TableCell className="py-4 px-6 max-w-[120px]">
+      <TableCell className="py-4 px-3 text-right">
         <button
-          className="focus-visible:outline-none truncate"
+          className="focus-visible:outline-none truncate text-sm"
           type="button"
           onClick={() => table.options.meta?.openDurationDialog(index)}
         >
@@ -1456,6 +1456,13 @@ const PhaseTable = ({
       sensors={sensors}
     >
       <Table className="table-fixed w-full">
+        <colgroup>
+          <col className="w-[28%]" />
+          <col className="w-[24%]" />
+          <col className="w-[20%]" />
+          <col className="w-[18%]" />
+          <col className="w-[10%]" />
+        </colgroup>
         <TableHeader className="bg-gray-50">
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow className="hover:bg-transparent" key={headerGroup.id}>
