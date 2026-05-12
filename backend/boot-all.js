@@ -36,6 +36,7 @@ const SERVICES = [
   { name: 'notification-service',       port: '3006', dir: 'apps/notification-service' },
   { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service' },
   { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service' },
+  { name: 'legal-service',              port: '3015', dir: 'apps/legal-service' },
   { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service' },
 ];
 
@@ -52,6 +53,7 @@ const gatewayEnv = {
   NOTIFICATION_SERVICE_URL:     'http://localhost:3006',
   INVITATIONS_SERVICE_URL:      'http://localhost:3013',
   MODERATION_SERVICE_URL:       'http://localhost:3014',
+  LEGAL_SERVICE_URL:            'http://localhost:3015',
   TIME_TRACKING_SERVICE_URL:    'http://localhost:3017',
 };
 
