@@ -1288,7 +1288,7 @@ const columnHelper = createColumnHelper<PhaseRow>()
 const columns = [
   columnHelper.accessor("task", {
     cell: ({ getValue, row: { id } }) => (
-      <TableCell className="py-4 px-6 max-w-[220px]">
+      <TableCell className="py-4 px-6 overflow-hidden">
         <span className="inline-flex items-center gap-x-1.5 max-w-full">
           <RowDragHandleCell rowId={id} />
           <span className="text-sm font-semibold text-gray-900 truncate">
@@ -1455,7 +1455,7 @@ const PhaseTable = ({
       onDragEnd={handleDragEnd}
       sensors={sensors}
     >
-      <Table>
+      <Table className="table-fixed">
         <TableHeader className="bg-gray-50">
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow className="hover:bg-transparent" key={headerGroup.id}>
