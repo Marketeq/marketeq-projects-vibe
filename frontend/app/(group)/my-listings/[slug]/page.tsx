@@ -632,6 +632,15 @@ const renderProjectStaticIcon = (
   }
 }
 
+// Seed team data used until real team data comes from the API
+const SEED_TEAM_MEMBERS = [
+  { id: "seed-1", firstName: "Chris", username: "uxdesignma", avatarUrl: "/man.jpg", role: "Product Manager", jobTitles: ["Product Manager", "Full Stack Designer"], hourlyRate: 95, workSchedule: "full_time", customHoursPerWeek: null, location: "United States", experience: "Senior" },
+  { id: "seed-2", firstName: "Sarah", username: "sarahdev", avatarUrl: "/woman.jpg", role: "Frontend Developer", jobTitles: ["Frontend Developer", "UI/UX Designer"], hourlyRate: 85, workSchedule: "full_time", customHoursPerWeek: null, location: "United Kingdom", experience: "Medior" },
+  { id: "seed-3", firstName: "Laura", username: "lauraops", avatarUrl: "/woman.jpg", role: "DevOps Engineer", jobTitles: ["DevOps Engineer", "Cloud Engineer"], hourlyRate: 110, workSchedule: "full_time", customHoursPerWeek: null, location: "Germany", experience: "Senior" },
+  { id: "seed-4", firstName: "Tina", username: "tinaqa", avatarUrl: "/woman.jpg", role: "QA Engineer", jobTitles: ["QA Engineer"], hourlyRate: 70, workSchedule: "part_time", customHoursPerWeek: null, location: "India", experience: "Junior" },
+  { id: "seed-5", firstName: "Shelly", username: "shellyux", avatarUrl: "/woman.jpg", role: "UI/UX Designer", jobTitles: ["UI/UX Designer", "Product Designer"], hourlyRate: 90, workSchedule: "full_time", customHoursPerWeek: null, location: "Canada", experience: "Medior" },
+]
+
 export default function ProjectDetails() {
   const params = useParams()
   const router = useRouter()
@@ -1465,14 +1474,7 @@ export default function ProjectDetails() {
             scope: (() => {
               // Build team member lookup for rehydrating assignedMember
               const teamList = d.team ?? []
-              const seedTeam = [
-                { id: "seed-1", firstName: "Chris", username: "uxdesignma", avatarUrl: "/man.jpg", role: "Product Manager", jobTitles: ["Product Manager", "Full Stack Designer"], hourlyRate: 95, workSchedule: "full_time", customHoursPerWeek: null, location: "United States", experience: "Senior" },
-                { id: "seed-2", firstName: "Sarah", username: "sarahdev", avatarUrl: "/woman.jpg", role: "Frontend Developer", jobTitles: ["Frontend Developer", "UI/UX Designer"], hourlyRate: 85, workSchedule: "full_time", customHoursPerWeek: null, location: "United Kingdom", experience: "Medior" },
-                { id: "seed-3", firstName: "Laura", username: "lauraops", avatarUrl: "/woman.jpg", role: "DevOps Engineer", jobTitles: ["DevOps Engineer", "Cloud Engineer"], hourlyRate: 110, workSchedule: "full_time", customHoursPerWeek: null, location: "Germany", experience: "Senior" },
-                { id: "seed-4", firstName: "Tina", username: "tinaqa", avatarUrl: "/woman.jpg", role: "QA Engineer", jobTitles: ["QA Engineer"], hourlyRate: 70, workSchedule: "part_time", customHoursPerWeek: null, location: "India", experience: "Junior" },
-                { id: "seed-5", firstName: "Shelly", username: "shellyux", avatarUrl: "/woman.jpg", role: "UI/UX Designer", jobTitles: ["UI/UX Designer", "Product Designer"], hourlyRate: 90, workSchedule: "full_time", customHoursPerWeek: null, location: "Canada", experience: "Medior" },
-              ]
-              const allTeam = teamList.length > 0 ? teamList : seedTeam
+              const allTeam = teamList.length > 0 ? teamList : SEED_TEAM_MEMBERS
               const teamById = new Map<string, any>()
               for (const m of allTeam) {
                 const id = m.id || m.userId
@@ -6236,15 +6238,7 @@ export default function ProjectDetails() {
                       location: m.location ?? m.country ?? null,
                       experience: m.experience ?? m.experienceLevel ?? null,
                     }))
-                    if (apiTeam.length > 0) return apiTeam
-                    // Seed data matching edit-listing Team tab until API returns real members
-                    return [
-                      { id: "seed-1", firstName: "Chris", username: "uxdesignma", avatarUrl: "/man.jpg", role: "Product Manager", jobTitles: ["Product Manager", "Full Stack Designer"], hourlyRate: 95, workSchedule: "full_time", customHoursPerWeek: null, location: "United States", experience: "Senior" },
-                      { id: "seed-2", firstName: "Sarah", username: "sarahdev", avatarUrl: "/woman.jpg", role: "Frontend Developer", jobTitles: ["Frontend Developer", "UI/UX Designer"], hourlyRate: 85, workSchedule: "full_time", customHoursPerWeek: null, location: "United Kingdom", experience: "Medior" },
-                      { id: "seed-3", firstName: "Laura", username: "lauraops", avatarUrl: "/woman.jpg", role: "DevOps Engineer", jobTitles: ["DevOps Engineer", "Cloud Engineer"], hourlyRate: 110, workSchedule: "full_time", customHoursPerWeek: null, location: "Germany", experience: "Senior" },
-                      { id: "seed-4", firstName: "Tina", username: "tinaqa", avatarUrl: "/woman.jpg", role: "QA Engineer", jobTitles: ["QA Engineer"], hourlyRate: 70, workSchedule: "part_time", customHoursPerWeek: null, location: "India", experience: "Junior" },
-                      { id: "seed-5", firstName: "Shelly", username: "shellyux", avatarUrl: "/woman.jpg", role: "UI/UX Designer", jobTitles: ["UI/UX Designer", "Product Designer"], hourlyRate: 90, workSchedule: "full_time", customHoursPerWeek: null, location: "Canada", experience: "Medior" },
-                    ]
+                    return apiTeam.length > 0 ? apiTeam : SEED_TEAM_MEMBERS
                   })()}
                 />
               </div>
