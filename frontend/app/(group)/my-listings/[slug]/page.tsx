@@ -12,6 +12,7 @@ import {
 import {
   AutocompleteAPI,
   type AutocompleteCategorySuggestion,
+  type AutocompleteTypeSuggestion,
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
@@ -881,6 +882,7 @@ export default function ProjectDetails() {
   const [teamDialogOpen, setTeamDialogOpen] = React.useState(false)
   const [questionsDialogOpen, setQuestionsDialogOpen] = React.useState(false)
   const [questionsTab, setQuestionsTab] = React.useState("FAQs")
+  const [questionsSectionTab, setQuestionsSectionTab] = React.useState("FAQs")
   const [recentQTab, setRecentQTab] = React.useState("all")
   const [openFaqIndex, setOpenFaqIndex] = React.useState<number | null>(null)
   const [teamTab, setTeamTab] = React.useState("Team Lead")
@@ -891,6 +893,48 @@ export default function ProjectDetails() {
   const [detailsTags, setDetailsTags] = React.useState<string[]>([])
   const [detailsSkills, setDetailsSkills] = React.useState<string[]>([])
   const [detailsTools, setDetailsTools] = React.useState<string[]>([])
+
+  // Autocomplete options for details fields
+  const [langOptions, setLangOptions] = React.useState<string[]>(["JavaScript", "TypeScript", "Python", "Java", "C#", "Go", "Ruby", "PHP", "Swift", "Kotlin"])
+  const [techOptions, setTechOptions] = React.useState<string[]>(["React", "Next.js", "Node.js", "Vue.js", "Angular", "Django", "Express", "PostgreSQL", "MongoDB", "Docker"])
+  const [industryOptions, setIndustryOptions] = React.useState<string[]>(["Technology", "Healthcare", "Finance", "Education", "Retail", "Manufacturing", "Media", "Real Estate", "Energy", "Transportation"])
+  const [tagOptions, setTagOptions] = React.useState<string[]>(["Web App", "Mobile App", "AI", "SaaS", "API", "Dashboard", "Marketplace", "CRM", "E-commerce", "Automation"])
+  const [skillOptions, setSkillOptions] = React.useState<string[]>(["Node.js", "JavaScript", "Wireframing", "TypeScript", "React", "Figma", "Python", "UI Design", "Data Analysis", "API Integration"])
+  const [toolOptions, setToolOptions] = React.useState<string[]>(["Figma", "VS Code", "GitHub", "Jira", "Slack", "Docker", "AWS", "Postman", "Notion", "Linear"])
+  const typeDebounceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const typeRequestRef = React.useRef(0)
+
+  const fetchTypeAutocomplete = React.useCallback(
+    (type: string, query: string, onSuccess: (options: string[]) => void) => {
+      const trimmedQuery = query.trim()
+      if (!trimmedQuery) return
+      if (typeDebounceTimerRef.current) {
+        clearTimeout(typeDebounceTimerRef.current)
+      }
+      typeDebounceTimerRef.current = setTimeout(async () => {
+        const currentRequestId = ++typeRequestRef.current
+        try {
+          const response = await AutocompleteAPI.getByType(type, trimmedQuery)
+          if (currentRequestId !== typeRequestRef.current) return
+          const values: AutocompleteTypeSuggestion[] = Array.isArray(response?.data) ? response.data : []
+          const normalizedOptions = Array.from(new Set(
+            values.map((item) => {
+              if ("value" in item && typeof item.value === "string") return item.value
+              if ("label" in item && typeof item.label === "string") return item.label
+              return ""
+            }).filter((v) => v.length)
+          ))
+          if (normalizedOptions.length > 0) {
+            onSuccess(normalizedOptions)
+          }
+        } catch {
+          // Keep fallback options
+        }
+      }, 250)
+    },
+    []
+  )
+
   const categoryRequestRef = React.useRef(0)
   const categoryDebounceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -1201,6 +1245,16 @@ export default function ProjectDetails() {
             })),
           }))
           await ProjectAPI.ReplaceProjectScope(project.id, scopePayload)
+          // Re-fetch to get updated deliverables from backend
+          try {
+            const res = await ProjectAPI.GetProjectDraft(project.id)
+            const d = res?.data
+            if (d?.deliverables) {
+              setProject((prev: any) => ({ ...prev, deliverables: d.deliverables }))
+            }
+          } catch {
+            // Non-critical — deliverables will update on next page load
+          }
         } catch (err) {
           console.error("Failed to autosave scope:", err)
         }
@@ -1217,6 +1271,43 @@ export default function ProjectDetails() {
   }, [])
 
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
+  const [sectionTab, setSectionTab] = React.useState("Description")
+  const isScrollingToSection = React.useRef(false)
+
+  const scrollToSection = React.useCallback((sectionId: string) => {
+    const el = document.getElementById(`section-${sectionId}`)
+    if (!el) return
+    isScrollingToSection.current = true
+    setSectionTab(sectionId)
+    const offset = 80 // sticky header height
+    const top = el.getBoundingClientRect().top + window.scrollY - offset
+    window.scrollTo({ top, behavior: "smooth" })
+    setTimeout(() => { isScrollingToSection.current = false }, 800)
+  }, [])
+
+  // Track active section on scroll via IntersectionObserver
+  React.useEffect(() => {
+    const sectionIds = ["Description", "Deliverables", "Project Details", "How it Works", "Questions"]
+    const elements = sectionIds.map((id) => document.getElementById(`section-${id}`)).filter(Boolean) as HTMLElement[]
+    if (!elements.length) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (isScrollingToSection.current) return
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const id = entry.target.id.replace("section-", "")
+            setSectionTab(id)
+            break
+          }
+        }
+      },
+      { rootMargin: "-100px 0px -60% 0px", threshold: 0 }
+    )
+    elements.forEach((el) => observer.observe(el))
+    return () => observer.disconnect()
+  }, [loading])
+
   const [isFavorited, setIsFavorited] = React.useState(false)
 
   // Check if this item is already favorited (ensure dev auth first)
@@ -2264,21 +2355,24 @@ export default function ProjectDetails() {
                             </h3>
                           </div>
                         </div>
-                        <TabsList className="w-full justify-start flex-auto group-data-[position=sticky]/tabs:px-0">
-                          <TabsTrigger value="Description">
-                            Description
-                          </TabsTrigger>
-                          <TabsTrigger value="Deliverables">
-                            Deliverables
-                          </TabsTrigger>
-                          <TabsTrigger value="Project Details">
-                            Project Details
-                          </TabsTrigger>
-                          <TabsTrigger value="How it Works">
-                            How it Works
-                          </TabsTrigger>
-                          <TabsTrigger value="Questions">Questions</TabsTrigger>
-                        </TabsList>
+                        <div className="inline-flex items-end overflow-x-auto scrollbar-none justify-start gap-4 border-b border-b-gray-200 w-full group-data-[position=sticky]/tabs:px-0">
+                          {["Description", "Deliverables", "Project Details", "How it Works", "Questions"].map((section) => (
+                            <button
+                              key={section}
+                              type="button"
+                              onClick={() => scrollToSection(section)}
+                              className={cn(
+                                "relative inline-flex items-center justify-center whitespace-nowrap px-1 pb-2 pt-px text-sm font-semibold transition-colors focus-visible:outline-none",
+                                sectionTab === section ? "text-primary-500" : "text-gray-500"
+                              )}
+                            >
+                              {section}
+                              {sectionTab === section && (
+                                <span className="absolute bottom-0 inset-x-0 bg-primary-500 h-0.5" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                       <div className="flex items-center gap-x-3 group-data-[position=default]/tabs:hidden">
                         <Button size="md">Star Project</Button>
@@ -2296,7 +2390,7 @@ export default function ProjectDetails() {
                   </div>
 
                   <TabsContent value="Description">
-                    <div className="pt-6">
+                    <div id="section-Description" className="pt-6">
                       {!project.description && !project.summary && (
                       <Alert variant="primary" className="mb-6 items-center">
                         <AlertIcon>
@@ -2781,6 +2875,7 @@ export default function ProjectDetails() {
                       </Dialog>
 
 
+                      <div id="section-Deliverables">
                       {Array.isArray(project.deliverables) && project.deliverables.length > 0 ? (
                       <ShowMoreLessRoot>
                         {({ isShowing, setIsShowing }) => (
@@ -2890,7 +2985,9 @@ export default function ProjectDetails() {
                         </Button>
                       </div>
                       )}
+                      </div>
 
+                      <div id="section-Project Details">
                       {project.programmingLanguages?.length > 0 || project.developmentTech?.length > 0 || project.subcategories?.length > 0 || project.tags?.length > 0 ? (
                       <div className="mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                         <div className="p-6 border-b border-gray-200">
@@ -3551,12 +3648,12 @@ export default function ProjectDetails() {
 
                           <div className="border-t border-gray-200 px-6 py-6 space-y-6 max-h-[60vh] overflow-y-auto">
                             {[
-                              { label: "Programming Languages", desc: "Add up to 10 tags that best describe your template. Use relevant keywords to highlight its features and make it easier to find.", max: 10, value: detailsLangs, onChange: setDetailsLangs, placeholder: "Add Programming Languages" },
-                              { label: "Development Tech", desc: "Add up to 10 technologies that will be used in this project", max: 10, value: detailsTech, onChange: setDetailsTech, placeholder: "Add Technologies" },
-                              { label: "Industry", desc: "Add up to 5 industries that align with your project scope for targeted visibility.", max: 5, value: detailsIndustry, onChange: setDetailsIndustry, placeholder: "Add Industries" },
-                              { label: "Tags", desc: "Add up to 10 tags that align with your project scope for targeted visibility.", max: 10, value: detailsTags, onChange: setDetailsTags, placeholder: "Add Tags" },
-                              { label: "Skills", desc: "List up to 10 key skills or proficiencies required to implement this template effectively.", max: 10, value: detailsSkills, onChange: setDetailsSkills, placeholder: "Add Skills" },
-                              { label: "Tools", desc: "Add up to 10 tools that align with your project scope for targeted visibility.", max: 10, value: detailsTools, onChange: setDetailsTools, placeholder: "Add Tools" },
+                              { label: "Programming Languages", desc: "Add up to 10 tags that best describe your template. Use relevant keywords to highlight its features and make it easier to find.", max: 10, value: detailsLangs, onChange: setDetailsLangs, placeholder: "Add Programming Languages", acType: "languages", options: langOptions, setOptions: setLangOptions },
+                              { label: "Development Tech", desc: "Add up to 10 technologies that will be used in this project", max: 10, value: detailsTech, onChange: setDetailsTech, placeholder: "Add Technologies", acType: "skills", options: techOptions, setOptions: setTechOptions },
+                              { label: "Industry", desc: "Add up to 5 industries that align with your project scope for targeted visibility.", max: 5, value: detailsIndustry, onChange: setDetailsIndustry, placeholder: "Add Industries", acType: "industries", options: industryOptions, setOptions: setIndustryOptions },
+                              { label: "Tags", desc: "Add up to 10 tags that align with your project scope for targeted visibility.", max: 10, value: detailsTags, onChange: setDetailsTags, placeholder: "Add Tags", acType: "search_keywords", options: tagOptions, setOptions: setTagOptions },
+                              { label: "Skills", desc: "List up to 10 key skills or proficiencies required to implement this template effectively.", max: 10, value: detailsSkills, onChange: setDetailsSkills, placeholder: "Add Skills", acType: "skills", options: skillOptions, setOptions: setSkillOptions },
+                              { label: "Tools", desc: "Add up to 10 tools that align with your project scope for targeted visibility.", max: 10, value: detailsTools, onChange: setDetailsTools, placeholder: "Add Tools", acType: "skills", options: toolOptions, setOptions: setToolOptions },
                             ].map((field) => (
                               <div key={field.label}>
                                 <div className="flex items-start justify-between">
@@ -3590,9 +3687,13 @@ export default function ProjectDetails() {
                                           </TagsInputItem>
                                         ))}
                                         <TagsInputInput
+                                          options={field.options}
                                           placeholder={tagsInput.value.length ? "" : field.placeholder}
                                           allowCreateOption
                                           className="flex-1 min-w-[100px]"
+                                          onInputValueChange={(value) => {
+                                            fetchTypeAutocomplete(field.acType, value, field.setOptions)
+                                          }}
                                         />
                                       </TagsInputControl>
                                     )}
@@ -3849,14 +3950,21 @@ export default function ProjectDetails() {
                         </DialogContent>
                       </Dialog>
 
-{/* How It Works section hidden in edit mode */}
+                      </div>
 
-                      <div className="relative p-6 mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div id="section-How it Works">
+{/* How It Works section hidden in edit mode */}
+                      </div>
+
+                      <div id="section-Questions" className="relative p-6 mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                         <div className="flex items-center justify-between">
                           <h1 className="text-xl font-bold leading-none text-dark-blue-400">
                             Questions
                           </h1>
-                          <IconButton className="rounded-full text-gray-500 hover:text-gray-800" variant="ghost" visual="gray" onClick={() => setQuestionsDialogOpen(true)}>
+                          <IconButton className="rounded-full text-gray-500 hover:text-gray-800" variant="ghost" visual="gray" onClick={() => {
+                            setQuestionsTab(questionsSectionTab === "Recently Asked Questions" ? "RecentlyAsked" : "FAQs")
+                            setQuestionsDialogOpen(true)
+                          }}>
                             <Edit03 className="size-4" />
                           </IconButton>
                         </div>
@@ -3993,7 +4101,7 @@ export default function ProjectDetails() {
                         )}
 
                         <div className="mt-8">
-                          <Tabs defaultValue="FAQs">
+                          <Tabs value={questionsSectionTab} onValueChange={setQuestionsSectionTab}>
                             <RadixTabs.List className="flex items-center justify-between">
                               <div className="flex items-center gap-x-3">
                                 <TabsTrigger
@@ -4178,28 +4286,13 @@ export default function ProjectDetails() {
                           )}
                         </div>
 
-                        {!(project.faqs?.length > 0 || project.recentQuestions?.length > 0) && (
-                          <div className="flex flex-col items-center justify-center py-10 text-center">
-                            <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
-                              <HelpCircle className="size-5 text-gray-400" />
-                            </div>
-                            <h3 className="text-sm font-semibold text-dark-blue-400">No questions yet</h3>
-                            <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
-                              Add FAQ&apos;s to help clients learn more about your project, or wait for questions to come in from visitors.
-                            </p>
-                            <Button variant="outlined" visual="gray" size="sm" className="mt-4" onClick={() => setQuestionsDialogOpen(true)}>
-                              <Plus className="size-[15px]" />
-                              Add FAQ&apos;s
-                            </Button>
-                          </div>
-                        )}
                       </div>
 
                       {/* Questions Dialog */}
                       <Dialog open={questionsDialogOpen} onOpenChange={setQuestionsDialogOpen}>
                         <DialogContent className="max-w-[748px] p-0 gap-0">
-                          <RadixTabs.Root value={questionsTab} onValueChange={setQuestionsTab}>
-                          <div className="px-6 pt-6 pb-4">
+                          <Tabs value={questionsTab} onValueChange={setQuestionsTab}>
+                          <div className="px-6 pt-6 pb-0">
                             <div className="flex items-start justify-between">
                               <div>
                                 <h2 className="text-lg font-bold text-dark-blue-400">Questions</h2>
@@ -4214,14 +4307,14 @@ export default function ProjectDetails() {
                               </DialogClose>
                             </div>
 
-                            <RadixTabs.List className="flex items-center gap-x-3 pt-4">
-                              <RadixTabs.Trigger value="FAQs" className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400 text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300">FAQ&apos;s</RadixTabs.Trigger>
-                              <RadixTabs.Trigger value="RecentlyAsked" className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400 text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300">Recently Asked Questions</RadixTabs.Trigger>
-                            </RadixTabs.List>
+                            <TabsList className="px-0 pt-4 justify-start">
+                              <TabsTrigger value="FAQs">FAQ&apos;s</TabsTrigger>
+                              <TabsTrigger value="RecentlyAsked">Recently Asked Questions</TabsTrigger>
+                            </TabsList>
                           </div>
 
-                          <div className="border-t border-gray-200 px-6 py-6 max-h-[60vh] overflow-y-auto">
-                              <RadixTabs.Content value="FAQs" className="focus-visible:outline-none">
+                          <div className="px-6 py-6 max-h-[60vh] overflow-y-auto">
+                              <TabsContent value="FAQs">
                                 <p className="text-sm font-light text-dark-blue-400">
                                   Write a response for each of the question added to this project. Drag and drop FAQ items to reorder them. The order you set here will be reflected on your project&apos;s public FAQ section.
                                 </p>
@@ -4306,9 +4399,9 @@ export default function ProjectDetails() {
                                   ))}
                                 </Accordion>
                                 )}
-                              </RadixTabs.Content>
+                              </TabsContent>
 
-                              <RadixTabs.Content value="RecentlyAsked" className="focus-visible:outline-none">
+                              <TabsContent value="RecentlyAsked">
                                 <Tabs value={recentQTab} onValueChange={setRecentQTab} unanimated>
                                   <TabsList className="justify-start border-b-0 px-0 pt-0 mb-4">
                                     <TabsTrigger value="all">
@@ -4469,7 +4562,7 @@ export default function ProjectDetails() {
                                     </div>
                                   </TabsContent>
                                 </Tabs>
-                              </RadixTabs.Content>
+                              </TabsContent>
                           </div>
 
                           <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
@@ -4484,7 +4577,7 @@ export default function ProjectDetails() {
                             </Button>
                             <Button onClick={() => setQuestionsDialogOpen(false)}>Save</Button>
                           </div>
-                          </RadixTabs.Root>
+                          </Tabs>
                         </DialogContent>
                       </Dialog>
 

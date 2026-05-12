@@ -2137,10 +2137,12 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
                         if (pendingScopeType) {
                           onScopeTypeChange?.(pendingScopeType)
                           toast({
+                            variant: "success",
                             title: `Your ${previousType} has been changed to a ${pendingScopeType}`,
                             action: (
                               <ToastAction
                                 altText="Undo"
+                                className="ml-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
                                 onClick={() => onScopeTypeChange?.(previousType)}
                               >
                                 Undo
