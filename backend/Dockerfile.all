@@ -8,18 +8,10 @@ COPY . .
 RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
 
 # Install ALL deps including devDependencies (need @nestjs/cli for build)
-# Use npm ci to strictly follow the lockfile during Render workspace builds.
 RUN npm ci --include=dev --legacy-peer-deps
 
-# Build core services (verified working on Render previously)
+# Minimal test build — just api-gateway
 RUN npx nest build api-gateway
-RUN npx nest build auth-service
-RUN npx nest build user-service
-RUN npx nest build listings-service
-RUN npx nest build notification-service
-RUN npx nest build invitations-service
-RUN npx nest build content-moderation-service
-RUN npx nest build time-tracking-service
 
 # Prune devDependencies for smaller production image
 RUN npm prune --production --legacy-peer-deps
