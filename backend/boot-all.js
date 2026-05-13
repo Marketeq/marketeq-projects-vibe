@@ -30,6 +30,8 @@ const GATEWAY_PORT = process.env.PORT || '10000';
 
 // Internal ports — only reachable inside the container
 // All backend services — ports must match proxy.service.ts defaults in the gateway.
+// Only services the API gateway actually proxies to.
+// Keep this list in sync with proxy.service.ts route map.
 const SERVICES = [
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
@@ -49,8 +51,6 @@ const SERVICES = [
   { name: 'transaction-service',        port: '3018', dir: 'apps/transaction-service' },
   { name: 'suggestions-service',        port: '3020', dir: 'apps/suggestions-service' },
   { name: 'category-service',           port: '3023', dir: 'apps/category-service' },
-  { name: 'pricing-service',            port: '3024', dir: 'apps/pricing-service' },
-  { name: 'billing-service',            port: '3025', dir: 'apps/billing-service' },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway' };
@@ -117,7 +117,7 @@ function launchService(svc, env, isGateway = false) {
     return null;
   }
 
-  const child = spawn('node', [distMain], {
+  const child = spawn('node', ['--max-old-space-size=20', distMain], {
     env: svcEnv,
     stdio: 'inherit',
   });
@@ -136,39 +136,6 @@ function launchService(svc, env, isGateway = false) {
   return child;
 }
 
-// Auto-discover compiled services in dist/apps/ that aren't in the explicit
-// SERVICES list. Assigns overflow ports starting at AUTO_PORT_START.
-// This ensures new services are always started even if someone forgets to
-// add them to SERVICES — the CI check will catch the missing entry later.
-const AUTO_PORT_START = 3100;
-
-function discoverUnregisteredServices() {
-  const registeredNames = new Set(SERVICES.map((s) => s.name));
-  registeredNames.add(GATEWAY.name);
-
-  const distApps = path.join(__dirname, 'dist', 'apps');
-  if (!fs.existsSync(distApps)) return [];
-
-  const discovered = [];
-  let nextPort = AUTO_PORT_START;
-
-  for (const entry of fs.readdirSync(distApps)) {
-    if (registeredNames.has(entry)) continue;
-
-    const mainCandidates = [
-      path.join(distApps, entry, 'main.js'),
-      path.join(distApps, entry, 'src', 'main.js'),
-      path.join(distApps, entry, entry, 'src', 'main.js'),
-    ];
-    if (mainCandidates.some((c) => fs.existsSync(c))) {
-      const port = String(nextPort++);
-      console.warn(`[boot] WARNING: ${entry} is compiled but not in SERVICES registry — auto-assigning port ${port}. Add it to boot-all.js SERVICES array with a stable port.`);
-      discovered.push({ name: entry, port, dir: `apps/${entry}` });
-    }
-  }
-
-  return discovered;
-}
 
 async function bootstrapAll() {
   console.log('[boot] Launching all services in single container...');
@@ -176,14 +143,11 @@ async function bootstrapAll() {
 
   launchService(GATEWAY, gatewayEnv, true);
 
-  const autoDiscovered = discoverUnregisteredServices();
-
   // Start the gateway first so Render discovers the public-facing process
-  // before the internal services begin listening. Do not hard-fail if the
-  // gateway takes time to become healthy while RabbitMQ reconnects.
+  // before the internal services begin listening.
   setTimeout(() => {
     console.log('[boot] Launching internal services after gateway head start...');
-    for (const svc of [...SERVICES, ...autoDiscovered]) {
+    for (const svc of SERVICES) {
       launchService(svc, buildInternalServiceEnv(svc.port), false);
     }
   }, 4000);
