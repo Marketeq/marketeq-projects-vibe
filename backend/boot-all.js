@@ -32,33 +32,32 @@ const GATEWAY_PORT = process.env.PORT || '10000';
 // All backend services — ports must match proxy.service.ts defaults in the gateway.
 // Only services the API gateway actually proxies to.
 // Keep this list in sync with proxy.service.ts route map.
+// Active services to run at startup. All 27 are compiled in the Docker image,
+// but only these are started to stay within the 512 MB Render Starter plan.
+// Add more as the plan is upgraded. ~15 services fit in 512 MB with 18 MB heap each.
 const SERVICES = [
+  // Core platform services (required for frontend)
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
   { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
   { name: 'messaging-service',          port: '3005', dir: 'apps/messaging-service' },
   { name: 'notification-service',       port: '3006', dir: 'apps/notification-service' },
-  { name: 'search-service',             port: '3007', dir: 'apps/search-service' },
-  { name: 'algolia-service',            port: '3008', dir: 'apps/algolia-service' },
-  { name: 'checkout-service',           port: '3009', dir: 'apps/checkout-service' },
   { name: 'contracts-service',          port: '3010', dir: 'apps/contracts-service' },
   { name: 'favorites-service',          port: '3012', dir: 'apps/favorites-service' },
   { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service' },
   { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service' },
-  { name: 'portfolio-service',          port: '3015', dir: 'apps/portfolio-service' },
-  { name: 'autocomplete-service',       port: '3016', dir: 'apps/autocomplete-service' },
   { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service' },
+  { name: 'category-service',           port: '3023', dir: 'apps/category-service' },
+  // Supporting services
+  { name: 'checkout-service',           port: '3009', dir: 'apps/checkout-service' },
+  { name: 'portfolio-service',          port: '3015', dir: 'apps/portfolio-service' },
   { name: 'transaction-service',        port: '3018', dir: 'apps/transaction-service' },
   { name: 'suggestions-service',        port: '3020', dir: 'apps/suggestions-service' },
-  { name: 'category-service',           port: '3023', dir: 'apps/category-service' },
-  { name: 'admin-service',              port: '3024', dir: 'apps/admin-service' },
-  { name: 'affiliate-referral-service', port: '3025', dir: 'apps/affiliate-referral-service' },
-  { name: 'billing-service',            port: '3026', dir: 'apps/billing-service' },
-  { name: 'earnings-service',           port: '3027', dir: 'apps/earnings-service' },
-  { name: 'payout-service',             port: '3028', dir: 'apps/payout-service' },
-  { name: 'pricing-service',            port: '3029', dir: 'apps/pricing-service' },
-  { name: 'wallet-service',             port: '3030', dir: 'apps/wallet-service' },
-  { name: 'wire-review-service',        port: '3031', dir: 'apps/wire-review-service' },
+  // Dormant until plan upgrade (compiled but not started):
+  // search-service (3007), algolia-service (3008), autocomplete-service (3016),
+  // admin-service (3024), affiliate-referral-service (3025), billing-service (3026),
+  // earnings-service (3027), payout-service (3028), pricing-service (3029),
+  // wallet-service (3030), wire-review-service (3031)
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway' };
@@ -133,7 +132,7 @@ function launchService(svc, env, isGateway = false) {
     return null;
   }
 
-  const child = spawn('node', ['--max-old-space-size=32', distMain], {
+  const child = spawn('node', ['--max-old-space-size=18', distMain], {
     env: svcEnv,
     stdio: 'inherit',
   });
