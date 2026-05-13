@@ -1463,7 +1463,6 @@ export default function ProjectDetails() {
       suggested
         .filter(
           ({ category, subCategory }) =>
-            !selectedCategoryNames.has(category) &&
             !selectedSuggestedPairs.has(`${category}::${subCategory}`)
         )
         .slice(0, 3),
@@ -2998,7 +2997,7 @@ export default function ProjectDetails() {
                                 onValueChange={setInfoTab}
                                 className="mt-6"
                               >
-                                <TabsList className="border-b border-gray-200 px-6">
+                                <TabsList className="w-full border-b border-gray-200 px-6">
                                   <TabsTrigger value="Basic Info">
                                     Basic Info
                                   </TabsTrigger>
@@ -3007,7 +3006,7 @@ export default function ProjectDetails() {
                                   </TabsTrigger>
                                 </TabsList>
 
-                                <TabsContent value="Basic Info" className="pt-6 px-6 pb-6 space-y-5">
+                                {infoTab === "Basic Info" && <div className="pt-6 px-6 pb-6 space-y-5">
                                   <div className="space-y-1.5">
                                     <div className="flex items-center justify-between">
                                       <Label size="sm" className="font-medium">
@@ -3073,9 +3072,9 @@ export default function ProjectDetails() {
                                       </ListboxOptions>
                                     </Listbox>
                                   </div>
-                                </TabsContent>
+                                </div>}
 
-                                <TabsContent value="Categories" className="pt-6 px-6 pb-6">
+                                {infoTab === "Categories" && <div className="pt-6 px-6 pb-6">
                                   <p className="text-sm font-light text-dark-blue-400 mb-6">
                                     Select categories that best fit your project scope for easier discovery.
                                   </p>
@@ -3242,7 +3241,7 @@ export default function ProjectDetails() {
                                       </div>
                                     </div>
                                   )}
-                                </TabsContent>
+                                </div>}
                               </Tabs>
                             </div>
 
