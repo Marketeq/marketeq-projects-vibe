@@ -250,6 +250,33 @@ const FALLBACK_CATEGORY_OPTIONS = [
 
 const MAX_SUBCATEGORIES_PER_CATEGORY = 5
 
+const SHORT_DESCRIPTION_MIN_LENGTH = 50
+const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const FULL_DESCRIPTION_MIN_LENGTH = 100
+const FULL_DESCRIPTION_MAX_LENGTH = 5000
+
+const plainTextFromRichTextHtml = (value: string) => {
+  if (!value) return ""
+  if (typeof window !== "undefined") {
+    const container = window.document.createElement("div")
+    container.innerHTML = value
+    return (container.textContent ?? container.innerText ?? "")
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+  return value
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+const getRichTextCharacterCount = (value: string) =>
+  plainTextFromRichTextHtml(value).length
+
 const PROJECT_TYPE_OPTIONS = [
   "Website",
   "Mobile App",
@@ -2898,17 +2925,28 @@ export default function ProjectDetails() {
                           </div>
 
                           <div className="px-6 pt-6 pb-6">
-                            <p className="text-sm font-light text-dark-blue-400 mb-2">
-                              Provide a comprehensive description of this project, including its purpose and features.
-                            </p>
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-sm font-light text-dark-blue-400">
+                                Provide a comprehensive description of this project, including its purpose and features.
+                              </p>
+                              <span className={cn("text-xs shrink-0 ml-2", getRichTextCharacterCount(descDraft) > FULL_DESCRIPTION_MAX_LENGTH ? "text-error-500" : "text-gray-400")}>
+                                {getRichTextCharacterCount(descDraft).toLocaleString()}/{FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
+                              </span>
+                            </div>
                             <RichTextEditor
                               defaultValue={descDraft}
                               placeholder="<p class='text-gray-400'>Enter a full description</p>"
                               allowFullscreen
-                              className="rounded-lg border border-gray-300 focus-within:border-primary-500 bg-white"
+                              className={cn("rounded-lg border focus-within:border-primary-500 bg-white", getRichTextCharacterCount(descDraft) > 0 && (getRichTextCharacterCount(descDraft) < FULL_DESCRIPTION_MIN_LENGTH || getRichTextCharacterCount(descDraft) > FULL_DESCRIPTION_MAX_LENGTH) ? "border-error-500" : "border-gray-300")}
                               editorClassName="min-h-[200px] max-h-[40vh] overflow-y-auto"
                               onUpdate={(html) => setDescDraft(html)}
                             />
+                            {getRichTextCharacterCount(descDraft) > 0 && getRichTextCharacterCount(descDraft) < FULL_DESCRIPTION_MIN_LENGTH && (
+                              <p className="mt-1 text-xs text-error-500">Please enter at least {FULL_DESCRIPTION_MIN_LENGTH} character(s)</p>
+                            )}
+                            {getRichTextCharacterCount(descDraft) > FULL_DESCRIPTION_MAX_LENGTH && (
+                              <p className="mt-1 text-xs text-error-500">Please do not enter more than {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()} character(s)</p>
+                            )}
                           </div>
 
                           <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
@@ -2919,6 +2957,7 @@ export default function ProjectDetails() {
                               </Button>
                             </DialogClose>
                             <Button
+                              disabled={getRichTextCharacterCount(descDraft) > 0 && (getRichTextCharacterCount(descDraft) < FULL_DESCRIPTION_MIN_LENGTH || getRichTextCharacterCount(descDraft) > FULL_DESCRIPTION_MAX_LENGTH)}
                               onClick={() => {
                                 setProject((prev: any) => ({ ...prev, description: descDraft }))
                                 setDescDialogOpen(false)
@@ -2937,6 +2976,7 @@ export default function ProjectDetails() {
                           <form
                             onSubmit={(e) => {
                               e.preventDefault()
+                              if (infoSummary.length > 0 && infoSummary.length < SHORT_DESCRIPTION_MIN_LENGTH) return
                               const updatedCategories = infoCategories
                                 .filter((r) => r.category)
                                 .map((r) => r.category)
@@ -2997,7 +3037,7 @@ export default function ProjectDetails() {
                                 onValueChange={setInfoTab}
                                 className="mt-6"
                               >
-                                <TabsList className="w-full border-b border-gray-200 px-6">
+                                <TabsList className="w-full justify-start border-b border-gray-200 px-6">
                                   <TabsTrigger value="Basic Info">
                                     Basic Info
                                   </TabsTrigger>
@@ -3030,8 +3070,8 @@ export default function ProjectDetails() {
                                       <Label size="sm" className="font-medium">
                                         Short Description
                                       </Label>
-                                      <span className="text-xs text-gray-400">
-                                        {infoSummary.length}/300
+                                      <span className={cn("text-xs", infoSummary.length > SHORT_DESCRIPTION_MAX_LENGTH ? "text-error-500" : "text-gray-400")}>
+                                        {infoSummary.length}/{SHORT_DESCRIPTION_MAX_LENGTH}
                                       </span>
                                     </div>
                                     <Textarea
@@ -3039,10 +3079,14 @@ export default function ProjectDetails() {
                                       className="min-h-[100px] resize-none"
                                       placeholder="Enter a short description..."
                                       value={infoSummary}
+                                      isInvalid={infoSummary.length > 0 && (infoSummary.length < SHORT_DESCRIPTION_MIN_LENGTH || infoSummary.length > SHORT_DESCRIPTION_MAX_LENGTH)}
                                       onChange={(e) =>
-                                        setInfoSummary(e.target.value.slice(0, 300))
+                                        setInfoSummary(e.target.value.slice(0, SHORT_DESCRIPTION_MAX_LENGTH))
                                       }
                                     />
+                                    {infoSummary.length > 0 && infoSummary.length < SHORT_DESCRIPTION_MIN_LENGTH && (
+                                      <p className="text-xs text-error-500">Please enter at least {SHORT_DESCRIPTION_MIN_LENGTH} character(s)</p>
+                                    )}
                                   </div>
 
                                   <div className="space-y-1.5">
@@ -4742,7 +4786,7 @@ export default function ProjectDetails() {
                               </DialogClose>
                             </div>
 
-                            <TabsList className="px-0 pt-4 justify-start">
+                            <TabsList className="w-full px-0 pt-4 justify-start">
                               <TabsTrigger value="dialog-faqs">FAQ&apos;s</TabsTrigger>
                               <TabsTrigger value="dialog-recent">Recently Asked Questions</TabsTrigger>
                             </TabsList>

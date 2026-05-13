@@ -130,6 +130,11 @@ import {
   ListboxOptions,
   ScrollArea,
   ScrollBar,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Table,
   TableBody,
   TableCell,
@@ -185,12 +190,12 @@ const EXPERIENCE_LEVELS = [
 type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number]
 
 const taskFormSchema = z.object({
-  task: z.string().min(1, "Please enter at least 1 character(s)"),
-  role: z.string().min(1, "Please enter/select at least 1 role(s)"),
-  location: z.string().min(1, "Please enter/select at least 1 location(s)"),
+  task: z.string().min(1, "Please enter a task name"),
+  role: z.string().min(1, "Please select a role"),
+  location: z.string().min(1, "Please select a location"),
   experience: z.enum(EXPERIENCE_LEVELS, {
-    required_error: "Please enter/select at least 1 experience level",
-    invalid_type_error: "Please enter/select at least 1 experience level",
+    required_error: "Please select an experience level",
+    invalid_type_error: "Please select an experience level",
   }),
   duration: z.object({
     value: z.coerce.number({
@@ -205,7 +210,7 @@ const taskFormSchema = z.object({
 
 const rowSchema = taskFormSchema.merge(
   z.object({
-    id: z.string().min(1, "Please enter at least 1 character(s)"),
+    id: z.string().min(1, "Please enter a task ID"),
   })
 )
 
@@ -221,13 +226,13 @@ const pickFromProjectScopeSchema = (
           z.object({
             phaseName: z
               .string()
-              .min(1, "Please enter at least 1 character(s)"),
+              .min(1, "Please enter a phase name"),
             rows: z
               .array(rowSchema.pick(options))
-              .min(1, "Please add at least 1 task(s)"),
+              .min(1, "Please add at least one task"),
           })
         )
-        .min(1, "Please add at least 1 phase(s)")
+        .min(1, "Please add at least one phase")
         .safeParse(data, params)
       return success
     },
@@ -237,7 +242,7 @@ const pickFromProjectScopeSchema = (
 const projectScopeSchema = pickFromProjectScopeSchema()
 
 const phaseNameFormSchema = z.object({
-  name: z.string().min(1, "Please enter at least 1 character(s)"),
+  name: z.string().min(1, "Please enter a phase name"),
 })
 
 type PhaseNameFormValues = z.infer<typeof phaseNameFormSchema>
@@ -764,6 +769,7 @@ const TaskDialog = ({
     handleSubmit,
     formState: { errors },
     control,
+    reset,
   } = useForm<TaskFormValues>({
     resolver: zodResolver(taskFormSchema),
     defaultValues: {
@@ -777,6 +783,19 @@ const TaskDialog = ({
       },
     },
   })
+
+  React.useEffect(() => {
+    if (isOpen) {
+      reset({
+        task: "",
+        role: "",
+        location: "",
+        experience: undefined,
+        duration: { type: undefined as any, value: undefined as any },
+      })
+    }
+  }, [isOpen, reset])
+
   const taskDurationValue = useWatch({
     control,
     name: "duration.value",
@@ -789,10 +808,10 @@ const TaskDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
-      <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
+      <DialogContent className="sm:max-w-[400px]">
         <form
-          className="max-w-[371px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]"
           onSubmit={handleSubmit(onSubmit)}
+          className="space-y-5"
         >
           <div className="space-y-1.5">
             <Label htmlFor="task-name" className="text-gray-700" size="sm">
@@ -800,7 +819,7 @@ const TaskDialog = ({
             </Label>
             <Input
               id="task-name"
-              className="text-gray-900"
+              placeholder="Enter task name"
               {...register("task")}
               isInvalid={hookFormHasError({ errors, name: "task" })}
             />
@@ -811,16 +830,16 @@ const TaskDialog = ({
             />
           </div>
 
-          <div className="space-y-1.5 mt-3">
+          <div className="space-y-1.5">
             <Label htmlFor="duration" className="text-gray-700" size="sm">
               Duration
             </Label>
             <div className="grid grid-cols-2 gap-x-3">
               <Input
                 id="duration"
-                className="text-gray-900"
                 type="number"
-                min={1}
+                min={0}
+                placeholder="0"
                 {...register("duration.value")}
                 isInvalid={hookFormHasError({ errors, name: "duration.value" })}
               />
@@ -828,37 +847,26 @@ const TaskDialog = ({
                 control={control}
                 name="duration.type"
                 render={({ field: { value, onChange } }) => (
-                  <Listbox value={value} onChange={onChange} id="duration">
-                    <ListboxButton placeholder="Select">
-                      {({ value: selectedValue }) =>
-                        formatDurationUnit(
-                          Number(taskDurationValue) || 0,
-                          selectedValue as (typeof DURATION_TYPE)[number]
-                        ).replace(/^./, (character) => character.toUpperCase())
-                      }
-                    </ListboxButton>
-                    <ListboxOptions>
+                  <Select value={value} onValueChange={onChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
                       {DURATION_TYPE.map((format) => (
-                        <ListboxOption key={format} value={format}>
+                        <SelectItem key={format} value={format}>
                           {formatDurationUnit(
                             Number(taskDurationValue) || 0,
                             format
-                          ).replace(/^./, (character) =>
-                            character.toUpperCase()
-                          )}
-                        </ListboxOption>
+                          ).replace(/^./, (c) => c.toUpperCase())}
+                        </SelectItem>
                       ))}
-                    </ListboxOptions>
-                  </Listbox>
+                    </SelectContent>
+                  </Select>
                 )}
               />
             </div>
-
             {(hookFormHasError({ errors, name: "duration.value" }) ||
-              hookFormHasError({
-                errors,
-                name: "duration.type",
-              })) && (
+              hookFormHasError({ errors, name: "duration.type" })) && (
               <ErrorMessage size="sm">
                 {get(errors, "duration.value.message") ||
                   get(errors, "duration.type.message")}
@@ -866,21 +874,15 @@ const TaskDialog = ({
             )}
           </div>
 
-          <div className="space-y-1.5 mt-3">
+          <div className="space-y-1.5">
             <Label htmlFor="role-name" className="text-gray-700" size="sm">
               Role
             </Label>
-            <Controller
-              control={control}
-              name="role"
-              render={({ field: { value, onChange } }) => (
-                <OwnCombobox
-                  value={value}
-                  onValueChange={onChange}
-                  placeholder="Select role"
-                  options={ROLES}
-                />
-              )}
+            <Input
+              id="role-name"
+              placeholder="Enter role"
+              {...register("role")}
+              isInvalid={hookFormHasError({ errors, name: "role" })}
             />
             <HookFormErrorMessage
               errors={errors}
@@ -889,41 +891,26 @@ const TaskDialog = ({
             />
           </div>
 
-          <div className="space-y-1.5 mt-3">
-            <Label htmlFor="location" className="text-gray-700" size="sm">
-              Location
-            </Label>
-            <Controller
-              control={control}
-              name="location"
-              render={({ field: { value, onChange } }) => (
-                <CountriesCombobox
-                  placeholder="Select country"
-                  value={value}
-                  onValueChange={onChange}
-                />
-              )}
-            />
-            <HookFormErrorMessage
-              errors={errors}
-              name="location"
-              render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
-            />
-          </div>
-
-          <div className="space-y-1.5 mt-3">
-            <Label htmlFor="experience" className="text-gray-700" size="sm">
-              Experience
+          <div className="space-y-1.5">
+            <Label htmlFor="work-schedule" className="text-gray-700" size="sm">
+              Work Schedule
             </Label>
             <Controller
               control={control}
               name="experience"
               render={({ field: { value, onChange } }) => (
-                <Dropdown
-                  value={value}
-                  onValueChange={onChange}
-                  placeholder="Select experience"
-                />
+                <Select value={value} onValueChange={onChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select one" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EXPERIENCE_LEVELS.map((level) => (
+                      <SelectItem key={level} value={level}>
+                        {level}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             />
             <HookFormErrorMessage
@@ -933,14 +920,13 @@ const TaskDialog = ({
             />
           </div>
 
-          <DialogFooter className="mt-8 grid gap-x-3">
+          <DialogFooter className="grid grid-cols-2 gap-x-3 pt-2">
             <DialogClose asChild>
               <Button variant="outlined" type="button" visual="gray">
                 Cancel
               </Button>
             </DialogClose>
-
-            <Button>Done</Button>
+            <Button type="submit">Done</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -1621,7 +1607,7 @@ const columns = [
   columnHelper.accessor("task", {
     cell: ({ row: { id, index, original }, column, table }) => {
       // eslint-disable-next-line
-      const [editing, setEditing] = useState(false)
+      const [dialogOpen, setDialogOpen] = useState(false)
       // eslint-disable-next-line
       const [draft, setDraft] = useState(original.task)
       // eslint-disable-next-line
@@ -1629,46 +1615,57 @@ const columns = [
 
       // eslint-disable-next-line
       useEffect(() => {
-        if (editing) {
+        if (dialogOpen) {
           setDraft(original.task)
           setTimeout(() => inputRef.current?.focus(), 0)
         }
-      }, [editing, original.task])
+      }, [dialogOpen, original.task])
 
       const commit = () => {
         const trimmed = draft.trim()
         if (trimmed && trimmed !== original.task) {
           table.options.meta?.updateData(index, column.id, trimmed)
         }
-        setEditing(false)
+        setDialogOpen(false)
       }
 
       return (
         <TableCell className="py-4 px-6 max-w-[220px]">
           <span className="inline-flex items-center gap-x-1.5 max-w-full">
             <RowDragHandleCell rowId={id} />
-            {editing ? (
-              <input
-                ref={inputRef}
-                className="text-sm font-semibold text-gray-900 bg-transparent border-b border-primary-500 outline-none w-full py-0 px-0"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onBlur={commit}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commit()
-                  if (e.key === "Escape") setEditing(false)
-                }}
-              />
-            ) : (
-              <button
-                type="button"
-                className="text-sm font-semibold text-gray-900 truncate text-left cursor-text hover:underline hover:decoration-gray-300 focus-visible:outline-none"
-                onClick={() => setEditing(true)}
-              >
-                {original.task}
-              </button>
-            )}
+            <button
+              type="button"
+              className="text-sm font-semibold text-gray-900 truncate text-left hover:underline hover:decoration-gray-300 focus-visible:outline-none"
+              onClick={() => setDialogOpen(true)}
+            >
+              {original.task}
+            </button>
           </span>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle className="text-lg font-semibold text-gray-900">Edit Task Name</DialogTitle>
+              </DialogHeader>
+              <div className="flex flex-col gap-y-1.5 pt-2">
+                <Label size="sm" className="text-gray-700">Task Name</Label>
+                <Input
+                  ref={inputRef}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); commit() }
+                  }}
+                  placeholder="Enter task name"
+                />
+              </div>
+              <DialogFooter className="gap-x-3 pt-4">
+                <DialogClose asChild>
+                  <Button type="button" variant="outlined" visual="gray">Cancel</Button>
+                </DialogClose>
+                <Button type="button" onClick={commit}>Save</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TableCell>
       )
     },
@@ -2025,64 +2022,67 @@ const DurationDialog = ({
     onOpenChange(false)
   }
 
+  const durationTypes = ["days", "weeks", "hours"] as const
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Edit Duration</DialogTitle>
+          <DialogTitle className="text-lg font-semibold text-gray-900">Edit Duration</DialogTitle>
+          <DialogDescription className="text-sm text-gray-500">
+            Set the time estimate for this task.
+          </DialogDescription>
         </DialogHeader>
         <form
           onSubmit={handleSubmit(onSubmit)}
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-y-5 pt-2"
         >
-          <div className="flex items-center gap-2">
-            <Controller
-              name="duration.value"
-              control={control}
-              render={({ field }) => (
-                <Input
-                  {...field}
-                  type="number"
-                  min={1}
-                  className="w-24"
-                  placeholder="Value"
-                />
-              )}
-            />
-            <Controller
-              name="duration.type"
-              control={control}
-              render={({ field }) => (
-                <select {...field} className="border rounded px-2 py-1">
-                  <option value="days">
-                    {formatDurationUnit(
-                      Number(selectedDurationValue) || 0,
-                      "days"
-                    ).replace(/^./, (character) => character.toUpperCase())}
-                  </option>
-                  <option value="weeks">
-                    {formatDurationUnit(
-                      Number(selectedDurationValue) || 0,
-                      "weeks"
-                    ).replace(/^./, (character) => character.toUpperCase())}
-                  </option>
-                  <option value="hours">
-                    {formatDurationUnit(
-                      Number(selectedDurationValue) || 0,
-                      "hours"
-                    ).replace(/^./, (character) => character.toUpperCase())}
-                  </option>
-                </select>
-              )}
-            />
+          <div className="flex flex-col gap-y-1.5">
+            <Label size="sm" className="text-gray-700">Duration</Label>
+            <div className="flex items-center gap-x-3">
+              <Controller
+                name="duration.value"
+                control={control}
+                render={({ field }) => (
+                  <Input
+                    {...field}
+                    type="number"
+                    min={1}
+                    className="w-[100px]"
+                    placeholder="1"
+                  />
+                )}
+              />
+              <Controller
+                name="duration.type"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {durationTypes.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {formatDurationUnit(
+                            Number(selectedDurationValue) || 0,
+                            type
+                          ).replace(/^./, (c) => c.toUpperCase())}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
           </div>
-          <DialogFooter>
-            <Button type="submit">Save</Button>
+          <DialogFooter className="gap-x-3">
             <DialogClose asChild>
-              <Button type="button" variant="ghost">
+              <Button type="button" variant="outlined" visual="gray">
                 Cancel
               </Button>
             </DialogClose>
+            <Button type="submit">Save</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -2135,7 +2135,6 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
     value: initialPhases,
     onChange: (value) => {
       onPhasesChange?.(value)
-      expandAll()
     },
   })
 
@@ -2217,7 +2216,8 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
   )
 
   const onAddPhaseName = useCallback(
-    (phaseName: string) => {
+    (rawPhaseName: string) => {
+      const phaseName = rawPhaseName.trim().toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
       const { action, editingPhaseIndex, addTo } = phaseDialogState
 
       if (action === "EDIT" && typeof editingPhaseIndex === "number") {
@@ -2278,6 +2278,9 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
         next.splice(insertedPhaseIndex, 0, { phaseName })
         return next
       })
+
+      // Expand all phases so the newly added one is visible
+      expandAll()
 
       // Prepare Undo for this action
       lastUndo.current = () =>
@@ -2683,27 +2686,53 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
                   {rows ? (
                     <AccordionItem value={`item-${index}`} asChild>
                       <div className="rounded-lg border border-gray-200 shadow-sm">
-                        <div className="mb-3 flex items-start gap-x-4 px-3 pt-3">
+                        <div
+                          className="mb-3 flex items-center gap-x-4 px-3 pt-3 cursor-pointer"
+                          onClick={(e) => {
+                            const target = e.target as HTMLElement
+                            if (target.closest("button, a, [role='menuitem'], [data-radix-collection-item]")) return
+                            const key = `item-${index}`
+                            setAccordionState((prev) =>
+                              prev.includes(key) ? prev.filter((v) => v !== key) : [...prev, key]
+                            )
+                          }}
+                        >
                           <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
                             <div className="inline-flex items-center gap-x-3.5">
-                              <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                                <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                              </AccordionTrigger>
+                              <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
 
                               <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
                                 Phase {numberToWord(index)}{" "}
-                                <button
-                                  type="button"
-                                  className="font-light hover:underline focus-visible:outline-none"
-                                  onClick={() =>
-                                    dispatch({
-                                      type: "EDIT",
-                                      payload: index,
-                                    })
-                                  }
-                                >
-                                  {phaseName}
-                                </button>
+                                {phaseName ? (
+                                  <button
+                                    type="button"
+                                    className="font-light hover:underline focus-visible:outline-none"
+                                    onClick={() =>
+                                      dispatch({
+                                        type: "EDIT",
+                                        payload: index,
+                                      })
+                                    }
+                                  >
+                                    {phaseName}
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="font-light hover:underline focus-visible:outline-none inline-flex items-center gap-x-2"
+                                    onClick={() =>
+                                      dispatch({
+                                        type: "EDIT",
+                                        payload: index,
+                                      })
+                                    }
+                                  >
+                                    <Edit03 className="size-[15px] text-dark-blue-400" />
+                                    <span className="text-sm leading-5 font-semibold text-dark-blue-400">
+                                      Edit Phase Name
+                                    </span>
+                                  </button>
+                                )}
                               </span>
                             </div>
 
@@ -2774,21 +2803,27 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
                   ) : (
                     <AccordionItem value={`item-${index}`} asChild>
                       <div className="rounded-lg border border-gray-200 shadow-sm">
-                        <div className="mb-3 flex items-start gap-x-4 px-3 pt-3">
+                        <div
+                          className="mb-3 flex items-center gap-x-4 px-3 pt-3 cursor-pointer"
+                          onClick={(e) => {
+                            const target = e.target as HTMLElement
+                            if (target.closest("button, a, [role='menuitem'], [data-radix-collection-item]")) return
+                            const key = `item-${index}`
+                            setAccordionState((prev) =>
+                              prev.includes(key) ? prev.filter((v) => v !== key) : [...prev, key]
+                            )
+                          }}
+                        >
                           <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
                             <div className="inline-flex items-center gap-x-3.5">
-                              <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                                <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                              </AccordionTrigger>
+                              <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
 
-                              <div className="inline-flex md:flex-row gap-x-1.5 flex-col md:items-center gap-y-3 md:gap-x-5">
-                                <span className="text-base md:text-[18px] font-semibold md:font-light leading-7 text-gray-900">
-                                  Phase {numberToWord(index)}
-                                </span>{" "}
+                              <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
+                                Phase {numberToWord(index)}{" "}
                                 {phaseName ? (
                                   <button
                                     type="button"
-                                    className="text-lg leading-8 font-semibold text-gray-900 hover:underline focus-visible:outline-none"
+                                    className="font-light hover:underline focus-visible:outline-none"
                                     onClick={() =>
                                       dispatch({
                                         type: "EDIT",
@@ -2801,7 +2836,7 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
                                 ) : (
                                   <button
                                     type="button"
-                                    className="focus-visible:outline-none inline-flex items-center gap-x-2"
+                                    className="font-light hover:underline focus-visible:outline-none inline-flex items-center gap-x-2"
                                     onClick={() =>
                                       dispatch({
                                         type: "EDIT",
@@ -2809,21 +2844,16 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
                                       })
                                     }
                                   >
-                                    <Edit03 className="size-[15px] text-gray-800" />
-                                    <span className="inline-block text-sm leading-5 font-semibold text-gray-800">
+                                    <Edit03 className="size-[15px] text-dark-blue-400" />
+                                    <span className="text-sm leading-5 font-semibold text-dark-blue-400">
                                       Edit Phase Name
                                     </span>
                                   </button>
                                 )}
-                                <div className="inline-block md:hidden">
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    {getPhaseDayRangeLabel(phases, index)}
-                                  </span>
-                                </div>
-                              </div>
+                              </span>
                             </div>
 
-                            <div className="hidden items-center justify-start gap-x-2 pl-10 md:inline-flex md:w-[118px] md:pl-0">
+                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:w-[118px] md:pl-0">
                               <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
                                 {getPhaseDayRangeLabel(phases, index)}
                               </span>
