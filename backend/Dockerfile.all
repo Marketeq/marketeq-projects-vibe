@@ -11,40 +11,34 @@ RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
 # Use npm ci to strictly follow the lockfile during Render workspace builds.
 RUN npm ci --include=dev --legacy-peer-deps
 
-# Build all 27 backend services in batches.
-# Each RUN gets a fresh process to avoid memory accumulation.
-RUN npx nest build admin-service \
- && npx nest build affiliate-referral-service \
- && npx nest build algolia-service \
- && npx nest build api-gateway \
- && npx nest build auth-service
-
-RUN npx nest build autocomplete-service \
- && npx nest build billing-service \
- && npx nest build category-service \
- && npx nest build checkout-service \
- && npx nest build content-moderation-service
-
-RUN npx nest build contracts-service \
- && npx nest build earnings-service \
- && npx nest build favorites-service \
- && npx nest build invitations-service \
- && npx nest build listings-service
-
-RUN npx nest build messaging-service \
- && npx nest build notification-service \
- && npx nest build payout-service \
- && npx nest build portfolio-service \
- && npx nest build pricing-service
-
-RUN npx nest build search-service \
- && npx nest build suggestions-service \
- && npx nest build time-tracking-service \
- && npx nest build transaction-service \
- && npx nest build user-service
-
-RUN npx nest build wallet-service \
- && npx nest build wire-review-service
+# Build all 27 backend services — one RUN per service for clear error isolation.
+RUN echo "[build] 1/27 admin-service" && npx nest build admin-service
+RUN echo "[build] 2/27 affiliate-referral-service" && npx nest build affiliate-referral-service
+RUN echo "[build] 3/27 algolia-service" && npx nest build algolia-service
+RUN echo "[build] 4/27 api-gateway" && npx nest build api-gateway
+RUN echo "[build] 5/27 auth-service" && npx nest build auth-service
+RUN echo "[build] 6/27 autocomplete-service" && npx nest build autocomplete-service
+RUN echo "[build] 7/27 billing-service" && npx nest build billing-service
+RUN echo "[build] 8/27 category-service" && npx nest build category-service
+RUN echo "[build] 9/27 checkout-service" && npx nest build checkout-service
+RUN echo "[build] 10/27 content-moderation-service" && npx nest build content-moderation-service
+RUN echo "[build] 11/27 contracts-service" && npx nest build contracts-service
+RUN echo "[build] 12/27 earnings-service" && npx nest build earnings-service
+RUN echo "[build] 13/27 favorites-service" && npx nest build favorites-service
+RUN echo "[build] 14/27 invitations-service" && npx nest build invitations-service
+RUN echo "[build] 15/27 listings-service" && npx nest build listings-service
+RUN echo "[build] 16/27 messaging-service" && npx nest build messaging-service
+RUN echo "[build] 17/27 notification-service" && npx nest build notification-service
+RUN echo "[build] 18/27 payout-service" && npx nest build payout-service
+RUN echo "[build] 19/27 portfolio-service" && npx nest build portfolio-service
+RUN echo "[build] 20/27 pricing-service" && npx nest build pricing-service
+RUN echo "[build] 21/27 search-service" && npx nest build search-service
+RUN echo "[build] 22/27 suggestions-service" && npx nest build suggestions-service
+RUN echo "[build] 23/27 time-tracking-service" && npx nest build time-tracking-service
+RUN echo "[build] 24/27 transaction-service" && npx nest build transaction-service
+RUN echo "[build] 25/27 user-service" && npx nest build user-service
+RUN echo "[build] 26/27 wallet-service" && npx nest build wallet-service
+RUN echo "[build] 27/27 wire-review-service" && npx nest build wire-review-service
 
 # Prune devDependencies for smaller production image
 RUN npm prune --production --legacy-peer-deps
