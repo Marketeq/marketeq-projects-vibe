@@ -5,17 +5,12 @@ COPY . .
 RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
 RUN npm ci --include=dev --legacy-peer-deps
 
-# Different 10 services (second half alphabetically)
+# Narrow down: first 5 from the failing batch
 RUN npx nest build contracts-service \
  && npx nest build earnings-service \
  && npx nest build favorites-service \
  && npx nest build invitations-service \
- && npx nest build listings-service \
- && npx nest build messaging-service \
- && npx nest build notification-service \
- && npx nest build payout-service \
- && npx nest build portfolio-service \
- && npx nest build search-service
+ && npx nest build listings-service
 
 RUN npm prune --production --legacy-peer-deps
 
