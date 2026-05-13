@@ -5,13 +5,17 @@ COPY . .
 RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
 RUN npm ci --include=dev --legacy-peer-deps
 
-# Test: build admin-service (fails first in alphabetical 27-service builds)
+# Build 10 services to find the threshold
 RUN npx nest build admin-service \
- && echo "[build] admin-service OK" \
+ && npx nest build affiliate-referral-service \
+ && npx nest build algolia-service \
  && npx nest build api-gateway \
- && echo "[build] api-gateway OK" \
  && npx nest build auth-service \
- && echo "[build] auth-service OK"
+ && npx nest build autocomplete-service \
+ && npx nest build billing-service \
+ && npx nest build category-service \
+ && npx nest build checkout-service \
+ && npx nest build content-moderation-service
 
 RUN npm prune --production --legacy-peer-deps
 
