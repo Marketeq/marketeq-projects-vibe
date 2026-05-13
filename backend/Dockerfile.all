@@ -5,8 +5,9 @@ COPY . .
 RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
 RUN npm ci --include=dev --legacy-peer-deps
 
-# Test listings-service alone (one of the largest services)
-RUN npx nest build listings-service
+# Test: build listings-service with explicit Node heap limit
+# Render Starter build runner may have limited RAM
+RUN NODE_OPTIONS="--max-old-space-size=400" npx nest build listings-service
 
 RUN npm prune --production --legacy-peer-deps
 
