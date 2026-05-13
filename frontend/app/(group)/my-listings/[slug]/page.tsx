@@ -35,6 +35,8 @@ import {
   Check,
   CheckCircle,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronsDown,
   ChevronsUp,
   Clock,
@@ -105,6 +107,27 @@ import {
 } from "@/components/ui/combobox/combobox"
 import { ScaleOutIn } from "@/components/ui/transitions/transitions"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover/popover"
+import { RichTextEditor } from "@/components/rich-text-editor"
+import { Spinner } from "@/components/ui/spinner/spinner"
+import {
+  DndContext,
+  type DragEndEvent,
+  type DragStartEvent,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core"
+import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { GripVertical2 } from "@/components/icons/grip-vertical-2"
 import { ScopeBuilder } from "@/components/scope-builder"
 import { useInviteWindowStore } from "@/components/invite-window"
@@ -126,11 +149,6 @@ import {
   Badge,
   Button,
   Card,
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
   CircularProgressDropzone,
   CircularProgressDropzoneState,
   Dialog,
@@ -195,7 +213,6 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  useCarousel,
   useToast,
 } from "@/components/ui"
 
@@ -597,26 +614,6 @@ const Chats = () => {
   )
 }
 
-const CarouselPreviousTrigger = () => {
-  const { canScrollPrev } = useCarousel()
-  return canScrollPrev ? (
-    <CarouselPrevious
-      className="border-gray-300 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] size-8 hover:ring-1 hover:ring-dark-blue-400 hover:text-dark-blue-400 text-gray-500 disabled:opacity-50 transition duration-300 -left-[13.75px]"
-      indicatorClassName="size-5"
-    />
-  ) : null
-}
-
-const CarouselNextTrigger = () => {
-  const { canScrollNext } = useCarousel()
-  return canScrollNext ? (
-    <CarouselNext
-      className="border-gray-300 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] size-8 hover:ring-1 hover:ring-dark-blue-400 hover:text-dark-blue-400 text-gray-500 disabled:opacity-50 transition duration-300 -right-[13.75px]"
-      indicatorClassName="size-5"
-    />
-  ) : null
-}
-
 const renderProjectStaticIcon = (
   icon: ProjectStaticIcon,
   className: string
@@ -640,6 +637,226 @@ const SEED_TEAM_MEMBERS = [
   { id: "seed-4", firstName: "Tina", username: "tinaqa", avatarUrl: "/woman.jpg", role: "QA Engineer", jobTitles: ["QA Engineer"], hourlyRate: 70, workSchedule: "part_time", customHoursPerWeek: null, location: "India", experience: "Junior" },
   { id: "seed-5", firstName: "Shelly", username: "shellyux", avatarUrl: "/woman.jpg", role: "UI/UX Designer", jobTitles: ["UI/UX Designer", "Product Designer"], hourlyRate: 90, workSchedule: "full_time", customHoursPerWeek: null, location: "Canada", experience: "Medior" },
 ]
+
+function SortableGalleryItem({
+  index,
+  url,
+  isHidden,
+  isUploading,
+  onUpload,
+  onDelete,
+  onToggleHidden,
+}: {
+  index: number
+  url: string | undefined
+  isHidden: boolean
+  isUploading: boolean
+  onUpload: (files: FileList | null, replaceIndex?: number) => void
+  onDelete: (index: number) => void
+  onToggleHidden: (index: number) => void
+}) {
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `gallery-${index}`, disabled: !url })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="group/slide shrink-0 w-[calc(33.333%-8px)]"
+    >
+      <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
+        {url ? (
+          <>
+            <NextImage
+              className={cn("object-cover transition-all duration-300", isHidden && "opacity-40 blur-[1px]")}
+              src={url}
+              alt={`Gallery image ${index + 1}`}
+              sizes="25vw"
+              fill
+            />
+            {isHidden && (
+              <div className="absolute top-1.5 left-1.5">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="border border-dashed border-gray-400 rounded px-1.5 py-0.5 cursor-help">
+                        <EyeOff className="size-3 text-gray-400" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
+                      This image is hidden from your listing
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            )}
+            {/* Hover overlay */}
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200">
+              {/* Drag handle */}
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div
+                      className="absolute top-0 left-1/2 -translate-x-1/2 p-2.5 cursor-grab active:cursor-grabbing group/drag z-20"
+                      {...attributes}
+                      {...listeners}
+                    >
+                      <img
+                        src="/drag-icon.svg"
+                        alt=""
+                        className="w-[50px] h-2 opacity-50 group-hover/drag:opacity-100 transition-opacity"
+                        draggable={false}
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" visual="white" className="text-xs">
+                    Drag to reorder
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              {/* Action buttons */}
+              <div className="absolute inset-0 flex items-center justify-center gap-x-2 z-10">
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="size-9 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
+                        onClick={() => {
+                          const input = document.createElement("input")
+                          input.type = "file"
+                          input.accept = "image/*"
+                          input.onchange = (e) => {
+                            const files = (e.target as HTMLInputElement).files
+                            onUpload(files, index)
+                          }
+                          input.click()
+                        }}
+                      >
+                        <Edit03 className="size-4 text-white" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" visual="white" className="text-xs">Replace image</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="size-9 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
+                        onClick={() => onToggleHidden(index)}
+                      >
+                        {isHidden ? (
+                          <Eye className="size-4 text-white" />
+                        ) : (
+                          <EyeOff className="size-4 text-white" />
+                        )}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" visual="white" className="text-xs">
+                      {isHidden ? "Show image" : "Hide image"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="size-9 rounded-full bg-white/20 hover:bg-red-500/80 inline-flex items-center justify-center transition"
+                        onClick={() => setDeleteDialogOpen(true)}
+                      >
+                        <Trash2 className="size-4 text-white" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" visual="white" className="text-xs">Delete image</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            </div>
+            {/* Delete confirmation dialog */}
+            <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+              <DialogContent className="max-w-[409px] p-0">
+                <div className="p-6 border-b border-gray-200">
+                  <DialogTitle>Delete this image?</DialogTitle>
+                  <DialogDescription className="mt-2">
+                    Your image will be removed permanently.
+                  </DialogDescription>
+                </div>
+                <div className="py-4 flex rounded-b-xl bg-gray-25 items-center justify-between px-6">
+                  <DialogClose asChild>
+                    <Button
+                      className="opacity-50 hover:opacity-100"
+                      visual="gray"
+                      variant="link"
+                    >
+                      <X className="size-[15px]" />
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    onClick={() => {
+                      onDelete(index)
+                      setDeleteDialogOpen(false)
+                    }}
+                  >
+                    Yes, Delete
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </>
+        ) : isUploading ? (
+          <div className="absolute inset-0 bg-gray-500 flex items-center justify-center">
+            <Spinner size={48} strokeWidth={5} />
+          </div>
+        ) : (
+          <>
+            <div className="absolute inset-0 bg-gray-50 flex items-center justify-center">
+              <img src="/placeholder-img.svg" alt="" className="size-[54px]" />
+            </div>
+            <div className="absolute inset-0 bg-gray-500/80 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+              <button
+                type="button"
+                className="inline-flex items-center gap-x-1.5 px-3 py-1.5 rounded-md bg-white text-sm font-medium text-gray-800 hover:bg-gray-50 transition shadow-sm"
+                onClick={() => {
+                  const input = document.createElement("input")
+                  input.type = "file"
+                  input.accept = "image/*"
+                  input.onchange = (e) => {
+                    const files = (e.target as HTMLInputElement).files
+                    onUpload(files, index)
+                  }
+                  input.click()
+                }}
+              >
+                <UploadCloud className="size-4" />
+                Add Image
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export default function ProjectDetails() {
   const params = useParams()
@@ -718,11 +935,33 @@ export default function ProjectDetails() {
   const [hiddenImages, setHiddenImages] = React.useState<Set<number>>(new Set())
   const [videoHidden, setVideoHidden] = React.useState(false)
   const galleryInputRef = React.useRef<HTMLInputElement>(null)
+  const galleryScrollRef = React.useRef<HTMLDivElement>(null)
+  const [canScrollGalleryPrev, setCanScrollGalleryPrev] = React.useState(false)
+  const [canScrollGalleryNext, setCanScrollGalleryNext] = React.useState(false)
+  const [uploadingSlots, setUploadingSlots] = React.useState<Set<number>>(new Set())
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false)
   const [isPublishing, setIsPublishing] = React.useState(false)
   const [videoDialogOpen, setVideoDialogOpen] = React.useState(false)
   const [videoUrlInput, setVideoUrlInput] = React.useState("")
   const { toast } = useToast()
+
+  const updateGalleryScrollState = React.useCallback(() => {
+    const el = galleryScrollRef.current
+    if (!el) return
+    setCanScrollGalleryPrev(el.scrollLeft > 0)
+    setCanScrollGalleryNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+  }, [])
+
+  React.useEffect(() => {
+    updateGalleryScrollState()
+  }, [project.mediaUrls, project.featuredVideo, updateGalleryScrollState])
+
+  const scrollGallery = React.useCallback((direction: "prev" | "next") => {
+    const el = galleryScrollRef.current
+    if (!el) return
+    const scrollAmount = el.clientWidth * 0.8
+    el.scrollBy({ left: direction === "next" ? scrollAmount : -scrollAmount, behavior: "smooth" })
+  }, [])
 
   const handleGalleryUpload = React.useCallback(
     async (files: FileList | null, replaceIndex?: number) => {
@@ -735,6 +974,10 @@ export default function ProjectDetails() {
       const newUrls = [...currentUrls]
 
       for (const file of Array.from(files)) {
+        // Determine the target slot index for loading state
+        const targetIndex = replaceIndex !== undefined ? replaceIndex : newUrls.length
+        setUploadingSlots((prev) => new Set(prev).add(targetIndex))
+
         const formData = new FormData()
         // Backend requires featuredImage field to be present
         formData.append("featuredImage", file)
@@ -743,7 +986,8 @@ export default function ProjectDetails() {
           const res = await ProjectAPI.UploadMedia(formData)
           const url = res?.data?.url || res?.data?.featuredImage
           if (url) {
-            if (replaceIndex !== undefined && replaceIndex < newUrls.length) {
+            if (replaceIndex !== undefined) {
+              while (newUrls.length <= replaceIndex) newUrls.push("")
               newUrls[replaceIndex] = url
             } else {
               newUrls.push(url)
@@ -753,7 +997,8 @@ export default function ProjectDetails() {
           console.error("Failed to upload image:", err)
           // Show local preview even if backend upload fails
           const localUrl = URL.createObjectURL(file)
-          if (replaceIndex !== undefined && replaceIndex < newUrls.length) {
+          if (replaceIndex !== undefined) {
+            while (newUrls.length <= replaceIndex) newUrls.push("")
             newUrls[replaceIndex] = localUrl
           } else {
             newUrls.push(localUrl)
@@ -764,6 +1009,12 @@ export default function ProjectDetails() {
               ? "Image moderation service unavailable. Showing local preview."
               : "Failed to upload image. Showing local preview.",
             variant: "destructive",
+          })
+        } finally {
+          setUploadingSlots((prev) => {
+            const next = new Set(prev)
+            next.delete(targetIndex)
+            return next
           })
         }
       }
@@ -813,6 +1064,52 @@ export default function ProjectDetails() {
         else next.add(index)
         return next
       })
+    },
+    []
+  )
+
+  const gallerySensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } })
+  )
+
+  const handleGalleryDragEnd = React.useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+      if (!active || !over || active.id === over.id) return
+
+      const oldIndex = Number(String(active.id).replace("gallery-", ""))
+      const newIndex = Number(String(over.id).replace("gallery-", ""))
+
+      // Remap hidden-image indexes
+      setHiddenImages((prev) => {
+        const next = new Set<number>()
+        for (const hiddenIdx of prev) {
+          if (hiddenIdx === oldIndex) {
+            next.add(newIndex)
+          } else if (oldIndex < newIndex) {
+            next.add(hiddenIdx > oldIndex && hiddenIdx <= newIndex ? hiddenIdx - 1 : hiddenIdx)
+          } else {
+            next.add(hiddenIdx >= newIndex && hiddenIdx < oldIndex ? hiddenIdx + 1 : hiddenIdx)
+          }
+        }
+        return next
+      })
+
+      // Use functional updater to always read latest mediaUrls
+      setProject((prev: any) => {
+        const currentUrls: string[] = prev.mediaUrls ?? []
+        const reordered = arrayMove(currentUrls, oldIndex, newIndex)
+
+        // Persist in background
+        if (prev.id && isRealBackendId(prev.id)) {
+          ProjectAPI.UpdateGalleryImages(prev.id, reordered.filter((u: string) => u && !u.startsWith("blob:")))
+            .catch((err: any) => console.error("Failed to save gallery reorder:", err))
+        }
+
+        return { ...prev, mediaUrls: reordered }
+      })
+      setHasChanges(true)
     },
     []
   )
@@ -890,8 +1187,8 @@ export default function ProjectDetails() {
   const [detailsDialogOpen, setDetailsDialogOpen] = React.useState(false)
   const [teamDialogOpen, setTeamDialogOpen] = React.useState(false)
   const [questionsDialogOpen, setQuestionsDialogOpen] = React.useState(false)
-  const [questionsTab, setQuestionsTab] = React.useState("FAQs")
-  const [questionsSectionTab, setQuestionsSectionTab] = React.useState("FAQs")
+  const [questionsTab, setQuestionsTab] = React.useState("dialog-faqs")
+  const [questionsSectionTab, setQuestionsSectionTab] = React.useState("section-faqs")
   const [recentQTab, setRecentQTab] = React.useState("all")
   const [openFaqIndex, setOpenFaqIndex] = React.useState<number | null>(null)
   const [teamTab, setTeamTab] = React.useState("Team Lead")
@@ -1166,7 +1463,6 @@ export default function ProjectDetails() {
       suggested
         .filter(
           ({ category, subCategory }) =>
-            !selectedCategoryNames.has(category) &&
             !selectedSuggestedPairs.has(`${category}::${subCategory}`)
         )
         .slice(0, 3),
@@ -2241,13 +2537,42 @@ export default function ProjectDetails() {
                   e.target.value = ""
                 }}
               />
-              <Carousel className="max-w-[818px] w-full">
-                <CarouselContent className="-ml-3">
+              <DndContext
+                collisionDetection={closestCenter}
+                modifiers={[restrictToHorizontalAxis]}
+                onDragEnd={handleGalleryDragEnd}
+                sensors={gallerySensors}
+              >
+              <div className="relative max-w-[818px] w-full">
+                {canScrollGalleryPrev && (
+                  <button
+                    type="button"
+                    className="absolute -left-[13.75px] top-1/2 -translate-y-1/2 z-30 border border-gray-300 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] size-8 rounded-full hover:ring-1 hover:ring-dark-blue-400 hover:text-dark-blue-400 text-gray-500 transition duration-300 inline-flex items-center justify-center"
+                    onClick={() => scrollGallery("prev")}
+                  >
+                    <ChevronLeft className="size-5" />
+                  </button>
+                )}
+                {canScrollGalleryNext && (
+                  <button
+                    type="button"
+                    className="absolute -right-[13.75px] top-1/2 -translate-y-1/2 z-30 border border-gray-300 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] size-8 rounded-full hover:ring-1 hover:ring-dark-blue-400 hover:text-dark-blue-400 text-gray-500 transition duration-300 inline-flex items-center justify-center"
+                    onClick={() => scrollGallery("next")}
+                  >
+                    <ChevronRight className="size-5" />
+                  </button>
+                )}
+                <div
+                  ref={galleryScrollRef}
+                  className="w-full overflow-x-auto scrollbar-hide"
+                  style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}
+                  onScroll={updateGalleryScrollState}
+                >
+                <div className="flex gap-3" style={{ minWidth: "min-content" }}>
                   {/* Featured video — first slot when present */}
                   {project.featuredVideo && (
-                    <CarouselItem className="group/slide basis-1/3">
+                    <div className="group/slide shrink-0 w-[calc(33.333%-8px)]">
                       <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
-                        {/* Video thumbnail — use an embed or a poster-like view */}
                         <iframe
                           src={project.featuredVideo}
                           className={cn("absolute inset-0 w-full h-full pointer-events-none transition-all duration-300", videoHidden && "opacity-40 blur-[1px]")}
@@ -2255,13 +2580,11 @@ export default function ProjectDetails() {
                           tabIndex={-1}
                           title="Featured video"
                         />
-                        {/* Play button overlay (default state) */}
                         <div className={cn("absolute inset-0 flex items-center justify-center pointer-events-none group-hover/slide:opacity-0 transition-opacity duration-200", videoHidden && "opacity-70")}>
                           <div className="size-10 rounded-full bg-white/90 flex items-center justify-center shadow">
                             <Play className="size-5 text-gray-800 ml-0.5" />
                           </div>
                         </div>
-                        {/* Hidden badge */}
                         {videoHidden && (
                           <div className="absolute top-1.5 left-1.5">
                             <div className="border border-dashed border-gray-400 rounded px-1.5 py-0.5">
@@ -2269,7 +2592,6 @@ export default function ProjectDetails() {
                             </div>
                           </div>
                         )}
-                        {/* Hover overlay with action buttons */}
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2">
                           <button
                             type="button"
@@ -2304,123 +2626,36 @@ export default function ProjectDetails() {
                           </button>
                         </div>
                       </div>
-                    </CarouselItem>
+                    </div>
                   )}
                   {(() => {
                     const allUrls: string[] = (project.mediaUrls as string[] | undefined) ?? []
-                    // Show enough slots: filled + empty to fill remaining (minus 1 if video takes a slot)
                     const videoOffset = project.featuredVideo ? 1 : 0
-                    // Show 3 empty slots initially; grow only when images are added
                     const emptySlots = 3 - videoOffset
                     const totalSlots = Math.max(emptySlots, allUrls.length)
-                    return Array.from({ length: totalSlots }).map((_, index) => {
-                      const url = allUrls[index]
-                      const isHidden = hiddenImages.has(index)
+                    const sortableIds = Array.from({ length: totalSlots }, (_, i) => `gallery-${i}`)
 
-                      return (
-                        <CarouselItem key={index} className="group/slide basis-1/3">
-                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
-                            {url ? (
-                              <>
-                                <NextImage
-                                  className={cn("object-cover transition-all duration-300", isHidden && "opacity-40 blur-[1px]")}
-                                  src={url}
-                                  alt={`Gallery image ${index + 1}`}
-                                  sizes="25vw"
-                                  fill
-                                />
-                                {isHidden && (
-                                  <div className="absolute top-1.5 left-1.5">
-                                    <TooltipProvider>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <div className="border border-dashed border-gray-400 rounded px-1.5 py-0.5 cursor-help">
-                                            <EyeOff className="size-3 text-gray-400" />
-                                          </div>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
-                                          This image is hidden from your listing
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  </div>
-                                )}
-                                {/* Hover overlay with action buttons */}
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2">
-                                  <button
-                                    type="button"
-                                    className="size-9 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
-                                    onClick={() => {
-                                      const input = document.createElement("input")
-                                      input.type = "file"
-                                      input.accept = "image/*"
-                                      input.onchange = (e) => {
-                                        const files = (e.target as HTMLInputElement).files
-                                        handleGalleryUpload(files, index)
-                                      }
-                                      input.click()
-                                    }}
-                                  >
-                                    <Edit03 className="size-4 text-white" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="size-9 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
-                                    onClick={() => handleGalleryToggleHidden(index)}
-                                  >
-                                    {isHidden ? (
-                                      <Eye className="size-4 text-white" />
-                                    ) : (
-                                      <EyeOff className="size-4 text-white" />
-                                    )}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="size-9 rounded-full bg-white/20 hover:bg-red-500/80 inline-flex items-center justify-center transition"
-                                    onClick={() => handleGalleryDelete(index)}
-                                  >
-                                    <Trash2 className="size-4 text-white" />
-                                  </button>
-                                </div>
-                              </>
-                            ) : (
-                              <>
-                                {/* Empty state */}
-                                <div className="absolute inset-0 bg-gray-50 flex items-center justify-center">
-                                  <img src="/placeholder-img.svg" alt="" className="size-[54px]" />
-                                </div>
-                                {/* Empty hover: Add Image button */}
-                                <div className="absolute inset-0 bg-gray-500/80 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200 flex items-center justify-center">
-                                  <button
-                                    type="button"
-                                    className="inline-flex items-center gap-x-1.5 px-3 py-1.5 rounded-md bg-white text-sm font-medium text-gray-800 hover:bg-gray-50 transition shadow-sm"
-                                    onClick={() => {
-                                      const input = document.createElement("input")
-                                      input.type = "file"
-                                      input.accept = "image/*"
-                                      input.onchange = (e) => {
-                                        const files = (e.target as HTMLInputElement).files
-                                        handleGalleryUpload(files)
-                                      }
-                                      input.click()
-                                    }}
-                                  >
-                                    <UploadCloud className="size-4" />
-                                    Add Image
-                                  </button>
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        </CarouselItem>
-                      )
-                    })
+                    return (
+                      <SortableContext items={sortableIds} strategy={horizontalListSortingStrategy}>
+                        {sortableIds.map((id, index) => (
+                          <SortableGalleryItem
+                            key={id}
+                            index={index}
+                            url={allUrls[index]}
+                            isHidden={hiddenImages.has(index)}
+                            isUploading={uploadingSlots.has(index)}
+                            onUpload={handleGalleryUpload}
+                            onDelete={handleGalleryDelete}
+                            onToggleHidden={handleGalleryToggleHidden}
+                          />
+                        ))}
+                      </SortableContext>
+                    )
                   })()}
-                </CarouselContent>
-
-                <CarouselPreviousTrigger />
-                <CarouselNextTrigger />
-              </Carousel>
+                </div>
+              </div>
+              </div>
+              </DndContext>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -2521,7 +2756,7 @@ export default function ProjectDetails() {
 
                   <TabsContent value="Description">
                     <div id="section-Description" className="pt-6">
-                      {!project.description && !project.summary && (
+                      {!project.description && (
                       <Alert variant="primary" className="mb-6 items-center">
                         <AlertIcon>
                           <Stars02 className="size-5" />
@@ -2541,7 +2776,11 @@ export default function ProjectDetails() {
                         </NextLink>
                       </Alert>
                       )}
-                      {project.description || project.summary ? (
+                      {project.description ? (() => {
+                        const descHtml = project.description
+                        const textLength = descHtml.replace(/<[^>]*>/g, "").length
+                        const needsTruncation = textLength > 800
+                        return needsTruncation ? (
                       <ShowMoreLessRoot>
                         {({ isShowing, setIsShowing }) => (
                           <div
@@ -2559,7 +2798,7 @@ export default function ProjectDetails() {
                                 variant="ghost"
                                 visual="gray"
                                 onClick={() => {
-                                  setDescDraft(project.description || project.summary || "")
+                                  setDescDraft(project.description || "")
                                   setDescDialogOpen(true)
                                 }}
                               >
@@ -2568,23 +2807,9 @@ export default function ProjectDetails() {
                             </div>
 
                             <div className="mt-6 border-t pt-6 border-gray-200">
-                              {/*
-                                project.description is HTML generated from the
-                                Payload Lexical rich-text editor by the
-                                listings-service ProjectSyncService. Editor
-                                content is admin-authored (not user-submitted)
-                                so `dangerouslySetInnerHTML` is safe here — see
-                                the lexicalToHtml() helper on the service which
-                                escapes text content before wrapping in tags.
-                              */}
                               <div
                                 className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
-                                dangerouslySetInnerHTML={{
-                                  __html:
-                                    project.description ||
-                                    project.summary ||
-                                    "",
-                                }}
+                                dangerouslySetInnerHTML={{ __html: descHtml }}
                               />
                             </div>
 
@@ -2612,7 +2837,34 @@ export default function ProjectDetails() {
                           </div>
                         )}
                       </ShowMoreLessRoot>
-                      ) : (
+                        ) : (
+                          <div className="relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                            <div className="flex items-start justify-between">
+                              <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
+                                {project.title}
+                              </h1>
+                              <IconButton
+                                className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
+                                variant="ghost"
+                                visual="gray"
+                                onClick={() => {
+                                  setDescDraft(project.description || "")
+                                  setDescDialogOpen(true)
+                                }}
+                              >
+                                <Edit03 className="size-4" />
+                              </IconButton>
+                            </div>
+
+                            <div className="mt-6 border-t pt-6 border-gray-200">
+                              <div
+                                className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
+                                dangerouslySetInnerHTML={{ __html: descHtml }}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })() : (
                       <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 flex items-start justify-between">
                         <div>
                           <h1 className="text-lg font-semibold text-dark-blue-400">
@@ -2646,21 +2898,16 @@ export default function ProjectDetails() {
                           </div>
 
                           <div className="px-6 pt-6 pb-6">
-                            <div className="flex items-baseline justify-between mb-2">
-                              <span className="text-sm font-light text-dark-blue-400">
-                                Provide a comprehensive description of this project, including its purpose and features.
-                              </span>
-                              <span className="text-sm font-light text-gray-400 shrink-0 ml-4">
-                                {descDraft.length}/2,000
-                              </span>
-                            </div>
-                            <Textarea
-                              className="min-h-[140px] resize-none"
-                              placeholder="Enter a description..."
-                              value={descDraft}
-                              onChange={(e) =>
-                                setDescDraft(e.target.value.slice(0, 2000))
-                              }
+                            <p className="text-sm font-light text-dark-blue-400 mb-2">
+                              Provide a comprehensive description of this project, including its purpose and features.
+                            </p>
+                            <RichTextEditor
+                              defaultValue={descDraft}
+                              placeholder="<p class='text-gray-400'>Enter a full description</p>"
+                              allowFullscreen
+                              className="rounded-lg border border-gray-300 focus-within:border-primary-500 bg-white"
+                              editorClassName="min-h-[200px] max-h-[40vh] overflow-y-auto"
+                              onUpdate={(html) => setDescDraft(html)}
                             />
                           </div>
 
@@ -2750,7 +2997,7 @@ export default function ProjectDetails() {
                                 onValueChange={setInfoTab}
                                 className="mt-6"
                               >
-                                <TabsList className="border-b border-gray-200 px-6">
+                                <TabsList className="w-full border-b border-gray-200 px-6">
                                   <TabsTrigger value="Basic Info">
                                     Basic Info
                                   </TabsTrigger>
@@ -2759,7 +3006,7 @@ export default function ProjectDetails() {
                                   </TabsTrigger>
                                 </TabsList>
 
-                                <TabsContent value="Basic Info" className="pt-6 px-6 pb-6 space-y-5">
+                                {infoTab === "Basic Info" && <div className="pt-6 px-6 pb-6 space-y-5">
                                   <div className="space-y-1.5">
                                     <div className="flex items-center justify-between">
                                       <Label size="sm" className="font-medium">
@@ -2825,9 +3072,9 @@ export default function ProjectDetails() {
                                       </ListboxOptions>
                                     </Listbox>
                                   </div>
-                                </TabsContent>
+                                </div>}
 
-                                <TabsContent value="Categories" className="pt-6 px-6 pb-6">
+                                {infoTab === "Categories" && <div className="pt-6 px-6 pb-6">
                                   <p className="text-sm font-light text-dark-blue-400 mb-6">
                                     Select categories that best fit your project scope for easier discovery.
                                   </p>
@@ -2875,12 +3122,22 @@ export default function ProjectDetails() {
 
                                           <TagsInputRoot
                                             value={infoCategories[index].subCategories}
-                                            onValueChange={(details) =>
+                                            onValueChange={(details) => {
+                                              const opts = activeCategoryIndex === index
+                                                ? subCategoryOptions
+                                                : getSubCategoryOptionsForCategory(infoCategories[index].category)
+                                              const optsLower = new Set(opts.map((o) => o.toLowerCase()))
+                                              const sanitized = details.value
+                                                .map((v) => {
+                                                  if (optsLower.has(v.toLowerCase())) return v
+                                                  return v.replace(/[^a-zA-Z ]/g, "").trim().toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+                                                })
+                                                .filter((v) => v.length > 0)
                                               handleInfoSubCategoryChange(
                                                 index,
-                                                details.value
+                                                sanitized
                                               )
-                                            }
+                                            }}
                                             className="space-y-1.5"
                                           >
                                             <TagsInputContext>
@@ -2984,7 +3241,7 @@ export default function ProjectDetails() {
                                       </div>
                                     </div>
                                   )}
-                                </TabsContent>
+                                </div>}
                               </Tabs>
                             </div>
 
@@ -3132,9 +3389,9 @@ export default function ProjectDetails() {
                               onClick={() => {
                                 setDetailsLangs(project.programmingLanguages ?? [])
                                 setDetailsTech(project.developmentTech ?? [])
-                                setDetailsIndustry(project.industries ?? project.developmentTech ?? [])
+                                setDetailsIndustry(project.industries ?? [])
                                 setDetailsTags(project.tags ?? [])
-                                setDetailsSkills(project.skills ?? project.programmingLanguages ?? [])
+                                setDetailsSkills(project.skills ?? [])
                                 setDetailsTools(project.tools ?? [])
                                 setDetailsDialogOpen(true)
                               }}
@@ -3148,7 +3405,7 @@ export default function ProjectDetails() {
                               {project.programmingLanguages?.length > 0 && (
                                 <div className="space-y-3">
                                   <h3 className="text-sm leading-none font-medium text-dark-blue-400">
-                                    Skills
+                                    Programming Languages
                                   </h3>
                                   <div className="flex items-center flex-wrap gap-1">
                                     {project.programmingLanguages.map(
@@ -3174,7 +3431,7 @@ export default function ProjectDetails() {
                               {project.developmentTech?.length > 0 && (
                                 <div className="space-y-3">
                                   <h3 className="text-sm leading-none font-medium text-dark-blue-400">
-                                    Industries
+                                    Development Tech
                                   </h3>
                                   <div className="flex items-center flex-wrap gap-1">
                                     {project.developmentTech.map(
@@ -3204,17 +3461,30 @@ export default function ProjectDetails() {
                                     Subcategories
                                   </h3>
                                   <div className="gap-2 flex items-center flex-wrap">
-                                    {project.subcategories.map(
-                                      (sc: string, i: number) => (
-                                        <Badge
-                                          key={sc + i}
-                                          visual="gray"
-                                          size="md"
-                                        >
-                                          {sc}
-                                        </Badge>
+                                    {(() => {
+                                      const visible = project.subcategories.slice(0, 5)
+                                      const remaining = project.subcategories.length - visible.length
+                                      return (
+                                        <>
+                                          {visible.map(
+                                            (sc: string, i: number) => (
+                                              <Badge
+                                                key={sc + i}
+                                                visual="gray"
+                                                size="md"
+                                              >
+                                                {sc}
+                                              </Badge>
+                                            )
+                                          )}
+                                          {remaining > 0 && (
+                                            <span className="text-sm text-gray-500">
+                                              + {remaining} more
+                                            </span>
+                                          )}
+                                        </>
                                       )
-                                    )}
+                                    })()}
                                   </div>
                                 </div>
                               )}
@@ -3225,17 +3495,30 @@ export default function ProjectDetails() {
                                     Tags
                                   </h3>
                                   <div className="gap-2 flex items-center flex-wrap">
-                                    {project.tags.map(
-                                      (tag: string, i: number) => (
-                                        <Badge
-                                          key={tag + i}
-                                          visual="gray"
-                                          size="md"
-                                        >
-                                          {tag}
-                                        </Badge>
+                                    {(() => {
+                                      const visible = project.tags.slice(0, 5)
+                                      const remaining = project.tags.length - visible.length
+                                      return (
+                                        <>
+                                          {visible.map(
+                                            (tag: string, i: number) => (
+                                              <Badge
+                                                key={tag + i}
+                                                visual="gray"
+                                                size="md"
+                                              >
+                                                {tag}
+                                              </Badge>
+                                            )
+                                          )}
+                                          {remaining > 0 && (
+                                            <span className="text-sm text-gray-500">
+                                              + {remaining} more
+                                            </span>
+                                          )}
+                                        </>
                                       )
-                                    )}
+                                    })()}
                                   </div>
                                 </div>
                               )}
@@ -3592,9 +3875,9 @@ export default function ProjectDetails() {
                           <Button variant="outlined" visual="gray" className="shrink-0 ml-[75px]" onClick={() => {
                                 setDetailsLangs(project.programmingLanguages ?? [])
                                 setDetailsTech(project.developmentTech ?? [])
-                                setDetailsIndustry(project.industries ?? project.developmentTech ?? [])
+                                setDetailsIndustry(project.industries ?? [])
                                 setDetailsTags(project.tags ?? [])
-                                setDetailsSkills(project.skills ?? project.programmingLanguages ?? [])
+                                setDetailsSkills(project.skills ?? [])
                                 setDetailsTools(project.tools ?? [])
                                 setDetailsDialogOpen(true)
                               }}>
@@ -3778,7 +4061,7 @@ export default function ProjectDetails() {
 
                           <div className="border-t border-gray-200 px-6 py-6 space-y-6 max-h-[60vh] overflow-y-auto">
                             {[
-                              { label: "Programming Languages", desc: "Add up to 10 tags that best describe your template. Use relevant keywords to highlight its features and make it easier to find.", max: 10, value: detailsLangs, onChange: setDetailsLangs, placeholder: "Add Programming Languages", acType: "languages", options: langOptions, setOptions: setLangOptions },
+                              { label: "Programming Languages", desc: "Add up to 10 programming languages that will be used in this project.", max: 10, value: detailsLangs, onChange: setDetailsLangs, placeholder: "Add Programming Languages", acType: "skills", options: langOptions, setOptions: setLangOptions },
                               { label: "Development Tech", desc: "Add up to 10 technologies that will be used in this project", max: 10, value: detailsTech, onChange: setDetailsTech, placeholder: "Add Technologies", acType: "skills", options: techOptions, setOptions: setTechOptions },
                               { label: "Industry", desc: "Add up to 5 industries that align with your project scope for targeted visibility.", max: 5, value: detailsIndustry, onChange: setDetailsIndustry, placeholder: "Add Industries", acType: "industries", options: industryOptions, setOptions: setIndustryOptions },
                               { label: "Tags", desc: "Add up to 10 tags that align with your project scope for targeted visibility.", max: 10, value: detailsTags, onChange: setDetailsTags, placeholder: "Add Tags", acType: "search_keywords", options: tagOptions, setOptions: setTagOptions },
@@ -3796,7 +4079,16 @@ export default function ProjectDetails() {
                                 <TagsInputRoot
                                   className="mt-2 space-y-1.5"
                                   value={field.value}
-                                  onValueChange={(d) => field.onChange(d.value.slice(0, field.max))}
+                                  onValueChange={(d) => {
+                                    const optionsLower = new Set(field.options.map((o) => o.toLowerCase()))
+                                    const sanitized = d.value
+                                      .map((v) => {
+                                        if (optionsLower.has(v.toLowerCase())) return v
+                                        return v.replace(/[^a-zA-Z ]/g, "").trim().toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+                                      })
+                                      .filter((v) => v.length > 0)
+                                    field.onChange(sanitized.slice(0, field.max))
+                                  }}
                                 >
                                   <TagsInputContext>
                                     {(tagsInput) => (
@@ -3888,9 +4180,12 @@ export default function ProjectDetails() {
                               }))
                               setDetailsDialogOpen(false)
                               saveProjectFields({
+                                programmingLanguages: detailsLangs,
+                                developmentTech: detailsTech,
                                 industries: detailsIndustry,
                                 tags: detailsTags,
                                 skills: detailsSkills,
+                                tools: detailsTools,
                               })
                             }}>Save</Button>
                           </div>
@@ -4092,7 +4387,7 @@ export default function ProjectDetails() {
                             Questions
                           </h1>
                           <IconButton className="rounded-full text-gray-500 hover:text-gray-800" variant="ghost" visual="gray" onClick={() => {
-                            setQuestionsTab(questionsSectionTab === "Recently Asked Questions" ? "RecentlyAsked" : "FAQs")
+                            setQuestionsTab(questionsSectionTab === "section-recent" ? "dialog-recent" : "dialog-faqs")
                             setQuestionsDialogOpen(true)
                           }}>
                             <Edit03 className="size-4" />
@@ -4237,7 +4532,7 @@ export default function ProjectDetails() {
                                 <TabsTrigger
                                   variant="unstyled"
                                   showUnderline={false}
-                                  value="FAQs"
+                                  value="section-faqs"
                                   className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
                                 >
                                   FAQ&apos;s
@@ -4245,7 +4540,7 @@ export default function ProjectDetails() {
                                 <TabsTrigger
                                   variant="unstyled"
                                   showUnderline={false}
-                                  value="Recently Asked Questions"
+                                  value="section-recent"
                                   className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
                                 >
                                   Recently Asked Questions
@@ -4253,7 +4548,7 @@ export default function ProjectDetails() {
                               </div>
                             </RadixTabs.List>
 
-                            <TabsContent value="FAQs">
+                            <TabsContent value="section-faqs">
                               {!project.faqs || project.faqs.length === 0 ? (
                                 <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6 flex items-start justify-between">
                                   <div>
@@ -4264,7 +4559,7 @@ export default function ProjectDetails() {
                                       Your project deliverables will be displayed here once you add a scope to your offer. These deliverables are automatically generated based on the details in your scope and tasks, they&apos;re not directly editable.
                                     </p>
                                   </div>
-                                  <Button variant="outlined" visual="gray" className="shrink-0 ml-[75px]" onClick={() => { setQuestionsTab("FAQs"); setQuestionsDialogOpen(true) }}>
+                                  <Button variant="outlined" visual="gray" className="shrink-0 ml-[75px]" onClick={() => { setQuestionsTab("dialog-faqs"); setQuestionsDialogOpen(true) }}>
                                     <Plus className="size-[15px]" />
                                     Add FAQ&apos;s
                                   </Button>
@@ -4363,7 +4658,7 @@ export default function ProjectDetails() {
                               )}
                             </TabsContent>
 
-                            <TabsContent value="Recently Asked Questions">
+                            <TabsContent value="section-recent">
                               {!project.recentQuestions ||
                               project.recentQuestions.length === 0 ? (
                                 <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6">
@@ -4419,9 +4714,19 @@ export default function ProjectDetails() {
                       </div>
 
                       {/* Questions Dialog */}
-                      <Dialog open={questionsDialogOpen} onOpenChange={setQuestionsDialogOpen}>
+                      <Dialog open={questionsDialogOpen} onOpenChange={(open) => {
+                        setQuestionsDialogOpen(open)
+                        if (open) {
+                          setRecentQTab("all")
+                          setOpenFaqIndex(null)
+                        }
+                      }}>
                         <DialogContent className="max-w-[748px] p-0 gap-0">
-                          <Tabs value={questionsTab} onValueChange={setQuestionsTab}>
+                          <Tabs value={questionsTab} onValueChange={(val) => {
+                            setQuestionsTab(val)
+                            if (val === "dialog-faqs") setRecentQTab("all")
+                            if (val === "dialog-recent") setOpenFaqIndex(null)
+                          }}>
                           <div className="px-6 pt-6 pb-0">
                             <div className="flex items-start justify-between">
                               <div>
@@ -4438,13 +4743,13 @@ export default function ProjectDetails() {
                             </div>
 
                             <TabsList className="px-0 pt-4 justify-start">
-                              <TabsTrigger value="FAQs">FAQ&apos;s</TabsTrigger>
-                              <TabsTrigger value="RecentlyAsked">Recently Asked Questions</TabsTrigger>
+                              <TabsTrigger value="dialog-faqs">FAQ&apos;s</TabsTrigger>
+                              <TabsTrigger value="dialog-recent">Recently Asked Questions</TabsTrigger>
                             </TabsList>
                           </div>
 
                           <div className="px-6 py-6 max-h-[60vh] overflow-y-auto">
-                              <TabsContent value="FAQs">
+                            {questionsTab === "dialog-faqs" && (<>
                                 <p className="text-sm font-light text-dark-blue-400">
                                   Write a response for each of the question added to this project. Drag and drop FAQ items to reorder them. The order you set here will be reflected on your project&apos;s public FAQ section.
                                 </p>
@@ -4529,9 +4834,9 @@ export default function ProjectDetails() {
                                   ))}
                                 </Accordion>
                                 )}
-                              </TabsContent>
+                            </>)}
 
-                              <TabsContent value="RecentlyAsked">
+                            {questionsTab === "dialog-recent" && (
                                 <Tabs value={recentQTab} onValueChange={setRecentQTab} unanimated>
                                   <TabsList className="justify-start border-b-0 px-0 pt-0 mb-4">
                                     <TabsTrigger value="all">
@@ -4692,8 +4997,9 @@ export default function ProjectDetails() {
                                     </div>
                                   </TabsContent>
                                 </Tabs>
-                              </TabsContent>
+                            )}
                           </div>
+                          </Tabs>
 
                           <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
                             <Button
@@ -4707,7 +5013,6 @@ export default function ProjectDetails() {
                             </Button>
                             <Button onClick={() => setQuestionsDialogOpen(false)}>Save</Button>
                           </div>
-                          </Tabs>
                         </DialogContent>
                       </Dialog>
 
