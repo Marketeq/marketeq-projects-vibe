@@ -11,15 +11,40 @@ RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
 # Use npm ci to strictly follow the lockfile during Render workspace builds.
 RUN npm ci --include=dev --legacy-peer-deps
 
-# Build every NestJS service one at a time.
-# Uses shell loop inside a single RUN to auto-discover services.
-RUN set -e; \
-    for main in apps/*/src/main.ts; do \
-      svc=$(echo "$main" | cut -d'/' -f2); \
-      echo "[build] Building: $svc"; \
-      npx nest build "$svc"; \
-    done; \
-    echo "[build] All services built successfully."
+# Build all 27 backend services in batches.
+# Each RUN gets a fresh process to avoid memory accumulation.
+RUN npx nest build admin-service \
+ && npx nest build affiliate-referral-service \
+ && npx nest build algolia-service \
+ && npx nest build api-gateway \
+ && npx nest build auth-service
+
+RUN npx nest build autocomplete-service \
+ && npx nest build billing-service \
+ && npx nest build category-service \
+ && npx nest build checkout-service \
+ && npx nest build content-moderation-service
+
+RUN npx nest build contracts-service \
+ && npx nest build earnings-service \
+ && npx nest build favorites-service \
+ && npx nest build invitations-service \
+ && npx nest build listings-service
+
+RUN npx nest build messaging-service \
+ && npx nest build notification-service \
+ && npx nest build payout-service \
+ && npx nest build portfolio-service \
+ && npx nest build pricing-service
+
+RUN npx nest build search-service \
+ && npx nest build suggestions-service \
+ && npx nest build time-tracking-service \
+ && npx nest build transaction-service \
+ && npx nest build user-service
+
+RUN npx nest build wallet-service \
+ && npx nest build wire-review-service
 
 # Prune devDependencies for smaller production image
 RUN npm prune --production --legacy-peer-deps
