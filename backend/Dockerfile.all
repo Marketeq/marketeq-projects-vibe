@@ -11,9 +11,15 @@ RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
 # Use npm ci to strictly follow the lockfile during Render workspace builds.
 RUN npm ci --include=dev --legacy-peer-deps
 
-# Auto-discover and build every service that has a src/main.ts entrypoint.
-COPY build-all-services.sh .
-RUN chmod +x build-all-services.sh && ./build-all-services.sh
+# Build every NestJS service one at a time.
+# Uses shell loop inside a single RUN to auto-discover services.
+RUN set -e; \
+    for main in apps/*/src/main.ts; do \
+      svc=$(echo "$main" | cut -d'/' -f2); \
+      echo "[build] Building: $svc"; \
+      npx nest build "$svc"; \
+    done; \
+    echo "[build] All services built successfully."
 
 # Prune devDependencies for smaller production image
 RUN npm prune --production --legacy-peer-deps
