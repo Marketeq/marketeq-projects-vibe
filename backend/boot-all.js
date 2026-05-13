@@ -34,27 +34,25 @@ const GATEWAY_PORT = process.env.PORT || '10000';
 // Keep this list in sync with proxy.service.ts route map.
 // Active services to run at startup. All 27 are compiled in the Docker image,
 // but only these are started to stay within the 512 MB Render Starter plan.
-// Add more as the plan is upgraded. ~15 services fit in 512 MB with 18 MB heap each.
+// Each Node process uses ~30 MB (18 MB heap + 12 MB runtime). At 10 services
+// + gateway = 11 processes × 30 MB = 330 MB, leaving headroom for spikes.
+// Upgrade the Render plan to start more services.
 const SERVICES = [
-  // Core platform services (required for frontend)
+  // Core platform (last known working set + contracts + time-tracking)
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
   { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
   { name: 'messaging-service',          port: '3005', dir: 'apps/messaging-service' },
   { name: 'notification-service',       port: '3006', dir: 'apps/notification-service' },
   { name: 'contracts-service',          port: '3010', dir: 'apps/contracts-service' },
-  { name: 'favorites-service',          port: '3012', dir: 'apps/favorites-service' },
   { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service' },
   { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service' },
   { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service' },
   { name: 'category-service',           port: '3023', dir: 'apps/category-service' },
-  // Supporting services
-  { name: 'checkout-service',           port: '3009', dir: 'apps/checkout-service' },
-  { name: 'portfolio-service',          port: '3015', dir: 'apps/portfolio-service' },
-  { name: 'transaction-service',        port: '3018', dir: 'apps/transaction-service' },
-  { name: 'suggestions-service',        port: '3020', dir: 'apps/suggestions-service' },
   // Dormant until plan upgrade (compiled but not started):
-  // search-service (3007), algolia-service (3008), autocomplete-service (3016),
+  // search-service (3007), algolia-service (3008), checkout-service (3009),
+  // favorites-service (3012), portfolio-service (3015), autocomplete-service (3016),
+  // transaction-service (3018), suggestions-service (3020),
   // admin-service (3024), affiliate-referral-service (3025), billing-service (3026),
   // earnings-service (3027), payout-service (3028), pricing-service (3029),
   // wallet-service (3030), wire-review-service (3031)
