@@ -5,7 +5,7 @@ COPY . .
 RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
 RUN npm ci --include=dev --legacy-peer-deps
 
-# Batch 1 — verified working
+# Exact same 10 services that worked before (commit 32658e97)
 RUN npx nest build admin-service \
  && npx nest build affiliate-referral-service \
  && npx nest build algolia-service \
@@ -16,27 +16,6 @@ RUN npx nest build admin-service \
  && npx nest build category-service \
  && npx nest build checkout-service \
  && npx nest build content-moderation-service
-
-# Batch 2 — each in separate RUN for memory isolation
-RUN npx nest build contracts-service
-RUN npx nest build earnings-service
-RUN npx nest build favorites-service
-RUN npx nest build invitations-service
-RUN npx nest build listings-service
-RUN npx nest build messaging-service
-RUN npx nest build notification-service
-RUN npx nest build payout-service
-RUN npx nest build portfolio-service
-RUN npx nest build pricing-service
-
-# Batch 3
-RUN npx nest build search-service
-RUN npx nest build suggestions-service
-RUN npx nest build time-tracking-service
-RUN npx nest build transaction-service
-RUN npx nest build user-service
-RUN npx nest build wallet-service
-RUN npx nest build wire-review-service
 
 RUN npm prune --production --legacy-peer-deps
 
