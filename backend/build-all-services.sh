@@ -7,8 +7,9 @@
 
 set -e
 
-# Cap TypeScript compiler heap to 384 MB so the Docker builder never OOMs.
-export NODE_OPTIONS="--max-old-space-size=384"
+# Docker builders have plenty of RAM (2-8 GB); no heap cap needed here.
+# The 512 MB Render runtime limit is enforced by boot-all.js at startup.
+unset NODE_OPTIONS
 
 echo "[build] Discovering services in apps/..."
 

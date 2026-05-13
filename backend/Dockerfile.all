@@ -7,9 +7,6 @@ COPY . .
 # Guard against stale incremental metadata during Render rebuilds.
 RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
 
-# Cap Node heap throughout the build to stay within Render Starter (512 MB).
-ENV NODE_OPTIONS="--max-old-space-size=384"
-
 # Install ALL deps including devDependencies (need @nestjs/cli for build)
 # Use npm ci to strictly follow the lockfile during Render workspace builds.
 RUN npm ci --include=dev --legacy-peer-deps
