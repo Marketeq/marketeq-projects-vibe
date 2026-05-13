@@ -5,7 +5,7 @@ COPY . .
 RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
 RUN npm ci --include=dev --legacy-peer-deps
 
-# Build 10 services to find the threshold
+# Build 20 services (10 per batch to limit per-process memory)
 RUN npx nest build admin-service \
  && npx nest build affiliate-referral-service \
  && npx nest build algolia-service \
@@ -16,6 +16,17 @@ RUN npx nest build admin-service \
  && npx nest build category-service \
  && npx nest build checkout-service \
  && npx nest build content-moderation-service
+
+RUN npx nest build contracts-service \
+ && npx nest build earnings-service \
+ && npx nest build favorites-service \
+ && npx nest build invitations-service \
+ && npx nest build listings-service \
+ && npx nest build messaging-service \
+ && npx nest build notification-service \
+ && npx nest build payout-service \
+ && npx nest build portfolio-service \
+ && npx nest build pricing-service
 
 RUN npm prune --production --legacy-peer-deps
 
