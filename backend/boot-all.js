@@ -133,7 +133,7 @@ function launchService(svc, env, isGateway = false) {
     return null;
   }
 
-  const child = spawn('node', ['--max-old-space-size=16', distMain], {
+  const child = spawn('node', ['--max-old-space-size=32', distMain], {
     env: svcEnv,
     stdio: 'inherit',
   });
