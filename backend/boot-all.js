@@ -51,6 +51,14 @@ const SERVICES = [
   { name: 'transaction-service',        port: '3018', dir: 'apps/transaction-service' },
   { name: 'suggestions-service',        port: '3020', dir: 'apps/suggestions-service' },
   { name: 'category-service',           port: '3023', dir: 'apps/category-service' },
+  { name: 'admin-service',              port: '3024', dir: 'apps/admin-service' },
+  { name: 'affiliate-referral-service', port: '3025', dir: 'apps/affiliate-referral-service' },
+  { name: 'billing-service',            port: '3026', dir: 'apps/billing-service' },
+  { name: 'earnings-service',           port: '3027', dir: 'apps/earnings-service' },
+  { name: 'payout-service',             port: '3028', dir: 'apps/payout-service' },
+  { name: 'pricing-service',            port: '3029', dir: 'apps/pricing-service' },
+  { name: 'wallet-service',             port: '3030', dir: 'apps/wallet-service' },
+  { name: 'wire-review-service',        port: '3031', dir: 'apps/wire-review-service' },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway' };
@@ -79,6 +87,14 @@ const gatewayEnv = {
   TRANSACTION_SERVICE_URL:      'http://localhost:3018',
   SUGGESTIONS_SERVICE_URL:      'http://localhost:3020',
   CATEGORY_SERVICE_URL:         'http://localhost:3023',
+  ADMIN_SERVICE_URL:            'http://localhost:3024',
+  AFFILIATE_REFERRAL_SERVICE_URL: 'http://localhost:3025',
+  BILLING_SERVICE_URL:          'http://localhost:3026',
+  EARNINGS_SERVICE_URL:         'http://localhost:3027',
+  PAYOUT_SERVICE_URL:           'http://localhost:3028',
+  PRICING_SERVICE_URL:          'http://localhost:3029',
+  WALLET_SERVICE_URL:           'http://localhost:3030',
+  WIRE_REVIEW_SERVICE_URL:      'http://localhost:3031',
 };
 
 function buildInternalServiceEnv(port) {
@@ -117,7 +133,7 @@ function launchService(svc, env, isGateway = false) {
     return null;
   }
 
-  const child = spawn('node', ['--max-old-space-size=20', distMain], {
+  const child = spawn('node', ['--max-old-space-size=16', distMain], {
     env: svcEnv,
     stdio: 'inherit',
   });
