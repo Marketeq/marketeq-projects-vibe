@@ -3,7 +3,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { ListingsController } from './listings/listings.controller';
 import { AppController } from './app.controller';
-import { ProjectService } from './listings/project.service';
 import { ProjectSyncModule } from './project-sync/project-sync.module';
 import { RelationalProjectPersistenceModule } from './publish/infrastructure/persistence/relational/relational-persistence.module';
 import { PublishModule } from './publish/publish.module';
@@ -40,6 +39,6 @@ import { MediaModule } from './media/media.module';
     MediaModule,
   ],
   controllers: [AppController, ListingsController],
-  providers: [ProjectService],
+  providers: [],
 })
 export class AppModule {}
