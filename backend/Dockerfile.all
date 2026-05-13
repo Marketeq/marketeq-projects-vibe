@@ -1,31 +1,25 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy everything (workspace structure needed for npm install + nest build)
 COPY . .
-
-# Guard against stale incremental metadata during Render rebuilds.
 RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
-
-# Install ALL deps including devDependencies (need @nestjs/cli for build)
 RUN npm ci --include=dev --legacy-peer-deps
 
-# Test: build 3 services in a single RUN
-RUN npx nest build api-gateway \
+# Test: build admin-service (fails first in alphabetical 27-service builds)
+RUN npx nest build admin-service \
+ && echo "[build] admin-service OK" \
+ && npx nest build api-gateway \
+ && echo "[build] api-gateway OK" \
  && npx nest build auth-service \
- && npx nest build user-service
+ && echo "[build] auth-service OK"
 
-# Prune devDependencies for smaller production image
 RUN npm prune --production --legacy-peer-deps
 
-# ── Production image ────────────────────────────────────────────────────────
 FROM node:20-alpine
 WORKDIR /app
-
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/boot-all.js ./boot-all.js
 COPY --from=builder /app/libs/owner-target-grpc/proto ./libs/owner-target-grpc/proto
-
 EXPOSE 10000
 CMD ["node", "boot-all.js"]
