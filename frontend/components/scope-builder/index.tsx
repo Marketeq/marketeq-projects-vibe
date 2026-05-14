@@ -192,7 +192,7 @@ type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number]
 const taskFormSchema = z.object({
   task: z.string().min(1, "Please enter a task name"),
   role: z.string().min(1, "Please select a role"),
-  location: z.string().min(1, "Please select a location"),
+  location: z.string().optional().default(""),
   experience: z.enum(EXPERIENCE_LEVELS, {
     required_error: "Please select an experience level",
     invalid_type_error: "Please select an experience level",
@@ -892,8 +892,8 @@ const TaskDialog = ({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="work-schedule" className="text-gray-700" size="sm">
-              Work Schedule
+            <Label htmlFor="experience" className="text-gray-700" size="sm">
+              Experience
             </Label>
             <Controller
               control={control}
