@@ -964,6 +964,8 @@ export default function ProjectDetails() {
   const [canScrollGalleryPrev, setCanScrollGalleryPrev] = React.useState(false)
   const [canScrollGalleryNext, setCanScrollGalleryNext] = React.useState(false)
   const [uploadingSlots, setUploadingSlots] = React.useState<Set<number>>(new Set())
+  const [featuredUploading, setFeaturedUploading] = React.useState(false)
+  const [featuredDeleteOpen, setFeaturedDeleteOpen] = React.useState(false)
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false)
   const [isPublishing, setIsPublishing] = React.useState(false)
   const [videoDialogOpen, setVideoDialogOpen] = React.useState(false)
@@ -1142,10 +1144,11 @@ export default function ProjectDetails() {
   const handleFeaturedImageUpload = React.useCallback(
     async (file: File) => {
       setHasChanges(true)
+      setFeaturedUploading(true)
       if (!project.id || !isRealBackendId(project.id)) {
-        // Show local preview even without backend ID
         const localUrl = URL.createObjectURL(file)
         setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
+        setFeaturedUploading(false)
         return
       }
       const formData = new FormData()
@@ -1167,6 +1170,8 @@ export default function ProjectDetails() {
             : "Failed to upload featured image. Showing local preview.",
           variant: "destructive",
         })
+      } finally {
+        setFeaturedUploading(false)
       }
     },
     [project.id, toast]
@@ -2214,7 +2219,18 @@ export default function ProjectDetails() {
 
               <div className="flex gap-x-[13px] items-start mt-8 relative z-[5]">
                 <div className="group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
-                  {project.featuredImage ? (
+                  {featuredUploading ? (
+                    <div className="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center gap-2">
+                      <div className="relative size-12">
+                        <svg className="size-12 -rotate-90" viewBox="0 0 48 48">
+                          <circle cx="24" cy="24" r="20" fill="none" stroke="#E5E7EB" strokeWidth="3" />
+                          <circle cx="24" cy="24" r="20" fill="none" stroke="#354764" strokeWidth="3" strokeLinecap="round" strokeDasharray="125.66" strokeDashoffset="31.42" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
+                        </svg>
+                        <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
+                      </div>
+                      <span className="text-xs font-medium text-gray-500">Uploading...</span>
+                    </div>
+                  ) : project.featuredImage ? (
                     <>
                       <NextImage
                         className="object-cover"
@@ -2247,7 +2263,7 @@ export default function ProjectDetails() {
                         <button
                           type="button"
                           className="size-8 rounded-full bg-white/20 hover:bg-red-500/80 inline-flex items-center justify-center transition"
-                          onClick={() => setProject((prev: any) => ({ ...prev, featuredImage: null }))}
+                          onClick={() => setFeaturedDeleteOpen(true)}
                         >
                           <Trash2 className="size-3.5 text-white" />
                         </button>
@@ -2282,6 +2298,25 @@ export default function ProjectDetails() {
                     </>
                   )}
                 </div>
+
+                {/* Featured image delete confirmation */}
+                <Dialog open={featuredDeleteOpen} onOpenChange={setFeaturedDeleteOpen}>
+                  <DialogContent className="max-w-[400px]">
+                    <div className="flex flex-col items-center text-center gap-4 py-2">
+                      <div className="size-12 rounded-full bg-error-50 flex items-center justify-center">
+                        <Trash2 className="size-5 text-error-600" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">Delete featured image?</h3>
+                        <p className="mt-1 text-sm text-gray-500">This action cannot be undone.</p>
+                      </div>
+                      <div className="flex items-center gap-3 w-full">
+                        <Button variant="outlined" visual="gray" className="flex-1" onClick={() => setFeaturedDeleteOpen(false)}>Cancel</Button>
+                        <Button visual="error" className="flex-1" onClick={() => { setProject((prev: any) => ({ ...prev, featuredImage: null })); setFeaturedDeleteOpen(false) }}>Delete</Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
 
                 <div className="flex flex-col items-start gap-y-3 flex-1">
                   <Popover open={projectTypeOpen} onOpenChange={(open) => {
@@ -2486,16 +2521,18 @@ export default function ProjectDetails() {
                 selected === "Live Chat" && "sticky top-[65px] z-10"
               )}
             >
-              <NextLink href="/my-listings">
-                <Button className="group" variant="link" visual="gray">
-                  <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
-                  Back To Listings
-                </Button>
-              </NextLink>
+              <div className="flex-1 flex justify-start">
+                <NextLink href="/my-listings">
+                  <Button className="group" variant="link" visual="gray">
+                    <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
+                    Back To Listings
+                  </Button>
+                </NextLink>
+              </div>
 
               <Button
                 variant="link"
-                visual="gray"
+                className="text-primary-500 hover:text-primary-600 shrink-0"
                 onClick={() =>
                   setSelected(
                     selected === "Live Chat" ? "Details" : "Live Chat"
@@ -2506,6 +2543,7 @@ export default function ProjectDetails() {
                 {selected === "Live Chat" ? (!(project.chats?.length > 0) ? "Close Chat" : "End Chat") : "Live Chat"}
               </Button>
 
+              <div className="flex-1 flex justify-end">
               <Button
                 className="group"
                 variant="link"
@@ -2526,6 +2564,7 @@ export default function ProjectDetails() {
                     : "View Project Scope"}
                 <ChevronDown className="group-data-[state=active]:-rotate-180 transition duration-300 size-[15px]" />
               </Button>
+              </div>
             </RadixTabs.TabsList>
             <TabsContent value="Live Chat">
               <div className="flex flex-col items-center justify-center py-16 gap-4">
