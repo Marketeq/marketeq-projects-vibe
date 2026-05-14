@@ -104,6 +104,15 @@ body {
 }
 
 /* Inbox — brief highlight when jumping to a message from search */
+@keyframes upload-progress {
+  0% {
+    stroke-dashoffset: 97.4;
+  }
+  100% {
+    stroke-dashoffset: 9.74;
+  }
+}
+
 @keyframes inbox-highlight-flash {
   0% {
     background-color: theme(colors.primary.100);
