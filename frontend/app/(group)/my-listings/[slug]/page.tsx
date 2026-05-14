@@ -913,6 +913,17 @@ export default function ProjectDetails() {
   })
   const [loading, setLoading] = React.useState(true)
   const [hasChanges, setHasChanges] = React.useState(false)
+
+  // Warn on browser tab close/refresh with unsaved changes
+  React.useEffect(() => {
+    if (!hasChanges) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+    }
+    window.addEventListener("beforeunload", handler)
+    return () => window.removeEventListener("beforeunload", handler)
+  }, [hasChanges])
+
   const [selected, setSelected] = React.useState<string>("Details")
   const [descDialogOpen, setDescDialogOpen] = React.useState(false)
   const [descDraft, setDescDraft] = React.useState("")
@@ -966,6 +977,8 @@ export default function ProjectDetails() {
   const [uploadingSlots, setUploadingSlots] = React.useState<Set<number>>(new Set())
   const [featuredUploading, setFeaturedUploading] = React.useState(false)
   const [featuredDeleteOpen, setFeaturedDeleteOpen] = React.useState(false)
+  const [unsavedNavOpen, setUnsavedNavOpen] = React.useState(false)
+  const [pendingNavUrl, setPendingNavUrl] = React.useState<string | null>(null)
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false)
   const [isPublishing, setIsPublishing] = React.useState(false)
   const [videoDialogOpen, setVideoDialogOpen] = React.useState(false)
@@ -2021,7 +2034,7 @@ export default function ProjectDetails() {
             {/* gray header area */}
             <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
               <div className="relative pt-6 pb-[50px]">
-                <div className="absolute w-screen -translate-x-[100px] top-0 bottom-px bg-gray-50" />
+                <div className="absolute w-screen -translate-x-[100px] top-0 bottom-0 bg-gray-50" />
                 {/* breadcrumb */}
                 <div className="flex items-center gap-x-2 relative">
                   <Shimmer className="size-[18px] rounded" />
@@ -2187,7 +2200,7 @@ export default function ProjectDetails() {
         <div className="max-w-[818px] flex-auto">
           <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
             <div className="relative pt-6 pb-[50px]">
-              <div className="absolute w-screen -translate-x-[100px] top-0 bottom-px bg-gray-50" />
+              <div className="absolute w-screen -translate-x-[100px] top-0 bottom-0 bg-gray-50" />
 
               <div className="flex items-center gap-x-2 relative">
                 <NextLink href="/">
@@ -2301,19 +2314,34 @@ export default function ProjectDetails() {
 
                 {/* Featured image delete confirmation */}
                 <Dialog open={featuredDeleteOpen} onOpenChange={setFeaturedDeleteOpen}>
-                  <DialogContent className="max-w-[400px]">
-                    <div className="flex flex-col items-center text-center gap-4 py-2">
-                      <div className="size-12 rounded-full bg-error-50 flex items-center justify-center">
-                        <Trash2 className="size-5 text-error-600" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900">Delete featured image?</h3>
-                        <p className="mt-1 text-sm text-gray-500">This action cannot be undone.</p>
-                      </div>
-                      <div className="flex items-center gap-3 w-full">
-                        <Button variant="outlined" visual="gray" className="flex-1" onClick={() => setFeaturedDeleteOpen(false)}>Cancel</Button>
-                        <Button visual="error" className="flex-1" onClick={() => { setProject((prev: any) => ({ ...prev, featuredImage: null })); setFeaturedDeleteOpen(false) }}>Delete</Button>
-                      </div>
+                  <DialogContent className="max-w-[409px] p-0">
+                    <div className="p-6 border-b border-gray-200">
+                      <DialogTitle>Delete featured image?</DialogTitle>
+                      <DialogDescription className="mt-2">
+                        Your image will be removed permanently.
+                      </DialogDescription>
+                    </div>
+                    <div className="py-4 flex rounded-b-xl bg-gray-25 items-center justify-between px-6">
+                      <DialogClose asChild>
+                        <Button
+                          className="opacity-50 hover:opacity-100"
+                          visual="gray"
+                          variant="link"
+                        >
+                          <X className="size-[15px]" />
+                          Cancel
+                        </Button>
+                      </DialogClose>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() => {
+                          setProject((prev: any) => ({ ...prev, featuredImage: null }))
+                          setFeaturedDeleteOpen(false)
+                        }}
+                      >
+                        Yes, Delete
+                      </Button>
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -2517,22 +2545,32 @@ export default function ProjectDetails() {
           <Tabs value={selected} onValueChange={setSelected}>
             <RadixTabs.TabsList
               className={cn(
-                "h-12 flex items-center justify-between border-b border-gray-200 bg-white",
+                "h-12 flex items-center justify-between border-b border-gray-200",
                 selected === "Live Chat" && "sticky top-[65px] z-10"
               )}
             >
               <div className="flex-1 flex justify-start">
-                <NextLink href="/my-listings">
-                  <Button className="group" variant="link" visual="gray">
-                    <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
-                    Back To Listings
-                  </Button>
-                </NextLink>
+                <Button
+                  className="group"
+                  variant="link"
+                  visual="gray"
+                  onClick={() => {
+                    if (hasChanges) {
+                      setPendingNavUrl("/my-listings")
+                      setUnsavedNavOpen(true)
+                    } else {
+                      router.push("/my-listings")
+                    }
+                  }}
+                >
+                  <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
+                  Back To Listings
+                </Button>
               </div>
 
               <Button
                 variant="link"
-                className="text-primary-500 hover:text-primary-600 shrink-0"
+                className="!text-primary-500 shrink-0"
                 onClick={() =>
                   setSelected(
                     selected === "Live Chat" ? "Details" : "Live Chat"
@@ -7027,6 +7065,48 @@ export default function ProjectDetails() {
     </div>
 
     <MarketplaceFooter />
+
+    {/* Unsaved changes navigation warning */}
+    <Dialog open={unsavedNavOpen} onOpenChange={setUnsavedNavOpen}>
+      <DialogContent className="max-w-[409px] p-0">
+        <div className="p-6 border-b border-gray-200">
+          <DialogTitle>You have unpublished changes</DialogTitle>
+          <DialogDescription className="mt-2">
+            Your changes haven&apos;t been published yet. What would you like to do?
+          </DialogDescription>
+        </div>
+        <div className="py-4 flex rounded-b-xl bg-gray-25 items-center justify-between px-6">
+          <Button
+            className="opacity-50 hover:opacity-100"
+            visual="gray"
+            variant="link"
+            onClick={() => {
+              setUnsavedNavOpen(false)
+              if (pendingNavUrl) router.push(pendingNavUrl)
+              setPendingNavUrl(null)
+            }}
+          >
+            Discard Changes
+          </Button>
+          <div className="flex items-center gap-2">
+            <DialogClose asChild>
+              <Button variant="outlined" visual="gray">
+                Keep Editing
+              </Button>
+            </DialogClose>
+            <Button
+              onClick={() => {
+                setPublishDialogOpen(true)
+                setUnsavedNavOpen(false)
+                setPendingNavUrl(null)
+              }}
+            >
+              Publish
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
     </>
   )
 }
