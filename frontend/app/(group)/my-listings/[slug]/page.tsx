@@ -714,7 +714,18 @@ function SortableGalleryItem({
               sizes="25vw"
               fill
             />
-            {isHidden && (
+            {isUploading && (
+              <div className="absolute inset-0 bg-gray-100/80 flex items-center justify-center z-20">
+                <div className="relative size-7">
+                  <svg className="size-7 -rotate-90" viewBox="0 0 28 28">
+                    <circle cx="14" cy="14" r="12" fill="none" stroke="#E5E7EB" strokeWidth="2" />
+                    <circle cx="14" cy="14" r="12" fill="none" stroke="#354764" strokeWidth="2" strokeLinecap="round" strokeDasharray="75.4" strokeDashoffset="18.85" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
+                  </svg>
+                  <UploadCloud className="size-3.5 text-gray-600 absolute inset-0 m-auto" />
+                </div>
+              </div>
+            )}
+            {isHidden && !isUploading && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-100 group-hover/slide:opacity-0 transition-opacity duration-300">
                 <div className="flex items-center gap-1.5 bg-white/80 rounded-md px-2.5 py-1.5">
                   <EyeOff className="size-3.5 text-gray-500" />
@@ -723,7 +734,7 @@ function SortableGalleryItem({
               </div>
             )}
             {/* Hover overlay */}
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200">
+            <div className={cn("absolute inset-0 bg-black/40 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200", isUploading && "pointer-events-none !opacity-0")}>
               {/* Drag handle */}
               <TooltipProvider delayDuration={300}>
                 <Tooltip>
@@ -2245,7 +2256,7 @@ export default function ProjectDetails() {
 
               <div className="flex gap-x-[13px] items-start mt-8 relative z-[5]">
                 <div className="group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
-                  {featuredUploading ? (
+                  {featuredUploading && !project.featuredImage ? (
                     <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
                       <div className="relative size-7">
                         <svg className="size-7 -rotate-90" viewBox="0 0 28 28">
@@ -2266,7 +2277,18 @@ export default function ProjectDetails() {
                         priority
                         fill
                       />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2">
+                      {featuredUploading && (
+                        <div className="absolute inset-0 bg-gray-100/80 flex items-center justify-center z-20">
+                          <div className="relative size-7">
+                            <svg className="size-7 -rotate-90" viewBox="0 0 28 28">
+                              <circle cx="14" cy="14" r="12" fill="none" stroke="#E5E7EB" strokeWidth="2" />
+                              <circle cx="14" cy="14" r="12" fill="none" stroke="#354764" strokeWidth="2" strokeLinecap="round" strokeDasharray="75.4" strokeDashoffset="18.85" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
+                            </svg>
+                            <UploadCloud className="size-3.5 text-gray-600 absolute inset-0 m-auto" />
+                          </div>
+                        </div>
+                      )}
+                      <div className={cn("absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2", featuredUploading && "pointer-events-none !opacity-0")}>
                         <button
                           type="button"
                           className="size-8 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
