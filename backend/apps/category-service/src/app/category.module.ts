@@ -12,6 +12,8 @@ import { CronSyncService } from './cron-sync-service';
 import { ContentModule } from '../content/content.module';
 import { TaxGroupsController } from './tax-groups.controller';
 import { CategoryConsumer } from '../consumers/category.consumer';
+import { CategoryEventPublisher } from './category-event.publisher';
+import { CmsBackfillService } from './cms-backfill.service';
 
 @Module({
   imports: [
@@ -19,7 +21,7 @@ import { CategoryConsumer } from '../consumers/category.consumer';
     HttpModule,
     ContentModule,
   ],
-  providers: [CategoryService, TagService, CronSyncService],
+  providers: [CategoryService, TagService, CronSyncService, CategoryEventPublisher, CmsBackfillService],
   controllers: [CategoryController, TagsController, TaxGroupsController, CategoryConsumer],
   exports: [CategoryService, TagService],
 })
