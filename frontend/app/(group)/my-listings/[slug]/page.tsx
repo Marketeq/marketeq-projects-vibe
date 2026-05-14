@@ -716,12 +716,12 @@ function SortableGalleryItem({
             />
             {isUploading && (
               <div className="absolute inset-0 bg-gray-100/80 flex items-center justify-center z-20">
-                <div className="relative size-7">
-                  <svg className="size-7 -rotate-90" viewBox="0 0 28 28">
-                    <circle cx="14" cy="14" r="12" fill="none" stroke="#E5E7EB" strokeWidth="2" />
-                    <circle cx="14" cy="14" r="12" fill="none" stroke="#354764" strokeWidth="2" strokeLinecap="round" strokeDasharray="75.4" strokeDashoffset="18.85" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
+                <div className="relative size-9">
+                  <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" strokeDashoffset="24.35" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
                   </svg>
-                  <UploadCloud className="size-3.5 text-gray-600 absolute inset-0 m-auto" />
+                  <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
                 </div>
               </div>
             )}
@@ -854,12 +854,12 @@ function SortableGalleryItem({
           </>
         ) : isUploading ? (
           <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-            <div className="relative size-7">
-              <svg className="size-7 -rotate-90" viewBox="0 0 28 28">
-                <circle cx="14" cy="14" r="12" fill="none" stroke="#E5E7EB" strokeWidth="2" />
-                <circle cx="14" cy="14" r="12" fill="none" stroke="#354764" strokeWidth="2" strokeLinecap="round" strokeDasharray="75.4" strokeDashoffset="18.85" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
+            <div className="relative size-9">
+              <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
+                <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
+                <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" strokeDashoffset="24.35" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
               </svg>
-              <UploadCloud className="size-3.5 text-gray-600 absolute inset-0 m-auto" />
+              <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
             </div>
           </div>
         ) : (
@@ -2258,12 +2258,12 @@ export default function ProjectDetails() {
                 <div className="group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
                   {featuredUploading && !project.featuredImage ? (
                     <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-                      <div className="relative size-7">
-                        <svg className="size-7 -rotate-90" viewBox="0 0 28 28">
-                          <circle cx="14" cy="14" r="12" fill="none" stroke="#E5E7EB" strokeWidth="2" />
-                          <circle cx="14" cy="14" r="12" fill="none" stroke="#354764" strokeWidth="2" strokeLinecap="round" strokeDasharray="75.4" strokeDashoffset="18.85" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
+                      <div className="relative size-9">
+                        <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
+                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
+                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" strokeDashoffset="24.35" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
                         </svg>
-                        <UploadCloud className="size-3.5 text-gray-600 absolute inset-0 m-auto" />
+                        <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
                       </div>
                     </div>
                   ) : project.featuredImage ? (
