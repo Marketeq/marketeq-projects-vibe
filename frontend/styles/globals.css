@@ -104,23 +104,6 @@ body {
 }
 
 /* Inbox — brief highlight when jumping to a message from search */
-@keyframes upload-progress {
-  0% {
-    stroke-dashoffset: 97.4;
-  }
-  100% {
-    stroke-dashoffset: 9.74;
-  }
-}
-
-@keyframes upload-complete {
-  from {
-    stroke-dashoffset: 9.74;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
 
 @keyframes inbox-highlight-flash {
   0% {

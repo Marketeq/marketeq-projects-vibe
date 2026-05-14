@@ -664,6 +664,68 @@ const SEED_TEAM_MEMBERS = [
   { id: "seed-5", firstName: "Shelly", username: "shellyux", avatarUrl: "/woman.jpg", role: "UI/UX Designer", jobTitles: ["UI/UX Designer", "Product Designer"], hourlyRate: 90, workSchedule: "full_time", customHoursPerWeek: null, location: "Canada", experience: "Medior" },
 ]
 
+function UploadProgressRing({ uploading, onComplete }: { uploading: boolean; onComplete?: () => void }) {
+  const [progress, setProgress] = React.useState(0)
+  const rafRef = React.useRef<number>(0)
+  const startRef = React.useRef(0)
+  const completingRef = React.useRef(false)
+  const baseFromRef = React.useRef(0)
+
+  React.useEffect(() => {
+    if (uploading) {
+      setProgress(0)
+      startRef.current = performance.now()
+      completingRef.current = false
+    }
+  }, [uploading])
+
+  React.useEffect(() => {
+    if (!uploading && progress > 0 && !completingRef.current) {
+      completingRef.current = true
+      baseFromRef.current = progress
+      startRef.current = performance.now()
+    }
+  }, [uploading, progress])
+
+  React.useEffect(() => {
+    const tick = (now: number) => {
+      if (completingRef.current) {
+        const elapsed = now - startRef.current
+        const duration = 350
+        const t = Math.min(elapsed / duration, 1)
+        const eased = t * (2 - t) // ease-out quad
+        const val = baseFromRef.current + (100 - baseFromRef.current) * eased
+        setProgress(val)
+        if (t >= 1) {
+          onComplete?.()
+          return
+        }
+      } else if (uploading) {
+        const elapsed = now - startRef.current
+        // Slow asymptotic approach to 85% — never reaches it
+        const val = 85 * (1 - Math.exp(-elapsed / 3000))
+        setProgress(val)
+      }
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [uploading, onComplete])
+
+  const circumference = 2 * Math.PI * 15.5 // 97.4
+  const offset = circumference - (progress / 100) * circumference
+
+  return (
+    <div className="relative size-9">
+      <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
+        <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
+        <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} />
+      </svg>
+      <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
+    </div>
+  )
+}
+
 function SortableGalleryItem({
   index,
   url,
@@ -718,13 +780,7 @@ function SortableGalleryItem({
             />
             {(isUploading || isCompleting) && (
               <div className="absolute inset-0 bg-gray-100/80 flex items-center justify-center z-20">
-                <div className="relative size-9">
-                  <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
-                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
-                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={isCompleting ? "animate-[upload-complete_0.4s_ease-in-out_forwards]" : "animate-[upload-progress_1.5s_linear_infinite]"} />
-                  </svg>
-                  <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
-                </div>
+                <UploadProgressRing uploading={isUploading} />
               </div>
             )}
             {isHidden && !isUploading && (
@@ -856,13 +912,7 @@ function SortableGalleryItem({
           </>
         ) : (isUploading || isCompleting) ? (
           <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-            <div className="relative size-9">
-              <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
-                <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
-                <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={isCompleting ? "animate-[upload-complete_0.4s_ease-in-out_forwards]" : "animate-[upload-progress_1.5s_linear_infinite]"} />
-              </svg>
-              <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
-            </div>
+            <UploadProgressRing uploading={isUploading} />
           </div>
         ) : (
           <>
@@ -1079,13 +1129,15 @@ export default function ProjectDetails() {
             variant: "destructive",
           })
         } finally {
+          // Stop the uploading state — the ring component will animate to 100%
+          setUploadingSlots((prev) => {
+            const next = new Set(prev)
+            next.delete(targetIndex)
+            return next
+          })
+          // Keep completing state visible until ring finishes
           setCompletingSlots((prev) => new Set(prev).add(targetIndex))
           setTimeout(() => {
-            setUploadingSlots((prev) => {
-              const next = new Set(prev)
-              next.delete(targetIndex)
-              return next
-            })
             setCompletingSlots((prev) => {
               const next = new Set(prev)
               next.delete(targetIndex)
@@ -1112,7 +1164,11 @@ export default function ProjectDetails() {
   const handleGalleryDelete = React.useCallback(
     async (index: number) => {
       const currentUrls: string[] = project.mediaUrls ?? []
-      const newUrls = currentUrls.filter((_: string, i: number) => i !== index)
+      // First 3 slots: clear in place so visible grid doesn't shift
+      // Beyond slot 2: remove and shift remaining images forward
+      const newUrls = index < 3
+        ? currentUrls.map((url: string, i: number) => (i === index ? "" : url))
+        : currentUrls.filter((_: string, i: number) => i !== index)
       setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
       setHasChanges(true)
       setHiddenImages((prev) => {
@@ -1220,9 +1276,9 @@ export default function ProjectDetails() {
           variant: "destructive",
         })
       } finally {
+        setFeaturedUploading(false)
         setFeaturedCompleting(true)
         setTimeout(() => {
-          setFeaturedUploading(false)
           setFeaturedCompleting(false)
         }, 400)
       }
@@ -2274,13 +2330,7 @@ export default function ProjectDetails() {
                 <div className="group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
                   {(featuredUploading || featuredCompleting) && !project.featuredImage ? (
                     <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-                      <div className="relative size-9">
-                        <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
-                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
-                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={featuredCompleting ? "animate-[upload-complete_0.4s_ease-in-out_forwards]" : "animate-[upload-progress_1.5s_linear_infinite]"} />
-                        </svg>
-                        <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
-                      </div>
+                      <UploadProgressRing uploading={featuredUploading} />
                     </div>
                   ) : project.featuredImage ? (
                     <>
@@ -2295,13 +2345,7 @@ export default function ProjectDetails() {
                       />
                       {(featuredUploading || featuredCompleting) && (
                         <div className="absolute inset-0 bg-gray-100/80 flex items-center justify-center z-20">
-                          <div className="relative size-9">
-                            <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
-                              <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
-                              <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={featuredCompleting ? "animate-[upload-complete_0.4s_ease-in-out_forwards]" : "animate-[upload-progress_1.5s_linear_infinite]"} />
-                            </svg>
-                            <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
-                          </div>
+                          <UploadProgressRing uploading={featuredUploading} />
                         </div>
                       )}
                       <div className={cn("absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2", (featuredUploading || featuredCompleting) && "pointer-events-none !opacity-0")}>
