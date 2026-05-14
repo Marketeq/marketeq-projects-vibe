@@ -665,55 +665,67 @@ const SEED_TEAM_MEMBERS = [
 ]
 
 function UploadProgressRing({ uploading, onComplete }: { uploading: boolean; onComplete?: () => void }) {
-  const [progress, setProgress] = React.useState(0)
+  const progressRef = React.useRef(0)
+  const [offset, setOffset] = React.useState(97.4)
   const rafRef = React.useRef<number>(0)
-  const startRef = React.useRef(0)
-  const completingRef = React.useRef(false)
-  const baseFromRef = React.useRef(0)
+  const startRef = React.useRef(performance.now())
+  const phaseRef = React.useRef<"filling" | "completing" | "done">("filling")
+  const completeStartRef = React.useRef(0)
+  const completeFromRef = React.useRef(0)
+  const onCompleteRef = React.useRef(onComplete)
+  onCompleteRef.current = onComplete
+
+  const circumference = 97.4 // 2π × 15.5
 
   React.useEffect(() => {
     if (uploading) {
-      setProgress(0)
+      progressRef.current = 0
       startRef.current = performance.now()
-      completingRef.current = false
+      phaseRef.current = "filling"
+    }
+  }, [uploading])
+
+  // When uploading stops, switch to completing phase
+  React.useEffect(() => {
+    if (!uploading && phaseRef.current === "filling") {
+      phaseRef.current = "completing"
+      completeFromRef.current = progressRef.current
+      completeStartRef.current = performance.now()
     }
   }, [uploading])
 
   React.useEffect(() => {
-    if (!uploading && progress > 0 && !completingRef.current) {
-      completingRef.current = true
-      baseFromRef.current = progress
-      startRef.current = performance.now()
-    }
-  }, [uploading, progress])
+    const tick = () => {
+      if (phaseRef.current === "done") return
 
-  React.useEffect(() => {
-    const tick = (now: number) => {
-      if (completingRef.current) {
-        const elapsed = now - startRef.current
-        const duration = 350
+      if (phaseRef.current === "filling") {
+        const elapsed = performance.now() - startRef.current
+        // Fast curve — reaches ~50% at 500ms, ~70% at 1s, ~80% at 1.5s
+        progressRef.current = 85 * (1 - Math.exp(-elapsed / 800))
+      } else if (phaseRef.current === "completing") {
+        const elapsed = performance.now() - completeStartRef.current
+        const from = completeFromRef.current
+        // Duration scales with how far we need to go (min 200ms, max 500ms)
+        const distance = 100 - from
+        const duration = Math.max(200, Math.min(500, distance * 6))
         const t = Math.min(elapsed / duration, 1)
-        const eased = t * (2 - t) // ease-out quad
-        const val = baseFromRef.current + (100 - baseFromRef.current) * eased
-        setProgress(val)
+        const eased = 1 - (1 - t) * (1 - t) // ease-out quad
+        progressRef.current = from + distance * eased
+
         if (t >= 1) {
-          onComplete?.()
+          phaseRef.current = "done"
+          setOffset(0)
+          onCompleteRef.current?.()
           return
         }
-      } else if (uploading) {
-        const elapsed = now - startRef.current
-        // Slow asymptotic approach to 85% — never reaches it
-        const val = 85 * (1 - Math.exp(-elapsed / 3000))
-        setProgress(val)
       }
+
+      setOffset(circumference - (progressRef.current / 100) * circumference)
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [uploading, onComplete])
-
-  const circumference = 2 * Math.PI * 15.5 // 97.4
-  const offset = circumference - (progress / 100) * circumference
+  }, [uploading])
 
   return (
     <div className="relative size-9">
@@ -735,6 +747,7 @@ function SortableGalleryItem({
   onUpload,
   onDelete,
   onToggleHidden,
+  onUploadComplete,
 }: {
   index: number
   url: string | undefined
@@ -744,6 +757,7 @@ function SortableGalleryItem({
   onUpload: (files: FileList | null, replaceIndex?: number) => void
   onDelete: (index: number) => void
   onToggleHidden: (index: number) => void
+  onUploadComplete: () => void
 }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const {
@@ -780,7 +794,7 @@ function SortableGalleryItem({
             />
             {(isUploading || isCompleting) && (
               <div className="absolute inset-0 bg-gray-100/80 flex items-center justify-center z-20">
-                <UploadProgressRing uploading={isUploading} />
+                <UploadProgressRing uploading={isUploading} onComplete={onUploadComplete} />
               </div>
             )}
             {isHidden && !isUploading && (
@@ -912,7 +926,7 @@ function SortableGalleryItem({
           </>
         ) : (isUploading || isCompleting) ? (
           <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-            <UploadProgressRing uploading={isUploading} />
+            <UploadProgressRing uploading={isUploading} onComplete={onUploadComplete} />
           </div>
         ) : (
           <>
@@ -987,18 +1001,27 @@ export default function ProjectDetails() {
   }, [hasChanges])
 
   // Intercept browser back button with unsaved changes
+  const backGuardPushedRef = React.useRef(false)
+  const pushBackGuard = React.useCallback(() => {
+    if (!backGuardPushedRef.current) {
+      window.history.pushState({ unsavedGuard: true }, "")
+      backGuardPushedRef.current = true
+    }
+  }, [])
   React.useEffect(() => {
-    if (!hasChanges) return
-    // Push a dummy state so pressing back triggers popstate instead of leaving
-    window.history.pushState({ unsavedGuard: true }, "")
+    if (!hasChanges) {
+      backGuardPushedRef.current = false
+      return
+    }
+    pushBackGuard()
     const handler = () => {
-      // Show the unsaved changes modal instead of navigating
+      backGuardPushedRef.current = false
       setPendingNavUrl(null) // null = go back
       setUnsavedNavOpen(true)
     }
     window.addEventListener("popstate", handler)
     return () => window.removeEventListener("popstate", handler)
-  }, [hasChanges])
+  }, [hasChanges, pushBackGuard])
 
   const [selected, setSelected] = React.useState<string>("Details")
   const [descDialogOpen, setDescDialogOpen] = React.useState(false)
@@ -1129,21 +1152,13 @@ export default function ProjectDetails() {
             variant: "destructive",
           })
         } finally {
-          // Stop the uploading state — the ring component will animate to 100%
+          // Stop uploading — ring will animate to 100% then call onComplete
           setUploadingSlots((prev) => {
             const next = new Set(prev)
             next.delete(targetIndex)
             return next
           })
-          // Keep completing state visible until ring finishes
           setCompletingSlots((prev) => new Set(prev).add(targetIndex))
-          setTimeout(() => {
-            setCompletingSlots((prev) => {
-              const next = new Set(prev)
-              next.delete(targetIndex)
-              return next
-            })
-          }, 400)
         }
       }
 
@@ -1278,9 +1293,6 @@ export default function ProjectDetails() {
       } finally {
         setFeaturedUploading(false)
         setFeaturedCompleting(true)
-        setTimeout(() => {
-          setFeaturedCompleting(false)
-        }, 400)
       }
     },
     [project.id, toast]
@@ -2330,7 +2342,7 @@ export default function ProjectDetails() {
                 <div className="group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
                   {(featuredUploading || featuredCompleting) && !project.featuredImage ? (
                     <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-                      <UploadProgressRing uploading={featuredUploading} />
+                      <UploadProgressRing uploading={featuredUploading} onComplete={() => setFeaturedCompleting(false)} />
                     </div>
                   ) : project.featuredImage ? (
                     <>
@@ -2345,7 +2357,7 @@ export default function ProjectDetails() {
                       />
                       {(featuredUploading || featuredCompleting) && (
                         <div className="absolute inset-0 bg-gray-100/80 flex items-center justify-center z-20">
-                          <UploadProgressRing uploading={featuredUploading} />
+                          <UploadProgressRing uploading={featuredUploading} onComplete={() => setFeaturedCompleting(false)} />
                         </div>
                       )}
                       <div className={cn("absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2", (featuredUploading || featuredCompleting) && "pointer-events-none !opacity-0")}>
@@ -2858,6 +2870,13 @@ export default function ProjectDetails() {
                             onUpload={handleGalleryUpload}
                             onDelete={handleGalleryDelete}
                             onToggleHidden={handleGalleryToggleHidden}
+                            onUploadComplete={() => {
+                              setCompletingSlots((prev) => {
+                                const next = new Set(prev)
+                                next.delete(index)
+                                return next
+                              })
+                            }}
                           />
                         ))}
                       </SortableContext>
@@ -7193,7 +7212,7 @@ export default function ProjectDetails() {
           </Button>
           <div className="flex items-center gap-2">
             <DialogClose asChild>
-              <Button variant="outlined" visual="gray">
+              <Button variant="outlined" visual="gray" onClick={pushBackGuard}>
                 Keep Editing
               </Button>
             </DialogClose>
