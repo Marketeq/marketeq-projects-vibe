@@ -842,15 +842,16 @@ function SortableGalleryItem({
             </Dialog>
           </>
         ) : isUploading ? (
-          <div className="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center gap-2">
-            <div className="relative size-12">
-              <svg className="size-12 -rotate-90" viewBox="0 0 48 48">
-                <circle cx="24" cy="24" r="20" fill="none" stroke="#E5E7EB" strokeWidth="3" />
-                <circle cx="24" cy="24" r="20" fill="none" stroke="#354764" strokeWidth="3" strokeLinecap="round" strokeDasharray="125.66" strokeDashoffset="31.42" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
+          <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
+            <div className="relative size-7">
+              <svg className="size-7 -rotate-90" viewBox="0 0 28 28">
+                <circle cx="14" cy="14" r="12" fill="none" stroke="#E5E7EB" strokeWidth="2" />
+                <circle cx="14" cy="14" r="12" fill="none" stroke="#354764" strokeWidth="2" strokeLinecap="round" strokeDasharray="75.4" strokeDashoffset="18.85" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
               </svg>
-              <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
+              <svg className="size-3 text-gray-600 absolute inset-0 m-auto" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 10V2M2.5 5.5L6 2l3.5 3.5" />
+              </svg>
             </div>
-            <span className="text-xs font-medium text-gray-500">Uploading...</span>
           </div>
         ) : (
           <>
@@ -2247,15 +2248,16 @@ export default function ProjectDetails() {
               <div className="flex gap-x-[13px] items-start mt-8 relative z-[5]">
                 <div className="group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
                   {featuredUploading ? (
-                    <div className="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center gap-2">
-                      <div className="relative size-12">
-                        <svg className="size-12 -rotate-90" viewBox="0 0 48 48">
-                          <circle cx="24" cy="24" r="20" fill="none" stroke="#E5E7EB" strokeWidth="3" />
-                          <circle cx="24" cy="24" r="20" fill="none" stroke="#354764" strokeWidth="3" strokeLinecap="round" strokeDasharray="125.66" strokeDashoffset="31.42" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
+                    <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
+                      <div className="relative size-7">
+                        <svg className="size-7 -rotate-90" viewBox="0 0 28 28">
+                          <circle cx="14" cy="14" r="12" fill="none" stroke="#E5E7EB" strokeWidth="2" />
+                          <circle cx="14" cy="14" r="12" fill="none" stroke="#354764" strokeWidth="2" strokeLinecap="round" strokeDasharray="75.4" strokeDashoffset="18.85" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
                         </svg>
-                        <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
+                        <svg className="size-3 text-gray-600 absolute inset-0 m-auto" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M6 10V2M2.5 5.5L6 2l3.5 3.5" />
+                        </svg>
                       </div>
-                      <span className="text-xs font-medium text-gray-500">Uploading...</span>
                     </div>
                   ) : project.featuredImage ? (
                     <>
