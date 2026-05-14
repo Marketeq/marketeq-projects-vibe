@@ -848,9 +848,7 @@ function SortableGalleryItem({
                 <circle cx="14" cy="14" r="12" fill="none" stroke="#E5E7EB" strokeWidth="2" />
                 <circle cx="14" cy="14" r="12" fill="none" stroke="#354764" strokeWidth="2" strokeLinecap="round" strokeDasharray="75.4" strokeDashoffset="18.85" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
               </svg>
-              <svg className="size-3 text-gray-600 absolute inset-0 m-auto" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 10V2M2.5 5.5L6 2l3.5 3.5" />
-              </svg>
+              <UploadCloud className="size-3.5 text-gray-600 absolute inset-0 m-auto" />
             </div>
           </div>
         ) : (
@@ -2254,9 +2252,7 @@ export default function ProjectDetails() {
                           <circle cx="14" cy="14" r="12" fill="none" stroke="#E5E7EB" strokeWidth="2" />
                           <circle cx="14" cy="14" r="12" fill="none" stroke="#354764" strokeWidth="2" strokeLinecap="round" strokeDasharray="75.4" strokeDashoffset="18.85" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
                         </svg>
-                        <svg className="size-3 text-gray-600 absolute inset-0 m-auto" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M6 10V2M2.5 5.5L6 2l3.5 3.5" />
-                        </svg>
+                        <UploadCloud className="size-3.5 text-gray-600 absolute inset-0 m-auto" />
                       </div>
                     </div>
                   ) : project.featuredImage ? (
