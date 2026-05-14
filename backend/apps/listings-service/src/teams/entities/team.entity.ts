@@ -69,6 +69,12 @@ export class Team {
   @Column()
   createdBy: string;
 
+  @Column({ type: 'varchar', nullable: true, unique: true })
+  payloadId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  editorialLabel: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
