@@ -113,8 +113,6 @@ import { Spinner } from "@/components/ui/spinner/spinner"
 import {
   DndContext,
   type DragEndEvent,
-  type DragStartEvent,
-  DragOverlay,
   MouseSensor,
   TouchSensor,
   closestCenter,
@@ -696,8 +694,8 @@ function SortableGalleryItem({
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
     zIndex: isDragging ? 50 : undefined,
+    boxShadow: isDragging ? "0 12px 28px rgba(0,0,0,0.2), 0 4px 10px rgba(0,0,0,0.1)" : undefined,
   }
 
   return (
@@ -717,19 +715,11 @@ function SortableGalleryItem({
               fill
             />
             {isHidden && (
-              <div className="absolute top-1.5 left-1.5">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="border border-dashed border-gray-400 rounded px-1.5 py-0.5 cursor-help">
-                        <EyeOff className="size-3 text-gray-400" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
-                      This image is hidden from your listing
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-100 group-hover/slide:opacity-0 transition-opacity duration-300">
+                <div className="flex items-center gap-1.5 bg-white/80 rounded-md px-2.5 py-1.5">
+                  <EyeOff className="size-3.5 text-gray-500" />
+                  <span className="text-xs font-medium text-gray-600">Hidden</span>
+                </div>
               </div>
             )}
             {/* Hover overlay */}
@@ -852,8 +842,15 @@ function SortableGalleryItem({
             </Dialog>
           </>
         ) : isUploading ? (
-          <div className="absolute inset-0 bg-gray-500 flex items-center justify-center">
-            <Spinner size={48} strokeWidth={5} />
+          <div className="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center gap-2">
+            <div className="relative size-12">
+              <svg className="size-12 -rotate-90" viewBox="0 0 48 48">
+                <circle cx="24" cy="24" r="20" fill="none" stroke="#E5E7EB" strokeWidth="3" />
+                <circle cx="24" cy="24" r="20" fill="none" stroke="#354764" strokeWidth="3" strokeLinecap="round" strokeDasharray="125.66" strokeDashoffset="31.42" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
+              </svg>
+              <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
+            </div>
+            <span className="text-xs font-medium text-gray-500">Uploading...</span>
           </div>
         ) : (
           <>
@@ -2498,6 +2495,7 @@ export default function ProjectDetails() {
 
               <Button
                 variant="link"
+                visual="gray"
                 onClick={() =>
                   setSelected(
                     selected === "Live Chat" ? "Details" : "Live Chat"
@@ -2505,7 +2503,7 @@ export default function ProjectDetails() {
                 }
               >
                 <MessageTextCircle01 className="size-5" />
-                {selected === "Live Chat" ? "End Chat" : "Live Chat"}
+                {selected === "Live Chat" ? (!(project.chats?.length > 0) ? "Close Chat" : "End Chat") : "Live Chat"}
               </Button>
 
               <Button
