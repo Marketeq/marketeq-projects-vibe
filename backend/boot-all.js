@@ -34,17 +34,16 @@ const GATEWAY_PORT = process.env.PORT || '10000';
 // Keep this list in sync with proxy.service.ts route map.
 // Active services to run at startup. All 27 are compiled in the Docker image,
 // but only these are started to stay within the 512 MB Render Starter plan.
-// 5 services + gateway = 6 processes (~50-80 MB each = ~300-480 MB).
-// 9 services OOM-killed at 512 MB (2026-05-14), so keep it lean.
-// No heap cap — let Node use its natural memory footprint.
+// 3 services + gateway = 4 processes. Each gets --max-old-space-size=96
+// to cap heap at ~96 MB each (4 × 96 = 384 MB + OS overhead ≈ 450-480 MB).
+// 5 services and 9 services both OOM-killed at 512 MB (2026-05-14).
 const SERVICES = [
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
   { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
-  { name: 'notification-service',       port: '3006', dir: 'apps/notification-service' },
-  { name: 'category-service',           port: '3023', dir: 'apps/category-service' },
-  // Reduced from 9 → 5 services after OOM kills at 512 MB (2026-05-14).
-  // These can be re-enabled after Render plan upgrade:
+  // Reduced to 3 core services after repeated OOM kills at 512 MB.
+  // Re-enable after Render plan upgrade:
+  // notification-service (3006), category-service (3023),
   // contracts-service (3010), invitations-service (3013),
   // content-moderation-service (3014), time-tracking-service (3017),
   // Dormant until Render plan upgrade (compiled but not started):
@@ -129,7 +128,7 @@ function launchService(svc, env, isGateway = false) {
     return null;
   }
 
-  const child = spawn('node', [distMain], {
+  const child = spawn('node', ['--max-old-space-size=96', distMain], {
     env: svcEnv,
     stdio: 'inherit',
   });
