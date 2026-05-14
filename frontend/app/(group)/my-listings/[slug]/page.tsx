@@ -2530,9 +2530,21 @@ export default function ProjectDetails() {
               </Button>
             </RadixTabs.TabsList>
             <TabsContent value="Live Chat">
-              <Inbox>
-                <Chats />
-              </Inbox>
+              <div className="flex flex-col items-center justify-center py-16 gap-4">
+                <div className="relative w-[72px] h-[56px]">
+                  <svg viewBox="0 0 72 56" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+                    <rect x="0" y="8" width="40" height="32" rx="8" fill="#E5E7EB" />
+                    <rect x="14" y="2" width="40" height="32" rx="8" fill="#D1D5DB" />
+                    <rect x="28" y="14" width="40" height="32" rx="8" fill="#354764" />
+                  </svg>
+                </div>
+                <div className="flex flex-col items-center gap-1.5 text-center">
+                  <h3 className="text-base font-semibold text-gray-900">You Have No Recent Chats</h3>
+                  <p className="text-sm text-gray-500 max-w-[320px]">
+                    Once your project is live, chat threads will be visible here when visitors message you.
+                  </p>
+                </div>
+              </div>
             </TabsContent>
 
             <TabsContent
