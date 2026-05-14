@@ -669,6 +669,7 @@ function SortableGalleryItem({
   url,
   isHidden,
   isUploading,
+  isCompleting,
   onUpload,
   onDelete,
   onToggleHidden,
@@ -677,6 +678,7 @@ function SortableGalleryItem({
   url: string | undefined
   isHidden: boolean
   isUploading: boolean
+  isCompleting: boolean
   onUpload: (files: FileList | null, replaceIndex?: number) => void
   onDelete: (index: number) => void
   onToggleHidden: (index: number) => void
@@ -714,12 +716,12 @@ function SortableGalleryItem({
               sizes="25vw"
               fill
             />
-            {isUploading && (
+            {(isUploading || isCompleting) && (
               <div className="absolute inset-0 bg-gray-100/80 flex items-center justify-center z-20">
                 <div className="relative size-9">
                   <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
                     <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
-                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={isCompleting ? "animate-[upload-complete_0.3s_ease-out_forwards]" : "animate-[upload-progress_2s_ease-in-out_infinite]"} />
                   </svg>
                   <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
                 </div>
@@ -734,7 +736,7 @@ function SortableGalleryItem({
               </div>
             )}
             {/* Hover overlay */}
-            <div className={cn("absolute inset-0 bg-black/40 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200", isUploading && "pointer-events-none !opacity-0")}>
+            <div className={cn("absolute inset-0 bg-black/40 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200", (isUploading || isCompleting) && "pointer-events-none !opacity-0")}>
               {/* Drag handle */}
               <TooltipProvider delayDuration={300}>
                 <Tooltip>
@@ -852,12 +854,12 @@ function SortableGalleryItem({
               </DialogContent>
             </Dialog>
           </>
-        ) : isUploading ? (
+        ) : (isUploading || isCompleting) ? (
           <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
             <div className="relative size-9">
               <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
                 <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
-                <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
+                <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={isCompleting ? "animate-[upload-complete_0.3s_ease-out_forwards]" : "animate-[upload-progress_2s_ease-in-out_infinite]"} />
               </svg>
               <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
             </div>
@@ -999,7 +1001,9 @@ export default function ProjectDetails() {
   const [canScrollGalleryPrev, setCanScrollGalleryPrev] = React.useState(false)
   const [canScrollGalleryNext, setCanScrollGalleryNext] = React.useState(false)
   const [uploadingSlots, setUploadingSlots] = React.useState<Set<number>>(new Set())
+  const [completingSlots, setCompletingSlots] = React.useState<Set<number>>(new Set())
   const [featuredUploading, setFeaturedUploading] = React.useState(false)
+  const [featuredCompleting, setFeaturedCompleting] = React.useState(false)
   const [featuredDeleteOpen, setFeaturedDeleteOpen] = React.useState(false)
   const [unsavedNavOpen, setUnsavedNavOpen] = React.useState(false)
   const [pendingNavUrl, setPendingNavUrl] = React.useState<string | null>(null)
@@ -1075,11 +1079,19 @@ export default function ProjectDetails() {
             variant: "destructive",
           })
         } finally {
-          setUploadingSlots((prev) => {
-            const next = new Set(prev)
-            next.delete(targetIndex)
-            return next
-          })
+          setCompletingSlots((prev) => new Set(prev).add(targetIndex))
+          setTimeout(() => {
+            setUploadingSlots((prev) => {
+              const next = new Set(prev)
+              next.delete(targetIndex)
+              return next
+            })
+            setCompletingSlots((prev) => {
+              const next = new Set(prev)
+              next.delete(targetIndex)
+              return next
+            })
+          }, 400)
         }
       }
 
@@ -1208,7 +1220,11 @@ export default function ProjectDetails() {
           variant: "destructive",
         })
       } finally {
-        setFeaturedUploading(false)
+        setFeaturedCompleting(true)
+        setTimeout(() => {
+          setFeaturedUploading(false)
+          setFeaturedCompleting(false)
+        }, 400)
       }
     },
     [project.id, toast]
@@ -2256,12 +2272,12 @@ export default function ProjectDetails() {
 
               <div className="flex gap-x-[13px] items-start mt-8 relative z-[5]">
                 <div className="group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
-                  {featuredUploading && !project.featuredImage ? (
+                  {(featuredUploading || featuredCompleting) && !project.featuredImage ? (
                     <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
                       <div className="relative size-9">
                         <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
                           <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
-                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
+                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={featuredCompleting ? "animate-[upload-complete_0.3s_ease-out_forwards]" : "animate-[upload-progress_2s_ease-in-out_infinite]"} />
                         </svg>
                         <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
                       </div>
@@ -2277,18 +2293,18 @@ export default function ProjectDetails() {
                         priority
                         fill
                       />
-                      {featuredUploading && (
+                      {(featuredUploading || featuredCompleting) && (
                         <div className="absolute inset-0 bg-gray-100/80 flex items-center justify-center z-20">
                           <div className="relative size-9">
                             <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
                               <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
-                              <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className="animate-[upload-progress_2s_ease-in-out_infinite]" />
+                              <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={featuredCompleting ? "animate-[upload-complete_0.3s_ease-out_forwards]" : "animate-[upload-progress_2s_ease-in-out_infinite]"} />
                             </svg>
                             <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
                           </div>
                         </div>
                       )}
-                      <div className={cn("absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2", featuredUploading && "pointer-events-none !opacity-0")}>
+                      <div className={cn("absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2", (featuredUploading || featuredCompleting) && "pointer-events-none !opacity-0")}>
                         <button
                           type="button"
                           className="size-8 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
@@ -2794,6 +2810,7 @@ export default function ProjectDetails() {
                             url={allUrls[index]}
                             isHidden={hiddenImages.has(index)}
                             isUploading={uploadingSlots.has(index)}
+                            isCompleting={completingSlots.has(index)}
                             onUpload={handleGalleryUpload}
                             onDelete={handleGalleryDelete}
                             onToggleHidden={handleGalleryToggleHidden}
