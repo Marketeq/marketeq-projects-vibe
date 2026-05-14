@@ -22,6 +22,9 @@ import { LandingPages } from "./collections/LandingPages";
 import { Homepages } from "./collections/Homepages";
 import { Projects } from "./collections/Projects";
 import { ProjectStaticContents } from "./collections/ProjectStaticContents";
+import { TeamListings } from "./collections/TeamListings";
+import { ServiceListings } from "./collections/ServiceListings";
+import { JobListings } from "./collections/JobListings";
 import { CategoryPages } from "./collections/CategoryPages";
 
 // Globals
@@ -102,6 +105,9 @@ export default buildConfig({
     Projects,
     ProjectStaticContents,
     CategoryPages,
+    TeamListings,
+    ServiceListings,
+    JobListings,
   ],
 
   globals: [SiteSettings, HomepageBanner, AdminConfig],

@@ -1,8 +1,9 @@
 import amqp, { ChannelWrapper } from 'amqp-connection-manager';
 import type { ConfirmChannel, ConsumeMessage } from 'amqplib';
+import { randomBytes } from 'crypto';
 import type { Payload } from 'payload';
 
-const QUEUE = 'cms_events_queue';
+const QUEUE = 'cms_user_events_queue';
 
 interface UserProfileUpdatedFields {
   id: string;
@@ -15,10 +16,21 @@ interface UserProfileUpdatedFields {
   timezone?: string;
   availability?: string;
   rate?: number;
+  jobTitles?: any[];
+  skills?: any[];
+  languages?: any[];
+  certifications?: any[];
+  education?: any[];
+  workExperience?: any[];
+  portfolio?: any[];
+  userType?: string;
+  status?: string;
   source: string;
 }
 
-function extractProfileUpdatedEvent(raw: unknown): UserProfileUpdatedFields | null {
+export function extractProfileUpdatedEvent(
+  raw: unknown,
+): UserProfileUpdatedFields | null {
   if (!raw || typeof raw !== 'object') return null;
   const outer = raw as { pattern?: string; data?: unknown };
   if (outer.pattern !== 'user.profile.updated') return null;
@@ -74,9 +86,9 @@ export class UserEventConsumer {
     try {
       await this.syncToPayload(event);
       channel.ack(msg);
-    } catch (err) {
+    } catch (err: any) {
       this.payload.logger.error(
-        { err, userId: event.id },
+        { err: err.message, stack: err.stack, userId: event.id, username: event.username },
         '[UserEventConsumer] failed to sync user.profile.updated → talent-profiles',
       );
       channel.nack(msg, false, true);
@@ -141,11 +153,105 @@ export class UserEventConsumer {
         // CRITICAL: pass context to skip sync hooks and prevent infinite loops
         context: { skipSync: true },
       });
-      this.payload.logger.info(`[UserEventConsumer] updated talent profile ${event.username} (id=${docId})`);
+      this.payload.logger.info(
+        `[UserEventConsumer] updated talent profile ${event.username} (id=${docId})`,
+      );
     } else {
-      // Auto-create profile if it doesn't exist?
-      // For now, let's just log it. In a production system, we'd probably create it.
-      this.payload.logger.warn(`[UserEventConsumer] profile not found for sourceId=${event.id}; skipping sync.`);
+      // No CMS profile exists yet — create one so old user-service data appears in the CMS.
+      // Guard against duplicate username (profile may exist under a different sourceId).
+      const byUsername = await this.payload.find({
+        collection: 'talent-profiles',
+        where: { username: { equals: event.username } },
+        limit: 1,
+        depth: 0,
+        overrideAccess: true,
+      });
+
+      if (byUsername.totalDocs > 0) {
+        // Username is taken by another CMS record — update that one and link sourceId.
+        const existingDocId = byUsername.docs[0].id;
+        await this.payload.update({
+          collection: 'talent-profiles',
+          id: existingDocId,
+          data: { ...data, sourceId: event.id },
+          overrideAccess: true,
+          context: { skipSync: true },
+        });
+        this.payload.logger.info(
+          `[UserEventConsumer] linked & updated existing talent profile "${event.username}" (id=${existingDocId}) with sourceId ${event.id}`,
+        );
+      } else {
+        // Fully new profile — create it.
+        const created = await this.payload.create({
+          collection: 'talent-profiles',
+          data: {
+            ...data,
+            sourceId: event.id,
+            // jobTitles is required (minRows: 1) — provide a placeholder if missing
+            jobTitles:
+              Array.isArray(data.jobTitles) && data.jobTitles.length > 0
+                ? data.jobTitles
+                : [{ headline: 'Talent', rate: 0, saveAsDefault: true }],
+          },
+          overrideAccess: true,
+          context: { skipSync: true },
+        });
+        this.payload.logger.info(
+          `[UserEventConsumer] created new talent profile "${event.username}" (id=${(created as any).id}) from user-service data`,
+        );
+      }
+    }
+
+    // 2. Sync to 'users' collection (core admin/auth user)
+    const existingUser = await this.payload.find({
+      collection: 'users',
+      where: {
+        or: [{ sourceId: { equals: event.id } }, { email: { equals: event.email } }],
+      },
+      limit: 1,
+      depth: 0,
+      overrideAccess: true,
+    });
+
+    const userData: Record<string, any> = {
+      email: event.email,
+      name:
+        event.firstName && event.lastName
+          ? `${event.firstName} ${event.lastName}`
+          : event.firstName || event.lastName || event.username,
+    };
+
+    if (existingUser.totalDocs > 0) {
+      const userId = existingUser.docs[0].id;
+      await this.payload.update({
+        collection: 'users',
+        id: userId,
+        data: userData,
+        overrideAccess: true,
+        context: { skipSync: true },
+      });
+      this.payload.logger.info(
+        `[UserEventConsumer] updated user ${event.email} (id=${userId})`,
+      );
+    } else {
+      // Create user if missing in CMS
+      const created = await this.payload.create({
+        collection: 'users',
+        data: {
+          ...userData,
+          sourceId: event.id,
+          userType: (['client', 'talent', 'admin'].includes(event.userType ?? '') ? event.userType : 'talent') as 'client' | 'talent' | 'admin',
+          status: 'active',
+          // Payload local-auth requires a password on create. These users
+          // authenticate via JWT from user-service so this value is never used.
+          password: randomBytes(32).toString('hex'),
+        },
+        overrideAccess: true,
+        context: { skipSync: true },
+      });
+      this.payload.logger.info(
+        `[UserEventConsumer] created new user ${event.email} (id=${(created as any).id}) from user-service data`,
+      );
     }
   }
 }
