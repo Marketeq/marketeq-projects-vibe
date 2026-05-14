@@ -108,12 +108,18 @@ body {
   0% {
     stroke-dashoffset: 97.4;
   }
-  100% {
+  50% {
     stroke-dashoffset: 9.74;
+  }
+  100% {
+    stroke-dashoffset: 97.4;
   }
 }
 
 @keyframes upload-complete {
+  from {
+    stroke-dashoffset: 9.74;
+  }
   to {
     stroke-dashoffset: 0;
   }

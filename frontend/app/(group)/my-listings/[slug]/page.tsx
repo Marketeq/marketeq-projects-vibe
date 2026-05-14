@@ -721,7 +721,7 @@ function SortableGalleryItem({
                 <div className="relative size-9">
                   <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
                     <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
-                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={isCompleting ? "animate-[upload-complete_0.3s_ease-out_forwards]" : "animate-[upload-progress_2s_ease-in-out_infinite]"} />
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={isCompleting ? "animate-[upload-complete_0.4s_ease-in-out_forwards]" : "animate-[upload-progress_2s_ease-in-out_infinite]"} />
                   </svg>
                   <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
                 </div>
@@ -859,7 +859,7 @@ function SortableGalleryItem({
             <div className="relative size-9">
               <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
                 <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
-                <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={isCompleting ? "animate-[upload-complete_0.3s_ease-out_forwards]" : "animate-[upload-progress_2s_ease-in-out_infinite]"} />
+                <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={isCompleting ? "animate-[upload-complete_0.4s_ease-in-out_forwards]" : "animate-[upload-progress_2s_ease-in-out_infinite]"} />
               </svg>
               <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
             </div>
@@ -2277,7 +2277,7 @@ export default function ProjectDetails() {
                       <div className="relative size-9">
                         <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
                           <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
-                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={featuredCompleting ? "animate-[upload-complete_0.3s_ease-out_forwards]" : "animate-[upload-progress_2s_ease-in-out_infinite]"} />
+                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={featuredCompleting ? "animate-[upload-complete_0.4s_ease-in-out_forwards]" : "animate-[upload-progress_2s_ease-in-out_infinite]"} />
                         </svg>
                         <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
                       </div>
@@ -2298,7 +2298,7 @@ export default function ProjectDetails() {
                           <div className="relative size-9">
                             <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
                               <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
-                              <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={featuredCompleting ? "animate-[upload-complete_0.3s_ease-out_forwards]" : "animate-[upload-progress_2s_ease-in-out_infinite]"} />
+                              <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="97.4" className={featuredCompleting ? "animate-[upload-complete_0.4s_ease-in-out_forwards]" : "animate-[upload-progress_2s_ease-in-out_infinite]"} />
                             </svg>
                             <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
                           </div>
