@@ -924,6 +924,20 @@ export default function ProjectDetails() {
     return () => window.removeEventListener("beforeunload", handler)
   }, [hasChanges])
 
+  // Intercept browser back button with unsaved changes
+  React.useEffect(() => {
+    if (!hasChanges) return
+    // Push a dummy state so pressing back triggers popstate instead of leaving
+    window.history.pushState({ unsavedGuard: true }, "")
+    const handler = () => {
+      // Show the unsaved changes modal instead of navigating
+      setPendingNavUrl(null) // null = go back
+      setUnsavedNavOpen(true)
+    }
+    window.addEventListener("popstate", handler)
+    return () => window.removeEventListener("popstate", handler)
+  }, [hasChanges])
+
   const [selected, setSelected] = React.useState<string>("Details")
   const [descDialogOpen, setDescDialogOpen] = React.useState(false)
   const [descDraft, setDescDraft] = React.useState("")
@@ -6838,7 +6852,10 @@ export default function ProjectDetails() {
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="outlined" visual="gray" size="md" className="flex-auto" onClick={() => router.push(`/project-details/${project.slug || params.slug}`)}>
+                      <Button variant="outlined" visual="gray" size="md" className="flex-auto" onClick={() => {
+                        const url = `/project-details/${project.slug || params.slug}`
+                        if (hasChanges) { setPendingNavUrl(url); setUnsavedNavOpen(true) } else { router.push(url) }
+                      }}>
                         <Eye className="size-[15px]" />
                         View as Client
                       </Button>
@@ -7081,8 +7098,13 @@ export default function ProjectDetails() {
             visual="gray"
             variant="link"
             onClick={() => {
+              setHasChanges(false)
               setUnsavedNavOpen(false)
-              if (pendingNavUrl) router.push(pendingNavUrl)
+              if (pendingNavUrl) {
+                router.push(pendingNavUrl)
+              } else {
+                router.back()
+              }
               setPendingNavUrl(null)
             }}
           >
