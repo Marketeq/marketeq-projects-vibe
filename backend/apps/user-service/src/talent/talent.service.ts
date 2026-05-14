@@ -261,7 +261,7 @@ export class TalentService {
         availability: profile?.availability || u.availability,
         jobTitles: u.jobTitles,
         recentJobTitle: u.recentJobTitle,
-        headline: profile?.headline,
+        headline: (profile?.jobTitles as any[])?.[0]?.jobTitle ?? null,
         timezone: profile?.timezone,
         rating: profile?.rating || 4.7, // fallback to 4.7 if no rating yet
         skills: (() => {

@@ -14,6 +14,7 @@ import { R2Service } from "../storage/r2.service";
 import { ClientsModule, Transport } from "@nestjs/microservices";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { UserEventPublisher } from "./user-event.publisher";
+import { CmsBackfillService } from "./cms-backfill.service";
 
 @Module({
   imports: [
@@ -26,7 +27,7 @@ import { UserEventPublisher } from "./user-event.publisher";
           transport: Transport.RMQ,
           options: {
             urls: [config.get<string>("RABBITMQ_URL") || "amqp://localhost:5672"],
-            queue: "cms_events_queue",
+            queue: "cms_user_events_queue",
             queueOptions: { durable: true },
           },
         }),
@@ -40,6 +41,7 @@ import { UserEventPublisher } from "./user-event.publisher";
     UserSchemaGuardService,
     R2Service,
     UserEventPublisher,
+    CmsBackfillService,
   ],
   controllers: [
     UserController,
