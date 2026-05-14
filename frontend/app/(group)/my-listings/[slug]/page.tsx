@@ -4,6 +4,7 @@ import * as React from "react"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { ensureDevAuth } from "@/src/lib/api/dev-login"
+import { MarketplaceFooter } from "@/components/marketplace-footer"
 import {
   addFavorite,
   findFavoriteByItemId,
@@ -2178,6 +2179,7 @@ export default function ProjectDetails() {
   }
 
   return (
+    <>
     <div className="px-[100px] pb-[100px] relative bg-white">
       <div className="max-w-[1240px] flex items-start gap-x-8">
         <div className="max-w-[818px] flex-auto">
@@ -3049,7 +3051,7 @@ export default function ProjectDetails() {
                                 {infoTab === "Basic Info" && <div className="pt-6 px-6 pb-6 space-y-5">
                                   <div className="space-y-1.5">
                                     <div className="flex items-center justify-between">
-                                      <Label size="sm" className="font-medium">
+                                      <Label size="sm" className="font-medium cursor-default">
                                         Title
                                       </Label>
                                       <span className="text-xs text-gray-400">
@@ -3067,7 +3069,7 @@ export default function ProjectDetails() {
 
                                   <div className="space-y-1.5">
                                     <div className="flex items-center justify-between">
-                                      <Label size="sm" className="font-medium">
+                                      <Label size="sm" className="font-medium cursor-default">
                                         Short Description
                                       </Label>
                                       <span className={cn("text-xs", infoSummary.length > SHORT_DESCRIPTION_MAX_LENGTH ? "text-error-500" : "text-gray-400")}>
@@ -3090,7 +3092,7 @@ export default function ProjectDetails() {
                                   </div>
 
                                   <div className="space-y-1.5">
-                                    <Label size="sm" className="font-medium">
+                                    <Label size="sm" className="font-medium cursor-default">
                                       Project Type
                                     </Label>
                                     <Listbox
@@ -6749,7 +6751,7 @@ export default function ProjectDetails() {
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="outlined" visual="gray" size="md" className="flex-auto" onClick={() => router.push(`/project-details/${params.slug}`)}>
+                      <Button variant="outlined" visual="gray" size="md" className="flex-auto" onClick={() => router.push(`/project-details/${project.slug || params.slug}`)}>
                         <Eye className="size-[15px]" />
                         View as Client
                       </Button>
@@ -6974,5 +6976,8 @@ export default function ProjectDetails() {
         </div>
       </div>
     </div>
+
+    <MarketplaceFooter />
+    </>
   )
 }
