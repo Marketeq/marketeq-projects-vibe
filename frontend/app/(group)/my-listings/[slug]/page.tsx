@@ -2664,8 +2664,8 @@ export default function ProjectDetails() {
                   </svg>
                 </div>
                 <div className="flex flex-col items-center gap-1.5 text-center">
-                  <h3 className="text-base font-semibold text-gray-900">You Have No Recent Chats</h3>
-                  <p className="text-sm text-gray-500 max-w-[320px]">
+                  <h3 className="text-base font-semibold text-dark-blue-400">You Have No Recent Chats</h3>
+                  <p className="text-sm text-dark-blue-400 max-w-[320px]">
                     Once your project is live, chat threads will be visible here when visitors message you.
                   </p>
                 </div>
