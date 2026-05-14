@@ -104,6 +104,7 @@ body {
 }
 
 /* Inbox — brief highlight when jumping to a message from search */
+
 @keyframes inbox-highlight-flash {
   0% {
     background-color: theme(colors.primary.100);

@@ -4,6 +4,7 @@ import * as React from "react"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { ensureDevAuth } from "@/src/lib/api/dev-login"
+import { MarketplaceFooter } from "@/components/marketplace-footer"
 import {
   addFavorite,
   findFavoriteByItemId,
@@ -112,8 +113,6 @@ import { Spinner } from "@/components/ui/spinner/spinner"
 import {
   DndContext,
   type DragEndEvent,
-  type DragStartEvent,
-  DragOverlay,
   MouseSensor,
   TouchSensor,
   closestCenter,
@@ -249,6 +248,33 @@ const FALLBACK_CATEGORY_OPTIONS = [
 ]
 
 const MAX_SUBCATEGORIES_PER_CATEGORY = 5
+
+const SHORT_DESCRIPTION_MIN_LENGTH = 50
+const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const FULL_DESCRIPTION_MIN_LENGTH = 100
+const FULL_DESCRIPTION_MAX_LENGTH = 5000
+
+const plainTextFromRichTextHtml = (value: string) => {
+  if (!value) return ""
+  if (typeof window !== "undefined") {
+    const container = window.document.createElement("div")
+    container.innerHTML = value
+    return (container.textContent ?? container.innerText ?? "")
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+  return value
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+const getRichTextCharacterCount = (value: string) =>
+  plainTextFromRichTextHtml(value).length
 
 const PROJECT_TYPE_OPTIONS = [
   "Website",
@@ -638,22 +664,100 @@ const SEED_TEAM_MEMBERS = [
   { id: "seed-5", firstName: "Shelly", username: "shellyux", avatarUrl: "/woman.jpg", role: "UI/UX Designer", jobTitles: ["UI/UX Designer", "Product Designer"], hourlyRate: 90, workSchedule: "full_time", customHoursPerWeek: null, location: "Canada", experience: "Medior" },
 ]
 
+function UploadProgressRing({ uploading, onComplete }: { uploading: boolean; onComplete?: () => void }) {
+  const progressRef = React.useRef(0)
+  const [offset, setOffset] = React.useState(97.4)
+  const rafRef = React.useRef<number>(0)
+  const startRef = React.useRef(performance.now())
+  const phaseRef = React.useRef<"filling" | "completing" | "done">("filling")
+  const completeStartRef = React.useRef(0)
+  const completeFromRef = React.useRef(0)
+  const onCompleteRef = React.useRef(onComplete)
+  onCompleteRef.current = onComplete
+
+  const circumference = 97.4 // 2π × 15.5
+
+  React.useEffect(() => {
+    if (uploading) {
+      progressRef.current = 0
+      startRef.current = performance.now()
+      phaseRef.current = "filling"
+    }
+  }, [uploading])
+
+  // When uploading stops, switch to completing phase
+  React.useEffect(() => {
+    if (!uploading && phaseRef.current === "filling") {
+      phaseRef.current = "completing"
+      completeFromRef.current = progressRef.current
+      completeStartRef.current = performance.now()
+    }
+  }, [uploading])
+
+  React.useEffect(() => {
+    const tick = () => {
+      if (phaseRef.current === "done") return
+
+      if (phaseRef.current === "filling") {
+        const elapsed = performance.now() - startRef.current
+        // Fast curve — reaches ~50% at 500ms, ~70% at 1s, ~80% at 1.5s
+        progressRef.current = 85 * (1 - Math.exp(-elapsed / 800))
+      } else if (phaseRef.current === "completing") {
+        const elapsed = performance.now() - completeStartRef.current
+        const from = completeFromRef.current
+        // Duration scales with how far we need to go (min 200ms, max 500ms)
+        const distance = 100 - from
+        const duration = Math.max(200, Math.min(500, distance * 6))
+        const t = Math.min(elapsed / duration, 1)
+        const eased = 1 - (1 - t) * (1 - t) // ease-out quad
+        progressRef.current = from + distance * eased
+
+        if (t >= 1) {
+          phaseRef.current = "done"
+          setOffset(0)
+          onCompleteRef.current?.()
+          return
+        }
+      }
+
+      setOffset(circumference - (progressRef.current / 100) * circumference)
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [uploading])
+
+  return (
+    <div className="relative size-9">
+      <svg className="size-9 -rotate-90" viewBox="0 0 36 36">
+        <circle cx="18" cy="18" r="15.5" fill="none" stroke="#E5E7EB" strokeWidth="2.5" />
+        <circle cx="18" cy="18" r="15.5" fill="none" stroke="#354764" strokeWidth="2.5" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} />
+      </svg>
+      <UploadCloud className="size-4 text-gray-600 absolute inset-0 m-auto" />
+    </div>
+  )
+}
+
 function SortableGalleryItem({
   index,
   url,
   isHidden,
   isUploading,
+  isCompleting,
   onUpload,
   onDelete,
   onToggleHidden,
+  onUploadComplete,
 }: {
   index: number
   url: string | undefined
   isHidden: boolean
   isUploading: boolean
+  isCompleting: boolean
   onUpload: (files: FileList | null, replaceIndex?: number) => void
   onDelete: (index: number) => void
   onToggleHidden: (index: number) => void
+  onUploadComplete: () => void
 }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const {
@@ -668,8 +772,8 @@ function SortableGalleryItem({
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
     zIndex: isDragging ? 50 : undefined,
+    boxShadow: isDragging ? "0 12px 28px rgba(0,0,0,0.2), 0 4px 10px rgba(0,0,0,0.1)" : undefined,
   }
 
   return (
@@ -688,24 +792,21 @@ function SortableGalleryItem({
               sizes="25vw"
               fill
             />
-            {isHidden && (
-              <div className="absolute top-1.5 left-1.5">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="border border-dashed border-gray-400 rounded px-1.5 py-0.5 cursor-help">
-                        <EyeOff className="size-3 text-gray-400" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" visual="white" className="max-w-[200px] text-center">
-                      This image is hidden from your listing
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+            {(isUploading || isCompleting) && (
+              <div className="absolute inset-0 bg-gray-100/80 flex items-center justify-center z-20">
+                <UploadProgressRing uploading={isUploading} onComplete={onUploadComplete} />
+              </div>
+            )}
+            {isHidden && !isUploading && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-100 group-hover/slide:opacity-0 transition-opacity duration-300">
+                <div className="flex items-center gap-1.5 bg-white/80 rounded-md px-2.5 py-1.5">
+                  <EyeOff className="size-3.5 text-gray-500" />
+                  <span className="text-xs font-medium text-gray-600">Hidden</span>
+                </div>
               </div>
             )}
             {/* Hover overlay */}
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200">
+            <div className={cn("absolute inset-0 bg-black/40 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200", (isUploading || isCompleting) && "pointer-events-none !opacity-0")}>
               {/* Drag handle */}
               <TooltipProvider delayDuration={300}>
                 <Tooltip>
@@ -823,9 +924,9 @@ function SortableGalleryItem({
               </DialogContent>
             </Dialog>
           </>
-        ) : isUploading ? (
-          <div className="absolute inset-0 bg-gray-500 flex items-center justify-center">
-            <Spinner size={48} strokeWidth={5} />
+        ) : (isUploading || isCompleting) ? (
+          <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
+            <UploadProgressRing uploading={isUploading} onComplete={onUploadComplete} />
           </div>
         ) : (
           <>
@@ -888,6 +989,40 @@ export default function ProjectDetails() {
   })
   const [loading, setLoading] = React.useState(true)
   const [hasChanges, setHasChanges] = React.useState(false)
+
+  // Warn on browser tab close/refresh with unsaved changes
+  React.useEffect(() => {
+    if (!hasChanges) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+    }
+    window.addEventListener("beforeunload", handler)
+    return () => window.removeEventListener("beforeunload", handler)
+  }, [hasChanges])
+
+  // Intercept browser back button with unsaved changes
+  const backGuardPushedRef = React.useRef(false)
+  const pushBackGuard = React.useCallback(() => {
+    if (!backGuardPushedRef.current) {
+      window.history.pushState({ unsavedGuard: true }, "")
+      backGuardPushedRef.current = true
+    }
+  }, [])
+  React.useEffect(() => {
+    if (!hasChanges) {
+      backGuardPushedRef.current = false
+      return
+    }
+    pushBackGuard()
+    const handler = () => {
+      backGuardPushedRef.current = false
+      setPendingNavUrl(null) // null = go back
+      setUnsavedNavOpen(true)
+    }
+    window.addEventListener("popstate", handler)
+    return () => window.removeEventListener("popstate", handler)
+  }, [hasChanges, pushBackGuard])
+
   const [selected, setSelected] = React.useState<string>("Details")
   const [descDialogOpen, setDescDialogOpen] = React.useState(false)
   const [descDraft, setDescDraft] = React.useState("")
@@ -939,6 +1074,12 @@ export default function ProjectDetails() {
   const [canScrollGalleryPrev, setCanScrollGalleryPrev] = React.useState(false)
   const [canScrollGalleryNext, setCanScrollGalleryNext] = React.useState(false)
   const [uploadingSlots, setUploadingSlots] = React.useState<Set<number>>(new Set())
+  const [completingSlots, setCompletingSlots] = React.useState<Set<number>>(new Set())
+  const [featuredUploading, setFeaturedUploading] = React.useState(false)
+  const [featuredCompleting, setFeaturedCompleting] = React.useState(false)
+  const [featuredDeleteOpen, setFeaturedDeleteOpen] = React.useState(false)
+  const [unsavedNavOpen, setUnsavedNavOpen] = React.useState(false)
+  const [pendingNavUrl, setPendingNavUrl] = React.useState<string | null>(null)
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false)
   const [isPublishing, setIsPublishing] = React.useState(false)
   const [videoDialogOpen, setVideoDialogOpen] = React.useState(false)
@@ -1011,11 +1152,13 @@ export default function ProjectDetails() {
             variant: "destructive",
           })
         } finally {
+          // Stop uploading — ring will animate to 100% then call onComplete
           setUploadingSlots((prev) => {
             const next = new Set(prev)
             next.delete(targetIndex)
             return next
           })
+          setCompletingSlots((prev) => new Set(prev).add(targetIndex))
         }
       }
 
@@ -1036,7 +1179,11 @@ export default function ProjectDetails() {
   const handleGalleryDelete = React.useCallback(
     async (index: number) => {
       const currentUrls: string[] = project.mediaUrls ?? []
-      const newUrls = currentUrls.filter((_: string, i: number) => i !== index)
+      // First 3 slots: clear in place so visible grid doesn't shift
+      // Beyond slot 2: remove and shift remaining images forward
+      const newUrls = index < 3
+        ? currentUrls.map((url: string, i: number) => (i === index ? "" : url))
+        : currentUrls.filter((_: string, i: number) => i !== index)
       setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
       setHasChanges(true)
       setHiddenImages((prev) => {
@@ -1117,10 +1264,11 @@ export default function ProjectDetails() {
   const handleFeaturedImageUpload = React.useCallback(
     async (file: File) => {
       setHasChanges(true)
+      setFeaturedUploading(true)
       if (!project.id || !isRealBackendId(project.id)) {
-        // Show local preview even without backend ID
         const localUrl = URL.createObjectURL(file)
         setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
+        setFeaturedUploading(false)
         return
       }
       const formData = new FormData()
@@ -1142,6 +1290,9 @@ export default function ProjectDetails() {
             : "Failed to upload featured image. Showing local preview.",
           variant: "destructive",
         })
+      } finally {
+        setFeaturedUploading(false)
+        setFeaturedCompleting(true)
       }
     },
     [project.id, toast]
@@ -1991,7 +2142,7 @@ export default function ProjectDetails() {
             {/* gray header area */}
             <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
               <div className="relative pt-6 pb-[50px]">
-                <div className="absolute w-screen -translate-x-[100px] top-0 bottom-px bg-gray-50" />
+                <div className="absolute w-screen -translate-x-[100px] top-0 bottom-0 bg-gray-50" />
                 {/* breadcrumb */}
                 <div className="flex items-center gap-x-2 relative">
                   <Shimmer className="size-[18px] rounded" />
@@ -2151,12 +2302,13 @@ export default function ProjectDetails() {
   }
 
   return (
+    <>
     <div className="px-[100px] pb-[100px] relative bg-white">
       <div className="max-w-[1240px] flex items-start gap-x-8">
         <div className="max-w-[818px] flex-auto">
           <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
             <div className="relative pt-6 pb-[50px]">
-              <div className="absolute w-screen -translate-x-[100px] top-0 bottom-px bg-gray-50" />
+              <div className="absolute w-screen -translate-x-[100px] top-0 bottom-0 bg-gray-50" />
 
               <div className="flex items-center gap-x-2 relative">
                 <NextLink href="/">
@@ -2188,7 +2340,11 @@ export default function ProjectDetails() {
 
               <div className="flex gap-x-[13px] items-start mt-8 relative z-[5]">
                 <div className="group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
-                  {project.featuredImage ? (
+                  {(featuredUploading || featuredCompleting) && !project.featuredImage ? (
+                    <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
+                      <UploadProgressRing uploading={featuredUploading} onComplete={() => setFeaturedCompleting(false)} />
+                    </div>
+                  ) : project.featuredImage ? (
                     <>
                       <NextImage
                         className="object-cover"
@@ -2199,7 +2355,12 @@ export default function ProjectDetails() {
                         priority
                         fill
                       />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2">
+                      {(featuredUploading || featuredCompleting) && (
+                        <div className="absolute inset-0 bg-gray-100/80 flex items-center justify-center z-20">
+                          <UploadProgressRing uploading={featuredUploading} onComplete={() => setFeaturedCompleting(false)} />
+                        </div>
+                      )}
+                      <div className={cn("absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-x-2", (featuredUploading || featuredCompleting) && "pointer-events-none !opacity-0")}>
                         <button
                           type="button"
                           className="size-8 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
@@ -2221,7 +2382,7 @@ export default function ProjectDetails() {
                         <button
                           type="button"
                           className="size-8 rounded-full bg-white/20 hover:bg-red-500/80 inline-flex items-center justify-center transition"
-                          onClick={() => setProject((prev: any) => ({ ...prev, featuredImage: null }))}
+                          onClick={() => setFeaturedDeleteOpen(true)}
                         >
                           <Trash2 className="size-3.5 text-white" />
                         </button>
@@ -2256,6 +2417,40 @@ export default function ProjectDetails() {
                     </>
                   )}
                 </div>
+
+                {/* Featured image delete confirmation */}
+                <Dialog open={featuredDeleteOpen} onOpenChange={setFeaturedDeleteOpen}>
+                  <DialogContent className="max-w-[409px] p-0">
+                    <div className="p-6 border-b border-gray-200">
+                      <DialogTitle>Delete featured image?</DialogTitle>
+                      <DialogDescription className="mt-2">
+                        Your image will be removed permanently.
+                      </DialogDescription>
+                    </div>
+                    <div className="py-4 flex rounded-b-xl bg-gray-25 items-center justify-between px-6">
+                      <DialogClose asChild>
+                        <Button
+                          className="opacity-50 hover:opacity-100"
+                          visual="gray"
+                          variant="link"
+                        >
+                          <X className="size-[15px]" />
+                          Cancel
+                        </Button>
+                      </DialogClose>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() => {
+                          setProject((prev: any) => ({ ...prev, featuredImage: null }))
+                          setFeaturedDeleteOpen(false)
+                        }}
+                      >
+                        Yes, Delete
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
 
                 <div className="flex flex-col items-start gap-y-3 flex-1">
                   <Popover open={projectTypeOpen} onOpenChange={(open) => {
@@ -2456,19 +2651,32 @@ export default function ProjectDetails() {
           <Tabs value={selected} onValueChange={setSelected}>
             <RadixTabs.TabsList
               className={cn(
-                "h-12 flex items-center justify-between border-b border-gray-200 bg-white",
+                "h-12 flex items-center justify-between border-b border-gray-200",
                 selected === "Live Chat" && "sticky top-[65px] z-10"
               )}
             >
-              <NextLink href="/my-listings">
-                <Button className="group" variant="link" visual="gray">
+              <div className="flex-1 flex justify-start">
+                <Button
+                  className="group"
+                  variant="link"
+                  visual="gray"
+                  onClick={() => {
+                    if (hasChanges) {
+                      setPendingNavUrl("/my-listings")
+                      setUnsavedNavOpen(true)
+                    } else {
+                      router.push("/my-listings")
+                    }
+                  }}
+                >
                   <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
                   Back To Listings
                 </Button>
-              </NextLink>
+              </div>
 
               <Button
                 variant="link"
+                className="!text-primary-500 shrink-0"
                 onClick={() =>
                   setSelected(
                     selected === "Live Chat" ? "Details" : "Live Chat"
@@ -2476,9 +2684,10 @@ export default function ProjectDetails() {
                 }
               >
                 <MessageTextCircle01 className="size-5" />
-                {selected === "Live Chat" ? "End Chat" : "Live Chat"}
+                {selected === "Live Chat" ? (!(project.chats?.length > 0) ? "Close Chat" : "End Chat") : "Live Chat"}
               </Button>
 
+              <div className="flex-1 flex justify-end">
               <Button
                 className="group"
                 variant="link"
@@ -2499,11 +2708,24 @@ export default function ProjectDetails() {
                     : "View Project Scope"}
                 <ChevronDown className="group-data-[state=active]:-rotate-180 transition duration-300 size-[15px]" />
               </Button>
+              </div>
             </RadixTabs.TabsList>
             <TabsContent value="Live Chat">
-              <Inbox>
-                <Chats />
-              </Inbox>
+              <div className="flex flex-col items-center justify-center py-16 gap-4">
+                <div className="relative w-[72px] h-[56px]">
+                  <svg viewBox="0 0 72 56" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+                    <rect x="0" y="8" width="40" height="32" rx="8" fill="#E5E7EB" />
+                    <rect x="14" y="2" width="40" height="32" rx="8" fill="#D1D5DB" />
+                    <rect x="28" y="14" width="40" height="32" rx="8" fill="#354764" />
+                  </svg>
+                </div>
+                <div className="flex flex-col items-center gap-1.5 text-center">
+                  <h3 className="text-base font-semibold text-dark-blue-400">You Have No Recent Chats</h3>
+                  <p className="text-sm text-dark-blue-400 max-w-[320px]">
+                    Once your project is live, chat threads will be visible here when visitors message you.
+                  </p>
+                </div>
+              </div>
             </TabsContent>
 
             <TabsContent
@@ -2644,9 +2866,17 @@ export default function ProjectDetails() {
                             url={allUrls[index]}
                             isHidden={hiddenImages.has(index)}
                             isUploading={uploadingSlots.has(index)}
+                            isCompleting={completingSlots.has(index)}
                             onUpload={handleGalleryUpload}
                             onDelete={handleGalleryDelete}
                             onToggleHidden={handleGalleryToggleHidden}
+                            onUploadComplete={() => {
+                              setCompletingSlots((prev) => {
+                                const next = new Set(prev)
+                                next.delete(index)
+                                return next
+                              })
+                            }}
                           />
                         ))}
                       </SortableContext>
@@ -2898,17 +3128,28 @@ export default function ProjectDetails() {
                           </div>
 
                           <div className="px-6 pt-6 pb-6">
-                            <p className="text-sm font-light text-dark-blue-400 mb-2">
-                              Provide a comprehensive description of this project, including its purpose and features.
-                            </p>
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-sm font-light text-dark-blue-400">
+                                Provide a comprehensive description of this project, including its purpose and features.
+                              </p>
+                              <span className={cn("text-xs shrink-0 ml-2", getRichTextCharacterCount(descDraft) > FULL_DESCRIPTION_MAX_LENGTH ? "text-error-500" : "text-gray-400")}>
+                                {getRichTextCharacterCount(descDraft).toLocaleString()}/{FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
+                              </span>
+                            </div>
                             <RichTextEditor
                               defaultValue={descDraft}
                               placeholder="<p class='text-gray-400'>Enter a full description</p>"
                               allowFullscreen
-                              className="rounded-lg border border-gray-300 focus-within:border-primary-500 bg-white"
+                              className={cn("rounded-lg border focus-within:border-primary-500 bg-white", getRichTextCharacterCount(descDraft) > 0 && (getRichTextCharacterCount(descDraft) < FULL_DESCRIPTION_MIN_LENGTH || getRichTextCharacterCount(descDraft) > FULL_DESCRIPTION_MAX_LENGTH) ? "border-error-500" : "border-gray-300")}
                               editorClassName="min-h-[200px] max-h-[40vh] overflow-y-auto"
                               onUpdate={(html) => setDescDraft(html)}
                             />
+                            {getRichTextCharacterCount(descDraft) > 0 && getRichTextCharacterCount(descDraft) < FULL_DESCRIPTION_MIN_LENGTH && (
+                              <p className="mt-1 text-xs text-error-500">Please enter at least {FULL_DESCRIPTION_MIN_LENGTH} character(s)</p>
+                            )}
+                            {getRichTextCharacterCount(descDraft) > FULL_DESCRIPTION_MAX_LENGTH && (
+                              <p className="mt-1 text-xs text-error-500">Please do not enter more than {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()} character(s)</p>
+                            )}
                           </div>
 
                           <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
@@ -2919,6 +3160,7 @@ export default function ProjectDetails() {
                               </Button>
                             </DialogClose>
                             <Button
+                              disabled={getRichTextCharacterCount(descDraft) > 0 && (getRichTextCharacterCount(descDraft) < FULL_DESCRIPTION_MIN_LENGTH || getRichTextCharacterCount(descDraft) > FULL_DESCRIPTION_MAX_LENGTH)}
                               onClick={() => {
                                 setProject((prev: any) => ({ ...prev, description: descDraft }))
                                 setDescDialogOpen(false)
@@ -2937,6 +3179,7 @@ export default function ProjectDetails() {
                           <form
                             onSubmit={(e) => {
                               e.preventDefault()
+                              if (infoSummary.length > 0 && infoSummary.length < SHORT_DESCRIPTION_MIN_LENGTH) return
                               const updatedCategories = infoCategories
                                 .filter((r) => r.category)
                                 .map((r) => r.category)
@@ -2997,7 +3240,7 @@ export default function ProjectDetails() {
                                 onValueChange={setInfoTab}
                                 className="mt-6"
                               >
-                                <TabsList className="w-full border-b border-gray-200 px-6">
+                                <TabsList className="w-full justify-start border-b border-gray-200 px-6">
                                   <TabsTrigger value="Basic Info">
                                     Basic Info
                                   </TabsTrigger>
@@ -3009,7 +3252,7 @@ export default function ProjectDetails() {
                                 {infoTab === "Basic Info" && <div className="pt-6 px-6 pb-6 space-y-5">
                                   <div className="space-y-1.5">
                                     <div className="flex items-center justify-between">
-                                      <Label size="sm" className="font-medium">
+                                      <Label size="sm" className="font-medium cursor-default">
                                         Title
                                       </Label>
                                       <span className="text-xs text-gray-400">
@@ -3027,11 +3270,11 @@ export default function ProjectDetails() {
 
                                   <div className="space-y-1.5">
                                     <div className="flex items-center justify-between">
-                                      <Label size="sm" className="font-medium">
+                                      <Label size="sm" className="font-medium cursor-default">
                                         Short Description
                                       </Label>
-                                      <span className="text-xs text-gray-400">
-                                        {infoSummary.length}/300
+                                      <span className={cn("text-xs", infoSummary.length > SHORT_DESCRIPTION_MAX_LENGTH ? "text-error-500" : "text-gray-400")}>
+                                        {infoSummary.length}/{SHORT_DESCRIPTION_MAX_LENGTH}
                                       </span>
                                     </div>
                                     <Textarea
@@ -3039,14 +3282,18 @@ export default function ProjectDetails() {
                                       className="min-h-[100px] resize-none"
                                       placeholder="Enter a short description..."
                                       value={infoSummary}
+                                      isInvalid={infoSummary.length > 0 && (infoSummary.length < SHORT_DESCRIPTION_MIN_LENGTH || infoSummary.length > SHORT_DESCRIPTION_MAX_LENGTH)}
                                       onChange={(e) =>
-                                        setInfoSummary(e.target.value.slice(0, 300))
+                                        setInfoSummary(e.target.value.slice(0, SHORT_DESCRIPTION_MAX_LENGTH))
                                       }
                                     />
+                                    {infoSummary.length > 0 && infoSummary.length < SHORT_DESCRIPTION_MIN_LENGTH && (
+                                      <p className="text-xs text-error-500">Please enter at least {SHORT_DESCRIPTION_MIN_LENGTH} character(s)</p>
+                                    )}
                                   </div>
 
                                   <div className="space-y-1.5">
-                                    <Label size="sm" className="font-medium">
+                                    <Label size="sm" className="font-medium cursor-default">
                                       Project Type
                                     </Label>
                                     <Listbox
@@ -4742,7 +4989,7 @@ export default function ProjectDetails() {
                               </DialogClose>
                             </div>
 
-                            <TabsList className="px-0 pt-4 justify-start">
+                            <TabsList className="w-full px-0 pt-4 justify-start">
                               <TabsTrigger value="dialog-faqs">FAQ&apos;s</TabsTrigger>
                               <TabsTrigger value="dialog-recent">Recently Asked Questions</TabsTrigger>
                             </TabsList>
@@ -6705,7 +6952,10 @@ export default function ProjectDetails() {
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="outlined" visual="gray" size="md" className="flex-auto" onClick={() => router.push(`/project-details/${params.slug}`)}>
+                      <Button variant="outlined" visual="gray" size="md" className="flex-auto" onClick={() => {
+                        const url = `/project-details/${project.slug || params.slug}`
+                        if (hasChanges) { setPendingNavUrl(url); setUnsavedNavOpen(true) } else { router.push(url) }
+                      }}>
                         <Eye className="size-[15px]" />
                         View as Client
                       </Button>
@@ -6930,5 +7180,55 @@ export default function ProjectDetails() {
         </div>
       </div>
     </div>
+
+    <MarketplaceFooter />
+
+    {/* Unsaved changes navigation warning */}
+    <Dialog open={unsavedNavOpen} onOpenChange={setUnsavedNavOpen}>
+      <DialogContent className="max-w-[409px] p-0">
+        <div className="p-6 border-b border-gray-200">
+          <DialogTitle>You have unpublished changes</DialogTitle>
+          <DialogDescription className="mt-2">
+            Your changes haven&apos;t been published yet. What would you like to do?
+          </DialogDescription>
+        </div>
+        <div className="py-4 flex rounded-b-xl bg-gray-25 items-center justify-between px-6">
+          <Button
+            className="opacity-50 hover:opacity-100"
+            visual="gray"
+            variant="link"
+            onClick={() => {
+              setHasChanges(false)
+              setUnsavedNavOpen(false)
+              if (pendingNavUrl) {
+                router.push(pendingNavUrl)
+              } else {
+                router.back()
+              }
+              setPendingNavUrl(null)
+            }}
+          >
+            Discard Changes
+          </Button>
+          <div className="flex items-center gap-2">
+            <DialogClose asChild>
+              <Button variant="outlined" visual="gray" onClick={pushBackGuard}>
+                Keep Editing
+              </Button>
+            </DialogClose>
+            <Button
+              onClick={() => {
+                setPublishDialogOpen(true)
+                setUnsavedNavOpen(false)
+                setPendingNavUrl(null)
+              }}
+            >
+              Publish
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
