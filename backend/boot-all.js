@@ -34,19 +34,19 @@ const GATEWAY_PORT = process.env.PORT || '10000';
 // Keep this list in sync with proxy.service.ts route map.
 // Active services to run at startup. All 27 are compiled in the Docker image,
 // but only these are started to stay within the 512 MB Render Starter plan.
-// The last known stable set was 7 services (commit 9033bf4d). Adding contracts
-// and category brings it to 9 + gateway = 10 processes, well within 512 MB.
-// No heap cap — let Node use its natural memory footprint (~30-50 MB each).
+// 5 services + gateway = 6 processes (~50-80 MB each = ~300-480 MB).
+// 9 services OOM-killed at 512 MB (2026-05-14), so keep it lean.
+// No heap cap — let Node use its natural memory footprint.
 const SERVICES = [
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
   { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
   { name: 'notification-service',       port: '3006', dir: 'apps/notification-service' },
-  { name: 'contracts-service',          port: '3010', dir: 'apps/contracts-service' },
-  { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service' },
-  { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service' },
-  { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service' },
   { name: 'category-service',           port: '3023', dir: 'apps/category-service' },
+  // Reduced from 9 → 5 services after OOM kills at 512 MB (2026-05-14).
+  // These can be re-enabled after Render plan upgrade:
+  // contracts-service (3010), invitations-service (3013),
+  // content-moderation-service (3014), time-tracking-service (3017),
   // Dormant until Render plan upgrade (compiled but not started):
   // messaging-service (3005), search-service (3007), algolia-service (3008),
   // checkout-service (3009), favorites-service (3012), portfolio-service (3015),
