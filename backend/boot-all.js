@@ -34,8 +34,8 @@ const GATEWAY_PORT = process.env.PORT || '10000';
 // Keep this list in sync with proxy.service.ts route map.
 // Active services to run at startup. All 27 are compiled in the Docker image,
 // but only these are started to stay within the 512 MB Render Starter plan.
-// 3 services + gateway = 4 processes. Each gets --max-old-space-size=96
-// to cap heap at ~96 MB each (4 × 96 = 384 MB + OS overhead ≈ 450-480 MB).
+// 3 services + gateway = 4 processes. Each gets --max-old-space-size=128
+// to cap heap at ~128 MB each (4 × 128 = 512 MB — OS overhead keeps RSS lower).
 // 5 services and 9 services both OOM-killed at 512 MB (2026-05-14).
 const SERVICES = [
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
@@ -128,7 +128,7 @@ function launchService(svc, env, isGateway = false) {
     return null;
   }
 
-  const child = spawn('node', ['--max-old-space-size=96', distMain], {
+  const child = spawn('node', ['--max-old-space-size=128', distMain], {
     env: svcEnv,
     stdio: 'inherit',
   });
