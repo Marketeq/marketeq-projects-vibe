@@ -8,6 +8,8 @@ import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
 import { Bubble, YourBubble } from "./message-components"
 import { UNDECRYPTABLE_PLACEHOLDER } from "../constants"
+import { loadDraft, saveDraft, clearDraft } from "../lib/drafts"
+import { subscribeMessagingEvents } from "@/utils/messagingBroadcast"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
@@ -218,6 +220,7 @@ export function Chats({
     "image" | "file" | null
   >(null)
   const [receiverUser, setReceiverUser] = useState<User | null>(null)
+  const [counterpartDeleted, setCounterpartDeleted] = useState(false)
   const [starredMap, setStarredMap] = useState<Record<string, boolean>>({})
   const [selectedTab, setSelectedTab] = useState<"Messages" | "Pinned">(
     "Messages"
@@ -227,6 +230,13 @@ export function Chats({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [rejectedFiles, setRejectedFiles] = useState<RejectedFile[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const uploadAbortFlagsRef = useRef<Map<File, { aborted: boolean }>>(new Map())
+  const recentlyAbortedMessageIdsRef = useRef<Set<string>>(new Set())
+  const pendingIncomingRef = useRef<Message[]>([])
+  const pendingIncomingRafRef = useRef<number | null>(null)
+  const pendingSendsRef = useRef<
+    Map<string, { threadId: string; content: string; replyToId?: string }>
+  >(new Map())
   const [isSending, setIsSending] = useState(false)
   const [forwardOpen, setForwardOpen] = useState(false)
   const [forwardTarget, setForwardTarget] = useState<Message | null>(null)
@@ -314,7 +324,8 @@ export function Chats({
     ta.style.height = `${ta.scrollHeight}px`
   }, [textareaValue])
 
-  // Reset per-conversation state when switching conversations
+  // Reset per-conversation state when switching conversations,
+  // then restore any persisted draft for this thread (Doc 05 EC-3.3).
   useEffect(() => {
     setStarredOverride(null)
     setReplyingTo(null)
@@ -323,7 +334,42 @@ export function Chats({
     setSelectedFiles([])
     setRejectedFiles([])
     setUploadModalMode(null)
-  }, [selectedConversation?.id])
+
+    const tid = selectedConversation?.id
+    const uid = currentUser?.id
+    if (!tid || !uid) return
+    let cancelled = false
+    loadDraft(tid, uid).then((draft) => {
+      if (cancelled || !draft) return
+      // If user already typed something between switch and load, don't clobber.
+      setTextareaValue((cur) => (cur ? cur : draft))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedConversation?.id, currentUser?.id])
+
+  // Debounced draft save — fires 400ms after the user stops typing.
+  useEffect(() => {
+    const tid = selectedConversation?.id
+    const uid = currentUser?.id
+    if (!tid || !uid) return
+    const handle = setTimeout(() => {
+      saveDraft(tid, uid, textareaValue).catch(() => undefined)
+    }, 400)
+    return () => clearTimeout(handle)
+  }, [textareaValue, selectedConversation?.id, currentUser?.id])
+
+  useEffect(() => {
+    const tid = selectedConversation?.id
+    const uid = currentUser?.id
+    if (!tid || !uid) return
+    return subscribeMessagingEvents((evt) => {
+      if (evt.type !== "draft") return
+      if (evt.threadId !== tid || evt.userId !== uid) return
+      setTextareaValue(evt.text)
+    })
+  }, [selectedConversation?.id, currentUser?.id])
 
   useEffect(() => {
     setStarredOverride(null)
@@ -424,7 +470,14 @@ export function Chats({
   }
 
   const removeSelectedFile = (index: number) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
+    setSelectedFiles((prev) => {
+      const file = prev[index]
+      if (file) {
+        const record = uploadAbortFlagsRef.current.get(file)
+        if (record) record.aborted = true
+      }
+      return prev.filter((_, i) => i !== index)
+    })
   }
 
   const removeRejectedFile = (id: string) => {
@@ -561,26 +614,37 @@ export function Chats({
 
   // Scroll-to-and-flash a specific message when the sidebar opens a
   // search result. Waits until that message is actually in the rendered
-  // list (it may arrive after a thread-switch's history fetch).
+  // list (it may arrive after a thread-switch's history fetch). Per
+  // Doc 05 EC-8.2: if the message is missing after history load, toast
+  // "Message no longer available" and clear the highlight.
   useEffect(() => {
     if (!highlightMessageId) return
-    if (!localMsgs.some((m) => m.id === highlightMessageId)) return
 
-    // Give the bubble one paint to mount, then scroll + flash.
-    const id = requestAnimationFrame(() => {
-      const el = document.querySelector(
-        `[data-message-id="${highlightMessageId}"]`
-      ) as HTMLElement | null
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" })
-        el.classList.add("inbox-highlight-flash")
-        window.setTimeout(() => {
-          el.classList.remove("inbox-highlight-flash")
-        }, 2200)
-      }
+    if (localMsgs.some((m) => m.id === highlightMessageId)) {
+      const id = requestAnimationFrame(() => {
+        const el = document.querySelector(
+          `[data-message-id="${highlightMessageId}"]`
+        ) as HTMLElement | null
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" })
+          el.classList.add("inbox-highlight-flash")
+          window.setTimeout(() => {
+            el.classList.remove("inbox-highlight-flash")
+          }, 2200)
+        }
+        onHighlightConsumed?.()
+      })
+      return () => cancelAnimationFrame(id)
+    }
+
+    const timeout = window.setTimeout(() => {
+      toast({
+        title: "Message no longer available",
+        variant: "destructive",
+      })
       onHighlightConsumed?.()
-    })
-    return () => cancelAnimationFrame(id)
+    }, 3000)
+    return () => window.clearTimeout(timeout)
   }, [highlightMessageId, localMsgs, onHighlightConsumed])
 
   // 2.3) Read-receipts: react to message:read broadcasts on user:{me}.
@@ -663,6 +727,10 @@ export function Chats({
       forwardedFromId?: string
       quotedCiphertext?: string | null
     }) => {
+      if (recentlyAbortedMessageIdsRef.current.has(incoming.id)) {
+        recentlyAbortedMessageIdsRef.current.delete(incoming.id)
+        return
+      }
       const convId = incoming.threadId
       let key: Uint8Array | null = null
       try {
@@ -692,20 +760,47 @@ export function Chats({
           quotedPlain = UNDECRYPTABLE_PLACEHOLDER
         }
       }
-      setLocalMsgs((prev) => {
-        if (prev.some((m) => m.id === incoming.id)) return prev
-        return [
-          ...prev,
-          {
-            ...incoming,
-            content: plain,
-            quotedContent: quotedPlain,
-            isRead: false,
-            isPinned: incoming.pinned ?? false,
-            isDeleted: incoming.deleted ?? false,
-          },
-        ]
-      })
+      const prepared: Message = {
+        ...incoming,
+        content: plain,
+        quotedContent: quotedPlain,
+        isRead: false,
+        isPinned: incoming.pinned ?? false,
+        isDeleted: incoming.deleted ?? false,
+      } as Message
+      pendingIncomingRef.current.push(prepared)
+      if (pendingIncomingRafRef.current == null) {
+        pendingIncomingRafRef.current = requestAnimationFrame(() => {
+          const batch = pendingIncomingRef.current
+          pendingIncomingRef.current = []
+          pendingIncomingRafRef.current = null
+          if (batch.length === 0) return
+          setLocalMsgs((prev) => {
+            let next = prev
+            let changed = false
+            for (const m of batch) {
+              if (next.some((existing) => existing.id === m.id)) continue
+              const tempIdx = next.findIndex(
+                (existing) =>
+                  typeof existing.id === "string" &&
+                  existing.id.startsWith("tmp-") &&
+                  existing.senderId === m.senderId &&
+                  (existing.status === "sending" ||
+                    existing.status === "optimistic-offline") &&
+                  (existing.content ?? "") === (m.content ?? ""),
+              )
+              if (tempIdx !== -1) {
+                next = next.map((existing, i) => (i === tempIdx ? m : existing))
+                changed = true
+                continue
+              }
+              next = [...next, m]
+              changed = true
+            }
+            return changed ? next : prev
+          })
+        })
+      }
       onIndexNewMessage?.({
         id: incoming.id,
         threadId: incoming.threadId,
@@ -717,6 +812,15 @@ export function Chats({
     },
     [setLocalMsgs, onIndexNewMessage]
   )
+
+  useEffect(() => {
+    return () => {
+      if (pendingIncomingRafRef.current != null) {
+        cancelAnimationFrame(pendingIncomingRafRef.current)
+        pendingIncomingRafRef.current = null
+      }
+    }
+  }, [])
 
   //pin/unpin,  delete, undo delete
   const updateMessage = useCallback(
@@ -833,6 +937,84 @@ export function Chats({
     selectedConversation?.isGroup
   )
 
+  const attemptOptimisticSend = useCallback(
+    async (tempId: string) => {
+      const params = pendingSendsRef.current.get(tempId)
+      if (!params) return
+      setLocalMsgs((prev) =>
+        prev.map((m) =>
+          m.id === tempId ? { ...m, status: "sending" } : m,
+        ),
+      )
+      try {
+        const saved = await send(
+          params.threadId,
+          params.content,
+          params.replyToId,
+        )
+        const msg = (saved as any).data ?? saved
+        let displayContent = msg.content
+        try {
+          const key = loadKey(params.threadId)
+          if (key && msg.ciphertext) {
+            displayContent = await decryptAES(msg.ciphertext, key)
+          }
+        } catch {
+          /* plaintext */
+        }
+        pendingSendsRef.current.delete(tempId)
+        setLocalMsgs((prev) => {
+          const echoAlreadyIn = prev.some((m) => m.id === msg.id)
+          if (echoAlreadyIn) {
+            return prev.filter((m) => m.id !== tempId)
+          }
+          return prev.map((m) =>
+            m.id === tempId ? { ...msg, content: displayContent } : m,
+          )
+        })
+        onIndexNewMessage?.({
+          id: msg.id,
+          threadId: params.threadId,
+          senderId: msg.senderId,
+          content: displayContent ?? "",
+          createdAt: msg.createdAt,
+          attachments: msg.attachments,
+        })
+      } catch {
+        setLocalMsgs((prev) =>
+          prev.map((m) =>
+            m.id === tempId ? { ...m, status: "failed-send" } : m,
+          ),
+        )
+      }
+    },
+    [send, onIndexNewMessage],
+  )
+
+  const retryOptimistic = useCallback(
+    (tempId: string) => {
+      void attemptOptimisticSend(tempId)
+    },
+    [attemptOptimisticSend],
+  )
+
+  const discardOptimistic = useCallback((tempId: string) => {
+    pendingSendsRef.current.delete(tempId)
+    setLocalMsgs((prev) => prev.filter((m) => m.id !== tempId))
+  }, [])
+
+  useEffect(() => {
+    const onOnline = () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) return
+      const ids = Array.from(pendingSendsRef.current.keys())
+      for (const id of ids) {
+        void attemptOptimisticSend(id)
+      }
+    }
+    window.addEventListener("online", onOnline)
+    return () => window.removeEventListener("online", onOnline)
+  }, [attemptOptimisticSend])
+
   const appendUploadedMessage = useCallback(
     async (result: UploadedAttachmentResult) => {
       if (!selectedConversation) return
@@ -911,12 +1093,43 @@ export function Chats({
     )
     if (!otherId) return
 
+    setCounterpartDeleted(false)
+    const deletedPlaceholder = {
+      id: otherId,
+      email: "",
+      username: undefined,
+      firstName: null,
+      lastName: null,
+      avatarUrl: null,
+    } as unknown as User
     apiFetch<User>(`/users/${otherId}`, {
       method: "GET",
       headers: { Authorization: `Bearer ${jwtToken}` },
     })
-      .then(setReceiverUser)
-      .catch(console.error)
+      .then((u) => {
+        const isInactive =
+          !!(u as { deletedAt?: unknown })?.deletedAt ||
+          (u as { isActive?: boolean })?.isActive === false
+        if (isInactive) {
+          setCounterpartDeleted(true)
+          setReceiverUser(deletedPlaceholder)
+        } else {
+          setReceiverUser(u)
+        }
+      })
+      .catch((err) => {
+        const status = err?.status ?? err?.response?.status
+        if (
+          status === 404 ||
+          (typeof err?.message === "string" &&
+            err.message.includes("404"))
+        ) {
+          setCounterpartDeleted(true)
+          setReceiverUser(deletedPlaceholder)
+        } else {
+          console.error(err)
+        }
+      })
   }, [selectedConversation?.id])
 
   // 6) send handler
@@ -933,58 +1146,126 @@ export function Chats({
         const caption = textareaValue.trim()
         for (let i = 0; i < selectedFiles.length; i++) {
           const file = selectedFiles[i]
-          const uploaded = await uploadFile(
-            selectedConversation.id,
-            file,
-            i === 0 ? caption : undefined,
-          )
-          await appendUploadedMessage(uploaded)
+          const abortRecord = { aborted: false }
+          uploadAbortFlagsRef.current.set(file, abortRecord)
+          try {
+            const uploaded = await uploadFile(
+              selectedConversation.id,
+              file,
+              i === 0 ? caption : undefined,
+            )
+            if (abortRecord.aborted) {
+              const abortedId = uploaded.message.id
+              recentlyAbortedMessageIdsRef.current.add(abortedId)
+              setTimeout(
+                () => recentlyAbortedMessageIdsRef.current.delete(abortedId),
+                30_000,
+              )
+              apiFetch(`/v1/messages/${abortedId}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${jwtToken}` },
+              }).catch(() => undefined)
+            } else {
+              await appendUploadedMessage(uploaded)
+            }
+          } finally {
+            uploadAbortFlagsRef.current.delete(file)
+          }
         }
         setSelectedFiles([])
         setRejectedFiles([])
         setTextareaValue("")
         sendTyping(false)
         setReplyingTo(null)
+        if (currentUser?.id) {
+          clearDraft(selectedConversation.id, currentUser.id).catch(() => undefined)
+        }
         return
       }
 
-      const saved = await send(selectedConversation.id, textareaValue.trim(), replyingTo?.id)
-
-      // Backend returns message directly or wrapped in { data }
-      const msg = (saved as any).data ?? saved
-
-      let displayContent = msg.content
-      try {
-        const key = loadKey(selectedConversation.id)
-        if (key && msg.ciphertext) {
-          displayContent = await decryptAES(msg.ciphertext, key)
-        }
-      } catch {
-        // no key cached, content is already plaintext
-      }
-
-      setLocalMsgs((prev) => {
-        if (prev.some((m) => m.id === msg.id)) return prev
-        return [
-          ...prev,
-          {
-            ...msg,
-            content: displayContent,
-          },
-        ]
-      })
-      onIndexNewMessage?.({
-        id: msg.id,
+      if (!currentUser?.id) return
+      const content = textareaValue.trim()
+      const replyToId = replyingTo?.id
+      const tempId = `tmp-${
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random()}`
+      }`
+      const isOnline =
+        typeof navigator === "undefined" ? true : navigator.onLine
+      const nowIso = new Date().toISOString()
+      const optimistic = {
+        id: tempId,
         threadId: selectedConversation.id,
-        senderId: msg.senderId,
-        content: displayContent ?? "",
-        createdAt: msg.createdAt,
-        attachments: msg.attachments,
+        senderId: currentUser.id,
+        content,
+        ciphertext: null,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        isRead: false,
+        status: isOnline ? "sending" : "optimistic-offline",
+        replyToMessageId: replyToId,
+      } as Message
+      setLocalMsgs((prev) => [...prev, optimistic])
+      pendingSendsRef.current.set(tempId, {
+        threadId: selectedConversation.id,
+        content,
+        replyToId,
       })
 
       setTextareaValue("")
       sendTyping(false)
       setReplyingTo(null)
+      if (currentUser?.id) {
+        clearDraft(selectedConversation.id, currentUser.id).catch(() => undefined)
+      }
+
+      if (!isOnline) {
+        return
+      }
+
+      try {
+        const saved = await send(
+          selectedConversation.id,
+          content,
+          replyToId,
+        )
+        const msg = (saved as any).data ?? saved
+        let displayContent = msg.content
+        try {
+          const key = loadKey(selectedConversation.id)
+          if (key && msg.ciphertext) {
+            displayContent = await decryptAES(msg.ciphertext, key)
+          }
+        } catch {
+          // already plaintext
+        }
+        pendingSendsRef.current.delete(tempId)
+        setLocalMsgs((prev) => {
+          const echoAlreadyIn = prev.some((m) => m.id === msg.id)
+          if (echoAlreadyIn) {
+            return prev.filter((m) => m.id !== tempId)
+          }
+          return prev.map((m) =>
+            m.id === tempId ? { ...msg, content: displayContent } : m,
+          )
+        })
+        onIndexNewMessage?.({
+          id: msg.id,
+          threadId: selectedConversation.id,
+          senderId: msg.senderId,
+          content: displayContent ?? "",
+          createdAt: msg.createdAt,
+          attachments: msg.attachments,
+        })
+      } catch (err) {
+        console.error("Send failed", err)
+        setLocalMsgs((prev) =>
+          prev.map((m) =>
+            m.id === tempId ? { ...m, status: "failed-send" } : m,
+          ),
+        )
+      }
     } catch (err) {
       console.error("Send failed", err)
     } finally {
@@ -1276,9 +1557,11 @@ export function Chats({
   // First-name-only display (per design)
   const fullName = selectedConversation?.isGroup
     ? selectedConversation.group?.name ?? "Unnamed Group"
-    : receiverUser.firstName?.trim() ||
-      receiverUser.username ||
-      "Unknown User"
+    : counterpartDeleted
+      ? "Account no longer available"
+      : receiverUser.firstName?.trim() ||
+        receiverUser.username ||
+        "Unknown User"
 
   return (
     <div className="flex-auto relative min-w-0 h-full flex flex-col">
@@ -1655,23 +1938,56 @@ export function Chats({
                     }`}
                   >
                     {m.senderId === currentUser.id ? (
-                      <Bubble
-                        message={m}
-                        currentUser={currentUser}
-                        participantUsername={receiverUser.username ?? ""}
-                        participantName={fullName}
-                        onForward={handleOpenForward}
-                        onReply={setReplyingTo}
-                        onEdit={handleStartEdit}
-                        onLocalDelete={handleLocalDelete}
-                        onLocalRestore={handleLocalRestore}
-                        onToggleReaction={handleToggleReaction}
-                        replyToMessage={
-                          m.replyToMessageId
-                            ? localMessageById.get(m.replyToMessageId) ?? null
-                            : null
-                        }
-                      />
+                      <div className="flex flex-col items-end gap-y-1">
+                        <Bubble
+                          message={m}
+                          currentUser={currentUser}
+                          participantUsername={receiverUser.username ?? ""}
+                          participantName={fullName}
+                          onForward={handleOpenForward}
+                          onReply={setReplyingTo}
+                          onEdit={handleStartEdit}
+                          onLocalDelete={handleLocalDelete}
+                          onLocalRestore={handleLocalRestore}
+                          onToggleReaction={handleToggleReaction}
+                          replyToMessage={
+                            m.replyToMessageId
+                              ? localMessageById.get(m.replyToMessageId) ?? null
+                              : null
+                          }
+                        />
+                        {m.status === "optimistic-offline" && (
+                          <div className="flex items-center gap-x-2 text-xs text-amber-600">
+                            <span>Will send when you&apos;re back online</span>
+                            <button
+                              type="button"
+                              className="text-gray-500 hover:text-gray-700 hover:underline"
+                              onClick={() => discardOptimistic(m.id)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+                        {m.status === "failed-send" && (
+                          <div className="flex items-center gap-x-2 text-xs text-error-600">
+                            <span>Failed to send</span>
+                            <button
+                              type="button"
+                              className="font-semibold text-primary-500 hover:underline"
+                              onClick={() => retryOptimistic(m.id)}
+                            >
+                              Retry
+                            </button>
+                            <button
+                              type="button"
+                              className="text-gray-500 hover:text-gray-700 hover:underline"
+                              onClick={() => discardOptimistic(m.id)}
+                            >
+                              Discard
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <YourBubble
                         message={m}
@@ -1844,15 +2160,13 @@ export function Chats({
                         {isUploading ? " • uploading…" : ""}
                       </p>
                     </div>
-                    {!isUploading && (
-                      <button
-                        type="button"
-                        className="shrink-0 text-xs font-semibold text-gray-500 hover:text-gray-700"
-                        onClick={() => removeSelectedFile(i)}
-                      >
-                        Remove
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-semibold text-gray-500 hover:text-gray-700"
+                      onClick={() => removeSelectedFile(i)}
+                    >
+                      Remove
+                    </button>
                   </div>
                 )
               })}
@@ -1915,16 +2229,39 @@ export function Chats({
                   setIsUploading(true)
                   try {
                     for (const file of selectedFiles) {
-                      const uploaded = await uploadFile(
-                        selectedConversation.id,
-                        file
-                      )
-                      await appendUploadedMessage(uploaded)
+                      const abortRecord = { aborted: false }
+                      uploadAbortFlagsRef.current.set(file, abortRecord)
+                      try {
+                        const uploaded = await uploadFile(
+                          selectedConversation.id,
+                          file,
+                          undefined,
+                        )
+                        if (abortRecord.aborted) {
+                          const abortedId = uploaded.message.id
+                          recentlyAbortedMessageIdsRef.current.add(abortedId)
+                          setTimeout(
+                            () =>
+                              recentlyAbortedMessageIdsRef.current.delete(
+                                abortedId,
+                              ),
+                            30_000,
+                          )
+                          apiFetch(`/v1/messages/${abortedId}`, {
+                            method: "DELETE",
+                            headers: { Authorization: `Bearer ${jwtToken}` },
+                          }).catch(() => undefined)
+                        } else {
+                          await appendUploadedMessage(uploaded)
+                        }
+                      } finally {
+                        uploadAbortFlagsRef.current.delete(file)
+                      }
                     }
                     setSelectedFiles([])
                     setRejectedFiles([])
                     setUploadModalMode(null)
-                  } catch (err) {
+                  } catch (err: any) {
                     console.error("Attachment upload failed:", err)
                   } finally {
                     setIsUploading(false)
@@ -2097,12 +2434,15 @@ export function Chats({
           <Textarea
             ref={composerRef}
             placeholder={
-              editingMessage
-                ? "Edit message..."
-                : selectedFiles.length > 0
-                  ? "Add a message (optional)..."
-                  : "Send message..."
+              counterpartDeleted
+                ? "You can no longer reply"
+                : editingMessage
+                  ? "Edit message..."
+                  : selectedFiles.length > 0
+                    ? "Add a message (optional)..."
+                    : "Send message..."
             }
+            disabled={counterpartDeleted}
             className={`w-full resize-none py-1.5 leading-5 h-9 max-h-32 overflow-y-auto ${
               editingMessage
                 ? "pr-[120px] ring-1 ring-primary-500 border-primary-500 focus:ring-primary-500 focus:border-primary-500"
@@ -2200,7 +2540,8 @@ export function Chats({
                       isUploading ||
                       isSending ||
                       !keyReady ||
-                      !!keyError
+                      !!keyError ||
+                      counterpartDeleted
                     }
                   >
                     {isUploading || isSending ? (

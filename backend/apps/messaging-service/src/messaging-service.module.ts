@@ -31,10 +31,15 @@ import { BlocksModule } from './blocks/blocks.module';
       url: process.env.DATABASE_URL,
       schema: process.env.DATABASE_SCHEMA || 'messaging',
       entities: [Thread, ThreadUserState, ThreadList, ThreadListAssignment, Message, Attachment, UserPublicKey, ConversationKey, ConversationRawKey],
-      synchronize: process.env.NODE_ENV !== 'production',
+      synchronize: false,
       migrationsRun: true,
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      ssl:
+        process.env.DATABASE_SSL === 'false'
+          ? false
+          : process.env.NODE_ENV === 'production'
+            ? { rejectUnauthorized: false }
+            : false,
       extra: { options: '-c timezone=UTC' },
     }),
     TypeOrmModule.forFeature([Thread, ThreadUserState, ThreadList, ThreadListAssignment, Message, Attachment, ConversationKey]),

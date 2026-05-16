@@ -232,7 +232,11 @@ export const UserDetail = ({
             "transition duration-300 shrink-0 group-data-[state=active]/chat:font-bold group-hover/chat:opacity-0 opacity-100 text-xs leading-[14.52px] text-dark-blue-400",
             conversation.markedUnread ? "font-semibold" : "font-medium"
           )}>
-            {formatConversationDate(conversation.createdAt)}
+            {formatConversationDate(
+              (conversation as any).lastMessage?.m_createdAt
+                ?? conversation.updatedAt
+                ?? conversation.createdAt
+            )}
           </span>
 
           <DropdownMenu modal={false}>

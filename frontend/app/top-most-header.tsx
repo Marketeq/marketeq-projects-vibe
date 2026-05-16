@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { useAutocomplete } from "@/libs/autocomplete"
 import {
+  formatNotificationTime,
   mapAblyNotificationToUi,
   mapApiNotificationToUi,
   type NotificationMetadata,
@@ -82,6 +83,10 @@ import {
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
 import { useNotificationChannel } from "@/utils/useNotificationChannel"
+import {
+  useInboxThreads,
+  type InboxThreadSummary,
+} from "@/utils/useInboxThreads"
 
 const OFFER_NOTIFICATION_EVENT = "contract.offer.received"
 
@@ -213,6 +218,11 @@ const Notifications = () => {
   )
   const [allNotifications, setAllNotifications] = useState<UiNotificationItem[]>([])
   const [unreadBadgeCount, setUnreadBadgeCount] = useState(0)
+  const {
+    threads: inboxThreads,
+    totalUnread: inboxTotalUnread,
+    loading: inboxLoading,
+  } = useInboxThreads()
 
   const loadNotifications = useCallback(async (allowSeed = true) => {
     try {
@@ -275,9 +285,6 @@ const Notifications = () => {
     },
   })
 
-  const messageNotifications = allNotifications.filter(
-    (item) => item.kind === "message"
-  )
   const selectedOfferDetails = selectedOfferNotification
     ? getOfferNotificationDetails(selectedOfferNotification)
     : null
@@ -361,6 +368,65 @@ const Notifications = () => {
     }
 
     router.push(item.href)
+  }
+
+  const handleInboxThreadClick = (thread: InboxThreadSummary) => {
+    setOpen(false)
+    router.push(`/inbox?thread=${thread.id}`)
+  }
+
+  const renderInboxThreadItem = (thread: InboxThreadSummary) => {
+    const timeLabel = thread.lastMessageAt
+      ? formatNotificationTime(thread.lastMessageAt)
+      : ""
+    return (
+      <button
+        key={thread.id}
+        type="button"
+        className="w-full text-left hover:bg-gray-100 rounded-lg flex py-2.5 px-3 items-start gap-x-3 transition-colors"
+        onClick={() => handleInboxThreadClick(thread)}
+      >
+        <Avatar size="md">
+          {thread.displayAvatarUrl ? (
+            <AvatarImage src={thread.displayAvatarUrl} alt={thread.displayName} />
+          ) : null}
+          <AvatarFallback>{thread.displayInitial}</AvatarFallback>
+        </Avatar>
+
+        <div className="flex-auto min-w-0">
+          <div className="flex items-center justify-between gap-x-3">
+            <div
+              className={cn(
+                "text-sm leading-[16.94px] text-dark-blue-400 truncate",
+                thread.hasUnread ? "font-bold" : "font-semibold",
+              )}
+            >
+              {thread.displayName}
+            </div>
+            <div className="flex items-center gap-x-2 shrink-0">
+              {timeLabel ? (
+                <span className="text-xs leading-[14.06px] text-[#585C65] whitespace-nowrap">
+                  {timeLabel}
+                </span>
+              ) : null}
+              {thread.unreadCount > 0 ? (
+                <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-semibold text-white">
+                  {thread.unreadCount > 99 ? "99+" : thread.unreadCount}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div
+            className={cn(
+              "mt-1 text-sm leading-[16.94px] truncate",
+              thread.hasUnread ? "text-dark-blue-400 font-medium" : "text-gray-700",
+            )}
+          >
+            {thread.lastMessagePreview}
+          </div>
+        </div>
+      </button>
+    )
   }
 
   const renderNotificationItem = (
@@ -479,7 +545,7 @@ const Notifications = () => {
               <TabsTrigger value="Messages">
                 Messages
                 <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                  {messageNotifications.filter((item) => !item.read).length}
+                  {inboxTotalUnread > 99 ? "99+" : inboxTotalUnread}
                 </span>
               </TabsTrigger>
             </TabsList>
@@ -519,22 +585,39 @@ const Notifications = () => {
                   scrollBar={<ScrollBar className="w-4 px-1" />}
                 >
                   <div className="px-2">
-                    {loading ? (
-                      <div className="px-3 py-6 text-sm text-gray-500">
-                        Loading messages...
-                      </div>
-                    ) : messageNotifications.length > 0 ? (
-                      messageNotifications.map((item) => renderNotificationItem(item, false))
-                    ) : (
-                      <div className="px-3 py-6 text-sm text-gray-500">
-                        No messages to show
-                      </div>
-                    )}
+                    {(() => {
+                      const unreadThreads = inboxThreads.filter(
+                        (t) => t.hasUnread,
+                      )
+                      if (inboxLoading && inboxThreads.length === 0) {
+                        return (
+                          <div className="px-3 py-6 text-sm text-gray-500">
+                            Loading messages...
+                          </div>
+                        )
+                      }
+                      if (unreadThreads.length === 0) {
+                        return (
+                          <div className="px-3 py-6 text-sm text-gray-500">
+                            No unread messages
+                          </div>
+                        )
+                      }
+                      return unreadThreads
+                        .slice(0, 8)
+                        .map(renderInboxThreadItem)
+                    })()}
                   </div>
                 </ScrollArea>
               </div>
               <div className="py-3.5 grid">
-                <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/inbox")}>
+                <button
+                  className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium"
+                  onClick={() => {
+                    setOpen(false)
+                    router.push("/inbox")
+                  }}
+                >
                   View All
                 </button>
               </div>

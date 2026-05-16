@@ -116,6 +116,16 @@ export class MessagesService {
     const message = this.messageRepo.create({ ...dto, status: 'sent' });
     const saved = await this.messageRepo.save(message);
 
+    const bumpedAt = new Date();
+    await this.threadRepo.update({ id: dto.threadId }, { updatedAt: bumpedAt });
+    for (const pid of thread.participantIds) {
+      this.ablyService
+        .publishThreadStateChanged(pid, dto.threadId, {
+          updatedAt: bumpedAt.toISOString(),
+        })
+        .catch(() => undefined);
+    }
+
     if (!shadow) {
       if (saved.ciphertext) {
         const { content: _plaintext, ...ciphertextOnly } = saved;
@@ -169,6 +179,16 @@ export class MessagesService {
     } catch (error) {
       await this.r2Service.deleteObject(key).catch(() => undefined);
       throw error;
+    }
+
+    const bumpedAt = new Date();
+    await this.threadRepo.update({ id: threadId }, { updatedAt: bumpedAt });
+    for (const pid of thread.participantIds) {
+      this.ablyService
+        .publishThreadStateChanged(pid, threadId, {
+          updatedAt: bumpedAt.toISOString(),
+        })
+        .catch(() => undefined);
     }
 
     const payload = {
@@ -229,7 +249,7 @@ export class MessagesService {
     }
 
     await this.messageRepo.update(messageId, { status: 'read' });
-    await this.ablyService.publishMessageRead(message.senderId, messageId);
+    await this.ablyService.publishMessageRead(message.senderId, messageId, userId);
   }
 
   async toggleReaction(messageId: string, emoji: string, userId: string) {

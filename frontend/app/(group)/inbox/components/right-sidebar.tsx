@@ -156,11 +156,16 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
   const router = useRouter()
   const { isOnline } = useOnlineUsers()
 
+  const otherId =
+    selectedConversation && currentUser
+      ? selectedConversation.participantIds?.find(
+          (id) => id !== currentUser.id,
+        ) ?? null
+      : null
+
   useEffect(() => {
     setUser(null)
     setProfileError(null)
-    if (!selectedConversation || !currentUser) return
-    const otherId = selectedConversation.participantIds?.find((id) => id !== currentUser.id)
     if (!otherId) return
 
     apiFetch<UserProfile>(`/users/${otherId}`, {
@@ -175,7 +180,7 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
         console.error("Profile fetch failed", err)
         setProfileError("Couldn't load profile.")
       })
-  }, [selectedConversation, jwtToken, retryToken])
+  }, [otherId, jwtToken, retryToken])
 
   if (!selectedConversation) {
     return (
@@ -304,4 +309,4 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
   )
 }
 
-export default RightSidebar
+export default React.memo(RightSidebar)

@@ -1297,14 +1297,26 @@ const LeftSidebar = ({
               <Spinner size={24} strokeWidth={3} />
             </div>
           ) : (() => {
-            return visibleConversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-400">
-                <Mail05 className="size-8 stroke-[1.5]" />
-                <p className="text-sm">
-                  {activeFilter === "all" ? "No conversations yet" : `No ${activeFilter} conversations`}
-                </p>
-              </div>
-            ) : (
+            return visibleConversations.length === 0 ? (() => {
+              // Per Doc 05 EC-1.2: per-filter empty state, not the global one.
+              const empty = {
+                all: { Icon: Mail05, title: "No conversations yet", hint: "Start a conversation to see it here." },
+                unread: { Icon: Mail05, title: "No unread conversations", hint: "You're all caught up." },
+                starred: { Icon: Star, title: "No starred conversations", hint: "Star a conversation to find it here later." },
+                sent: { Icon: Send, title: "No sent messages", hint: "Messages you send will appear here." },
+                archived: { Icon: Archive, title: "No archived conversations", hint: "Conversations you archive will appear here." },
+                spam: { Icon: AlertTriangle, title: "No spam", hint: "Conversations marked as spam will appear here." },
+                trash: { Icon: Trash2, title: "Trash is empty", hint: "Deleted conversations stay here for 30 days." },
+              }[activeFilter] ?? { Icon: Mail05, title: "No conversations yet", hint: "" }
+              const { Icon, title, hint } = empty
+              return (
+                <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-400">
+                  <Icon className="size-8 stroke-[1.5]" />
+                  <p className="text-sm">{title}</p>
+                  {hint && <p className="text-xs text-gray-300 text-center px-6">{hint}</p>}
+                </div>
+              )
+            })() : (
               visibleConversations.map((conv) => (
                 <Chat
                   key={conv.id}

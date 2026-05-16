@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -18,6 +19,11 @@ import { getAccessToken, getCurrentUser } from "@/utils/auth"
 // which only worked when both users were viewing the same thread).
 const PRESENCE_CHANNEL = "presence:online"
 
+// Doc 05 EC-7.2: brief Ably disconnects (<10s) should not flicker the
+// presence dot offline/online. When a member disappears from the channel,
+// keep them in `onlineIds` for this long before actually marking offline.
+const OFFLINE_GRACE_MS = 10_000
+
 interface OnlineUsersContextValue {
   isOnline: (userId: string | null | undefined) => boolean
   onlineIds: ReadonlySet<string>
@@ -30,6 +36,9 @@ const OnlineUsersContext = createContext<OnlineUsersContextValue>({
 
 export function OnlineUsersProvider({ children }: { children: ReactNode }) {
   const [onlineIds, setOnlineIds] = useState<ReadonlySet<string>>(new Set())
+  const pendingOfflineRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map()
+  )
 
   useEffect(() => {
     const currentUser = getCurrentUser()
@@ -37,6 +46,7 @@ export function OnlineUsersProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false
     let entered = false
+    const pending = pendingOfflineRef.current
 
     const client = new Ably.Realtime({
       authCallback: async (_tokenParams, callback) => {
@@ -67,7 +77,33 @@ export function OnlineUsersProvider({ children }: { children: ReactNode }) {
       try {
         const present = await channel.presence.get()
         if (cancelled) return
-        setOnlineIds(new Set(present.map((m) => m.clientId)))
+        const presentSet = new Set(present.map((m) => m.clientId))
+        setOnlineIds((prev) => {
+          const next = new Set<string>(prev)
+          for (const id of presentSet) {
+            next.add(id)
+            const t = pending.get(id)
+            if (t) {
+              clearTimeout(t)
+              pending.delete(id)
+            }
+          }
+          for (const id of prev) {
+            if (!presentSet.has(id) && !pending.has(id)) {
+              const timer = setTimeout(() => {
+                pending.delete(id)
+                setOnlineIds((cur) => {
+                  if (!cur.has(id)) return cur
+                  const updated = new Set<string>(cur)
+                  updated.delete(id)
+                  return updated
+                })
+              }, OFFLINE_GRACE_MS)
+              pending.set(id, timer)
+            }
+          }
+          return next
+        })
       } catch {
         // detached during cleanup; ignore.
       }
@@ -78,10 +114,18 @@ export function OnlineUsersProvider({ children }: { children: ReactNode }) {
     }
 
     channel.presence.subscribe(handle).catch(() => {})
-    ;(async () => {
+
+    // Doc 05 EC-14.2: only one tab per browser should hold the Ably
+    // presence membership. Other tabs still observe, but defer the
+    // .enter() to the lock-holder so we don't double-count.
+    let releaseLeaderLock: (() => void) | null = null
+    const enterAsLeader = async () => {
       try {
         await channel.presence.enter({ online: true })
-        if (cancelled) return
+        if (cancelled) {
+          channel.presence.leave().catch(() => {})
+          return
+        }
         entered = true
         await sync()
       } catch (err) {
@@ -89,10 +133,37 @@ export function OnlineUsersProvider({ children }: { children: ReactNode }) {
           console.warn("[useOnlineUsers] enter failed:", err)
         }
       }
-    })()
+    }
+
+    const locks = (
+      typeof navigator !== "undefined" ? navigator : undefined
+    )?.locks as LockManager | undefined
+    if (locks?.request) {
+      locks
+        .request(
+          "messaging-presence-leader",
+          { mode: "exclusive" },
+          () =>
+            new Promise<void>((resolve) => {
+              if (cancelled) {
+                resolve()
+                return
+              }
+              releaseLeaderLock = resolve
+              void enterAsLeader()
+            }),
+        )
+        .catch(() => {
+          if (!cancelled) void enterAsLeader()
+        })
+    } else {
+      void enterAsLeader()
+    }
 
     return () => {
       cancelled = true
+      for (const timer of pending.values()) clearTimeout(timer)
+      pending.clear()
       try {
         channel.presence.unsubscribe(handle)
       } catch {}
@@ -103,6 +174,10 @@ export function OnlineUsersProvider({ children }: { children: ReactNode }) {
         try {
           client.close()
         } catch {}
+        if (releaseLeaderLock) {
+          releaseLeaderLock()
+          releaseLeaderLock = null
+        }
       })()
     }
   }, [])
