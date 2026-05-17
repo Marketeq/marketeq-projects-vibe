@@ -484,10 +484,6 @@ export function Chats({
     setRejectedFiles((prev) => prev.filter((r) => r.id !== id))
   }
 
-  const removeRejectedFile = (id: string) => {
-    setRejectedFiles((prev) => prev.filter((r) => r.id !== id))
-  }
-
   const [cloudFetching, setCloudFetching] = useState<{
     provider: "google-drive" | "dropbox" | "onedrive"
     count: number
