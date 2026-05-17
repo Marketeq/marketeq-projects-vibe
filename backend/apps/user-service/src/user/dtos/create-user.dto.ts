@@ -122,13 +122,7 @@ export class CreateUserDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  rateMin?: number;
-
-  @ApiPropertyOptional({ example : 85 })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  rateMax?: number;
+  rate?: number;
 
   // `client_success_rating`, `repeat_hire_rate`, and `response_time` are
   // derived metrics that are never set by user input. They are excluded

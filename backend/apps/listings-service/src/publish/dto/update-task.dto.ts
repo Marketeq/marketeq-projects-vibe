@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsArray, IsString } from 'class-validator';
+import { IsArray, IsOptional, IsString } from 'class-validator';
 
 export class UpdateTaskDto {
   @ApiProperty()
@@ -9,6 +9,11 @@ export class UpdateTaskDto {
   @ApiProperty()
   @IsString()
   role: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  description?: string;
 
   @ApiProperty({ type: [String] })
   @IsArray()

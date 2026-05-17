@@ -6,12 +6,10 @@ export interface TalentProfileSavedEvent {
   name: string;
   headline: string | null;
   availability: string | null;
-  isAvailable: boolean;
+  rate: number | null;
+  jobTitles: { headline: string; rate: number }[];
   location: string | null;
-  country: string | null;
   timezone: string | null;
-  rateMin: number | null;
-  rateMax: number | null;
   overview: Record<string, any> | null;
   skills: string[];
   industryExpertise: string[];

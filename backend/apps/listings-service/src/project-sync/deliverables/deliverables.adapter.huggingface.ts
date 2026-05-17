@@ -2,52 +2,35 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DeliverablesAdapter } from './deliverables.adapter';
 import { DeliverablesAdapterHeuristic } from './deliverables.adapter.heuristic';
-import { DeliverableGroup, ScopePhaseInput } from './deliverables.types';
+import { DeliverableGroup, ProjectContext, ScopePhaseInput } from './deliverables.types';
 
 /**
- * HuggingFace-backed deliverables adapter — matches spec §01
- * "derived from an AI summary that uses a large language model".
+ * HuggingFace text-generation adapter for deriving deliverables.
  *
- * Uses the same model + pooling approach as
- * `favorites-service/src/ai/ai.service.ts` (sentence-transformers
- * MiniLM-L6-v2, cosine similarity clustering). We call the HF
- * Inference REST API directly via `fetch` rather than
- * `@huggingface/inference`, matching the service-to-service fetch
- * convention already used elsewhere in listings-service (see
- * `cms-projects.controller.ts` calls to category-service and
- * user-service). Keeps the package.json surface small.
+ * Uses a free text-generation model (Mistral-7B-Instruct) to generate
+ * contextually relevant deliverables from the project scope.
  *
- * Strategy per phase:
- *   1. Embed every task title
- *   2. Greedy-cluster titles with cosine similarity ≥ threshold
- *      (default 0.88) — "Build homepage" and "Homepage build" collapse
- *      into one item; "Design logo" and "Color palette" stay separate
- *   3. Longest title in each cluster wins (richer client-facing text)
- *   4. Preserve phase + within-phase ordering
+ * Inputs per task: task title, job title (role), task description.
+ * Project-level context: project type (category), project description.
  *
- * Fallback: on missing API key, HTTP error, timeout, malformed
- * response, or any embedding returning null → delegate to the
- * heuristic adapter. The sync pipeline is never blocked by model
- * issues.
+ * The model generates exactly 6 tangible deliverables per phase —
+ * artifacts the client receives, not team activities.
+ * Format: Title Case, no special characters, 2-4 words.
+ *
+ * Fallback: on missing API key, HTTP error, timeout, or malformed
+ * response → delegates to the heuristic adapter.
  *
  * Env config:
- *   HUGGINGFACE_API_KEY               required for HF path; absent = heuristic
- *   HF_DELIVERABLES_MODEL             default: sentence-transformers/all-MiniLM-L6-v2
- *   DELIVERABLES_DEDUP_THRESHOLD      default: 0.88
- *   DELIVERABLES_HF_TIMEOUT_MS        default: 5000 (per embedding call)
+ *   HUGGINGFACE_API_KEY               required; absent = heuristic
+ *   HF_TEXT_GEN_MODEL                 default: mistralai/Mistral-7B-Instruct-v0.3
+ *   DELIVERABLES_HF_TIMEOUT_MS        default: 10000
  */
 @Injectable()
 export class DeliverablesAdapterHuggingFace extends DeliverablesAdapter {
   private readonly logger = new Logger(DeliverablesAdapterHuggingFace.name);
   private readonly model: string;
   private readonly apiKey: string | undefined;
-  private readonly threshold: number;
   private readonly timeoutMs: number;
-  // Process-lifetime cache — task titles repeat heavily across
-  // re-publishes of the same project, and embedding calls cost both
-  // time and tokens. Keyed by (model, text) so threshold/model
-  // changes don't return stale vectors.
-  private readonly embeddingCache = new Map<string, number[]>();
 
   constructor(
     configService: ConfigService,
@@ -55,164 +38,168 @@ export class DeliverablesAdapterHuggingFace extends DeliverablesAdapter {
   ) {
     super();
     this.model =
-      configService.get<string>('HF_DELIVERABLES_MODEL') ||
-      configService.get<string>('HF_EMBEDDING_MODEL') ||
-      'sentence-transformers/all-MiniLM-L6-v2';
+      configService.get<string>('HF_TEXT_GEN_MODEL') ||
+      'mistralai/Mistral-7B-Instruct-v0.3';
     this.apiKey = configService.get<string>('HUGGINGFACE_API_KEY');
-    this.threshold = Number(
-      configService.get<string>('DELIVERABLES_DEDUP_THRESHOLD') ?? 0.88,
-    );
     this.timeoutMs = Number(
-      configService.get<string>('DELIVERABLES_HF_TIMEOUT_MS') ?? 5000,
+      configService.get<string>('DELIVERABLES_HF_TIMEOUT_MS') ?? 10000,
     );
   }
 
   async deriveDeliverables(
     scope: ScopePhaseInput[],
+    projectContext?: ProjectContext,
   ): Promise<DeliverableGroup[]> {
     if (!this.apiKey) {
-      // No key configured — silent fallback. Logged once at startup
-      // would be noisier than useful; the heuristic produces the same
-      // shape so downstream rendering is unaffected.
-      return this.heuristic.deriveDeliverables(scope);
+      return this.heuristic.deriveDeliverables(scope, projectContext);
     }
 
     try {
       const results: DeliverableGroup[] = [];
       for (let i = 0; i < scope.length; i++) {
         const phase = scope[i];
-        const taskTexts = phase.tasks
-          .map((t) => {
-            const title = typeof t?.title === 'string' ? t.title.trim() : '';
-            if (!title) return '';
-            const role =
-              typeof (t as any)?.roleName === 'string'
-                ? String((t as any).roleName).trim()
-                : '';
-            const desc =
-              typeof (t as any)?.description === 'string'
-                ? String((t as any).description).trim()
-                : '';
-            // Embed richer context (title + role + description) so clustering
-            // better matches “LLM summary based on scope”.
-            return [title, role ? `Role: ${role}` : '', desc ? `Desc: ${desc}` : '']
-              .filter(Boolean)
-              .join(' — ');
-          })
-          .filter(Boolean);
-        if (taskTexts.length === 0) continue;
+        if (phase.tasks.length === 0) continue;
 
-        const items = await this.mergeSemanticDuplicates(taskTexts);
-        if (items.length === 0) continue;
+        const prompt = this.buildPrompt(phase, i, projectContext);
+        const items = await this.generate(prompt);
 
-        results.push({
-          phaseLabel: `Phase ${i + 1}`,
-          phaseName: phase.phaseName,
-          items,
-        });
+        if (items && items.length >= 3) {
+          // Pad to exactly 6 if model returned fewer
+          const padded = [...items];
+          while (padded.length < 6) {
+            padded.push(`${phase.phaseName} Deliverable ${padded.length + 1}`);
+          }
+          results.push({
+            phaseLabel: `Phase ${i + 1}`,
+            phaseName: phase.phaseName,
+            items: padded.slice(0, 6),
+          });
+        } else {
+          // LLM returned too few items — fall back for this phase
+          const fallback = await this.heuristic.deriveDeliverables(
+            [phase],
+            projectContext,
+          );
+          results.push(...fallback);
+        }
       }
       return results;
     } catch (err) {
       this.logger.warn(
-        `HF inference failed, falling back to heuristic: ${err instanceof Error ? err.message : err}`,
+        `HF text generation failed, falling back to heuristic: ${err instanceof Error ? err.message : err}`,
       );
-      return this.heuristic.deriveDeliverables(scope);
+      return this.heuristic.deriveDeliverables(scope, projectContext);
     }
   }
 
-  private async mergeSemanticDuplicates(titles: string[]): Promise<string[]> {
-    if (titles.length <= 1) return titles;
+  private buildPrompt(
+    phase: ScopePhaseInput,
+    phaseIndex: number,
+    ctx?: ProjectContext,
+  ): string {
+    const taskLines = phase.tasks
+      .map((t) => {
+        const parts = [`- Task: ${t.title}`];
+        if (t.roleName) parts.push(`  Role: ${t.roleName}`);
+        if (t.description) parts.push(`  Description: ${t.description}`);
+        return parts.join('\n');
+      })
+      .join('\n');
 
-    const vectors = await Promise.all(titles.map((t) => this.embed(t)));
+    const projectType = ctx?.projectType
+      ? `Project type: ${ctx.projectType}\n`
+      : '';
+    const projectDesc = ctx?.projectDescription
+      ? `Project description: ${ctx.projectDescription.slice(0, 500)}\n`
+      : '';
 
-    // If any embedding failed, degrade gracefully: fall back to
-    // case-insensitive exact-match dedup (same as the heuristic path)
-    // for just this phase, instead of aborting the whole sync.
-    if (vectors.some((v) => v === null)) {
-      const seen = new Set<string>();
-      return titles.filter((t) => {
-        const key = t.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    }
+    return `<s>[INST] You are generating deliverables for a project scope phase.
 
-    // Greedy clustering — walk in authoring order so layout stays
-    // stable. Each title either joins an existing cluster (if cosine
-    // similarity ≥ threshold to any kept representative) or starts a
-    // new one. The longest title in each cluster survives so we keep
-    // the richest phrasing.
-    const kept: { text: string; vec: number[] }[] = [];
-    for (let i = 0; i < titles.length; i++) {
-      const vec = vectors[i]!;
-      let matched = false;
-      for (const k of kept) {
-        if (cosine(vec, k.vec) >= this.threshold) {
-          if (titles[i].length > k.text.length) k.text = titles[i];
-          matched = true;
-          break;
-        }
-      }
-      if (!matched) kept.push({ text: titles[i], vec });
-    }
-    return kept.map((k) => k.text);
+A deliverable is a tangible output the client receives — something the team produces and hands over.
+Focus on what the client gets, not what the team does. Each deliverable must be a concrete artifact or document.
+
+${projectType}${projectDesc}
+Phase ${phaseIndex + 1}: ${phase.phaseName}
+Tasks in this phase:
+${taskLines}
+
+Generate exactly 6 deliverables for this phase.
+Each deliverable must be a short phrase (2-3 words), Title Case, no special characters.
+Examples of good deliverables: "Architecture Blueprint", "Schema Design", "API Documentation", "Test Report", "Security Audit", "Deployment Package"
+Return ONLY a JSON array of 6 strings.
+[/INST]`;
   }
 
-  private async embed(text: string): Promise<number[] | null> {
-    const cacheKey = `${this.model}::${text}`;
-    const cached = this.embeddingCache.get(cacheKey);
-    if (cached) return cached;
-
+  private async generate(prompt: string): Promise<string[] | null> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+
     try {
-      // HF routed Inference API (2025+). Legacy
-      // `api-inference.huggingface.co/models/:model` returns 404 since
-      // the serverless API moved to the routed form below. The
-      // `/pipeline/feature-extraction` suffix is required so the router
-      // picks the embedding pipeline for sentence-transformers.
       const res = await fetch(
-        `https://router.huggingface.co/hf-inference/models/${this.model}/pipeline/feature-extraction`,
+        `https://router.huggingface.co/hf-inference/models/${this.model}/v1/chat/completions`,
         {
           method: 'POST',
           headers: {
             authorization: `Bearer ${this.apiKey}`,
             'content-type': 'application/json',
           },
-          body: JSON.stringify({ inputs: text }),
+          body: JSON.stringify({
+            model: this.model,
+            messages: [
+              {
+                role: 'user',
+                content: prompt,
+              },
+            ],
+            max_tokens: 200,
+            temperature: 0.3,
+          }),
           signal: controller.signal,
         },
       );
       clearTimeout(timer);
-      if (!res.ok) return null;
-      const body = (await res.json()) as unknown;
-      // HF feature-extraction returns either a pooled number[] or a
-      // token-level number[][] depending on the model head. MiniLM's
-      // public endpoint returns pooled number[]; handle both shapes.
-      const vector = Array.isArray(body) && Array.isArray(body[0])
-        ? (body[0] as number[])
-        : (body as number[]);
-      if (!Array.isArray(vector) || vector.length === 0) return null;
-      this.embeddingCache.set(cacheKey, vector);
-      return vector;
-    } catch {
+
+      if (!res.ok) {
+        this.logger.warn(`HF API returned ${res.status}: ${await res.text()}`);
+        return null;
+      }
+
+      const body = (await res.json()) as any;
+      const content =
+        body?.choices?.[0]?.message?.content ??
+        body?.generated_text ??
+        (typeof body === 'string' ? body : null);
+
+      if (!content) return null;
+
+      return this.parseJsonArray(content);
+    } catch (err) {
       clearTimeout(timer);
+      this.logger.warn(
+        `HF generate failed: ${err instanceof Error ? err.message : err}`,
+      );
       return null;
     }
   }
-}
 
-function cosine(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
+  private parseJsonArray(text: string): string[] | null {
+    // Extract JSON array from the response — the model may include
+    // surrounding text before/after the array.
+    const match = text.match(/\[[\s\S]*?\]/);
+    if (!match) return null;
+
+    try {
+      const parsed = JSON.parse(match[0]);
+      if (
+        !Array.isArray(parsed) ||
+        parsed.length === 0 ||
+        !parsed.every((item: unknown) => typeof item === 'string')
+      ) {
+        return null;
+      }
+      return parsed as string[];
+    } catch {
+      return null;
+    }
   }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dot / denom;
 }

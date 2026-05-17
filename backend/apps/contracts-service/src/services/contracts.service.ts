@@ -107,4 +107,14 @@ export class ContractsService {
   async getContractsByTalent(talentId: string) {
     return await this.contractRepository.find({ where: { talentId } });
   }
+
+  async update(id: string, data: Record<string, any>) {
+    try {
+      const result = await this.contractRepository.update(id, data);
+      if (result.affected === 0) throw new NotFoundException('Contract not found');
+      return { success: true };
+    } catch (err) {
+      throw err;
+    }
+  }
 }

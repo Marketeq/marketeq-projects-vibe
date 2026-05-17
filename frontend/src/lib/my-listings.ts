@@ -1,6 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { ProjectAPI } from "@/service/http/project"
+import { ensureDevAuth } from "@/src/lib/api/dev-login"
 
 export type MyListingType = "project" | "service"
 
@@ -290,16 +292,57 @@ export function formatActivityDate(iso?: string): string {
   }).format(date)
 }
 
+async function fetchBackendListings(): Promise<MyListing[]> {
+  try {
+    await ensureDevAuth()
+    const res = await ProjectAPI.GetMyProjects()
+    const projects = res?.data ?? []
+    if (!Array.isArray(projects)) return []
+    return projects.map((p: any) => ({
+      id: p.id,
+      title: p.title && p.title.trim().length > 0 ? p.title : "Untitled",
+      type: (p.listingType === "service" ? "service" : "project") as MyListingType,
+      status: (p.status === "published"
+        ? "Active"
+        : p.status === "in_review"
+          ? "In Review"
+          : "Draft") as MyListingStatus,
+      category: p.categories?.[0] || "Uncategorized",
+      description: p.shortDescription || p.fullDescription,
+      mediaUrl: (Array.isArray(p.media) ? p.media[0]?.featuredImage : p.media?.featuredImage) || pickFromList(FALLBACK_IMAGES, p.id),
+      budget: p.budget ? `$${Number(p.budget).toLocaleString()} budget` : "Budget TBD",
+      updatedAt: p.updatedAt || p.createdAt,
+    }))
+  } catch (err) {
+    console.error("Failed to fetch backend listings:", err)
+    return []
+  }
+}
+
 export function useMyListings() {
   const [listings, setListings] = useState<MyListing[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  const refreshListings = useCallback(() => {
+  const refreshListings = useCallback(async () => {
     try {
       setIsLoading(true)
-      setListings(getMyListings())
+      const [backendListings, localDrafts] = await Promise.all([
+        fetchBackendListings(),
+        Promise.resolve(normalizeDraftsFromStorage()),
+      ])
+      // Backend listings take priority; only show local drafts that
+      // don't have a matching backend entry (by id)
+      const backendIds = new Set(backendListings.map((l) => l.id))
+      const uniqueLocalDrafts = localDrafts.filter((l) => !backendIds.has(l.id))
+      setListings(
+        [...backendListings, ...uniqueLocalDrafts, ...TEAM_SEED_LISTINGS].sort(
+          compareListingsByRecentActivity
+        )
+      )
     } catch (error) {
       console.error("Failed to fetch listings:", error)
+      // Fallback to local-only
+      setListings(getMyListings())
     } finally {
       setIsLoading(false)
     }
@@ -310,7 +353,7 @@ export function useMyListings() {
   }, [refreshListings])
 
   useEffect(() => {
-    const onFocus = () => refreshListings()
+    const onFocus = () => { refreshListings() }
     window.addEventListener("focus", onFocus)
     return () => window.removeEventListener("focus", onFocus)
   }, [refreshListings])

@@ -484,6 +484,10 @@ export function Chats({
     setRejectedFiles((prev) => prev.filter((r) => r.id !== id))
   }
 
+  const removeRejectedFile = (id: string) => {
+    setRejectedFiles((prev) => prev.filter((r) => r.id !== id))
+  }
+
   const [cloudFetching, setCloudFetching] = useState<{
     provider: "google-drive" | "dropbox" | "onedrive"
     count: number
@@ -2164,6 +2168,39 @@ export function Chats({
                       type="button"
                       className="shrink-0 text-xs font-semibold text-gray-500 hover:text-gray-700"
                       onClick={() => removeSelectedFile(i)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )
+              })}
+              {rejectedFiles.map((r) => {
+                const sizeLabel =
+                  r.size < 1024
+                    ? `${r.size} B`
+                    : r.size < 1024 * 1024
+                      ? `${(r.size / 1024).toFixed(1)} KB`
+                      : `${(r.size / (1024 * 1024)).toFixed(1)} MB`
+                return (
+                  <div
+                    key={`modal-rejected-${r.id}`}
+                    className="flex items-center gap-x-3 rounded-md border border-error-300 bg-error-25 px-3 py-2"
+                  >
+                    <div className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-error-50 text-error-500">
+                      <AlertTriangle className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-auto">
+                      <p className="truncate text-xs font-semibold text-gray-900">
+                        {r.name}
+                      </p>
+                      <p className="text-[11px] text-error-600">
+                        {sizeLabel} • {r.error}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-semibold text-gray-500 hover:text-gray-700"
+                      onClick={() => removeRejectedFile(r.id)}
                     >
                       Remove
                     </button>

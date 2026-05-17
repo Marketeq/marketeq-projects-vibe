@@ -3,6 +3,7 @@ import { Exclude } from 'class-transformer';
 export class Project {
   id?: string;
   cmsId?: string | null;
+  slug?: string | null;
 
   @Exclude({ toPlainOnly: true })
   title: string;
@@ -26,9 +27,13 @@ export class Project {
   industries?: string[] | null;
   tags?: string[] | null;
   skills?: string[] | null;
+  listingType?: string | null;
   status?: string | null;
   projectDatePublished?: Date | null;
   userId: string;
+
+  deliverables?: any[] | null;
+  media?: any[];
 
   createdAt?: Date;
   updatedAt?: Date;

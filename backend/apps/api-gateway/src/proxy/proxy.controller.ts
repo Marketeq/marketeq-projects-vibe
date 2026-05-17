@@ -37,6 +37,20 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   'time-tracking': 'timeTracking', // time-tracking-service general endpoints
   sessions: 'timeTracking',      // time-tracking-service session endpoints
   metadata: 'timeTracking',      // time-tracking-service metadata/tooltips
+  public: 'users',               // public talent profiles live in user-service
+  admin: 'admin',
+  'affiliate-referral': 'affiliateReferral',
+  billing: 'billing',
+  earnings: 'earnings',
+  payouts: 'payouts',
+  'deposit-methods': 'payouts',   // payout-service handles deposit methods
+  pricing: 'pricing',
+  rates: 'pricing',               // pricing-service rates endpoints
+  currency: 'pricing',            // pricing-service currency endpoints
+  budget: 'pricing',              // pricing-service budget endpoints
+  wallet: 'wallet',
+  'wire-transfer': 'wireReview',
+  'wire-review': 'wireReview',
 }
 
 @Controller()
@@ -135,6 +149,16 @@ export class ProxyController {
       prefix = 'messages'
     } else if (prefix === 'v1' && segments[1] === 'notifications') {
       prefix = 'notifications'
+    } else if (prefix === 'v1' && segments[1] === 'payouts') {
+      prefix = 'payouts'
+    } else if (prefix === 'v1' && (segments[1] === 'deposit-methods')) {
+      prefix = 'deposit-methods'
+    } else if (prefix === 'v1' && segments[1] === 'rates') {
+      prefix = 'rates'
+    } else if (prefix === 'v1' && segments[1] === 'currency') {
+      prefix = 'currency'
+    } else if (prefix === 'v1' && segments[1] === 'budget') {
+      prefix = 'budget'
     }
 
     const serviceName = SERVICE_PREFIX_MAP[prefix]

@@ -108,6 +108,42 @@ export async function loadAutocompleteOptions(
   return [];
 }
 
+type SubmitAutocompletePayload = {
+  type: string;
+  value: string;
+  source?: string;
+};
+
+export async function submitAutocompleteEntry({
+  type,
+  value,
+  source,
+}: SubmitAutocompletePayload): Promise<void> {
+  const trimmed = value.trim();
+  if (!trimmed) return;
+
+  const base = getAutocompleteServiceBaseUrl().replace(/\/$/, "");
+  const url = base ? `${base}/autocomplete/submit` : "/cms-autocomplete/submit";
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      type,
+      value: trimmed,
+      source: source ?? "cms-service:talent-profiles",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to submit ${type} autocomplete (${response.status})`,
+    );
+  }
+}
+
 export {
   FALLBACK_INDUSTRY_OPTIONS,
   FALLBACK_TAG_OPTIONS,

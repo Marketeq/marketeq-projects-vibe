@@ -34,6 +34,10 @@ const nextConfig = {
       },
       {
         protocol: "https",
+        hostname: "94ccb1ac46d66f225f369bd07f044f56.r2.cloudflarestorage.com",
+      },
+      {
+        protocol: "https",
         hostname: "randomuser.me",
       },
       {
@@ -47,6 +51,10 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: "fastly.picsum.photos",
+      },
+      {
+        protocol: "https",
+        hostname: "example.com",
       },
     ],
   },

@@ -31,6 +31,11 @@ export abstract class ProjectRepository {
     filterOptions?: FilterProjectDto | null;
   }): Promise<Project[]>;
 
+  abstract findBySlug(
+    slug: string,
+    userId: string,
+  ): Promise<NullableType<Project>>;
+
   abstract findOne(
     fields: EntityCondition<Project>,
   ): Promise<NullableType<Project>>;

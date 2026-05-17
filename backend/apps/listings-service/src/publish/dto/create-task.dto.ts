@@ -10,6 +10,11 @@ export class CreateProjectTaskDto {
   @IsString()
   role: string;
 
+  @ApiProperty({ description: 'Task description', required: false })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
   @ApiProperty({ description: 'Location of the task (e.g., Remote)' })
   @IsArray()
   @IsString({ each: true })

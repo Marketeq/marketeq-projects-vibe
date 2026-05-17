@@ -1,9 +1,13 @@
 import { CollectionConfig } from 'payload/types';
 import { isAdmin, isAdminOrDeveloper, isContentEditorOrAbove } from '../access/roles';
 import { crossServiceSourceIdField } from '../fields/crossServiceSourceIdField';
+import { syncListingToService } from '../hooks/afterChange/syncListings';
 
 export const Listings: CollectionConfig = {
   slug: 'listings',
+  hooks: {
+    afterChange: [syncListingToService],
+  },
   admin: {
     useAsTitle: 'title',
     defaultColumns: ['title', 'listingType', 'status', 'featured'],

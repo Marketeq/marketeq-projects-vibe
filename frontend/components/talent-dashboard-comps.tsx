@@ -167,9 +167,9 @@ export const WalletBold = ({
   )
 }
 
-export const LeftSidebar = () => {
+export const LeftSidebar = ({ forceRole }: { forceRole?: "TALENT" | "CLIENT" } = {}) => {
   const { user } = useAuth()
-  const dashboardRole = resolveDashboardRole(user)
+  const dashboardRole = forceRole ?? resolveDashboardRole(user)
   const isTalent = dashboardRole === ROLE.TALENT
 
   return isTalent ? <TalentAccountSidebar /> : <ClientAccountSidebar />
