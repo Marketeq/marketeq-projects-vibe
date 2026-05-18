@@ -37,7 +37,7 @@ const envPaths = [
         synchronize: config.get('NODE_ENV') !== 'production',
         migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
-        ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
+        ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
       }),
     }),
     TypeOrmModule.forFeature([AutocompleteEntry, AutocompleteReviewQueue, AutocompleteCategory, AutocompleteRejectedEntry]),

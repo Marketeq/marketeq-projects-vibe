@@ -29,7 +29,7 @@ import { CurrencyRate } from './currency/entities/currency-rate.entity';
         url: config.get<string>('DATABASE_URL'),
         entities: [PlatformRateAverage, CurrencyRate],
         synchronize: false,
-        ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
+        ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
       }),
     }),
 

@@ -37,7 +37,7 @@ import { JwtAuthGuard } from './middleware/jwt-auth.guard';
         url: config.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
         synchronize: config.get<string>('CONTRACTS_DATABASE_SYNCHRONIZE') === 'true',
-        ssl: config.get('NODE_ENV') === 'production'
+        ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true'
           ? { rejectUnauthorized: false }
           : false,
       }),
