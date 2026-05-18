@@ -1,30 +1,43 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy everything (workspace structure needed for npm install + nest build)
 COPY . .
-
-# Guard against stale incremental metadata during Render rebuilds.
 RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
-
-# Install ALL deps including devDependencies (need @nestjs/cli for build)
-# Use npm ci to strictly follow the lockfile during Render workspace builds.
 RUN npm ci --include=dev --legacy-peer-deps
 
-# Build time-tracking-service first so it gets a clean heap during Docker builds.
-RUN npx nest build time-tracking-service
-
-# Build remaining staging services in two batches to limit memory pressure.
-RUN npx nest build api-gateway \
+# Build all 27 services. Split into 3 batches (~9 each) with separate
+# RUN layers for memory isolation between batches.
+RUN npx nest build admin-service \
+ && npx nest build affiliate-referral-service \
+ && npx nest build algolia-service \
+ && npx nest build api-gateway \
  && npx nest build auth-service \
- && npx nest build user-service
-RUN npx nest build listings-service \
- && npx nest build notification-service \
- && npx nest build invitations-service \
- && npx nest build content-moderation-service \
- && npx nest build legal-service
+ && npx nest build autocomplete-service \
+ && npx nest build billing-service \
+ && npx nest build category-service \
+ && npx nest build checkout-service
 
-# Prune devDependencies for smaller production image
+RUN npx nest build content-moderation-service \
+ && npx nest build contracts-service \
+ && npx nest build earnings-service \
+ && npx nest build favorites-service \
+ && npx nest build invitations-service \
+ && npx nest build legal-service \
+ && npx nest build listings-service \
+ && npx nest build messaging-service \
+ && npx nest build notification-service \
+ && npx nest build payout-service
+
+RUN npx nest build portfolio-service \
+ && npx nest build pricing-service \
+ && npx nest build search-service \
+ && npx nest build suggestions-service \
+ && npx nest build time-tracking-service \
+ && npx nest build transaction-service \
+ && npx nest build user-service \
+ && npx nest build wallet-service \
+ && npx nest build wire-review-service
+
 RUN npm prune --production --legacy-peer-deps
 
 # ── Production image ────────────────────────────────────────────────────────

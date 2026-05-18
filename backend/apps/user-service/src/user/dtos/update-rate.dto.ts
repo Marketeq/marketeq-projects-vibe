@@ -6,11 +6,5 @@ export class UpdateRateDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  rateMin?: number;
-
-  @ApiPropertyOptional({ example: 85 })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  rateMax?: number;
+  rate?: number;
 }

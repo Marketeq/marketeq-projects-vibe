@@ -29,6 +29,7 @@ import {
   X,
 } from "@blend-metrics/icons"
 import { HireMeButton } from "@/components/hire-me-button"
+import { SaveTalentButton } from "@/components/save-talent-button"
 import {
   DropboxBrand,
   GoogleDrive1Brand,
@@ -149,12 +150,15 @@ const SaveButton = () => {
 
 const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => {
   const [user, setUser] = useState<UserProfile | null>(null)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [retryToken, setRetryToken] = useState(0)
   const currentUser = getCurrentUser()
   const router = useRouter()
   const { isOnline } = useOnlineUsers()
 
   useEffect(() => {
     setUser(null)
+    setProfileError(null)
     if (!selectedConversation || !currentUser) return
     const otherId = selectedConversation.participantIds?.find((id) => id !== currentUser.id)
     if (!otherId) return
@@ -163,14 +167,35 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
       method: "GET",
       headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
     })
-      .then(setUser)
-      .catch(console.error)
-  }, [selectedConversation, jwtToken])
+      .then((profile) => {
+        setUser(profile)
+        setProfileError(null)
+      })
+      .catch((err) => {
+        console.error("Profile fetch failed", err)
+        setProfileError("Couldn't load profile.")
+      })
+  }, [selectedConversation, jwtToken, retryToken])
 
   if (!selectedConversation) {
     return (
       <div className="w-[300px] bg-white flex flex-col shrink-0 pt-10 pb-6 px-5 border-l border-gray-200 items-center justify-center text-gray-400">
         <p className="text-sm">Select a conversation</p>
+      </div>
+    )
+  }
+
+  if (profileError) {
+    return (
+      <div className="w-[300px] bg-white flex flex-col shrink-0 pt-10 pb-6 px-5 border-l border-gray-200 items-center justify-center gap-y-3">
+        <p className="text-sm text-error-500 text-center">{profileError}</p>
+        <Button
+          visual="gray"
+          variant="outlined"
+          onClick={() => setRetryToken((t) => t + 1)}
+        >
+          Retry
+        </Button>
       </div>
     )
   }
@@ -211,7 +236,7 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
         </div>
 
         <div className="mt-5 flex items-center gap-x-2 justify-center">
-          <SaveButton />
+          <SaveTalentButton userId={user?.id} />
           <HireMeButton profile={user} />
         </div>
       </div>

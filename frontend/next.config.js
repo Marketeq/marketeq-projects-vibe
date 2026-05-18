@@ -52,6 +52,10 @@ const nextConfig = {
         protocol: "https",
         hostname: "fastly.picsum.photos",
       },
+      {
+        protocol: "https",
+        hostname: "example.com",
+      },
     ],
   },
   async rewrites() {

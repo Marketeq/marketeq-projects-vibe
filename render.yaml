@@ -1,9 +1,9 @@
 # render.yaml — Render Blueprint for marketeq-projects-vibe
 #
 # SINGLE shared backend service.
-# The backend deploys from `live-mvp` and serves every Vercel
-# environment. `staging` is a frontend promotion branch, not a second
-# Render target.
+# The backend deploys from `dev-main` and serves every Vercel
+# environment. The n8n orchestrator triggers API deploys with
+# specific commit SHAs. Auto-deploy is disabled.
 #
 # Vercel frontend mapping:
 #   marketeq-projects-dev      (dev-main)  → shared Render backend
@@ -22,7 +22,8 @@ services:
     name: marketeq-backend
     runtime: docker
     repo: https://github.com/Marketeq/marketeq-projects-vibe.git
-    branch: live-mvp
+    branch: dev-main
+    autoDeploy: false
     dockerfilePath: backend/Dockerfile.all
     dockerContext: backend
     region: oregon

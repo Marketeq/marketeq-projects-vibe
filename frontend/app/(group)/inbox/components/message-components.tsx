@@ -439,7 +439,9 @@ const BubbleImpl = ({
 
   useEffect(() => {
     setIsDeleted(!!message.isDeleted)
-  }, [message.isDeleted])
+    const incomingDeletedAt = (message as any).deletedAt as number | undefined
+    if (incomingDeletedAt && !deletedAt) setDeletedAt(incomingDeletedAt)
+  }, [message.isDeleted, (message as any).deletedAt])
 
   useEffect(() => {
     setValue(message.content)
@@ -587,13 +589,20 @@ const BubbleImpl = ({
           </div>
         )}
 
-        {replyToMessage && !isDeleted && (
+        {message.replyToMessageId && !isDeleted && (
           <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">
             <p className="text-xs font-semibold text-primary-600">
-              Replying to {replyToMessage.senderId === currentUser.id ? "yourself" : (participantName || participantUsername || "Unknown")}
+              Replying to{" "}
+              {replyToMessage
+                ? replyToMessage.senderId === currentUser.id
+                  ? "yourself"
+                  : participantName || participantUsername || "Unknown"
+                : "a message"}
             </p>
-            <p className="text-xs text-gray-500 line-clamp-2">
-              {replyToMessage.content || "Encrypted message"}
+            <p className="text-xs text-gray-500 line-clamp-2 italic">
+              {!replyToMessage || (replyToMessage as any).isDeleted
+                ? "Original message no longer available"
+                : replyToMessage.content || "Encrypted message"}
             </p>
           </div>
         )}
@@ -810,13 +819,20 @@ const YourBubbleImpl = ({
             </div>
           )}
 
-          {replyToMessage && !isDeleted && (
+          {message.replyToMessageId && !isDeleted && (
             <div className="border-l-2 border-primary-300 pl-3 py-1 mb-1 rounded-r bg-primary-50/50">
               <p className="text-xs font-semibold text-primary-600">
-                Replying to {replyToMessage.senderId === currentUser.id ? "yourself" : (participantName || participantUsername || "Unknown")}
+                Replying to{" "}
+                {replyToMessage
+                  ? replyToMessage.senderId === currentUser.id
+                    ? "yourself"
+                    : participantName || participantUsername || "Unknown"
+                  : "a message"}
               </p>
-              <p className="text-xs text-gray-500 line-clamp-2">
-                {replyToMessage.content || "Encrypted message"}
+              <p className="text-xs text-gray-500 line-clamp-2 italic">
+                {!replyToMessage || (replyToMessage as any).isDeleted
+                  ? "Original message no longer available"
+                  : replyToMessage.content || "Encrypted message"}
               </p>
             </div>
           )}

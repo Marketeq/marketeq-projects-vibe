@@ -22,7 +22,7 @@ import { Team } from './teams/entities/team.entity';
       synchronize: false,
       migrationsRun: true,
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
-      ssl: process.env.DATABASE_SSL === 'false' ? false : process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      ssl: (process.env.DATABASE_SSL_ENABLED ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
     }),
     ProjectsModule,
     ServicesModule,

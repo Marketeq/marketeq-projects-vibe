@@ -25,4 +25,10 @@ export class ReportDto {
 
   @ApiProperty()
   createdAt: string;
+
+  @ApiPropertyOptional({
+    description:
+      'True when an equivalent report already existed; the row returned is the prior submission and no new moderation queue item was created.',
+  })
+  wasAlreadyReported?: boolean;
 }

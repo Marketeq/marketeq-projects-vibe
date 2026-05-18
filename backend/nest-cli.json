@@ -35,6 +35,7 @@
     "category-service": { "type": "application", "root": "apps/category-service", "entryFile": "main", "sourceRoot": "apps/category-service/src", "compilerOptions": { "tsConfigPath": "apps/category-service/tsconfig.app.json" } },
     "wallet-service": { "type": "application", "root": "apps/wallet-service", "entryFile": "main", "sourceRoot": "apps/wallet-service/src", "compilerOptions": { "tsConfigPath": "apps/wallet-service/tsconfig.app.json" } },
     "wire-review-service": { "type": "application", "root": "apps/wire-review-service", "entryFile": "main", "sourceRoot": "apps/wire-review-service/src", "compilerOptions": { "tsConfigPath": "apps/wire-review-service/tsconfig.app.json" } },
+    "pricing-service": { "type": "application", "root": "apps/pricing-service", "entryFile": "main", "sourceRoot": "apps/pricing-service/src", "compilerOptions": { "tsConfigPath": "apps/pricing-service/tsconfig.app.json" } },
     "legal-service": { "type": "application", "root": "apps/legal-service", "entryFile": "main", "sourceRoot": "apps/legal-service/src", "compilerOptions": { "tsConfigPath": "apps/legal-service/tsconfig.app.json" } }
   }
 }

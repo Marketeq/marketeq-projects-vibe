@@ -4,6 +4,7 @@ import { decryptAES } from "@/src/crypto/e2ee"
 import { loadKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
 import type { Message } from "@/types/conversation"
+import { UNDECRYPTABLE_PLACEHOLDER } from "../constants"
 
 export function usePinnedMessages(convId: string, token: string) {
   const [messages, setMessages] = useState<Message[]>([])
@@ -13,8 +14,8 @@ export function usePinnedMessages(convId: string, token: string) {
     ;(async () => {
       try {
         // 1) Fetch all messages and filter pinned
-        const data = await apiFetch<Message[]>(
-          `/v1/messages/thread/${convId}`,
+        const { messages: data } = await apiFetch<{ messages: Message[] }>(
+          `/v1/messages/thread/${convId}?all=true`,
           {
             method: "GET",
             headers: { Authorization: `Bearer ${token}` },
@@ -36,11 +37,11 @@ export function usePinnedMessages(convId: string, token: string) {
             }
             const ct = (m as any).ciphertext
             if (!ct) return normalized // legacy plaintext row
-            if (!key) return { ...normalized, content: "🔒 Encrypted message" }
+            if (!key) return { ...normalized, content: UNDECRYPTABLE_PLACEHOLDER }
             try {
               return { ...normalized, content: await decryptAES(ct, key) }
             } catch {
-              return { ...normalized, content: "🔒 Encrypted message" }
+              return { ...normalized, content: UNDECRYPTABLE_PLACEHOLDER }
             }
           })
         )

@@ -330,61 +330,76 @@ export const UserDetail = ({
           </span>
 
           <div className="shrink-0">
-            {conversation.markedUnread && !starred ? (
-              <>
-                <Badge
-                  visual="primary"
-                  className="inline-flex rounded-full size-[22px] shrink-0 group-hover/chat:hidden"
+            {(() => {
+              const unreadCount = (conversation as any).unreadCount ?? 0
+              const hasUnread =
+                conversation.markedUnread || unreadCount > 0
+              if (hasUnread) {
+                const badgeText =
+                  unreadCount > 99
+                    ? "99+"
+                    : unreadCount > 0
+                      ? String(unreadCount)
+                      : "•"
+                const badgeClass =
+                  unreadCount > 0
+                    ? "inline-flex rounded-full min-w-5 h-[22px] px-1.5 shrink-0 text-[11px] font-semibold items-center justify-center group-hover/chat:hidden"
+                    : "inline-flex rounded-full size-[22px] shrink-0 group-hover/chat:hidden"
+                return (
+                  <>
+                    <Badge visual="primary" className={badgeClass}>
+                      {badgeText}
+                    </Badge>
+                    <div className="hidden group-hover/chat:block">
+                      <FavoriteRoot
+                        value={starred ?? false}
+                        onValueChange={(next) => {
+                          onStarredChange?.(next)
+                          apiFetch(`/v1/threads/${conversation.id}/star`, {
+                            method: next ? "POST" : "DELETE",
+                            headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
+                          }).catch((err) => {
+                            console.error("Failed to toggle star", err)
+                            onStarredChange?.(!next)
+                          })
+                        }}
+                      >
+                        {() => (
+                          <Favorite
+                            onClick={(e) => e.stopPropagation()}
+                            className="fill-transparent transition duration-300 size-[22px] text-dark-blue-400/50 hover:text-dark-blue-400/50"
+                            starClassName="size-[18px]"
+                          />
+                        )}
+                      </FavoriteRoot>
+                    </div>
+                  </>
+                )
+              }
+              return (
+                <FavoriteRoot
+                  value={starred ?? false}
+                  onValueChange={(next) => {
+                    onStarredChange?.(next)
+                    apiFetch(`/v1/threads/${conversation.id}/star`, {
+                      method: next ? "POST" : "DELETE",
+                      headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
+                    }).catch((err) => {
+                      console.error("Failed to toggle star", err)
+                      onStarredChange?.(!next)
+                    })
+                  }}
                 >
-                  &bull;
-                </Badge>
-                <div className="hidden group-hover/chat:block">
-                  <FavoriteRoot
-                    value={false}
-                    onValueChange={(next) => {
-                      onStarredChange?.(next)
-                      apiFetch(`/v1/threads/${conversation.id}/star`, {
-                        method: "POST",
-                        headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
-                      }).catch((err) => {
-                        console.error("Failed to toggle star", err)
-                        onStarredChange?.(!next)
-                      })
-                    }}
-                  >
-                    {() => (
-                      <Favorite
-                        onClick={(e) => e.stopPropagation()}
-                        className="fill-transparent transition duration-300 size-[22px] text-dark-blue-400/50 hover:text-dark-blue-400/50"
-                        starClassName="size-[18px]"
-                      />
-                    )}
-                  </FavoriteRoot>
-                </div>
-              </>
-            ) : (
-              <FavoriteRoot
-                value={starred ?? false}
-                onValueChange={(next) => {
-                  onStarredChange?.(next)
-                  apiFetch(`/v1/threads/${conversation.id}/star`, {
-                    method: next ? "POST" : "DELETE",
-                    headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
-                  }).catch((err) => {
-                    console.error("Failed to toggle star", err)
-                    onStarredChange?.(!next)
-                  })
-                }}
-              >
-                {() => (
-                  <Favorite
-                    onClick={(e) => e.stopPropagation()}
-                    className="fill-transparent transition duration-300 size-[22px] text-dark-blue-400/50 hover:text-dark-blue-400/50"
-                    starClassName="size-[18px]"
-                  />
-                )}
-              </FavoriteRoot>
-            )}
+                  {() => (
+                    <Favorite
+                      onClick={(e) => e.stopPropagation()}
+                      className="fill-transparent transition duration-300 size-[22px] text-dark-blue-400/50 hover:text-dark-blue-400/50"
+                      starClassName="size-[18px]"
+                    />
+                  )}
+                </FavoriteRoot>
+              )
+            })()}
           </div>
         </div>
       </div>

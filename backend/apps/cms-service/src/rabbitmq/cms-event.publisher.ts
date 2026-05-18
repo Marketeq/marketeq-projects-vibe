@@ -30,11 +30,12 @@ interface TalentProfileSavedEvent {
   username: string;
   name: string;
   headline: string | null;
+  jobTitles: { headline: string; rate: number }[];
   availability: string | null;
-  isAvailable: boolean;
   location: string | null;
   country: string | null;
   timezone: string | null;
+  rate: number | null;
   rateMin: number | null;
   rateMax: number | null;
   overview: unknown | null;

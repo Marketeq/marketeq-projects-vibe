@@ -8,5 +8,5 @@ export default new DataSource({
   url: process.env.DATABASE_URL,
   entities: ['src/**/*.entity.ts'],
   migrations: ['migrations/*.ts'],
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: (process.env.DATABASE_SSL_ENABLED ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
 });

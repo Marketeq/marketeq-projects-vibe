@@ -23,6 +23,13 @@ export class JwtAuthGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest();
 
+    // Support internal service token for cross-service sync
+    const internalToken = req.headers['x-internal-token'];
+    const expectedToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (internalToken && expectedToken && internalToken === expectedToken) {
+      return true;
+    }
+
     // Trust gateway-forwarded user context (x-user-id header)
     const gwUserId = req.headers['x-user-id'];
     if (gwUserId) {

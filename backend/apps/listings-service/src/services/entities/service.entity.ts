@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { ListingStatus } from '../../shared/enums/listing.enum';
 
-@Entity('services')
+@Entity('services_v2')
 export class Service {
   @PrimaryGeneratedColumn('uuid')
   id: string;

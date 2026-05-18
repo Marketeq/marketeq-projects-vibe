@@ -10,6 +10,7 @@ interface Report {
   contextMessageId: string | null
   status: "pending" | "reviewing" | "actioned" | "dismissed"
   createdAt: string
+  wasAlreadyReported?: boolean
 }
 
 interface ReportPayload {

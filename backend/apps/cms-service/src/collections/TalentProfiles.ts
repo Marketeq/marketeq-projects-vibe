@@ -6,13 +6,100 @@ import {
   syncTalentProfileToService,
   deleteTalentProfileFromService,
 } from "../hooks/afterChange/syncTalentProfiles";
+import {
+  TalentIndustriesChipField,
+  TalentSkillsChipField,
+} from "../components/ChipArrayTagsField";
+import TextAutocompleteField from "../components/TextAutocompleteField";
+import { timingSafeEqual } from "crypto";
+
+function hasValidCmsApiKey(req: any): boolean {
+  const configured = process.env.CMS_API_KEY;
+  if (!configured) return false;
+  const header = req?.headers?.authorization;
+  if (typeof header !== "string") return false;
+  const match = header.match(/^API-Key\s+(.+)$/);
+  if (!match) return false;
+  const provided = match[1];
+  if (provided.length !== configured.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(provided), Buffer.from(configured));
+  } catch {
+    return false;
+  }
+}
+
+const talentProfileSourceIdDescription =
+  "User UUID from user-service / auth-service. Links this CMS profile to the platform user.";
+
+const talentProfileUuidField = crossServiceUuidField();
+const talentProfileSourceIdField = crossServiceSourceIdField({
+  required: false,
+  unique: true,
+  description: talentProfileSourceIdDescription,
+});
+
+function parseDateValue(value: unknown): Date | null {
+  if (value == null || value === "") return null;
+  const raw =
+    typeof value === "object" && value && "value" in (value as any)
+      ? (value as any).value
+      : value;
+
+  if (raw instanceof Date) {
+    return Number.isNaN(raw.getTime()) ? null : raw;
+  }
+
+  if (typeof raw === "number") {
+    const parsedFromNumber = new Date(raw);
+    return Number.isNaN(parsedFromNumber.getTime()) ? null : parsedFromNumber;
+  }
+
+  const rawString = String(raw).trim();
+  if (!rawString) return null;
+
+  // Support admin-entered MM/DD/YYYY dates explicitly.
+  const mmddyyyy = rawString.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mmddyyyy) {
+    const month = Number(mmddyyyy[1]);
+    const day = Number(mmddyyyy[2]);
+    const year = Number(mmddyyyy[3]);
+    if (month < 1 || month > 12) return null;
+    if (day < 1 || day > 31) return null;
+
+    const parsedFromSlash = new Date(Date.UTC(year, month - 1, day));
+    if (
+      parsedFromSlash.getUTCFullYear() !== year ||
+      parsedFromSlash.getUTCMonth() !== month - 1 ||
+      parsedFromSlash.getUTCDate() !== day
+    ) {
+      return null;
+    }
+
+    return parsedFromSlash;
+  }
+
+  const parsed = new Date(rawString);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function toDayStamp(date: Date): number {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function isFutureDate(value: unknown): boolean {
+  const parsed = parseDateValue(value);
+  if (!parsed) return false;
+  const today = new Date();
+  return toDayStamp(parsed) > toDayStamp(today);
+}
 
 export const TalentProfiles: CollectionConfig = {
   slug: "talent-profiles",
   admin: {
     useAsTitle: "username",
-    defaultColumns: ["username", "name", "availability", "status"],
-    group: "Talent Management",
+    defaultColumns: ["username", "firstName", "lastName", "availability", "status"],
+    group: "Base Collections",
   },
   access: {
     read: () => true,
@@ -25,220 +112,700 @@ export const TalentProfiles: CollectionConfig = {
     afterDelete: [deleteTalentProfileFromService],
   },
   fields: [
-    // ─── Identity ───────────────────────────────────────
-    crossServiceUuidField(),
-    crossServiceSourceIdField({
-      required: false,
-      unique: true,
-      description:
-        "User UUID from user-service / auth-service. Links this CMS profile to the platform user.",
-    }),
+    talentProfileUuidField,
+    talentProfileSourceIdField,
+    // ── Tabs: keep editing flow compact, like Projects ──────────────────
     {
-      type: "row",
-      fields: [
+      type: "tabs",
+      tabs: [
         {
-          name: "username",
-          type: "text",
-          unique: true,
-          index: true,
-          required: true,
-          minLength: 3,
-          maxLength: 30,
-          admin: { description: "URL-safe slug. Lowercase, 3-30 chars." },
-          hooks: {
-            beforeValidate: [
-              ({ value }) => {
-                if (typeof value !== "string") return value;
-                const sanitized = value
-                  .toLowerCase()
-                  .replace(/[^a-z0-9_-]/g, "");
-                if (sanitized.length < 3) {
-                  throw new Error(
-                    "Username must contain at least 3 valid characters (a-z, 0-9, _, -)",
-                  );
-                }
-                return sanitized;
+          label: "About Me",
+          fields: [
+            {
+              name: "username",
+              type: "text",
+              unique: true,
+              index: true,
+              required: true,
+              minLength: 3,
+              maxLength: 120,
+              admin: {
+                description:
+                  "Username should be lowercase, minimum 3 characters. Allowed: a-z, 0-9, underscore (_).",
               },
-            ],
-          },
-        },
-        {
-          name: "name",
-          type: "text",
-          required: true,
-          admin: { description: "Display name (first + last)." },
-        },
-      ],
-    },
-    {
-      name: "headline",
-      type: "text",
-      admin: {
-        description: 'Short professional title, e.g. "Expert React Developer"',
-      },
-    },
-
-    // ─── Availability & Location ────────────────────────
-    {
-      type: "row",
-      fields: [
-        {
-          name: "availability",
-          type: "select",
-          options: [
-            { label: "10 hrs/week", value: "10" },
-            { label: "20 hrs/week", value: "20" },
-            { label: "30 hrs/week", value: "30" },
-            { label: "40 hrs/week", value: "40" },
+              hooks: {
+                beforeValidate: [
+                  ({ value }) => {
+                    if (typeof value !== "string") return value;
+                    const normalized = value.trim().toLowerCase();
+                    if (normalized.length < 3) {
+                      throw new Error(
+                        "Username must contain at least 3 valid characters (a-z, 0-9, _)",
+                      );
+                    }
+                    if (!/^[a-z0-9_]+$/.test(normalized)) {
+                      throw new Error(
+                        "Username can only contain letters, numbers, and underscores",
+                      );
+                    }
+                    return normalized;
+                  },
+                ],
+              },
+            },
+            {
+              name: "firstName",
+              type: "text",
+              label: "First Name",
+              required: true,
+              admin: { description: "First name." },
+            },
+            {
+              name: "lastName",
+              type: "text",
+              label: "Last Name",
+              required: true,
+              admin: { description: "Last name." },
+            },
+            {
+              name: "overview",
+              type: "richText",
+              label: "About Me",
+              admin: { description: "Full professional bio" },
+            },
+            {
+              name: "status",
+              type: "select",
+              defaultValue: "active",
+              options: [
+                { label: "Active", value: "active" },
+                { label: "Inactive", value: "inactive" },
+                { label: "Suspended", value: "suspended" },
+              ],
+            },
           ],
         },
         {
-          name: "isAvailable",
-          type: "checkbox",
-          defaultValue: true,
-        },
-      ],
-    },
-    {
-      type: "row",
-      fields: [
-        {
-          name: "location",
-          type: "text",
-          admin: { description: "City or region" },
-        },
-        { name: "country", type: "text" },
-        {
-          name: "timezone",
-          type: "text",
-          admin: { description: "e.g. America/New_York" },
-        },
-      ],
-    },
-
-    // ─── Rate ───────────────────────────────────────────
-    {
-      type: "row",
-      fields: [
-        {
-          name: "rateMin",
-          type: "number",
-          min: 0,
-          admin: { description: "Min hourly rate (USD)" },
-        },
-        {
-          name: "rateMax",
-          type: "number",
-          min: 0,
-          admin: { description: "Max hourly rate (USD)" },
-          validate: (val: any, { siblingData }: any) => {
-            if (
-              val != null &&
-              siblingData?.rateMin != null &&
-              val < siblingData.rateMin
-            ) {
-              return "Max rate must be >= min rate";
-            }
-            return true;
-          },
-        },
-      ],
-    },
-
-    // ─── Bio ────────────────────────────────────────────
-    {
-      name: "overview",
-      type: "richText",
-      admin: { description: "Full professional bio" },
-    },
-
-    // ─── Skills & Expertise ─────────────────────────────
-    {
-      name: "skills",
-      type: "array",
-      admin: { description: "Professional skills (tags)" },
-      fields: [{ name: "name", type: "text", required: true }],
-    },
-    {
-      name: "industryExpertise",
-      type: "array",
-      admin: { description: "Industry domains" },
-      fields: [{ name: "name", type: "text", required: true }],
-    },
-    {
-      name: "languages",
-      type: "array",
-      fields: [
-        { name: "language", type: "text", required: true },
-        {
-          name: "fluency",
-          type: "select",
-          options: [
-            { label: "Basic", value: "basic" },
-            { label: "Conversational", value: "conversational" },
-            { label: "Fluent", value: "fluent" },
-            { label: "Native", value: "native" },
+          label: "Job Title & Rate",
+          fields: [
+            {
+              name: "jobTitles",
+              type: "array",
+              label: "Job Titles",
+              required: true,
+              minRows: 1,
+              maxRows: 3,
+              admin: {
+                description: "List up to 3 professional titles and their rates.",
+              },
+              fields: [
+                {
+                  name: "headline",
+                  type: "text",
+                  label: "Job Title",
+                  required: true,
+                  maxLength: 180,
+                  admin: {
+                    description:
+                      'Short professional title, e.g. "Expert React Developer"',
+                    components: {
+                      Field: TextAutocompleteField,
+                    },
+                  },
+                  hooks: {
+                    beforeValidate: [
+                      ({ value }) => {
+                        if (typeof value !== "string") return value;
+                        const trimmed = value.trim();
+                        return trimmed.length ? trimmed : undefined;
+                      },
+                    ],
+                  },
+                  custom: {
+                    autocompleteType: "job_titles",
+                    submitType: "title",
+                    submitSource: "cms-service:talent-profiles",
+                    placeholder: "Add professional headline",
+                    suggestedOptions: [
+                      "Frontend Developer",
+                      "Backend Engineer",
+                      "Product Designer",
+                      "Data Analyst",
+                    ],
+                  },
+                },
+                {
+                  name: "rate",
+                  type: "number",
+                  label: "Hourly Rate (USD)",
+                  required: true,
+                  min: 0,
+                  validate: (val: any) => {
+                    if (val == null) return true;
+                    if (!Number.isInteger(val))
+                      return "Rate must be an integer (USD).";
+                    return true;
+                  },
+                  admin: { description: "Hourly rate (USD)" },
+                },
+              ],
+            },
+            {
+              name: "availability",
+              type: "select",
+              options: [
+                { label: "10 hrs/week", value: "10" },
+                { label: "20 hrs/week", value: "20" },
+                { label: "30 hrs/week", value: "30" },
+                { label: "40 hrs/week", value: "40" },
+              ],
+              validate: (val: any) => {
+                if (val == null || val === "") return true;
+                if (typeof val !== "string")
+                  return "Availability must be a string value.";
+                if (val.length > 10)
+                  return "Availability must be 10 characters or fewer.";
+                return true;
+              },
+            },
           ],
         },
-      ],
-    },
+        {
+          label: "Skills",
+          fields: [
+            {
+              name: "skills",
+              type: "array",
+              validate: (value: any) => {
+                if (value == null) return true;
+                if (!Array.isArray(value)) return "Skills must be a list.";
+                const names = value
+                  .map((row: any) =>
+                    typeof row?.name === "string" ? row.name.trim() : "",
+                  )
+                  .filter(Boolean);
+                const seen = new Set<string>();
+                for (const n of names) {
+                  const key = n.toLowerCase();
+                  if (seen.has(key)) return `Duplicate skill "${n}"`;
+                  seen.add(key);
+                }
+                return true;
+              },
+              admin: {
+                description: "Professional skills (tags)",
+                components: {
+                  Field: TalentSkillsChipField,
+                },
+              },
+              fields: [
+                {
+                  name: "name",
+                  type: "text",
+                  required: true,
+                  hooks: {
+                    beforeValidate: [
+                      ({ value }) => {
+                        if (typeof value !== "string") return value;
+                        const trimmed = value.trim();
+                        return trimmed.length ? trimmed : undefined;
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+            {
+              name: "industries",
+              type: "array",
+              validate: (value: any) => {
+                if (value == null) return true;
+                if (!Array.isArray(value))
+                  return "Industry expertise must be a list.";
+                const names = value
+                  .map((row: any) =>
+                    typeof row?.name === "string" ? row.name.trim() : "",
+                  )
+                  .filter(Boolean);
+                const seen = new Set<string>();
+                for (const n of names) {
+                  const key = n.toLowerCase();
+                  if (seen.has(key)) return `Duplicate industry "${n}"`;
+                  seen.add(key);
+                }
+                return true;
+              },
+              admin: {
+                description: "Industry domains",
+                components: {
+                  Field: TalentIndustriesChipField,
+                },
+              },
+              fields: [
+                {
+                  name: "name",
+                  type: "text",
+                  required: true,
+                  hooks: {
+                    beforeValidate: [
+                      ({ value }) => {
+                        if (typeof value !== "string") return value;
+                        const trimmed = value.trim();
+                        return trimmed.length ? trimmed : undefined;
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+            {
+              name: "languages",
+              type: "array",
+              hooks: {
+                beforeValidate: [
+                  ({ value }) => {
+                    if (!Array.isArray(value)) return value;
 
-    // ─── Certifications ─────────────────────────────────
-    {
-      name: "certifications",
-      type: "array",
-      fields: [
-        { name: "title", type: "text", required: true },
-        { name: "organization", type: "text" },
-        { name: "dateAwarded", type: "date" },
-      ],
-    },
+                    const seen = new Set<string>();
+                    const deduped = value.filter((row: any) => {
+                      const language =
+                        typeof row?.language === "string"
+                          ? row.language.trim().replace(/\s+/g, " ")
+                          : "";
+                      const key = language.toLowerCase();
+                      if (!key || seen.has(key)) return false;
+                      seen.add(key);
+                      if (language && language !== row?.language) {
+                        row.language = language;
+                      }
+                      return true;
+                    });
 
-    // ─── Education ──────────────────────────────────────
-    {
-      name: "education",
-      type: "array",
-      fields: [
-        { name: "institution", type: "text", required: true },
-        { name: "degree", type: "text" },
-        { name: "graduationYear", type: "number" },
-      ],
-    },
+                    return deduped;
+                  },
+                ],
+              },
+              validate: (value: any) => {
+                if (value == null) return true;
+                if (!Array.isArray(value)) return "Languages must be a list.";
+                const seen = new Set<string>();
+                for (const row of value) {
+                  const language =
+                    typeof row?.language === "string"
+                      ? row.language.trim()
+                      : "";
+                  const fluency =
+                    typeof row?.fluency === "string" ? row.fluency.trim() : "";
+                  if (!language)
+                    return "Each language entry must include a language.";
+                  if (!fluency)
+                    return `Language "${language}" must include a fluency level.`;
+                  const key = language.toLowerCase();
+                  if (seen.has(key)) return `Duplicate language "${language}"`;
+                  seen.add(key);
+                }
+                return true;
+              },
+              fields: [
+                {
+                  name: "language",
+                  type: "text",
+                  required: true,
+                  admin: {
+                    components: {
+                      Field: TextAutocompleteField,
+                    },
+                  },
+                  custom: {
+                    autocompleteType: "languages",
+                    submitType: "language",
+                    submitSource: "cms-service:talent-profiles",
+                    placeholder: "Add language",
+                    suggestedOptions: [
+                      "English",
+                      "Spanish",
+                      "French",
+                      "German",
+                      "Hindi",
+                    ],
+                  },
+                },
+                {
+                  name: "fluency",
+                  type: "select",
+                  required: true,
+                  options: [
+                    { label: "Basic", value: "basic" },
+                    { label: "Conversational", value: "conversational" },
+                    { label: "Fluent", value: "fluent" },
+                    { label: "Native", value: "native" },
+                  ],
+                },
+              ],
+            },
+            {
+              name: "certifications",
+              type: "array",
+              validate: (value: any) => {
+                if (value == null) return true;
+                if (!Array.isArray(value))
+                  return "Certifications must be a list.";
+                for (const row of value) {
+                  const title =
+                    typeof row?.title === "string" ? row.title.trim() : "";
+                  if (!title) return "Each certification must include a title.";
+                }
+                return true;
+              },
+              fields: [
+                {
+                  name: "title",
+                  type: "text",
+                  required: true,
+                  hooks: {
+                    beforeValidate: [
+                      ({ value }) => {
+                        if (typeof value !== "string") return value;
+                        const trimmed = value.trim();
+                        return trimmed.length ? trimmed : undefined;
+                      },
+                    ],
+                  },
+                  admin: {
+                    components: {
+                      Field: TextAutocompleteField,
+                    },
+                  },
+                  custom: {
+                    autocompleteType: "certifications",
+                    submitType: "certification",
+                    submitSource: "cms-service:talent-profiles",
+                    placeholder: "Add certification title",
+                    suggestedOptions: [
+                      "AWS Certified Developer",
+                      "Google Cloud Associate Engineer",
+                      "PMP",
+                    ],
+                  },
+                },
+                {
+                  name: "organization",
+                  type: "text",
+                  hooks: {
+                    beforeValidate: [
+                      ({ value }) => {
+                        if (typeof value !== "string") return value;
+                        const trimmed = value.trim();
+                        return trimmed.length ? trimmed : undefined;
+                      },
+                    ],
+                  },
+                },
+                {
+                  name: "dateAwarded",
+                  type: "date",
+                  validate: (val: any) => {
+                    if (val == null || val === "") return true;
+                    const date = parseDateValue(val);
+                    if (!date) {
+                      return "dateAwarded must be a valid date.";
+                    }
+                    if (isFutureDate(val)) {
+                      return "dateAwarded cannot be in the future.";
+                    }
+                    return true;
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Work Experience",
+          fields: [
+            {
+              name: "workExperience",
+              type: "array",
+              validate: (value: any) => {
+                if (value == null) return true;
+                if (!Array.isArray(value))
+                  return "Work experience must be a list.";
+                for (const row of value) {
+                  const role =
+                    typeof row?.role === "string" ? row.role.trim() : "";
+                  const company =
+                    typeof row?.company === "string" ? row.company.trim() : "";
+                  if (!role) return "Each work experience entry needs a role.";
+                  if (!company)
+                    return "Each work experience entry needs a company.";
 
-    // ─── Work Experience ────────────────────────────────
-    {
-      name: "workExperience",
-      type: "array",
-      fields: [
-        { name: "role", type: "text", required: true },
-        { name: "company", type: "text", required: true },
-        { name: "startDate", type: "date" },
-        { name: "endDate", type: "date" },
-        { name: "description", type: "textarea" },
-      ],
-    },
+                  const startRaw = row?.startDate;
+                  const endRaw = row?.endDate;
 
-    // ─── Portfolio ──────────────────────────────────────
-    {
-      name: "portfolio",
-      type: "array",
-      fields: [
-        { name: "title", type: "text", required: true },
-        { name: "url", type: "text" },
-        { name: "thumbnail", type: "upload", relationTo: "media" },
-        { name: "description", type: "textarea" },
-      ],
-    },
+                  if (startRaw && !parseDateValue(startRaw)) {
+                    return `startDate must be a valid date for "${role}" at "${company}".`;
+                  }
+                  if (endRaw && !parseDateValue(endRaw)) {
+                    return `endDate must be a valid date for "${role}" at "${company}".`;
+                  }
 
-    // ─── Status ─────────────────────────────────────────
-    {
-      name: "status",
-      type: "select",
-      defaultValue: "active",
-      options: [
-        { label: "Active", value: "active" },
-        { label: "Inactive", value: "inactive" },
-        { label: "Suspended", value: "suspended" },
+                  if (startRaw && isFutureDate(startRaw)) {
+                    return `startDate cannot be in the future for "${role}" at "${company}".`;
+                  }
+                  if (endRaw && isFutureDate(endRaw)) {
+                    return `endDate cannot be in the future for "${role}" at "${company}".`;
+                  }
+
+                  if (startRaw && endRaw) {
+                    const start = parseDateValue(startRaw);
+                    const end = parseDateValue(endRaw);
+                    if (start && end) {
+                      if (toDayStamp(end) < toDayStamp(start)) {
+                        return `End date must be on or after start date for "${role}" at "${company}".`;
+                      }
+                    }
+                  }
+                }
+                return true;
+              },
+              fields: [
+                {
+                  name: "role",
+                  type: "text",
+                  required: true,
+                  hooks: {
+                    beforeValidate: [
+                      ({ value }) => {
+                        if (typeof value !== "string") return value;
+                        const trimmed = value.trim();
+                        return trimmed.length ? trimmed : undefined;
+                      },
+                    ],
+                  },
+                },
+                {
+                  name: "company",
+                  type: "text",
+                  required: true,
+                  hooks: {
+                    beforeValidate: [
+                      ({ value }) => {
+                        if (typeof value !== "string") return value;
+                        const trimmed = value.trim();
+                        return trimmed.length ? trimmed : undefined;
+                      },
+                    ],
+                  },
+                },
+                {
+                  name: "startDate",
+                  type: "date",
+                  validate: (val: any) => {
+                    if (val == null || val === "") return true;
+                    const date = parseDateValue(val);
+                    if (!date) return "startDate must be a valid date.";
+                    if (isFutureDate(val)) {
+                      return "startDate cannot be in the future.";
+                    }
+                    return true;
+                  },
+                },
+                {
+                  name: "endDate",
+                  type: "date",
+                  validate: (val: any, { siblingData }: any) => {
+                    if (val == null || val === "") return true;
+                    const date = parseDateValue(val);
+                    if (!date) return "endDate must be a valid date.";
+                    if (isFutureDate(val)) {
+                      return "endDate cannot be in the future.";
+                    }
+                    const startDate = parseDateValue(siblingData?.startDate);
+                    if (startDate && toDayStamp(date) < toDayStamp(startDate)) {
+                      return "endDate must be on or after startDate.";
+                    }
+                    return true;
+                  },
+                },
+                {
+                  name: "description",
+                  type: "textarea",
+                  hooks: {
+                    beforeValidate: [
+                      ({ value }) => {
+                        if (typeof value !== "string") return value;
+                        const trimmed = value.trim();
+                        return trimmed.length ? trimmed : undefined;
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Education",
+          fields: [
+            {
+              name: "education",
+              type: "array",
+              validate: (value: any) => {
+                if (value == null) return true;
+                if (!Array.isArray(value)) return "Education must be a list.";
+                for (const row of value) {
+                  const institution =
+                    typeof row?.institution === "string"
+                      ? row.institution.trim()
+                      : "";
+                  if (!institution)
+                    return "Each education entry needs an institution.";
+                  const graduationYear = row?.graduationYear;
+                  if (graduationYear != null && graduationYear !== "") {
+                    const year = Number(graduationYear);
+                    const max = new Date().getFullYear() + 10;
+                    if (!Number.isInteger(year))
+                      return "graduationYear must be an integer year.";
+                    if (year < 1900 || year > max)
+                      return `graduationYear must be between 1900 and ${max}.`;
+                  }
+                }
+                return true;
+              },
+              fields: [
+                {
+                  name: "institution",
+                  type: "text",
+                  required: true,
+                  hooks: {
+                    beforeValidate: [
+                      ({ value }) => {
+                        if (typeof value !== "string") return value;
+                        const trimmed = value.trim();
+                        return trimmed.length ? trimmed : undefined;
+                      },
+                    ],
+                  },
+                },
+                {
+                  name: "degree",
+                  type: "text",
+                  hooks: {
+                    beforeValidate: [
+                      ({ value }) => {
+                        if (typeof value !== "string") return value;
+                        const trimmed = value.trim();
+                        return trimmed.length ? trimmed : undefined;
+                      },
+                    ],
+                  },
+                },
+                {
+                  name: "graduationYear",
+                  type: "number",
+                  validate: (val: any) => {
+                    if (val == null || val === "") return true;
+                    const year = Number(val);
+                    const max = new Date().getFullYear() + 10;
+                    if (!Number.isInteger(year))
+                      return "Enter a whole year (e.g. 2024).";
+                    if (year < 1900 || year > max)
+                      return `Year must be between 1900 and ${max}.`;
+                    return true;
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Portfolio",
+          fields: [
+            {
+              name: "portfolio",
+              type: "array",
+              validate: (value: any) => {
+                if (value == null) return true;
+                if (!Array.isArray(value)) return "Portfolio must be a list.";
+                for (const row of value) {
+                  const title =
+                    typeof row?.title === "string" ? row.title.trim() : "";
+                  if (!title) return "Each portfolio entry needs a title.";
+                  const url =
+                    typeof row?.url === "string" ? row.url.trim() : "";
+                  if (url) {
+                    try {
+                      const parsed = new URL(url);
+                      if (!["http:", "https:"].includes(parsed.protocol)) {
+                        return "Portfolio URL must start with http:// or https://";
+                      }
+                    } catch {
+                      return "Portfolio URL must be a valid URL.";
+                    }
+                  }
+                }
+                return true;
+              },
+              fields: [
+                {
+                  name: "title",
+                  type: "text",
+                  required: true,
+                  hooks: {
+                    beforeValidate: [
+                      ({ value }) => {
+                        if (typeof value !== "string") return value;
+                        const trimmed = value.trim();
+                        return trimmed.length ? trimmed : undefined;
+                      },
+                    ],
+                  },
+                },
+                {
+                  name: "url",
+                  type: "text",
+                  hooks: {
+                    beforeValidate: [
+                      ({ value }) => {
+                        if (typeof value !== "string") return value;
+                        const trimmed = value.trim();
+                        return trimmed.length ? trimmed : undefined;
+                      },
+                    ],
+                  },
+                  validate: (val: any) => {
+                    if (val == null || val === "") return true;
+                    if (typeof val !== "string") return "URL must be a string.";
+                    const trimmed = val.trim();
+                    if (!trimmed) return true;
+                    try {
+                      const url = new URL(trimmed);
+                      return ["http:", "https:"].includes(url.protocol)
+                        ? true
+                        : "URL must start with http:// or https://";
+                    } catch {
+                      return "URL must be valid (http/https).";
+                    }
+                  },
+                },
+                { name: "thumbnail", type: "upload", relationTo: "media" },
+                {
+                  name: "description",
+                  type: "textarea",
+                  hooks: {
+                    beforeValidate: [
+                      ({ value }) => {
+                        if (typeof value !== "string") return value;
+                        const trimmed = value.trim();
+                        return trimmed.length ? trimmed : undefined;
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
       ],
     },
   ],

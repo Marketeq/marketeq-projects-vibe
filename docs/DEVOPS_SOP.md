@@ -51,13 +51,21 @@ Each Vercel project has its own env var set in the Vercel dashboard, populated f
 
 **One shared Render service.**
 
-| Render service | ID | Branch | Auto-deploy | Serves | URL |
+| Render service | ID | Branch (dashboard) | Deploy mechanism | Serves | URL |
 |---|---|---|---|---|---|
-| `marketeq-backend` | `srv-d76r48nafjfc73e1djf0` | `live-mvp` | yes | Vercel dev + Vercel staging + Vercel live | `https://marketeq-backend.onrender.com` |
+| `marketeq-backend` | `srv-d76r48nafjfc73e1djf0` | `live-mvp` | n8n orchestrator API deploys | Vercel dev + Vercel staging + Vercel live | `https://marketeq-backend.onrender.com` |
 
-### 3.1 Why one service
+### 3.1 How the shared backend deploys
 
-The backend does not redeploy from `dev-main`, and local development never depends on Render. `staging` is a frontend promotion branch, not a second backend fleet. The shared backend stays anchored to the production-grade Render service so there is one service, one URL, and one source of truth for the deployed backend.
+All three Vercel projects point to the same Render backend. The n8n orchestrator (`Marketeq Vercel Staging Orchestrator`) triggers Render API deploys with the specific commit SHA whenever backend files change on `dev-main` or `staging`. This keeps the shared backend current for all frontends without waiting for a `live-mvp` promotion.
+
+The Render dashboard branch is set to `live-mvp` as a fallback for manual deploys, but normal operation uses the orchestrator's API-driven deploys with explicit commit SHAs.
+
+**Constraints (Render Starter plan — 512 MB RAM):**
+- `boot-all.js` only starts services the API gateway actively proxies to (see `SERVICES` array)
+- Each child process runs with `--max-old-space-size=20` to stay within memory limits
+- `build-all-services.sh` builds one service at a time with `--max-old-space-size=384` during Docker build
+- New services must be added to both `boot-all.js SERVICES` array and `proxy.service.ts` route map before they consume runtime memory
 
 ### 3.2 Vercel → Render mapping
 
@@ -76,11 +84,9 @@ The shared Render backend uses the live backend database wiring on the Hostinger
 | `supabase-live` | `supabase-live` | `5433` | Shared Render backend (`marketeq-backend`) |
 | `supabase-dev` | `supabase-dev` | `5432` | Local development only |
 
-QA must treat staging as a frontend promotion environment backed by the shared Render service. Backend-only changes are promoted deliberately through `live-mvp`, not by creating a second staging backend target.
-
 ### 3.4 Backwards-compatibility requirement
 
-Backend changes must remain backwards-compatible. During the promotion window when `staging` → `live-mvp` lands, the live Vercel frontend (old code) briefly hits the live Render backend (newly promoted code). This window is seconds long and the backwards-compatibility rule ensures no breakage.
+Backend changes must remain backwards-compatible. All three frontends (dev, staging, live) hit the same backend, so a backend deploy must not break any of them.
 
 ---
 
@@ -196,7 +202,7 @@ Login behavior differs across environments because of cookies (`SameSite`, `Secu
 
 QA's entire workflow is two scripts. QA never hand-edits any protected branch, never opens a PR targeting a protected branch, and never merges anything manually.
 
-### 7.1 `scripts/qa-promote-dev-to-staging.sh`
+### 7.1 `scripts/devops/qa-promote-dev-to-staging.sh`
 
 Run by QA (or CTO) when `dev-main` has accumulated a milestone worth testing.
 
@@ -221,7 +227,7 @@ Run by QA (or CTO) when `dev-main` has accumulated a milestone worth testing.
 - Does not delete branches
 - Does not force-push
 
-### 7.2 `scripts/qa-promote-staging-to-live.sh`
+### 7.2 `scripts/devops/qa-promote-staging-to-live.sh`
 
 Run by QA (or CTO) after QA has signed off on a staging build.
 
@@ -279,7 +285,7 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 - Automated checks running on every PR: `.github/workflows/sop-check.yml`, `.github/workflows/ai-breakage-check.yml`, `.github/workflows/post-merge-audit.yml`, `.github/workflows/gitleaks.yml`
 - CODEOWNERS routing: `.github/CODEOWNERS`
 - PR template: `.github/pull_request_template.md`
-- Promotion scripts: `scripts/qa-promote-dev-to-staging.sh`, `scripts/qa-promote-staging-to-live.sh`
+- Promotion scripts: `scripts/devops/qa-promote-dev-to-staging.sh`, `scripts/devops/qa-promote-staging-to-live.sh`
 - DevOps control scripts: `scripts/devops/check-devops-drift.mjs`, `scripts/devops/check-runtime-env-drift.mjs`, `scripts/devops/sync-staging-runtime-envs.mjs`, `scripts/devops/sync-n8n-workflow.mjs`, `scripts/devops/publish-n8n-runner.mjs`, `scripts/devops/install-n8n-runtime-secrets.mjs`, `scripts/devops/rollback-staging.mjs`, `scripts/devops/marketeq-devops.config.json`, `scripts/devops/marketeq-staging-env-baseline.json`
 - Env templates: `frontend/.env.{local,staging,production}.example`, `backend/.env.{local,staging,production}.example`
 
