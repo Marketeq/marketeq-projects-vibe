@@ -52,7 +52,7 @@ export default function RootLayout({
   )
 
   return (
-    <html className={`scroll-smooth ${font.variable}`} lang="en">
+    <html className={`scroll-smooth ${font.variable}`} lang="en" suppressHydrationWarning>
       <body>
         {googleClientId ? (
           <GoogleOAuthProvider clientId={googleClientId}>

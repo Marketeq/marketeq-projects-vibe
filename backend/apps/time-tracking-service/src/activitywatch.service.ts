@@ -24,7 +24,7 @@ export class ActivityWatchService {
   ) {}
 
   async info() {
-    const response = await firstValueFrom<any>(this.http.get(`${this.base}/info`));
+    const response = await firstValueFrom<any>(this.http.get(`${this.base}/info`) as any);
     return response.data;
   }
 
@@ -32,7 +32,9 @@ export class ActivityWatchService {
     return { ok: true, service: 'activitywatch' };
   }
 
-  async ingest(dto: IngestActivityWatchEventsDto, userId?: string): Promise<{ inserted: number; ids: string[] }> {
+  async ingest(dto: IngestActivityWatchEventsDto, userId: string): Promise<{ inserted: number; ids: string[] }> {
+    if (!userId) throw new BadRequestException('User identity is required');
+
     for (const e of dto.events) {
       const start = new Date(e.timestamp);
       if (isNaN(start.getTime())) {
@@ -43,11 +45,11 @@ export class ActivityWatchService {
       }
     }
 
-    const values = dto.events.map((e) => {
+    const values: Partial<ActivityWatchEvent>[] = dto.events.map((e) => {
       const startTime = new Date(e.timestamp);
       const endTime = new Date(startTime.getTime() + e.duration * 1000);
       return {
-        userId: userId ?? 'unknown',
+        userId,
         bucketId: dto.bucketId,
         eventType: e.data?.app ? 'window' : e.data?.status ? 'afk' : 'unknown',
         data: e.data,
@@ -56,9 +58,8 @@ export class ActivityWatchService {
       };
     });
 
-    const saved = await this.repo.save(values as any[]);
-    const savedArr = Array.isArray(saved) ? saved : [saved];
-    const ids = savedArr.map((r) => r.id as string);
+    const saved = await this.repo.save(values);
+    const ids = saved.map((r) => r.id);
     return { inserted: ids.length, ids };
   }
 
@@ -68,13 +69,18 @@ export class ActivityWatchService {
     return found;
   }
 
-  async findMany(q: QueryActivityWatchEventsDto): Promise<PageResult<ActivityWatchEvent>> {
+  async findMany(
+    q: QueryActivityWatchEventsDto,
+    requestUserId: string,
+    isAdmin: boolean,
+  ): Promise<PageResult<ActivityWatchEvent>> {
     const page = q.page ?? 1;
     const limit = Math.max(1, Math.min(500, q.limit ?? 100));
     const skip = (page - 1) * limit;
 
     const where: any = {};
-    if (q.userId) where.userId = q.userId;
+    // Non-admins can only see their own events; admins may filter by any userId or see all
+    where.userId = isAdmin && q.userId ? q.userId : requestUserId;
     if (q.bucketId) where.bucketId = q.bucketId;
 
     const MAX_DATE = new Date(8640000000000000);
@@ -88,26 +94,20 @@ export class ActivityWatchService {
       where.startTime = Between(MIN_DATE, new Date(q.to));
     }
 
-    const items = await this.repo.find({
+    const [items, total] = await this.repo.findAndCount({
       where,
       order: { startTime: 'DESC' as const },
       skip,
       take: limit,
     });
 
-    let total: number;
-    try {
-      total = await (this.repo as any).count({ where });
-    } catch {
-      total = (await this.repo.find({ where })).length;
-    }
-
     return { items, page, limit, total };
   }
 
-  async scanForAnomalies(q: ScanActivityDto) {
+  async scanForAnomalies(q: ScanActivityDto, requestUserId: string, isAdmin: boolean) {
     const where: any = {};
-    if (q.userId) where.userId = q.userId;
+    // Non-admins can only scan their own events
+    where.userId = isAdmin && q.userId ? q.userId : requestUserId;
     if (q.bucketId) where.bucketId = q.bucketId;
 
     const MAX_DATE = new Date(8640000000000000);
