@@ -53,7 +53,7 @@ const SERVICES = [
   // suggestions-service (3020), admin-service (3024),
   // affiliate-referral-service (3025), billing-service (3026),
   // earnings-service (3027), payout-service (3028), pricing-service (3029),
-  // wallet-service (3030), wire-review-service (3031)
+  // wallet-service (3030), wire-review-service (3031), legal-service (3032)
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway' };
@@ -78,6 +78,7 @@ const gatewayEnv = {
   MODERATION_SERVICE_URL:       'http://localhost:3014',
   PORTFOLIO_SERVICE_URL:        'http://localhost:3015',
   AUTOCOMPLETE_SERVICE_URL:     'http://localhost:3016',
+  LEGAL_SERVICE_URL:            'http://localhost:3032',
   TIME_TRACKING_SERVICE_URL:    'http://localhost:3017',
   TRANSACTION_SERVICE_URL:      'http://localhost:3018',
   SUGGESTIONS_SERVICE_URL:      'http://localhost:3020',
