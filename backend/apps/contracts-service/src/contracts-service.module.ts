@@ -26,7 +26,7 @@ import { HealthController } from './controllers/health.controller';
         url: config.get<string>('DATABASE_URL'),
         entities: [Contract, ContractGroup, ContractAudit],
         synchronize: config.get('NODE_ENV') !== 'production',
-        ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
+        ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         migrationsRun: true,
       }),

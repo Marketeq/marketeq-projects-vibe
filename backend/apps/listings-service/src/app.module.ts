@@ -25,6 +25,7 @@ import { JobsModule } from './jobs/job.module';
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
+      schema: process.env.DATABASE_SCHEMA || 'listings',
       ssl: false,
       autoLoadEntities: true,
       synchronize: process.env.LISTINGS_DATABASE_SYNCHRONIZE === 'true',

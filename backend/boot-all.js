@@ -34,19 +34,18 @@ const GATEWAY_PORT = process.env.PORT || '10000';
 // Keep this list in sync with proxy.service.ts route map.
 // Active services to run at startup. All 27 are compiled in the Docker image,
 // but only these are started to stay within the 512 MB Render Starter plan.
-// The last known stable set was 7 services (commit 9033bf4d). Adding contracts
-// and category brings it to 9 + gateway = 10 processes, well within 512 MB.
-// No heap cap — let Node use its natural memory footprint (~30-50 MB each).
+// 3 services + gateway = 4 processes. Each gets --max-old-space-size=128
+// to cap heap at ~128 MB each (4 × 128 = 512 MB — OS overhead keeps RSS lower).
+// 5 services and 9 services both OOM-killed at 512 MB (2026-05-14).
 const SERVICES = [
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
   { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
-  { name: 'notification-service',       port: '3006', dir: 'apps/notification-service' },
-  { name: 'contracts-service',          port: '3010', dir: 'apps/contracts-service' },
-  { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service' },
-  { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service' },
-  { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service' },
-  { name: 'category-service',           port: '3023', dir: 'apps/category-service' },
+  // Reduced to 3 core services after repeated OOM kills at 512 MB.
+  // Re-enable after Render plan upgrade:
+  // notification-service (3006), category-service (3023),
+  // contracts-service (3010), invitations-service (3013),
+  // content-moderation-service (3014), time-tracking-service (3017),
   // Dormant until Render plan upgrade (compiled but not started):
   // messaging-service (3005), search-service (3007), algolia-service (3008),
   // checkout-service (3009), favorites-service (3012), portfolio-service (3015),
@@ -54,7 +53,7 @@ const SERVICES = [
   // suggestions-service (3020), admin-service (3024),
   // affiliate-referral-service (3025), billing-service (3026),
   // earnings-service (3027), payout-service (3028), pricing-service (3029),
-  // wallet-service (3030), wire-review-service (3031)
+  // wallet-service (3030), wire-review-service (3031), legal-service (3032)
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway' };
@@ -79,6 +78,7 @@ const gatewayEnv = {
   MODERATION_SERVICE_URL:       'http://localhost:3014',
   PORTFOLIO_SERVICE_URL:        'http://localhost:3015',
   AUTOCOMPLETE_SERVICE_URL:     'http://localhost:3016',
+  LEGAL_SERVICE_URL:            'http://localhost:3032',
   TIME_TRACKING_SERVICE_URL:    'http://localhost:3017',
   TRANSACTION_SERVICE_URL:      'http://localhost:3018',
   SUGGESTIONS_SERVICE_URL:      'http://localhost:3020',
@@ -129,7 +129,7 @@ function launchService(svc, env, isGateway = false) {
     return null;
   }
 
-  const child = spawn('node', [distMain], {
+  const child = spawn('node', ['--max-old-space-size=128', distMain], {
     env: svcEnv,
     stdio: 'inherit',
   });

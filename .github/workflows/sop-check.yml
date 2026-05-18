@@ -250,6 +250,12 @@ jobs:
             add "🔥 **\`.env.local.example\` modified on a PR targeting \`$BASE_REF\`** — local template changes must target the \`dev-main\` branch. See DEVOPS_SOP §5."
           fi
 
+          # --- Section 9a: Hardcoded SSL based on NODE_ENV ---
+          SSL_HARDCODED=$(git diff "$BASE_SHA"...HEAD -- 'backend/apps/**/*.ts' 2>/dev/null | grep -E '^\+[^+].*ssl:.*NODE_ENV.*production' || true)
+          if [ -n "$SSL_HARDCODED" ]; then
+            add "🔥 **Hardcoded SSL based on \`NODE_ENV\`** — database SSL must be driven by \`DATABASE_SSL_ENABLED\` env var, not \`NODE_ENV === 'production'\`. Our Supabase VPS does not support SSL. Use: \`ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false\`. See DEVOPS_SOP §6."
+          fi
+
           # --- Section 9: New @ts-ignore without justification ---
           TS_IGNORE_HITS=$(git diff "$BASE_SHA"...HEAD -- '*.ts' '*.tsx' 2>/dev/null | grep -E '^\+[^+].*@ts-ignore' | grep -vE '@ts-ignore.*--' || true)
           if [ -n "$TS_IGNORE_HITS" ]; then

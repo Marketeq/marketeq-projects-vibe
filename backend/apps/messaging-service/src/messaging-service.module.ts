@@ -34,7 +34,7 @@ import { BlocksModule } from './blocks/blocks.module';
       synchronize: process.env.NODE_ENV !== 'production',
       migrationsRun: true,
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      ssl: (process.env.DATABASE_SSL_ENABLED ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
       extra: { options: '-c timezone=UTC' },
     }),
     TypeOrmModule.forFeature([Thread, ThreadUserState, ThreadList, ThreadListAssignment, Message, Attachment, ConversationKey]),

@@ -48,7 +48,7 @@ export class ManualTimeService {
     if (role !== 'admin' && entry.userId !== userId) {
       throw new ForbiddenException('Access denied');
     }
-    await this.repo.remove(entry);
+    await this.repo.softRemove(entry);
   }
 
   async getPending(): Promise<ManualTime[]> {
