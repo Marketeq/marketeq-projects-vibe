@@ -23,9 +23,6 @@ export class TalentProfile {
   @Column({ type: 'varchar', length: 180 })
   name: string;
 
-  @Column({ type: 'varchar', length: 180, nullable: true })
-  headline: string | null;
-
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'" })
   jobTitles: { headline: string; rate: number }[];
 
@@ -77,6 +74,7 @@ export class TalentProfile {
     startDate: string | null;
     endDate: string | null;
     description: string | null;
+    skills: string[];
   }[];
 
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'" })

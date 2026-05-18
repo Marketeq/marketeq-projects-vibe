@@ -9,5 +9,5 @@ export const AppDataSource = new DataSource({
   entities: [PlatformRateAverage, CurrencyRate],
   migrations: ['apps/pricing-service/src/migrations/*.ts'],
   synchronize: false,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: (process.env.DATABASE_SSL_ENABLED ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
 });

@@ -22,6 +22,7 @@ RUN npx nest build content-moderation-service \
  && npx nest build earnings-service \
  && npx nest build favorites-service \
  && npx nest build invitations-service \
+ && npx nest build legal-service \
  && npx nest build listings-service \
  && npx nest build messaging-service \
  && npx nest build notification-service \

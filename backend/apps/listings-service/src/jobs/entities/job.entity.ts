@@ -48,6 +48,15 @@ export class Job {
   @Column()
   createdBy: string;
 
+  @Column({ type: 'varchar', nullable: true, unique: true })
+  payloadId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  editorialLabel: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  featured: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

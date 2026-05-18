@@ -18,7 +18,7 @@ import { FavoritesController } from './controllers/favorites.controller';
         url: config.get<string>('DATABASE_URL'),
         entities: [Favorite, FavoriteGroup],
         synchronize: config.get('NODE_ENV') !== 'production',
-        ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
+        ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
       }),
     }),
     TypeOrmModule.forFeature([Favorite, FavoriteGroup]),
