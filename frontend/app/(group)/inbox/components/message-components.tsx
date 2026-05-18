@@ -164,9 +164,10 @@ const MessageAttachmentView = ({
   }
 }) => {
   const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [imageBroken, setImageBroken] = useState(false)
   const safeAttachmentUrl = toSafeHttpUrl(attachment.fileUrl)
   const isImage = attachment.fileType?.startsWith("image/")
-  if (isImage && safeAttachmentUrl) {
+  if (isImage && safeAttachmentUrl && !imageBroken) {
     return (
       <div className="flex flex-col gap-y-1">
         {/* Image preview frame matches storybook's `BubbleWithPicture`:
@@ -182,6 +183,7 @@ const MessageAttachmentView = ({
             src={safeAttachmentUrl}
             alt={attachment.fileName || "image"}
             className="size-full object-cover"
+            onError={() => setImageBroken(true)}
           />
         </button>
         {attachment.fileName && (

@@ -9,7 +9,7 @@ export interface UserChannelHandlers {
   onThreadStateChanged?: (evt: { threadId: string; patch: ThreadStatePatch }) => void
   onListAssignmentsChanged?: (evt: { threadId: string; listIds: string[] }) => void
   onListsChanged?: () => void
-  onMessageRead?: (evt: { messageId: string }) => void
+  onMessageRead?: (evt: { messageId: string; readerId?: string }) => void
 }
 
 /**
@@ -60,6 +60,10 @@ export function useUserChannel(handlers: UserChannelHandlers) {
           ref.current.onListsChanged?.()
           break
         case "message:read":
+          // Doc 05 EC-7.5: ignore read receipts where readerId === me.
+          // Backend should only fan-out to the sender, but be defensive
+          // in case backend ever publishes to the wrong channel.
+          if (msg.data?.readerId && msg.data.readerId === currentUser.id) break
           ref.current.onMessageRead?.(msg.data)
           break
       }
