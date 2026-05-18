@@ -38,7 +38,6 @@ export class TalentProfileSyncService {
       sourceId,
       username: event.username,
       name: event.name,
-      headline: event.headline ?? null,
       availability: event.availability ?? null,
       rate: event.rate ?? null,
       jobTitles: event.jobTitles ?? [],
@@ -48,7 +47,7 @@ export class TalentProfileSyncService {
       languages: event.languages ?? [],
       certifications: event.certifications ?? [],
       education: event.education ?? [],
-      workExperience: event.workExperience ?? [],
+      workExperience: (event.workExperience ?? []).map((w: any) => ({ ...w, skills: w.skills ?? [] })),
       portfolio: (event.portfolio ?? []).map((p) => ({
         ...p,
         thumbnailUrl: null,

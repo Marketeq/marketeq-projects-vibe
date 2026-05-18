@@ -13,6 +13,7 @@ import { CategoryEntity } from './entities/category.entity';
 import { TagEntity } from './entities/tag.entity';
 import { CategoryDto } from './dto/category.dto';
 import { ContentService } from '../content/content.service';
+import { CategoryEventPublisher } from './category-event.publisher';
 import {
   checkDrugs,
   checkGambling,

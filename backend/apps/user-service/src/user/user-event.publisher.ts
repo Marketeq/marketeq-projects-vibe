@@ -28,7 +28,45 @@ export class UserEventPublisher {
       timezone: user.timezone,
       availability: user.availability,
       rate: user.rate,
-      // Pass a source tag to prevent infinite sync loops
+      jobTitles: user.jobTitles,
+      skills: (user.skills || []).map((s) => ({
+        name: s.name,
+        proficiency: s.proficiency,
+      })),
+      languages: (user.languages || []).map((l) => ({
+        language: l.name,
+        proficiency: l.fluency,
+      })),
+      certifications: (user.certifications || []).map((c) => ({
+        title: c.name,
+        organization: c.issuer,
+        dateAwarded: c.issueDate,
+        expirationDate: c.expirationDate,
+        noExpiration: !c.expirationDate,
+        credentialsId: c.credentialId,
+        credentialsUrl: c.credentialUrl,
+        skills: [],
+      })),
+      education: (user.educations || []).map((e) => ({
+        institution: e.school,
+        degree: e.degree,
+        graduationYear: e.endYear ?? null,
+      })),
+      workExperience: (user.experiences || []).map((w) => ({
+        role: w.title,
+        company: w.company,
+        startDate: w.startDate,
+        endDate: w.endDate,
+        description: w.description,
+      })),
+      portfolio: (user.portfolioItems || []).map((p) => ({
+        title: p.name,
+        url: p.url,
+        description: p.description,
+      })),
+      industryExpertise: (user.industries || []).map((i) => i.industry),
+      userType: user.userType,
+      status: user.isActive ? 'active' : 'inactive',
       source: 'user-service',
       timestamp: new Date().toISOString(),
     };

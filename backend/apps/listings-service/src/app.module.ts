@@ -12,6 +12,9 @@ import { ProjectsModule } from './projects/projects.module';
 import { TeamsModule } from './teams/team.module';
 import { ServicesModule } from './services/service.module';
 import { MediaModule } from './media/media.module';
+import { TestimonialsModule } from './testimonials/testimonials.module';
+import { CmsBackfillModule } from './cms-backfill/cms-backfill.module';
+import { JobsModule } from './jobs/job.module';
 
 @Module({
   imports: [
@@ -38,6 +41,9 @@ import { MediaModule } from './media/media.module';
     TeamsModule,
     ServicesModule,
     MediaModule,
+    TestimonialsModule,
+    CmsBackfillModule,
+    JobsModule,
   ],
   controllers: [AppController, ListingsController],
   providers: [],

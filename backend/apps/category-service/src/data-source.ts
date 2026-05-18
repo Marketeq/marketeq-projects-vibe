@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 
 import { CategoryEntity } from './app/entities/category.entity';
 import { TagEntity } from './app/entities/tag.entity';
+import { CategoryPageEntity } from './app/entities/category-page.entity';
 
 const envPaths = [
   resolve(process.cwd(), 'apps/category-service/.env'),
@@ -20,7 +21,7 @@ export const AppDataSource = new DataSource({
   synchronize: false,
   logging: process.env.NODE_ENV !== 'production',
 
-  entities: [CategoryEntity, TagEntity],
+  entities: [CategoryEntity, TagEntity, CategoryPageEntity],
   migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
   migrationsTableName: 'migrations',
 

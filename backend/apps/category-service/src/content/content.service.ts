@@ -1,10 +1,99 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnApplicationBootstrap } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { CategoryPageEntity } from "../app/entities/category-page.entity";
 import { cmsClient, findCmsCategoryIdByUuid, getAllPages } from "./cms-client";
 import { CONTENT_TYPES, ContentTypeConfig } from "./content.types";
 
+const BOOT_DELAY_MS = 8_000;
+
+function levelStringToInt(level: any): number {
+  if (typeof level === 'number') return level;
+  const map: Record<string, number> = { l1: 1, l2: 2, l3: 3 };
+  return map[String(level).toLowerCase()] ?? 0;
+}
+
 @Injectable()
-export class ContentService {
+export class ContentService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ContentService.name);
+
+  constructor(
+    @InjectRepository(CategoryPageEntity)
+    private readonly categoryPageRepo: Repository<CategoryPageEntity>,
+    private readonly config: ConfigService,
+  ) {}
+
+  async onApplicationBootstrap(): Promise<void> {
+    await new Promise((r) => setTimeout(r, BOOT_DELAY_MS));
+    await this.backfillFromCms();
+  }
+
+  private async backfillFromCms(): Promise<void> {
+    try {
+      const docs = await getAllPages<any>('/category-pages', { depth: 1, draft: false });
+      this.logger.log(`[CmsBackfill:category-pages] Syncing ${docs.length} docs from CMS`);
+      let upserted = 0;
+      let failed = 0;
+
+      for (const doc of docs) {
+        const categoryUuid = doc.categoryRef?.categoryId;
+        if (!categoryUuid || !doc.path) {
+          this.logger.warn(`[CmsBackfill:category-pages] Skipping doc id=${doc.id} — missing categoryId or path`);
+          continue;
+        }
+        try {
+          const heroBanner = doc.heroBanner
+            ? {
+                title: doc.heroBanner.title ?? null,
+                subtitle: doc.heroBanner.subtitle ?? null,
+                imageUrl: doc.heroBanner.image?.url ?? null,
+              }
+            : null;
+          await this.upsertCategoryPage({
+            categoryUuid,
+            path: doc.path,
+            displayTitle: doc.displayTitle,
+            level: levelStringToInt(doc.level),
+            heroBanner,
+            intro: doc.intro ?? null,
+            faq: doc.faq ?? [],
+            featured: doc.featured ?? false,
+          });
+          upserted++;
+        } catch (err: any) {
+          failed++;
+          this.logger.error(`[CmsBackfill:category-pages] Failed for path="${doc.path}": ${err.message}`);
+        }
+      }
+
+      this.logger.log(`[CmsBackfill:category-pages] Done — upserted: ${upserted}, failed: ${failed}`);
+    } catch (err: any) {
+      this.logger.error(`[CmsBackfill:category-pages] Aborted: ${err.message}`);
+    }
+  }
+
+  async findCategoryPageByPath(path: string): Promise<CategoryPageEntity | null> {
+    return this.categoryPageRepo.findOne({ where: { path } });
+  }
+
+  async upsertCategoryPage(data: Partial<CategoryPageEntity> & { path: string }): Promise<void> {
+    const existing = await this.categoryPageRepo.findOne({ where: { path: data.path } });
+    if (existing) {
+      await this.categoryPageRepo.update(existing.id, data);
+      this.logger.log(`Updated category page: ${data.path}`);
+    } else {
+      const created = this.categoryPageRepo.create(data);
+      await this.categoryPageRepo.save(created);
+      this.logger.log(`Created category page: ${data.path}`);
+    }
+  }
+
+  async deleteCategoryPageByPath(path: string): Promise<void> {
+    await this.categoryPageRepo.delete({ path });
+    this.logger.log(`Deleted category page: ${path}`);
+  }
+
 
   private isNotFound(err: any) {
     return err?.response?.status === 404;

@@ -9,6 +9,8 @@ import { CategoryModule } from './category.module';
 import { CategoryPagesModule } from './category-pages/category-pages.module';
 import { CategoryEntity } from './entities/category.entity';
 import { TagEntity } from './entities/tag.entity';
+import { CategoryPageEntity } from './entities/category-page.entity';
+import { ContentModule } from '../content/content.module';
 // import { SupabaseModule } from '../supabase/supabase.module';
 
 const envPaths = [
@@ -46,7 +48,7 @@ const envPaths = [
                 database: config.get<string>('DATABASE_NAME'),
               }),
 
-          entities: [CategoryEntity, TagEntity],
+          entities: [CategoryEntity, TagEntity, CategoryPageEntity],
           autoLoadEntities: true,
           synchronize: false,
 
@@ -58,7 +60,8 @@ const envPaths = [
     }),
 
     ScheduleModule.forRoot(),
-    CategoryModule,          // ← All category stuff is here
+    ContentModule,
+    CategoryModule,
     CategoryPagesModule,
   ],
 })
