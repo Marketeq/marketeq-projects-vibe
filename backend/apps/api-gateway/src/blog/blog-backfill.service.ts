@@ -80,12 +80,12 @@ export class BlogBackfillService implements OnApplicationBootstrap {
       authorId: typeof doc.author === 'object' ? doc.author?.id : (doc.author ?? null),
       coverImageUrl: typeof doc.coverImage === 'object' ? (doc.coverImage?.url ?? null) : (doc.coverImage ?? null),
       status: doc.status ?? 'draft',
-      publishedAt: doc.publishedAt ? new Date(doc.publishedAt) : null,
+      publishedAt: doc.publishedAt ? new Date(doc.publishedAt) : undefined,
     };
     if (existing) {
       await this.blogRepo.update(existing.id, payload);
     } else {
-      await this.blogRepo.save(this.blogRepo.create(payload));
+      await this.blogRepo.save(this.blogRepo.create(payload as any));
     }
   }
 }

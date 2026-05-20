@@ -1,5 +1,6 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
+import { TypeOrmModule } from '@nestjs/typeorm'
 import { HttpModule } from '@nestjs/axios'
 import { JwtModule } from '@nestjs/jwt'
 import { PassportModule } from '@nestjs/passport'
@@ -20,6 +21,18 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['apps/api-gateway/.env', '.env'],
+    }),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres' as const,
+        url: config.get<string>('DATABASE_URL'),
+        autoLoadEntities: true,
+        synchronize: false,
+        ssl: (config.get<string>('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true'
+          ? { rejectUnauthorized: false }
+          : false,
+      }),
     }),
     HttpModule.register({ timeout: 30000 }),
     HomepageModule,

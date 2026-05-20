@@ -27,7 +27,7 @@ export class BlogPost {
   status: string;
 
   @Column({ type: 'timestamp', nullable: true })
-  publishedAt: Date;
+  publishedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;
