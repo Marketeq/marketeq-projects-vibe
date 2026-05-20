@@ -14,3 +14,7 @@ npm-debug.log
 !.env.example
 
 .DS_Store
+
+# Non-NestJS services (cms-service ~1GB, scheduling-service ~10GB)
+apps/cms-service
+apps/scheduling-service
