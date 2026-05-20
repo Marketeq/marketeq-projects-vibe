@@ -1,40 +1,49 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-COPY . .
-RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
+COPY package.json package-lock.json nest-cli.json tsconfig.json ./
 RUN npm ci --include=dev --legacy-peer-deps
 
-# Build all 27 services. Split into 3 batches (~9 each) with separate
-# RUN layers for memory isolation between batches.
+COPY apps/ apps/
+COPY libs/ libs/
+COPY boot-all.js ./
+RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
+
+# Build all 27 services. Split into 5 smaller batches for memory isolation
+# on Render Starter (512 MB). NODE_OPTIONS caps V8 heap to stay under limit.
+ENV NODE_OPTIONS="--max-old-space-size=384"
+
 RUN npx nest build admin-service \
  && npx nest build affiliate-referral-service \
  && npx nest build algolia-service \
  && npx nest build api-gateway \
- && npx nest build auth-service \
- && npx nest build autocomplete-service \
+ && npx nest build auth-service
+
+RUN npx nest build autocomplete-service \
  && npx nest build billing-service \
  && npx nest build category-service \
- && npx nest build checkout-service
+ && npx nest build checkout-service \
+ && npx nest build content-moderation-service
 
-RUN npx nest build content-moderation-service \
- && npx nest build contracts-service \
+RUN npx nest build contracts-service \
  && npx nest build earnings-service \
  && npx nest build favorites-service \
  && npx nest build invitations-service \
- && npx nest build legal-service \
- && npx nest build listings-service \
+ && npx nest build legal-service
+
+RUN npx nest build listings-service \
  && npx nest build messaging-service \
  && npx nest build notification-service \
- && npx nest build payout-service
+ && npx nest build payout-service \
+ && npx nest build portfolio-service
 
-RUN npx nest build portfolio-service \
- && npx nest build pricing-service \
+RUN npx nest build pricing-service \
  && npx nest build search-service \
  && npx nest build suggestions-service \
  && npx nest build time-tracking-service \
- && npx nest build transaction-service \
- && npx nest build user-service \
+ && npx nest build transaction-service
+
+RUN npx nest build user-service \
  && npx nest build wallet-service \
  && npx nest build wire-review-service
 
