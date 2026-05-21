@@ -5,7 +5,6 @@
   "workspaces": [
     "apps/*",
     "!apps/cms-service",
-    "!apps/scheduling-service",
     "shared"
   ],
   "scripts": {
