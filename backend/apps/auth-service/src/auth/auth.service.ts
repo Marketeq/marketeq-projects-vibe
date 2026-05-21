@@ -74,6 +74,8 @@ type SyncRetryItem = {
 const normalizeKey = (value?: string) =>
   value ? value.replace(/\\n/g, '\n') : value;
 
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
+
 const parseExpiresIn = (value: string): number | StringValue =>
   /^\d+$/.test(value) ? Number(value) : (value as StringValue);
 
@@ -137,8 +139,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   async register(dto: RegisterDto, userAgent = '', ipAddress = '') {
+    const email = normalizeEmail(dto.email);
+
     const existingUser = await this.userRepository.findOne({
-      where: { email: dto.email },
+      where: { email },
     });
 
     if (existingUser) {
@@ -149,7 +153,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     const user = this.userRepository.create({
       username: dto.username,
-      email: dto.email,
+      email,
       password: hashedPassword,
       provider: 'EMAIL',
       hasPassword: true,
@@ -187,8 +191,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   async registerEmail(dto: RegisterEmailDto, userAgent = '', ipAddress = '') {
+    const email = normalizeEmail(dto.email);
+
     const existingUser = await this.userRepository.findOne({
-      where: { email: dto.email },
+      where: { email },
     });
 
     if (existingUser) {
@@ -201,7 +207,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     const user = this.userRepository.create({
       username,
-      email: dto.email,
+      email,
       password: hashedPassword,
       provider: 'EMAIL',
       hasPassword: false,
