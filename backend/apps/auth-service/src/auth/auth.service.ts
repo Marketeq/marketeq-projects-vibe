@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scryptSync } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, Not, Repository } from 'typeorm';
+import { LessThan, Not, QueryFailedError, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
@@ -155,7 +155,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       hasPassword: true,
     });
 
-    await this.userRepository.save(user);
+    try {
+      await this.userRepository.save(user);
+    } catch (error) {
+      this.throwDuplicateEmailIfNeeded(error);
+      throw error;
+    }
 
     try {
       await this.syncUserProfile(user);
@@ -202,7 +207,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       hasPassword: false,
     });
 
-    await this.userRepository.save(user);
+    try {
+      await this.userRepository.save(user);
+    } catch (error) {
+      this.throwDuplicateEmailIfNeeded(error);
+      throw error;
+    }
 
     try {
       await this.syncUserProfile(user);
@@ -235,6 +245,41 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     return { available: !existingUser };
+  }
+
+  private throwDuplicateEmailIfNeeded(error: unknown): never | void {
+    if (this.isDuplicateEmailError(error)) {
+      throw new BadRequestException('User already exists');
+    }
+  }
+
+  private isDuplicateEmailError(error: unknown): boolean {
+    if (!(error instanceof QueryFailedError)) {
+      return false;
+    }
+
+    const driverError = error.driverError as
+      | {
+          code?: string;
+          constraint?: string;
+          detail?: string;
+          message?: string;
+        }
+      | undefined;
+
+    if (driverError?.code !== '23505') {
+      return false;
+    }
+
+    const constraint = driverError.constraint?.toLowerCase() ?? '';
+    const detail = driverError.detail?.toLowerCase() ?? '';
+    const message = driverError.message?.toLowerCase() ?? '';
+
+    return (
+      constraint.includes('email') ||
+      detail.includes('(email)=') ||
+      message.includes('(email)=')
+    );
   }
 
   async updateUsername(
