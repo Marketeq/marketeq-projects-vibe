@@ -18,19 +18,33 @@ export const syncJobListing: CollectionAfterChangeHook = async ({ doc, req, oper
 
   try {
     const res = await fetch(
-      `${serviceUrl.replace(/\/$/, '')}/internal/jobs/${encodeURIComponent(sourceId)}/cms-sync`,
+      `${serviceUrl.replace(/\/$/, '')}/internal/job-listings/${encodeURIComponent(sourceId)}/cms-sync`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-internal-token': token },
         body: JSON.stringify({
-          title: doc.title,
-          slug: doc.slug,
-          status: doc.status,
-          featured: doc.featured,
-          editorialLabel: doc.editorialLabel,
-          excerpt: doc.excerpt,
-          jobType: doc.jobType,
-          location: doc.location,
+          title:      doc.title,
+          jobType:    doc.jobType,
+          ndaEnabled: doc.ndaEnabled,
+          industries: doc.industries,
+          languages:  doc.languages,
+          teamMemberRows: (doc.teamMemberRows ?? []).map((r: any) => ({
+            roleTitle:            r.roleTitle,
+            location:             r.location             ?? null,
+            experienceLevel:      r.experienceLevel      ?? null,
+            workSchedule:         r.workSchedule         ?? 'full_time',
+            customHours:          r.customHours          ?? null,
+            customFrequency:      r.customFrequency      ?? null,
+            contractLengthMonths: r.contractLengthMonths ?? null,
+            assignedUsername:     r.assignedUsername     ?? null,
+          })),
+          roleDescriptions: (doc.teamMemberRows ?? []).map((r: any) => ({
+            roleTitle:        r.roleTitle,
+            overview:         r.description?.overview         ?? null,
+            benefits:         r.description?.benefits         ?? null,
+            responsibilities: r.description?.responsibilities ?? null,
+            skills:           r.description?.skills           ?? [],
+          })),
         }),
       },
     );
