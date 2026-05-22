@@ -7,7 +7,7 @@
 **Companion doc:** `docs/DEVOPS_SOP.md` owns all deployment, branch topology, env template, and QA promotion rules. This document stays focused on code review. Do not add deployment rules here.
 **Last updated:** 2026-05-22
 
-> **CI/CD Migration (2026-05-22):** All GitHub Actions workflows have been disabled and replaced by 12 Jenkins pipelines (self-hosted at 72.61.77.231:8080). All `.github/workflows/*.yml` references below now refer to their Jenkins pipeline equivalents. Old docs archived in `docs/md/Deployment (CI-CD)/old devops docs/`.
+> **CI/CD Split (2026-05-22):** PR gate checks (`sop-check`, `ai-breakage-check`, `gitleaks`, `code-review`, `login-gate`) run on **GitHub Actions**. Post-merge enforcement (`post-merge-audit`, `login-violation-alert`) runs on **both** GitHub Actions and Jenkins. Post-deploy automation (deployments, smoke tests, staging sync, stale branch cleanup) runs on **Jenkins** (72.61.77.231:8080). Old docs archived in `docs/md/Deployment (CI-CD)/old devops docs/`.
 
 This is the single source of truth for how pull requests are reviewed, merged, and cleaned up in this repository. Nothing in this document is optional. If any step cannot be completed, the PR **does not merge**.
 
@@ -70,7 +70,7 @@ Once local login works against a fresh `.env.local` copied from `frontend/.env.l
 
 - **No hardcoded env values** in login code. Block any PR that adds a literal `*.onrender.com` URL, a literal `sameSite:` / `secure:` flag, a literal CORS origin string, or a literal JWT secret inside the frozen files. All values come from `process.env.*`.
 
-- Jenkins `sop-check` pipeline auto-labels frozen-file PRs `login-touched`, posts a LOGIN TOUCHED sticky comment, and auto-requests @CTorres9800.
+- GitHub Actions `sop-check` workflow auto-labels frozen-file PRs `login-touched`, posts a LOGIN TOUCHED sticky comment, and auto-requests @CTorres9800.
 
 **The bidirectional invariant (said plainly, because this is the real pain):**
 
@@ -78,7 +78,7 @@ Once local login works against a fresh `.env.local` copied from `frontend/.env.l
 > If login works on Vercel dev / staging / live, a PR must not break login locally.
 > "Fixing" login in one environment by hardcoding a value that only works there is **the bug**, not the fix.
 
-Every login regression in this repo's history has been a violation of this invariant: someone changed a hardcoded cookie flag, or a hardcoded backend URL, or a hardcoded CORS origin, in one environment to make that environment work — and silently broke the others. The only code that satisfies the invariant is code that reads every environment-specific value from `process.env.*` and has **zero** literals for URLs, cookie flags, CORS origins, or JWT material in the frozen files. This is what the Jenkins `sop-check` pipeline blocks, in both directions, on every PR.
+Every login regression in this repo's history has been a violation of this invariant: someone changed a hardcoded cookie flag, or a hardcoded backend URL, or a hardcoded CORS origin, in one environment to make that environment work — and silently broke the others. The only code that satisfies the invariant is code that reads every environment-specific value from `process.env.*` and has **zero** literals for URLs, cookie flags, CORS origins, or JWT material in the frozen files. This is what the GitHub Actions `sop-check` workflow blocks, in both directions, on every PR.
 
 **Everything else about the login/env topology — Render wiring, Vercel deploy gating, env template ownership, branch-to-template mapping — lives in `docs/DEVOPS_SOP.md`. Do not duplicate those rules here.**
 
@@ -332,7 +332,7 @@ Two contributors independently touch the same file — or touch different files 
 **This is the bug class the AI Breakage Detector (§9.6) and directory-scoped CODEOWNERS exist to catch.** Every reviewer must also manually apply §3.3 and specifically compare the full new version of each changed file against the `dev-main` version to verify no existing fix was lost in a rewrite.
 
 ### 8.10 Broken login after a cross-environment "fix" (the #2 recurring bug)
-A PR modifies `sign-in/page.tsx`, `contexts/auth.tsx`, `auth-service`, or a guard decorator to "fix login" in one environment. The feature work is fine for the author's environment but silently breaks login in the others — typically because the fix hardcoded a cookie flag, a backend URL, a CORS origin, or a JWT setting that only works in the author's environment. Every instance of this bug in the repo's history has been a violation of the bidirectional invariant in §1.4: *fixing login in any one environment must never break any other environment*. PRs touching login-frozen files are automatically labeled `login-touched`, post a sentinel comment, and auto-request CTO review. Jenkins `sop-check` also fails the PR on any hardcoded URL, cookie flag, CORS origin, or JWT secret in a frozen file.
+A PR modifies `sign-in/page.tsx`, `contexts/auth.tsx`, `auth-service`, or a guard decorator to "fix login" in one environment. The feature work is fine for the author's environment but silently breaks login in the others — typically because the fix hardcoded a cookie flag, a backend URL, a CORS origin, or a JWT setting that only works in the author's environment. Every instance of this bug in the repo's history has been a violation of the bidirectional invariant in §1.4: *fixing login in any one environment must never break any other environment*. PRs touching login-frozen files are automatically labeled `login-touched`, post a sentinel comment, and auto-request CTO review. GitHub Actions `sop-check` workflow also fails the PR on any hardcoded URL, cookie flag, CORS origin, or JWT secret in a frozen file.
 
 ---
 
@@ -341,7 +341,7 @@ A PR modifies `sign-in/page.tsx`, `contexts/auth.tsx`, `auth-service`, or a guar
 GitHub's classic branch protection, rulesets, and native push protection **all require GitHub Team or GHAS** on private organization repos. This repo is on the free org plan, so we enforce protection through **CI checks and conventions** instead. Everything below is live as of 2026-04-11.
 
 ### 9.1 Gitleaks secret scanning — **ENFORCED**
-- **Pipeline:** Jenkins `gitleaks`
+- **Workflow:** GitHub Actions `gitleaks`
 - **Config:** `.gitleaks.toml` (extends default ruleset + adds PEM private-key and `.env` file rules)
 - **Triggers:** every PR to any branch, plus every push to `dev-main`, `staging`, `live-mvp`
 - **Behavior:** fails the check if any committed secret is detected. Reviewer **must not merge** a PR with a failed gitleaks check, regardless of the author or urgency.
@@ -371,12 +371,12 @@ This prevents developers from accidentally staging key material. It does not sto
 - **Limitation:** because classic branch protection is paywalled on free org plans, the team review is **requested but not required**. A reviewer with write access could technically click "Merge" without their approval. SOP rule §1 treats the team review as **mandatory** by convention.
 
 ### 9.4 AI Code Review — **ENFORCED (advisory)**
-- **Pipeline:** Jenkins `code-review`
+- **Workflow:** GitHub Actions `code-review`
 - **Triggers:** PRs targeting `dev-main`, `staging`, or `live-mvp`
 - **Behavior:** posts an AI-generated review comment using Claude Sonnet 4.6. Treat its findings as a second opinion, not as authoritative.
 
 ### 9.6 Mechanical SOP Checker — **ENFORCED (blocking)**
-- **Pipeline:** Jenkins `sop-check`
+- **Pipeline:** GitHub Actions `sop-check` workflow
 - **Triggers:** every PR (opened, synchronize, reopened, edited)
 - **Behavior:** runs ~10 mechanical checks derived from this SOP and fails the check on any violation. Posts a single consolidated comment listing every violation with SOP section references. Specifically blocks:
   - Committed `*.pem`, `*.key`, `*.p12`, `*.pfx`, `.env`, `.env.*` files
@@ -395,7 +395,7 @@ This prevents developers from accidentally staging key material. It does not sto
 - **Login sentinel:** if any login-frozen file is touched, the workflow also auto-labels the PR `login-touched`, auto-requests @CTorres9800 as a reviewer, and posts a sticky 🚨 LOGIN TOUCHED comment regardless of confirmation status. See §1.4.
 
 ### 9.7 AI Breakage Detector — **ENFORCED (blocking)**
-- **Pipeline:** Jenkins `ai-breakage-check`
+- **Workflow:** GitHub Actions `ai-breakage-check`
 - **Triggers:** every PR (opened, synchronize, reopened)
 - **Behavior:** purpose-built to catch §8.9 silent regressions. On each PR it:
   1. Gets the full diff
@@ -413,7 +413,7 @@ This prevents developers from accidentally staging key material. It does not sto
 - **Behavior:** every PR automatically requests review from the owner(s) of every directory it touches. Critical paths (sign-in, auth, profile, onboarding, publish-project, top-header, render.yaml, env files) route to @CTorres9800 **and** @Marketeq/code-review. Everything else routes to @Marketeq/code-review. Review is advisory by default (free org plan limitation) but mandatory by SOP convention.
 
 ### 9.9 Post-Merge SOP Audit + Auto-Revert — **ENFORCED (post-hoc, binding)**
-- **Pipeline:** Jenkins `post-merge-audit`
+- **Workflow:** GitHub Actions `post-merge-audit` (+ Jenkins safety net)
 - **Triggers:** `push` event on `dev-main`, `staging`, `live-mvp` (i.e., fires the moment a merge lands)
 - **Behavior:** this is the keystone enforcement on the free plan. Since GitHub won't technically block a merge despite a red check, this workflow catches the bypass **after the merge** and undoes it automatically.
   1. Finds the PR associated with the push
@@ -595,13 +595,13 @@ The #1 recurring bug class in this repo (SOP §8.9) is **silent regressions from
 
 **Four layers, applied on every PR in order:**
 
-1. **Mechanical SOP check (Jenkins `sop-check`)** — catches the "obvious" regressions: committed secrets, junk files, off-limits files, hardcoded env values, entity without migration, Render/Vercel coupling. Grep-based, fast (<30s), deterministic.
+1. **Mechanical SOP check (GitHub Actions `sop-check` workflow)** — catches the "obvious" regressions: committed secrets, junk files, off-limits files, hardcoded env values, entity without migration, Render/Vercel coupling. Grep-based, fast (<30s), deterministic.
 
-2. **AI Breakage Detector (Jenkins `ai-breakage-check`)** — catches the "subtle" regressions. Extracts every exported symbol from the base version of each changed file, greps the repo for callers, and asks Claude Sonnet 4.6 to read the diff + caller snippets and flag any signature / prop / API-shape change that a caller still expects in the old form. This is the layer that catches the "Dev B overwrote Dev A's fix" bug class.
+2. **AI Breakage Detector (GitHub Actions `ai-breakage-check`)** — catches the "subtle" regressions. Extracts every exported symbol from the base version of each changed file, greps the repo for callers, and asks Claude Sonnet 4.6 to read the diff + caller snippets and flag any signature / prop / API-shape change that a caller still expects in the old form. This is the layer that catches the "Dev B overwrote Dev A's fix" bug class.
 
 3. **Directory-scoped CODEOWNERS (`CODEOWNERS`)** — auto-requests review from the domain expert for the touched directory. Login changes always route to @CTorres9800. Profile changes always route to @CTorres9800. This ensures the person who last fixed a bug in that area sees the PR before it merges.
 
-4. **Post-Merge SOP Audit (Jenkins `post-merge-audit`)** — the safety net. Even if a bypass makes it past layers 1–3 (e.g., reviewer clicks Merge despite red checks), this pipeline detects the bypass within ~60 seconds and opens an auto-revert PR assigned to the CTO.
+4. **Post-Merge SOP Audit (GitHub Actions `post-merge-audit` + Jenkins safety net)** — the safety net. Even if a bypass makes it past layers 1–3 (e.g., reviewer clicks Merge despite red checks), this workflow detects the bypass within ~60 seconds and opens an auto-revert PR assigned to the CTO.
 
 **Follow-up layer (separate PR, tracked in the EPIC enforcement PR description):**
 
@@ -613,7 +613,7 @@ The #1 recurring bug class in this repo (SOP §8.9) is **silent regressions from
 
 ## 15. The AI Breakage Detector Prompt (load-bearing)
 
-This is the prompt used by the Jenkins `ai-breakage-check` pipeline (stored at `/var/jenkins_home/pipelines/jenkins_pipeline_ai_breakage.groovy`). Do not modify it casually — it is tuned specifically for the "Dev B overwrote Dev A's fix" failure mode. If you need to change it, open a PR, get a human code review, and update this section in the same commit.
+This is the prompt used by the GitHub Actions `ai-breakage-check` workflow (`.github/workflows/ai-breakage-check.yml`) and duplicated in the Jenkins safety-net pipeline (`/var/jenkins_home/pipelines/jenkins_pipeline_ai_breakage.groovy`). Do not modify it casually — it is tuned specifically for the "Dev B overwrote Dev A's fix" failure mode. If you need to change it, update the GitHub Actions workflow, the Jenkins pipeline, and this section in the same commit.
 
 ```text
 You are the Regression Detector for the Marketeq freelance marketplace repo (Next.js frontend + NestJS backend). Your ONLY job is to find places where this pull request silently breaks code that was working before.
@@ -636,7 +636,7 @@ Analyze the diff against the caller snippets and answer these questions explicit
 Respond with Verdict (SAFE / RISKY / BLOCK), Regression Risks Found (list), What I Could Not Verify, and Reviewer Action Required. Be paranoid. Prefer false positives over false negatives.
 ```
 
-Full prompt source lives in the Jenkins `ai-breakage-check` pipeline (`/var/jenkins_home/pipelines/jenkins_pipeline_ai_breakage.groovy`).
+Primary prompt source: GitHub Actions `.github/workflows/ai-breakage-check.yml`. Jenkins duplicate: `/var/jenkins_home/pipelines/jenkins_pipeline_ai_breakage.groovy`.
 
 ---
 
@@ -646,4 +646,4 @@ Full prompt source lives in the Jenkins `ai-breakage-check` pipeline (`/var/jenk
 |---|---|
 | 2026-04-11 | Initial document. Captures the review rules, block-comment format, branch rules enforceable on the free org plan, and the exact Claude CLI prompt used for reviews. |
 | 2026-04-11 | Split devops concerns into `docs/DEVOPS_SOP.md`. This doc is now code-review-only. Removed former §1.8/§1.9/§1.10/§1.11/§1.12 (now consolidated in DEVOPS_SOP §3–§8) and kept only the §1.4 "login files are frozen" rule as a review-side concern with the bidirectional invariant stated plainly. Removed former §16 QA promotion SOP (moved to DEVOPS_SOP §7). Renamed production branch `main-live` → `live-mvp` throughout (actual branch name on origin). Added §14 regression prevention architecture and §15 AI breakage prompt (both review concerns, kept). |
-| 2026-05-22 | CI/CD migration: all `.github/workflows/*.yml` references updated to Jenkins pipeline equivalents. GitHub Actions disabled, Jenkins is sole CI/CD runner. |
+| 2026-05-22 | CI/CD split: PR gate checks on GitHub Actions, post-merge on both GitHub Actions + Jenkins, post-deploy on Jenkins only. All workflow/pipeline references updated accordingly. |
