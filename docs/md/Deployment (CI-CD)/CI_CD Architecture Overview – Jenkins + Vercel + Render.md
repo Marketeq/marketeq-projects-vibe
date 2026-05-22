@@ -110,10 +110,12 @@ All three Vercel frontends point to the same Render backend.
 | Branch | Role | Deploys to |
 |---|---|---|
 | `dev-main` | Active development (default branch) | Vercel dev |
-| `staging` | QA testing | Vercel staging |
+| `staging` | QA testing + regression fixes | Vercel staging |
 | `live-mvp` | Production | Vercel live + Render backend |
 
 **Flow:** feature branch -> PR -> `dev-main` -> promote to `staging` -> QA tests -> promote to `live-mvp`
+
+**Regression fix flow:** QA finds bug on staging -> developer branches `fix/*` from `staging` -> PR targeting `staging` -> merge -> cherry-pick back to `dev-main`
 
 ---
 

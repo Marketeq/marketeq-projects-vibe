@@ -15,10 +15,12 @@
 | Branch | Role | Who writes here | Deploys to |
 |---|---|---|---|
 | `dev-main` | Active development. Default branch. All feature PRs target this. | Developers (via PR) | Vercel `marketeq-projects-dev` |
-| `staging` | QA testing. Receives promoted commits from `dev-main`. | QA (via promotion script) | Vercel `marketeq-projects-staging` |
+| `staging` | QA testing. Receives promoted commits from `dev-main`. Regression fixes go here directly. | QA (via promotion script) + Developers (via PR for regression fixes) | Vercel `marketeq-projects-staging` |
 | `live-mvp` | Production. Receives promoted commits from `staging`. | CTO + QA (via promotion script) | Vercel `marketeq-projects-live-mvp` + Render `marketeq-backend` |
 
 **Flow:** feature branch → PR → `dev-main` → QA promotes to `staging` → QA tests → promote to `live-mvp` → production.
+
+**Regression fix flow:** QA finds bug on `staging` → developer creates `fix/*` branch from `staging` → PR targeting `staging` → merge → developer cherry-picks fix back to `dev-main` to keep branches in sync.
 
 **Never:**
 - Push directly to `dev-main`, `staging`, or `live-mvp` (all changes go through PRs or promotion scripts)
@@ -258,7 +260,7 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 
 | Role | `dev-main` | `staging` | `live-mvp` | Promotion scripts |
 |---|---|---|---|---|
-| Developer | ✅ via PR | ❌ | ❌ | ❌ |
+| Developer | ✅ via PR | ✅ via PR (regression fixes only) | ❌ | ❌ |
 | QA | ❌ | ✅ via script | ❌ (script only) | ✅ |
 | CTO | ✅ all branches | ✅ all branches | ✅ all branches | ✅ |
 
