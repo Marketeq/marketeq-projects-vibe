@@ -56,7 +56,6 @@ const CMS_RECORDS = [
     sourceId: SEED_IDS.DRAFT_PROJECT,
     title: 'B2B SaaS Analytics Platform',
     ndaEnabled: true,
-    ndaScopeVisibility: 'relevant_phases',
     industries: [
       { value: 'Technology' },
       { value: 'Finance' },

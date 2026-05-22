@@ -1,4 +1,3 @@
-import React from "react";
 import { CollectionConfig } from "payload/types";
 import {
   isAdmin,
@@ -218,7 +217,7 @@ export const JobListings: CollectionConfig = {
           ],
         },
 
-        // ── Tab 3: Industries ────────────────────────────────────────
+        // ── Tab 2: Industries ────────────────────────────────────────
         {
           label: "Industries",
           fields: [
@@ -238,7 +237,7 @@ export const JobListings: CollectionConfig = {
           ],
         },
 
-        // ── Tab 4: Languages ─────────────────────────────────────────
+        // ── Tab 3: Languages ─────────────────────────────────────────
         {
           label: "Languages",
           fields: [

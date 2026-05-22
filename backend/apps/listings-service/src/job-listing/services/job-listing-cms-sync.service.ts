@@ -13,12 +13,6 @@ export class JobListingCmsSyncService {
   constructor(
     @InjectRepository(JobListing)
     private readonly listingRepo: Repository<JobListing>,
-    @InjectRepository(BasicInformation)
-    private readonly basicInfoRepo: Repository<BasicInformation>,
-    @InjectRepository(TeamMemberRow)
-    private readonly roleRowRepo: Repository<TeamMemberRow>,
-    @InjectRepository(RoleDescription)
-    private readonly roleDescRepo: Repository<RoleDescription>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -29,8 +23,7 @@ export class JobListingCmsSyncService {
     await this.dataSource.transaction(async (em) => {
       // ── Root fields ──────────────────────────────────────────────
       const rootPatch: Partial<JobListing> = {};
-      if (body.ndaEnabled         !== undefined) rootPatch.ndaEnabled         = body.ndaEnabled;
-      if (body.ndaScopeVisibility !== undefined) rootPatch.ndaScopeVisibility = body.ndaScopeVisibility;
+      if (body.ndaEnabled !== undefined) rootPatch.ndaEnabled = body.ndaEnabled;
 
       if (Object.keys(rootPatch).length > 0) {
         await em.save(JobListing, { id: listingId, ...rootPatch });
