@@ -7,7 +7,7 @@
 **Companion doc:** `docs/DEVOPS_SOP.md` owns all deployment, branch topology, env template, and QA promotion rules. This document stays focused on code review. Do not add deployment rules here.
 **Last updated:** 2026-05-22
 
-> **CI/CD Split (2026-05-22):** PR gate checks (`sop-check`, `ai-breakage-check`, `gitleaks`, `code-review`, `login-gate`) run on **GitHub Actions**. Post-merge enforcement (`post-merge-audit`, `login-violation-alert`) runs on **both** GitHub Actions and Jenkins. Post-deploy automation (deployments, smoke tests, staging sync, stale branch cleanup) runs on **Jenkins** (72.61.77.231:8080). Old docs archived in `docs/md/Deployment (CI-CD)/old devops docs/`.
+> **CI/CD Architecture (2026-05-22):** All CI/CD runs on **Jenkins** (72.61.77.231:8080). GitHub Actions are disabled (free plan minutes exhausted). GitHub webhook delivers PR events to the Jenkins `github-webhook-dispatcher`, which runs all 5 PR gate checks in parallel and posts commit statuses (`Jenkins / SOP Check`, `Jenkins / AI Breakage Detector`, `Jenkins / Secret Scan`, `Jenkins / Login Gate`, `Jenkins / Code Review`) back to GitHub. The `.github/workflows/*.yml` files are retained as reference but disabled. Old docs archived in `docs/md/Deployment (CI-CD)/old devops docs/`.
 
 This is the single source of truth for how pull requests are reviewed, merged, and cleaned up in this repository. Nothing in this document is optional. If any step cannot be completed, the PR **does not merge**.
 

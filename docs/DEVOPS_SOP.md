@@ -6,7 +6,7 @@
 >
 > **Binding.** Every rule here is enforced by a GitHub Actions workflow, a Jenkins pipeline, a promotion script, a CODEOWNERS route, or a PR template check. Nothing in this doc is aspirational — if a rule is stated, there is machinery behind it.
 >
-> **CI/CD Split (2026-05-22):** Branch protection checks (PR gates) run on **GitHub Actions**. Post-deploy automation (deployments, smoke tests, staging sync, stale branch cleanup) runs on **Jenkins** (72.61.77.231:8080). Post-merge enforcement (SOP audit, login violation alerts) runs on **both** — GitHub Actions for immediate enforcement, Jenkins as a safety net. Old docs archived in `docs/md/Deployment (CI-CD)/old devops docs/`.
+> **CI/CD Architecture (2026-05-22):** All CI/CD runs on **Jenkins** (72.61.77.231:8080). GitHub Actions workflows are disabled (free plan minutes exhausted). GitHub webhook delivers `pull_request` and `push` events to the Jenkins `github-webhook-dispatcher` pipeline, which routes to the correct checks. PR gate checks (`sop-check`, `ai-breakage-check`, `gitleaks`, `login-gate`, `code-review`) post commit statuses back to GitHub so PRs show pass/fail. Post-merge checks (`post-merge-audit`, `login-violation-alert`) fire on push to protected branches. Post-deploy automation (deploys, smoke tests, staging sync) also on Jenkins. Old docs archived in `docs/md/Deployment (CI-CD)/old devops docs/`.
 
 ---
 
