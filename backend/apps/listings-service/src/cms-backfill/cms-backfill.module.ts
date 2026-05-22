@@ -7,13 +7,17 @@ import { Testimonial } from '../testimonials/entities/testimonial.entity';
 import { Team } from '../teams/entities/team.entity';
 import { Service } from '../services/entities/service.entity';
 import { Job } from '../jobs/entities/job.entity';
+import { JobListing } from '../job-listing/entities/job-listing.entity';
+import { BasicInformation } from '../job-listing/entities/job-listing-basic-info.entity';
+import { TeamMemberRow } from '../job-listing/entities/job-listing-role-row.entity';
+import { RoleDescription } from '../job-listing/entities/job-listing-role-description.entity';
 import { ProjectEventPublisher } from '../projects/project-event.publisher';
 import { TestimonialsEventPublisher } from '../testimonials/testimonials-event.publisher';
 import { CmsBackfillService } from './cms-backfill.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Project, Testimonial, Team, Service, Job]),
+    TypeOrmModule.forFeature([Project, Testimonial, Team, Service, Job, JobListing, BasicInformation, TeamMemberRow, RoleDescription]),
     ClientsModule.registerAsync([
       {
         name: 'RABBITMQ_CLIENT',

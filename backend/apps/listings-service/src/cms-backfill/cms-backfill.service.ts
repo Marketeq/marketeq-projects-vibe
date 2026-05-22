@@ -7,6 +7,10 @@ import { Testimonial } from '../testimonials/entities/testimonial.entity';
 import { Team } from '../teams/entities/team.entity';
 import { Service } from '../services/entities/service.entity';
 import { Job } from '../jobs/entities/job.entity';
+import { JobListing } from '../job-listing/entities/job-listing.entity';
+import { BasicInformation } from '../job-listing/entities/job-listing-basic-info.entity';
+import { TeamMemberRow } from '../job-listing/entities/job-listing-role-row.entity';
+import { RoleDescription } from '../job-listing/entities/job-listing-role-description.entity';
 import { ProjectEventPublisher } from '../projects/project-event.publisher';
 import { TestimonialsEventPublisher } from '../testimonials/testimonials-event.publisher';
 
@@ -24,6 +28,10 @@ export class CmsBackfillService implements OnApplicationBootstrap {
     @InjectRepository(Team) private readonly teamRepo: Repository<Team>,
     @InjectRepository(Service) private readonly serviceRepo: Repository<Service>,
     @InjectRepository(Job) private readonly jobRepo: Repository<Job>,
+    @InjectRepository(JobListing) private readonly jobListingRepo: Repository<JobListing>,
+    @InjectRepository(BasicInformation) private readonly basicInfoRepo: Repository<BasicInformation>,
+    @InjectRepository(TeamMemberRow) private readonly teamMemberRowRepo: Repository<TeamMemberRow>,
+    @InjectRepository(RoleDescription) private readonly roleDescRepo: Repository<RoleDescription>,
     private readonly projectPublisher: ProjectEventPublisher,
     private readonly testimonialPublisher: TestimonialsEventPublisher,
     private readonly config: ConfigService,
@@ -35,6 +43,7 @@ export class CmsBackfillService implements OnApplicationBootstrap {
     await Promise.all([
       this.backfillProjects(),
       this.backfillTestimonials(),
+      this.backfillJobListings(),
       this.backfillToCms('team-listings', this.teamRepo, (t: Team) => ({
         sourceId: t.id,
         title: t.title,
@@ -179,6 +188,109 @@ export class CmsBackfillService implements OnApplicationBootstrap {
       if (offset < total) await new Promise((r) => setTimeout(r, PAGE_DELAY_MS));
     }
     this.logger.log(`[CmsBackfill:projects] Done — published: ${published}, failed: ${failed}`);
+  }
+
+  private async backfillJobListings(): Promise<void> {
+    const cmsUrl     = this.config.get<string>('CMS_URL') || 'http://localhost:3020';
+    const email      = this.config.get<string>('CMS_ADMIN_EMAIL') || 'admin@marketeq.com';
+    const password   = this.config.get<string>('CMS_ADMIN_PASSWORD') || 'password123';
+
+    let token: string;
+    try {
+      const loginRes = await fetch(`${cmsUrl}/api/users/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!loginRes.ok) {
+        this.logger.warn('[CmsBackfill:job-listings] CMS login failed — skipping');
+        return;
+      }
+      const data = await loginRes.json() as any;
+      token = data?.token;
+      if (!token) {
+        this.logger.warn('[CmsBackfill:job-listings] No token — skipping');
+        return;
+      }
+    } catch (err: any) {
+      this.logger.warn(`[CmsBackfill:job-listings] CMS unreachable — skipping: ${err.message}`);
+      return;
+    }
+
+    const headers = { 'content-type': 'application/json', Authorization: `JWT ${token}` };
+
+    let listings: JobListing[];
+    try {
+      listings = await this.jobListingRepo.find();
+    } catch (err: any) {
+      this.logger.warn(`[CmsBackfill:job-listings] Table not ready — skipping: ${err.message}`);
+      return;
+    }
+
+    this.logger.log(`[CmsBackfill:job-listings] ${listings.length} job listings to check`);
+    let created = 0, skipped = 0, failed = 0;
+
+    for (const listing of listings) {
+      try {
+        // Skip if already in CMS
+        const checkRes = await fetch(
+          `${cmsUrl}/api/job-listings?where[sourceId][equals]=${listing.id}&limit=1`,
+          { headers },
+        );
+        const checkData = await checkRes.json() as any;
+        if (checkData?.docs?.length > 0) { skipped++; continue; }
+
+        // Load relations
+        const basicInfo   = await this.basicInfoRepo.findOne({ where: { jobListingId: listing.id } });
+        const memberRows  = await this.teamMemberRowRepo.find({ where: { jobListingId: listing.id }, order: { positionOrder: 'ASC' } });
+        const roleDescs   = await this.roleDescRepo.find({ where: { jobListingId: listing.id } });
+
+        const payload = {
+          sourceId:   listing.id,
+          title:      basicInfo?.title ?? 'Untitled',
+          ndaEnabled: listing.ndaEnabled,
+          ndaScopeVisibility: listing.ndaScopeVisibility,
+          industries: (basicInfo?.industries ?? []).map((v) => ({ value: v })),
+          languages:  (basicInfo?.languages  ?? []).map((v) => ({ value: v })),
+          teamMemberRows: memberRows.map((r) => ({
+            roleTitle:            r.roleTitle,
+            location:             r.location             ?? undefined,
+            experienceLevel:      r.experienceLevel      ?? undefined,
+            workSchedule:         r.workSchedule,
+            customHours:          r.customHours          ?? undefined,
+            customFrequency:      r.customFrequency      ?? undefined,
+            contractLengthMonths: r.contractLengthMonths ?? undefined,
+          })),
+          roleDescriptions: roleDescs.map((rd) => ({
+            roleTitle:        rd.roleTitle,
+            overview:         rd.overview         ?? undefined,
+            benefits:         rd.benefits         ?? undefined,
+            responsibilities: rd.responsibilities ?? undefined,
+            skills:           rd.skills.map((s) => ({ value: s })),
+          })),
+        };
+
+        const createRes = await fetch(`${cmsUrl}/api/job-listings`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+        });
+
+        if (createRes.ok) {
+          created++;
+        } else {
+          this.logger.error(`[CmsBackfill:job-listings] Failed for ${listing.id}: ${await createRes.text()}`);
+          failed++;
+        }
+      } catch (err: any) {
+        failed++;
+        this.logger.error(`[CmsBackfill:job-listings] Error for ${listing.id}: ${err.message}`);
+      }
+
+      await new Promise((r) => setTimeout(r, 50));
+    }
+
+    this.logger.log(`[CmsBackfill:job-listings] Done — created: ${created}, skipped: ${skipped}, failed: ${failed}`);
   }
 
   private async backfillTestimonials(): Promise<void> {
