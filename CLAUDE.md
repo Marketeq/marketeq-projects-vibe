@@ -25,12 +25,14 @@ Read this before doing anything else.
 - The env-driven login rule (no hardcoded URLs, cookie flags, or CORS origins) enforced by the SOP check
 - The QA promotion flow scripts and role separation between code review and devops
 
-**Automated enforcement that runs on every PR:**
-1. `.github/workflows/sop-check.yml` — mechanical SOP checker (secrets, junk files, off-limits login/profile files, env template branch mismatch, hardcoded login values, entity without migration, Render coupling on dev-main, oversized PRs, `@ts-ignore` without justification). Blocks the PR on any violation.
-2. `.github/workflows/ai-breakage-check.yml` — Claude Sonnet 4.6 regression detector. Reads the diff + callers of every changed symbol and specifically hunts for silent overwrites of working code. Blocks the PR if it detects likely regression.
-3. `.github/workflows/gitleaks.yml` — secret scanning on every PR.
-4. `.github/workflows/code-review.yml` — AI code review on every PR to `dev-main`, `staging`, `live-mvp`.
+**Automated enforcement that runs on every PR (Jenkins CI — 72.61.77.231:8080):**
+1. Jenkins `sop-check` — mechanical SOP checker (secrets, junk files, off-limits login/profile files, env template branch mismatch, hardcoded login values, entity without migration, Render coupling on dev-main, oversized PRs, `@ts-ignore` without justification). Blocks the PR on any violation.
+2. Jenkins `ai-breakage-check` — Claude Sonnet 4.6 regression detector. Reads the diff + callers of every changed symbol and specifically hunts for silent overwrites of working code. Blocks the PR if it detects likely regression.
+3. Jenkins `gitleaks` — secret scanning on every PR.
+4. Jenkins `code-review` — AI code review on every PR to `dev-main`, `staging`, `live-mvp`.
 5. `.github/CODEOWNERS` — directory-scoped ownership, auto-requests the right reviewers on every PR.
+
+> **Note:** All GitHub Actions workflows have been disabled (2026-05-22). Jenkins is the sole CI/CD runner. Old workflow files remain in `.github/workflows/` for reference but are inactive.
 
 If you are reviewing a PR via Claude CLI, use the prompt in §10 of the SOP verbatim.
 
