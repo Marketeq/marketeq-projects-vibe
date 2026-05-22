@@ -11,7 +11,15 @@ export async function apiFetch<T = any>(
   path: string,
   { body, headers, ...opts }: FetchOpts = {}
 ): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const cleanBase = API_BASE.replace(/\/+$/, "");
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  
+  let finalUrl = `${cleanBase}${cleanPath}`;
+  if (cleanBase.endsWith("/api") && cleanPath.startsWith("/api/")) {
+    finalUrl = `${cleanBase}${cleanPath.slice(4)}`;
+  }
+
+  const res = await fetch(finalUrl, {
     ...(opts as any),
     headers: {
       "Content-Type": "application/json",
