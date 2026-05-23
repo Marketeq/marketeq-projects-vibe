@@ -79,6 +79,8 @@ const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const parseExpiresIn = (value: string): number | StringValue =>
   /^\d+$/.test(value) ? Number(value) : (value as StringValue);
 
+const INVALID_EMAIL_OR_PASSWORD_MESSAGE = 'Invalid email or password';
+
 @Injectable()
 export class AuthService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AuthService.name);
@@ -363,14 +365,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorMethod'],
     });
 
-    if (!user) throw new UnauthorizedException('Invalid credentials');
+    if (!user) throw new UnauthorizedException(INVALID_EMAIL_OR_PASSWORD_MESSAGE);
 
     if (!user.hasPassword || !user.password) {
-      throw new UnauthorizedException('Incorrect email or password');
+      throw new UnauthorizedException(INVALID_EMAIL_OR_PASSWORD_MESSAGE);
     }
 
     const isMatch = await bcrypt.compare(dto.password, user.password);
-    if (!isMatch) throw new UnauthorizedException('Invalid credentials');
+    if (!isMatch) throw new UnauthorizedException(INVALID_EMAIL_OR_PASSWORD_MESSAGE);
 
     if (user.twoFactorEnabled) {
       const method = user.twoFactorMethod ?? 'totp';
