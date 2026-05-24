@@ -3102,7 +3102,7 @@ const WorkExperienceDialog = ({
                     size="md"
                     type="button"
                     onClick={next}
-                    disabled={profileLoading || profileError}
+                    disabled={!Boolean(workExperiences?.length) || profileLoading || profileError}
                   >
                     Save & Continue
                   </Button>
