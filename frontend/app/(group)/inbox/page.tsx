@@ -240,7 +240,10 @@ export default function InboxRoot() {
         />
 
         {rightSidebarOpen && (
-          <RightSidebar selectedConversation={selectedConversation} jwtToken={token} />
+          <RightSidebar
+            selectedConversation={selectedConversation}
+            jwtToken={token}
+          />
         )}
       </div>
     </Inbox>

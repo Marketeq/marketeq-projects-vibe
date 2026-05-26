@@ -102,7 +102,8 @@ const dropdownMenuItemVariants = cva(
 )
 
 interface DropdownMenuItemProps
-  extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item>,
+  extends
+    React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item>,
     VariantProps<typeof dropdownMenuItemVariants> {
   inset?: boolean
   icon?: React.ReactNode

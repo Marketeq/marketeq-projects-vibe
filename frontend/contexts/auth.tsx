@@ -25,7 +25,7 @@ type DashboardResolvableUser = {
 }
 
 export const resolveDashboardRole = (
-  user?: DashboardResolvableUser | null,
+  user?: DashboardResolvableUser | null
 ): ROLE | undefined => {
   const normalizedUserType = user?.userType?.toLowerCase?.()
   const normalizedAccountType = user?.accountType?.toUpperCase?.()
@@ -53,14 +53,14 @@ export const resolveDashboardRole = (
 }
 
 export const hasCompletedOnboarding = (
-  user?: DashboardResolvableUser | null,
+  user?: DashboardResolvableUser | null
 ): boolean =>
   user?.hasCompletedOnboarding === true ||
   user?.onboardingDismissed === true ||
   user?.onboardedAt != null
 
 export const resolveDashboardRoute = (
-  user?: DashboardResolvableUser | null,
+  user?: DashboardResolvableUser | null
 ): string => {
   const dashboardRole = resolveDashboardRole(user)
 
@@ -87,7 +87,7 @@ export const mergeDashboardUserFields = <
   T extends Record<string, unknown> | null | undefined,
 >(
   authUser: T,
-  profileUser: unknown,
+  profileUser: unknown
 ): T => {
   if (!authUser || !profileUser || typeof profileUser !== "object") {
     return authUser
@@ -131,7 +131,10 @@ const AuthContext: Context<AuthContextType> = createContext<AuthContextType>({
   logoutHandler: () => {},
 })
 
-const mergeUserAuthFields = (prev: User | null, next: User | null): User | null => {
+const mergeUserAuthFields = (
+  prev: User | null,
+  next: User | null
+): User | null => {
   if (!next) return next
 
   return {
@@ -178,7 +181,8 @@ function useProvideAuth() {
             if (
               !nextUser.onboardingDismissed &&
               typeof window !== "undefined" &&
-              window.localStorage.getItem("marketeq-onboarding-dismissed") === "true"
+              window.localStorage.getItem("marketeq-onboarding-dismissed") ===
+                "true"
             ) {
               nextUser.onboardingDismissed = true
             }
@@ -198,7 +202,11 @@ function useProvideAuth() {
           // Backend unavailable/offline during local dev; avoid noisy error-level logs.
           console.warn("[auth] /user/me unavailable:", error?.message)
         } else {
-          console.warn("[auth] /user/me request failed:", status, error?.message)
+          console.warn(
+            "[auth] /user/me request failed:",
+            status,
+            error?.message
+          )
         }
         setIsAuthChecked(true)
         setIsLoading(false)
@@ -220,7 +228,9 @@ function useProvideAuth() {
       Cookies.remove("accessToken", { path: "/" })
       Cookies.remove("refresh_token", { path: "/" })
       Cookies.remove("session_id", { path: "/" })
-      try { window.localStorage.removeItem("marketeq-onboarding-dismissed") } catch {}
+      try {
+        window.localStorage.removeItem("marketeq-onboarding-dismissed")
+      } catch {}
     } catch (err: any) {
       toast({
         title:

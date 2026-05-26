@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useAuth } from "@/contexts/auth"
-import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { UserAPI } from "@/service/http/user"
 import { cn, hookFormHasError } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
@@ -41,6 +40,7 @@ import {
 } from "react-hook-form"
 import { usePrevious } from "react-use"
 import { z } from "zod"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
@@ -116,25 +116,125 @@ const aboutMeFormDefaultValues = {
 
 // Common job-title words for splitting concatenated titles like "softwareengineer"
 const JOB_TITLE_WORDS = [
-  "software", "senior", "junior", "lead", "principal", "staff", "chief",
-  "engineer", "developer", "designer", "manager", "director", "officer",
-  "architect", "analyst", "consultant", "specialist", "coordinator",
-  "administrator", "assistant", "associate", "executive", "president",
-  "vice", "head", "product", "project", "program", "technical", "technology",
-  "data", "machine", "learning", "artificial", "intelligence", "cloud",
-  "devops", "frontend", "backend", "fullstack", "full", "stack", "mobile",
-  "web", "security", "network", "database", "systems", "operations",
-  "marketing", "sales", "business", "human", "resources", "finance",
-  "creative", "content", "strategy", "growth", "customer", "success",
-  "support", "quality", "assurance", "research", "science", "scientist",
-  "ux", "ui", "graphic", "visual", "motion", "brand", "copy", "writer",
-  "editor", "producer", "scrum", "master", "agile", "coach", "trainer",
-  "recruiter", "talent", "acquisition", "relations", "communications",
-  "public", "media", "social", "digital", "seo", "sem", "ppc", "email",
-  "automation", "integration", "platform", "solution", "solutions",
-  "information", "cyber", "blockchain", "crypto", "defi", "nft",
-  "startup", "founder", "co", "cto", "ceo", "cfo", "coo", "cmo", "cio",
-  "vp", "svp", "evp", "avp",
+  "software",
+  "senior",
+  "junior",
+  "lead",
+  "principal",
+  "staff",
+  "chief",
+  "engineer",
+  "developer",
+  "designer",
+  "manager",
+  "director",
+  "officer",
+  "architect",
+  "analyst",
+  "consultant",
+  "specialist",
+  "coordinator",
+  "administrator",
+  "assistant",
+  "associate",
+  "executive",
+  "president",
+  "vice",
+  "head",
+  "product",
+  "project",
+  "program",
+  "technical",
+  "technology",
+  "data",
+  "machine",
+  "learning",
+  "artificial",
+  "intelligence",
+  "cloud",
+  "devops",
+  "frontend",
+  "backend",
+  "fullstack",
+  "full",
+  "stack",
+  "mobile",
+  "web",
+  "security",
+  "network",
+  "database",
+  "systems",
+  "operations",
+  "marketing",
+  "sales",
+  "business",
+  "human",
+  "resources",
+  "finance",
+  "creative",
+  "content",
+  "strategy",
+  "growth",
+  "customer",
+  "success",
+  "support",
+  "quality",
+  "assurance",
+  "research",
+  "science",
+  "scientist",
+  "ux",
+  "ui",
+  "graphic",
+  "visual",
+  "motion",
+  "brand",
+  "copy",
+  "writer",
+  "editor",
+  "producer",
+  "scrum",
+  "master",
+  "agile",
+  "coach",
+  "trainer",
+  "recruiter",
+  "talent",
+  "acquisition",
+  "relations",
+  "communications",
+  "public",
+  "media",
+  "social",
+  "digital",
+  "seo",
+  "sem",
+  "ppc",
+  "email",
+  "automation",
+  "integration",
+  "platform",
+  "solution",
+  "solutions",
+  "information",
+  "cyber",
+  "blockchain",
+  "crypto",
+  "defi",
+  "nft",
+  "startup",
+  "founder",
+  "co",
+  "cto",
+  "ceo",
+  "cfo",
+  "coo",
+  "cmo",
+  "cio",
+  "vp",
+  "svp",
+  "evp",
+  "avp",
 ]
 
 function formatJobTitle(raw: string): string {
@@ -175,7 +275,33 @@ function formatJobTitle(raw: string): string {
     .map((w) => {
       // Keep common acronyms uppercase
       const upper = w.toUpperCase()
-      if (["CTO", "CEO", "CFO", "COO", "CMO", "CIO", "VP", "SVP", "EVP", "AVP", "UX", "UI", "SEO", "SEM", "PPC", "NFT", "AI", "ML", "QA", "HR", "IT", "PM", "API"].includes(upper)) {
+      if (
+        [
+          "CTO",
+          "CEO",
+          "CFO",
+          "COO",
+          "CMO",
+          "CIO",
+          "VP",
+          "SVP",
+          "EVP",
+          "AVP",
+          "UX",
+          "UI",
+          "SEO",
+          "SEM",
+          "PPC",
+          "NFT",
+          "AI",
+          "ML",
+          "QA",
+          "HR",
+          "IT",
+          "PM",
+          "API",
+        ].includes(upper)
+      ) {
         return upper
       }
       return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
@@ -186,8 +312,14 @@ function formatJobTitle(raw: string): string {
 const moreInfoFormSchema = z.object({
   jobTitle: z.string().min(1, "Please enter a job title"),
   saveAsDefault: z.boolean(),
-  clientRate: z.number({ message: "Please enter a client rate" }).min(1, "Please enter a client rate").max(1000, "Rate cannot exceed $1,000/hr"),
-  earning: z.number({ message: "Please enter your earnings" }).min(1, "Please enter your earnings").max(1000, "Rate cannot exceed $1,000/hr"),
+  clientRate: z
+    .number({ message: "Please enter a client rate" })
+    .min(1, "Please enter a client rate")
+    .max(1000, "Rate cannot exceed $1,000/hr"),
+  earning: z
+    .number({ message: "Please enter your earnings" })
+    .min(1, "Please enter your earnings")
+    .max(1000, "Rate cannot exceed $1,000/hr"),
   fee: z.number({ message: "Please enter an amount" }),
 })
 
@@ -245,7 +377,9 @@ const workExperienceFormSchema = z
     currentlyWorkHere: z.boolean(),
     jobDescription: z.string().min(1, "Please enter at least 1 character(s)"),
     skills: z
-      .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
+      .array(
+        z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
+      )
       .max(50, "You have reached the maximum limit of 50 skills"),
   })
 
@@ -374,7 +508,9 @@ const educationFormDefaultValues = {
 
 const languagesFormSchema = z.object({
   languages: z
-    .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
+    .array(
+      z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
+    )
     .min(1, "Please at least provide 1 language(s)"),
 })
 
@@ -386,7 +522,9 @@ const languagesFormDefaultValue = {
 
 const skillsFormSchema = z.object({
   skills: z
-    .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
+    .array(
+      z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
+    )
     .min(1, "Please add at least 1 skill"),
 })
 
@@ -504,7 +642,10 @@ export const AboutMeDialog = ({
     setValue(values)
     setOpen(false)
     if (userId) {
-      UserAPI.updateProfile(userId, { bio: values.aboutMe, overview: values.aboutMe })
+      UserAPI.updateProfile(userId, {
+        bio: values.aboutMe,
+        overview: values.aboutMe,
+      })
         .then(() => onSaved?.())
         .catch(() => {})
     }
@@ -577,7 +718,11 @@ export const AboutMeDialog = ({
               Cancel
             </Button>
 
-            <Button disabled={!isValid} loading={isSubmitting} ref={submitTriggerRef}>
+            <Button
+              disabled={!isValid}
+              loading={isSubmitting}
+              ref={submitTriggerRef}
+            >
               Save
             </Button>
 
@@ -691,14 +836,19 @@ const MoreInfoForm = ({
               onCheckDuplicate?.(e.target.value)
             },
           })}
-          isInvalid={duplicateError || hookFormHasError({
-            errors,
-            name: "jobTitle",
-          })}
+          isInvalid={
+            duplicateError ||
+            hookFormHasError({
+              errors,
+              name: "jobTitle",
+            })
+          }
         />
 
         {duplicateError && (
-          <ErrorMessage size="sm">This job title already exists. Please use a different title.</ErrorMessage>
+          <ErrorMessage size="sm">
+            This job title already exists. Please use a different title.
+          </ErrorMessage>
         )}
 
         <HookFormErrorMessage
@@ -822,7 +972,8 @@ const MoreInfoForm = ({
                 Marketeq Service Fee (20%)
               </AlertTitle>
               <AlertDescription>
-                A 20% service fee is applied to your client rate to cover platform costs.
+                A 20% service fee is applied to your client rate to cover
+                platform costs.
               </AlertDescription>
             </div>
 
@@ -1046,7 +1197,9 @@ export const MoreInfoDialog = ({
       return false
     }
     const title = formatJobTitle(raw)
-    const existingTitles = (infoChunks ?? []).filter((_, i) => i !== editingIndex)
+    const existingTitles = (infoChunks ?? []).filter(
+      (_, i) => i !== editingIndex
+    )
     const isDuplicate = existingTitles.some(
       (chunk) => chunk.jobTitle.toLowerCase() === title.toLowerCase()
     )
@@ -1056,7 +1209,9 @@ export const MoreInfoDialog = ({
 
   const onSubmit: SubmitHandler<MoreInfoFormValues> = async (values) => {
     let resolveDone: () => void
-    submitDoneRef.current = new Promise((r) => { resolveDone = r })
+    submitDoneRef.current = new Promise((r) => {
+      resolveDone = r
+    })
 
     // Format the job title: add spaces, capitalize all words
     const formatted = { ...values, jobTitle: formatJobTitle(values.jobTitle) }
@@ -1081,9 +1236,7 @@ export const MoreInfoDialog = ({
       updatedChunks = infoChunks
         ? infoChunks
             .map((q) =>
-              saveAsDefault || isFirst
-                ? { ...q, saveAsDefault: false }
-                : q
+              saveAsDefault || isFirst ? { ...q, saveAsDefault: false } : q
             )
             .concat(entry)
         : [entry]
@@ -1091,13 +1244,18 @@ export const MoreInfoDialog = ({
     }
 
     // Sort: default job title always at the top
-    updatedChunks.sort((a, b) => (a.saveAsDefault === b.saveAsDefault ? 0 : a.saveAsDefault ? -1 : 1))
+    updatedChunks.sort((a, b) =>
+      a.saveAsDefault === b.saveAsDefault ? 0 : a.saveAsDefault ? -1 : 1
+    )
     setInfoChunks(updatedChunks)
 
     // Save to API: compute range across all job titles, use default title
     if (userId) {
-      const allRates = updatedChunks.map((c) => c.clientRate).filter((r) => r != null && r > 0)
-      const defaultChunk = updatedChunks.find((c) => c.saveAsDefault) ?? updatedChunks[0]
+      const allRates = updatedChunks
+        .map((c) => c.clientRate)
+        .filter((r) => r != null && r > 0)
+      const defaultChunk =
+        updatedChunks.find((c) => c.saveAsDefault) ?? updatedChunks[0]
       const payload: Record<string, unknown> = {}
 
       if (allRates.length > 1) {
@@ -1136,13 +1294,17 @@ export const MoreInfoDialog = ({
     }
 
     if (previousClientRate !== clientRate && clientRate != null) {
-      const fee = Math.round(calculatePercentage({ percentage: 20, value: clientRate }))
+      const fee = Math.round(
+        calculatePercentage({ percentage: 20, value: clientRate })
+      )
       setValue("fee", fee, { shouldValidate: true })
       setValue("earning", clientRate - fee, { shouldValidate: true })
     } else if (previousEarning !== earning && earning != null) {
       // Reverse calculate: earning = clientRate * 0.8, so clientRate = earning / 0.8
       const derivedRate = Math.round(earning / 0.8)
-      const fee = Math.round(calculatePercentage({ percentage: 20, value: derivedRate }))
+      const fee = Math.round(
+        calculatePercentage({ percentage: 20, value: derivedRate })
+      )
       setValue("clientRate", derivedRate, { shouldValidate: true })
       setValue("fee", fee, { shouldValidate: true })
     }
@@ -1154,7 +1316,12 @@ export const MoreInfoDialog = ({
         {trigger?.({ open, toggle: () => setOpen((prev) => !prev) })}
         <DialogContent className="max-w-[700px] rounded-[24px] p-0">
           <DialogTitle className="sr-only">Job Title & Rates</DialogTitle>
-          <form onSubmit={handleSubmit(onSubmit)} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault() }}>
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.preventDefault()
+            }}
+          >
             <div className="pt-6 border-b border-gray-200">
               <div className="flex px-6 items-start gap-x-2">
                 <div className="flex-auto">
@@ -1225,7 +1392,8 @@ export const MoreInfoDialog = ({
               {maxTitlesError && (
                 <div className="mx-6 mt-4 flex items-center gap-x-2 rounded-md border border-error-300 bg-error-25 px-3 py-2.5 text-sm text-error-700">
                   <AlertCircle className="size-4 shrink-0" />
-                  You've reached the maximum of 3 job titles. Remove one to add a new title.
+                  You've reached the maximum of 3 job titles. Remove one to add
+                  a new title.
                 </div>
               )}
 
@@ -1324,9 +1492,11 @@ export const MoreInfoDialog = ({
                     Delete Job Title?
                   </DialogTitle>
                   <DialogDescription className="text-dark-blue-400 mt-2">
-                    Your {indexToRemove !== undefined && infoChunks?.[indexToRemove]
+                    Your{" "}
+                    {indexToRemove !== undefined && infoChunks?.[indexToRemove]
                       ? `"${infoChunks[indexToRemove].jobTitle}"`
-                      : ""} job title will be removed. This cannot be undone.
+                      : ""}{" "}
+                    job title will be removed. This cannot be undone.
                   </DialogDescription>
                 </div>
 
@@ -1340,26 +1510,46 @@ export const MoreInfoDialog = ({
                   <DialogClose
                     onClick={async () => {
                       if (indexToRemove !== undefined) {
-                        const remaining = infoChunks?.filter((_, i) => i !== indexToRemove) ?? []
+                        const remaining =
+                          infoChunks?.filter((_, i) => i !== indexToRemove) ??
+                          []
 
                         // If only one left, auto-set as default
-                        if (remaining.length === 1 && !remaining[0].saveAsDefault) {
-                          remaining[0] = { ...remaining[0], saveAsDefault: true }
+                        if (
+                          remaining.length === 1 &&
+                          !remaining[0].saveAsDefault
+                        ) {
+                          remaining[0] = {
+                            ...remaining[0],
+                            saveAsDefault: true,
+                          }
                         }
                         // If deleted the default, promote the first one
-                        if (remaining.length > 0 && !remaining.some((c) => c.saveAsDefault)) {
-                          remaining[0] = { ...remaining[0], saveAsDefault: true }
+                        if (
+                          remaining.length > 0 &&
+                          !remaining.some((c) => c.saveAsDefault)
+                        ) {
+                          remaining[0] = {
+                            ...remaining[0],
+                            saveAsDefault: true,
+                          }
                         }
 
-                        setInfoChunks(remaining.length > 0 ? remaining : undefined)
+                        setInfoChunks(
+                          remaining.length > 0 ? remaining : undefined
+                        )
                         setIndexToRemove(undefined)
 
                         // Update API
                         if (userId) {
                           const payload: Record<string, unknown> = {}
                           if (remaining.length > 0) {
-                            const allRates = remaining.map((c) => c.clientRate).filter((r) => r != null && r > 0)
-                            const defaultChunk = remaining.find((c) => c.saveAsDefault) ?? remaining[0]
+                            const allRates = remaining
+                              .map((c) => c.clientRate)
+                              .filter((r) => r != null && r > 0)
+                            const defaultChunk =
+                              remaining.find((c) => c.saveAsDefault) ??
+                              remaining[0]
                             if (allRates.length > 1) {
                               payload.rateMin = Math.min(...allRates)
                               payload.rateMax = Math.max(...allRates)
@@ -1367,7 +1557,8 @@ export const MoreInfoDialog = ({
                               payload.rateMin = allRates[0]
                               payload.rateMax = allRates[0]
                             }
-                            if (defaultChunk?.jobTitle) payload.role = defaultChunk.jobTitle
+                            if (defaultChunk?.jobTitle)
+                              payload.role = defaultChunk.jobTitle
                             payload.jobTitles = remaining
                           } else {
                             // All titles deleted — clear everything
@@ -1376,7 +1567,9 @@ export const MoreInfoDialog = ({
                             payload.role = null
                             payload.jobTitles = null
                           }
-                          try { await UserAPI.updateProfile(userId, payload) } catch {}
+                          try {
+                            await UserAPI.updateProfile(userId, payload)
+                          } catch {}
                           onSaved?.()
                           if (remaining.length === 0) setCanPerformAction(true)
                         }
@@ -1412,7 +1605,12 @@ export const MoreInfoDialog = ({
               </Button>
               <Button
                 type="button"
-                disabled={(canPerformAction || typeof editingIndex === "number") && (!clientRate || clientRate > 1000 || !methods.getValues("jobTitle"))}
+                disabled={
+                  (canPerformAction || typeof editingIndex === "number") &&
+                  (!clientRate ||
+                    clientRate > 1000 ||
+                    !methods.getValues("jobTitle"))
+                }
                 loading={isSubmitting}
                 onClick={async () => {
                   if (canPerformAction || typeof editingIndex === "number") {
@@ -1597,7 +1795,13 @@ export const AvailabilityDialog = ({
                         <div className="pt-2.5 inline-flex gap-x-2">
                           <Switch
                             id={day}
-                            defaultChecked={["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].includes(day)}
+                            defaultChecked={[
+                              "Monday",
+                              "Tuesday",
+                              "Wednesday",
+                              "Thursday",
+                              "Friday",
+                            ].includes(day)}
                           />
                           <Label
                             htmlFor={day}
@@ -1709,7 +1913,9 @@ export const WorkExperienceDialog = ({
   const [editingId, setEditingId] = useState<string>()
 
   const [query, setQuery] = useState("")
-  const [filteredSkills, setFilteredSkills] = useState<{ id: number | string; name: string }[]>([])
+  const [filteredSkills, setFilteredSkills] = useState<
+    { id: number | string; name: string }[]
+  >([])
 
   const fetchSkills = useCallback(async (q: string) => {
     if (!q.trim()) {
@@ -1722,7 +1928,9 @@ export const WorkExperienceDialog = ({
       )
       if (!res.ok) return
       const data = await res.json()
-      const entries: { id: string; value: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
+      const entries: { id: string; value: string }[] = Array.isArray(data)
+        ? data
+        : (data.entries ?? data.results ?? [])
       setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.value })))
     } catch {}
   }, [])
@@ -1801,8 +2009,14 @@ export const WorkExperienceDialog = ({
     reset({
       employer: exp.company ?? "",
       jobTitle: exp.role ?? "",
-      startDate: { year: sd[0] ? Number(sd[0]) : undefined, month: sd[1] ? Number(sd[1]) : undefined },
-      endDate: { year: ed[0] ? Number(ed[0]) : undefined, month: ed[1] ? Number(ed[1]) : undefined },
+      startDate: {
+        year: sd[0] ? Number(sd[0]) : undefined,
+        month: sd[1] ? Number(sd[1]) : undefined,
+      },
+      endDate: {
+        year: ed[0] ? Number(ed[0]) : undefined,
+        month: ed[1] ? Number(ed[1]) : undefined,
+      },
       currentlyWorkHere: !exp.endDate,
       jobDescription: exp.description ?? "",
       skills: [],
@@ -1827,8 +2041,14 @@ export const WorkExperienceDialog = ({
         return {
           employer: exp.company ?? "",
           jobTitle: exp.role ?? "",
-          startDate: { year: sd[0] ? Number(sd[0]) : undefined, month: sd[1] ? Number(sd[1]) : undefined },
-          endDate: { year: ed[0] ? Number(ed[0]) : undefined, month: ed[1] ? Number(ed[1]) : undefined },
+          startDate: {
+            year: sd[0] ? Number(sd[0]) : undefined,
+            month: sd[1] ? Number(sd[1]) : undefined,
+          },
+          endDate: {
+            year: ed[0] ? Number(ed[0]) : undefined,
+            month: ed[1] ? Number(ed[1]) : undefined,
+          },
           currentlyWorkHere: !exp.endDate,
           jobDescription: exp.description ?? "",
           skills: [],
@@ -1950,7 +2170,10 @@ export const WorkExperienceDialog = ({
                             <Listbox value={value ?? null} onChange={onChange}>
                               <ListboxButton
                                 placeholder="Month"
-                                displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
+                                displayValue={(value: number) =>
+                                  months.find((m) => m.value === value)?.name ??
+                                  ""
+                                }
                                 isInvalid={hookFormHasError({
                                   errors,
                                   name: "startDate.month",
@@ -1962,10 +2185,13 @@ export const WorkExperienceDialog = ({
                                   scrollBar={<ScrollBar className="w-4 p-1" />}
                                 >
                                   {months.map((m) => (
-                                      <ListboxOption key={m.value} value={m.value}>
-                                        {m.name}
-                                      </ListboxOption>
-                                    ))}
+                                    <ListboxOption
+                                      key={m.value}
+                                      value={m.value}
+                                    >
+                                      {m.name}
+                                    </ListboxOption>
+                                  ))}
                                 </ScrollArea>
                               </ListboxOptions>
                             </Listbox>
@@ -2040,7 +2266,10 @@ export const WorkExperienceDialog = ({
                             <Listbox value={value ?? null} onChange={onChange}>
                               <ListboxButton
                                 placeholder="Month"
-                                displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
+                                displayValue={(value: number) =>
+                                  months.find((m) => m.value === value)?.name ??
+                                  ""
+                                }
                                 isInvalid={hookFormHasError({
                                   errors,
                                   name: "endDate.year",
@@ -2052,10 +2281,13 @@ export const WorkExperienceDialog = ({
                                   scrollBar={<ScrollBar className="w-4 p-1" />}
                                 >
                                   {months.map((m) => (
-                                      <ListboxOption key={m.value} value={m.value}>
-                                        {m.name}
-                                      </ListboxOption>
-                                    ))}
+                                    <ListboxOption
+                                      key={m.value}
+                                      value={m.value}
+                                    >
+                                      {m.name}
+                                    </ListboxOption>
+                                  ))}
                                 </ScrollArea>
                               </ListboxOptions>
                             </Listbox>
@@ -2170,7 +2402,10 @@ export const WorkExperienceDialog = ({
                     <Combobox
                       className="w-full mt-[30px]"
                       value={value}
-                      onChange={(val: typeof value) => { onChange(val); setQuery("") }}
+                      onChange={(val: typeof value) => {
+                        onChange(val)
+                        setQuery("")
+                      }}
                       multiple
                     >
                       <ComboboxTrigger>
@@ -2192,14 +2427,29 @@ export const WorkExperienceDialog = ({
                         <ComboboxOptions>
                           <ScrollArea viewportClassName="max-h-[304px]">
                             {filteredSkills
-                              .filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
+                              .filter(
+                                (skill) =>
+                                  !(value ?? []).some(
+                                    (s) =>
+                                      s.name.toLowerCase() ===
+                                      skill.name.toLowerCase()
+                                  )
+                              )
                               .map((skill) => (
-                              <ComboboxOption key={`${skill.id}-${skill.name}`} value={skill}>
-                                {skill.name}
-                              </ComboboxOption>
-                            ))}
+                                <ComboboxOption
+                                  key={`${skill.id}-${skill.name}`}
+                                  value={skill}
+                                >
+                                  {skill.name}
+                                </ComboboxOption>
+                              ))}
                             {query.trim() && filteredSkills.length === 0 && (
-                              <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
+                              <ComboboxOption
+                                value={{
+                                  id: `custom-${query.trim()}`,
+                                  name: query.trim(),
+                                }}
+                              >
                                 Add &ldquo;{query.trim()}&rdquo;
                               </ComboboxOption>
                             )}
@@ -2250,7 +2500,11 @@ export const WorkExperienceDialog = ({
                 Cancel
               </Button>
             </DialogClose>
-            <Button disabled={!isValid} loading={isSubmitting} ref={submitTriggerRef}>
+            <Button
+              disabled={!isValid}
+              loading={isSubmitting}
+              ref={submitTriggerRef}
+            >
               Save
             </Button>
 
@@ -2366,8 +2620,14 @@ export const EducationDialog = ({
       degree: edu.degree ?? "",
       major: edu.field ?? "",
       currentlyAttending: !edu.endDate,
-      startDate: { year: sd[0] ? Number(sd[0]) : undefined, month: sd[1] ? Number(sd[1]) : undefined },
-      endDate: { year: ed[0] ? Number(ed[0]) : undefined, month: ed[1] ? Number(ed[1]) : undefined },
+      startDate: {
+        year: sd[0] ? Number(sd[0]) : undefined,
+        month: sd[1] ? Number(sd[1]) : undefined,
+      },
+      endDate: {
+        year: ed[0] ? Number(ed[0]) : undefined,
+        month: ed[1] ? Number(ed[1]) : undefined,
+      },
     })
     setTimeout(() => formTrigger())
   }
@@ -2563,7 +2823,10 @@ export const EducationDialog = ({
                           render={({ field: { value, onChange } }) => (
                             <Listbox value={value ?? null} onChange={onChange}>
                               <ListboxButton
-                                displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
+                                displayValue={(value: number) =>
+                                  months.find((m) => m.value === value)?.name ??
+                                  ""
+                                }
                                 placeholder="Month"
                                 isInvalid={hookFormHasError({
                                   errors,
@@ -2649,7 +2912,10 @@ export const EducationDialog = ({
                           render={({ field: { value, onChange } }) => (
                             <Listbox value={value ?? null} onChange={onChange}>
                               <ListboxButton
-                                displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
+                                displayValue={(value: number) =>
+                                  months.find((m) => m.value === value)?.name ??
+                                  ""
+                                }
                                 placeholder="Month"
                                 isInvalid={hookFormHasError({
                                   errors,
@@ -2745,7 +3011,9 @@ export const EducationDialog = ({
                 Cancel
               </Button>
             </DialogClose>
-            <Button disabled={!isValid} loading={isSubmitting}>Save</Button>
+            <Button disabled={!isValid} loading={isSubmitting}>
+              Save
+            </Button>
           </div>
         </form>
       </DialogContent>
@@ -2805,7 +3073,9 @@ export const LanguagesDialog = ({
 
   const selected = useWatch({ control, name: "languages" })
   const [query, setQuery] = useState("")
-  const [filteredLanguages, setFilteredLanguages] = useState<{ id: number | string; name: string }[]>([])
+  const [filteredLanguages, setFilteredLanguages] = useState<
+    { id: number | string; name: string }[]
+  >([])
 
   const fetchLanguages = useCallback(async (q: string) => {
     if (!q.trim()) {
@@ -2818,7 +3088,9 @@ export const LanguagesDialog = ({
       )
       if (!res.ok) return
       const data = await res.json()
-      const entries: { id: string; value: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
+      const entries: { id: string; value: string }[] = Array.isArray(data)
+        ? data
+        : (data.entries ?? data.results ?? [])
       setFilteredLanguages(entries.map((e) => ({ id: e.id, name: e.value })))
     } catch {}
   }, [])
@@ -2829,7 +3101,10 @@ export const LanguagesDialog = ({
   }, [query, fetchLanguages])
 
   const onRemove = (index: number) => {
-    setValue("languages", selected?.filter((_, i) => i !== index))
+    setValue(
+      "languages",
+      selected?.filter((_, i) => i !== index)
+    )
     trigger()
   }
 
@@ -2903,8 +3178,11 @@ export const LanguagesDialog = ({
                   className="mt-8 w-auto"
                   value={value}
                   onChange={(val: typeof value) => {
-                    const unique = val.filter((s, i, arr) =>
-                      arr.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) === i
+                    const unique = val.filter(
+                      (s, i, arr) =>
+                        arr.findIndex(
+                          (x) => x.name.toLowerCase() === s.name.toLowerCase()
+                        ) === i
                     )
                     onChange(unique)
                     setQuery("")
@@ -2926,19 +3204,48 @@ export const LanguagesDialog = ({
                     <ComboboxOptions>
                       <ScrollArea viewportClassName="max-h-[304px]">
                         {filteredLanguages
-                          .filter((language) => !(value ?? []).some((s) => s.name.toLowerCase() === language.name.toLowerCase()))
+                          .filter(
+                            (language) =>
+                              !(value ?? []).some(
+                                (s) =>
+                                  s.name.toLowerCase() ===
+                                  language.name.toLowerCase()
+                              )
+                          )
                           .map((language) => (
-                            <ComboboxOption key={`${language.id}-${language.name}`} value={language}>
+                            <ComboboxOption
+                              key={`${language.id}-${language.name}`}
+                              value={language}
+                            >
                               {language.name}
                             </ComboboxOption>
                           ))}
                         {(() => {
                           const q = query.trim().toLowerCase()
-                          const alreadySelected = (value ?? []).some((s) => s.name.toLowerCase() === q)
-                          const visibleOptions = filteredLanguages.filter((lang) => !(value ?? []).some((s) => s.name.toLowerCase() === lang.name.toLowerCase()))
-                          if (!q || alreadySelected || visibleOptions.length > 0) return null
+                          const alreadySelected = (value ?? []).some(
+                            (s) => s.name.toLowerCase() === q
+                          )
+                          const visibleOptions = filteredLanguages.filter(
+                            (lang) =>
+                              !(value ?? []).some(
+                                (s) =>
+                                  s.name.toLowerCase() ===
+                                  lang.name.toLowerCase()
+                              )
+                          )
+                          if (
+                            !q ||
+                            alreadySelected ||
+                            visibleOptions.length > 0
+                          )
+                            return null
                           return (
-                            <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
+                            <ComboboxOption
+                              value={{
+                                id: `custom-${query.trim()}`,
+                                name: query.trim(),
+                              }}
+                            >
                               Add &ldquo;{query.trim()}&rdquo;
                             </ComboboxOption>
                           )
@@ -2983,7 +3290,9 @@ export const LanguagesDialog = ({
               </Button>
             </DialogClose>
 
-            <Button disabled={!isValid} loading={isSubmitting}>Save</Button>
+            <Button disabled={!isValid} loading={isSubmitting}>
+              Save
+            </Button>
           </div>
         </form>
       </DialogContent>
@@ -3041,7 +3350,9 @@ export const SkillsDialog = ({
   })
   const selected = useWatch({ control, name: "skills" })
   const [query, setQuery] = useState("")
-  const [filteredSkills, setFilteredSkills] = useState<{ id: number | string; name: string }[]>([])
+  const [filteredSkills, setFilteredSkills] = useState<
+    { id: number | string; name: string }[]
+  >([])
 
   const fetchSkills = useCallback(async (q: string) => {
     if (!q.trim()) {
@@ -3054,7 +3365,9 @@ export const SkillsDialog = ({
       )
       if (!res.ok) return
       const data = await res.json()
-      const entries: { id: string; value: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
+      const entries: { id: string; value: string }[] = Array.isArray(data)
+        ? data
+        : (data.entries ?? data.results ?? [])
       setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.value })))
     } catch {}
   }, [])
@@ -3064,7 +3377,10 @@ export const SkillsDialog = ({
     return () => clearTimeout(timer)
   }, [query, fetchSkills])
   const onRemove = (index: number) => {
-    setValue("skills", selected?.filter((_, i) => i !== index))
+    setValue(
+      "skills",
+      selected?.filter((_, i) => i !== index)
+    )
     trigger()
   }
 
@@ -3083,13 +3399,25 @@ export const SkillsDialog = ({
       try {
         const currentSkills: any[] = profile?.skills ?? []
         const newNames = new Set(values.skills.map((s) => s.name.toLowerCase()))
-        const currentNames = new Set(currentSkills.map((s: any) => s.name?.toLowerCase()))
+        const currentNames = new Set(
+          currentSkills.map((s: any) => s.name?.toLowerCase())
+        )
 
-        const toRemove = currentSkills.filter((s: any) => !newNames.has(s.name?.toLowerCase()))
-        const toAdd = values.skills.filter((s) => !currentNames.has(s.name.toLowerCase()))
+        const toRemove = currentSkills.filter(
+          (s: any) => !newNames.has(s.name?.toLowerCase())
+        )
+        const toAdd = values.skills.filter(
+          (s) => !currentNames.has(s.name.toLowerCase())
+        )
 
-        await Promise.all(toRemove.map((skill: any) => UserAPI.removeSkill(userId, String(skill.id))))
-        await Promise.all(toAdd.map((skill) => UserAPI.addSkill(userId, { name: skill.name })))
+        await Promise.all(
+          toRemove.map((skill: any) =>
+            UserAPI.removeSkill(userId, String(skill.id))
+          )
+        )
+        await Promise.all(
+          toAdd.map((skill) => UserAPI.addSkill(userId, { name: skill.name }))
+        )
       } catch {}
       onSaved?.()
     }
@@ -3133,8 +3461,11 @@ export const SkillsDialog = ({
                   className="mt-8 w-auto"
                   value={value}
                   onChange={(val: typeof value) => {
-                    const unique = val.filter((s, i, arr) =>
-                      arr.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) === i
+                    const unique = val.filter(
+                      (s, i, arr) =>
+                        arr.findIndex(
+                          (x) => x.name.toLowerCase() === s.name.toLowerCase()
+                        ) === i
                     )
                     onChange(unique)
                     setQuery("")
@@ -3156,19 +3487,48 @@ export const SkillsDialog = ({
                     <ComboboxOptions>
                       <ScrollArea viewportClassName="max-h-[304px]">
                         {filteredSkills
-                          .filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
+                          .filter(
+                            (skill) =>
+                              !(value ?? []).some(
+                                (s) =>
+                                  s.name.toLowerCase() ===
+                                  skill.name.toLowerCase()
+                              )
+                          )
                           .map((skill) => (
-                            <ComboboxOption key={`${skill.id}-${skill.name}`} value={skill}>
+                            <ComboboxOption
+                              key={`${skill.id}-${skill.name}`}
+                              value={skill}
+                            >
                               {skill.name}
                             </ComboboxOption>
                           ))}
                         {(() => {
                           const q = query.trim().toLowerCase()
-                          const alreadySelected = (value ?? []).some((s) => s.name.toLowerCase() === q)
-                          const visibleOptions = filteredSkills.filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
-                          if (!q || alreadySelected || visibleOptions.length > 0) return null
+                          const alreadySelected = (value ?? []).some(
+                            (s) => s.name.toLowerCase() === q
+                          )
+                          const visibleOptions = filteredSkills.filter(
+                            (skill) =>
+                              !(value ?? []).some(
+                                (s) =>
+                                  s.name.toLowerCase() ===
+                                  skill.name.toLowerCase()
+                              )
+                          )
+                          if (
+                            !q ||
+                            alreadySelected ||
+                            visibleOptions.length > 0
+                          )
+                            return null
                           return (
-                            <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
+                            <ComboboxOption
+                              value={{
+                                id: `custom-${query.trim()}`,
+                                name: query.trim(),
+                              }}
+                            >
                               Add &ldquo;{query.trim()}&rdquo;
                             </ComboboxOption>
                           )
@@ -3213,7 +3573,9 @@ export const SkillsDialog = ({
               </Button>
             </DialogClose>
 
-            <Button disabled={!isValid} loading={isSubmitting}>Save</Button>
+            <Button disabled={!isValid} loading={isSubmitting}>
+              Save
+            </Button>
           </div>
         </form>
       </DialogContent>
@@ -3295,7 +3657,10 @@ export const IndustryExpertiseDialog = ({
             .includes(query.toLowerCase().replace(/\s+/g, ""))
         )
   const onRemove = (index: number) => {
-    setValue("industries", selected?.filter((_, i) => i !== index))
+    setValue(
+      "industries",
+      selected?.filter((_, i) => i !== index)
+    )
     trigger()
   }
   useEffect(() => {
@@ -3312,7 +3677,7 @@ export const IndustryExpertiseDialog = ({
     setOpen(false)
     setValueFn(values)
     if (userId) {
-      (async () => {
+      ;(async () => {
         try {
           if (profile?.industries?.length) {
             await Promise.all(
@@ -3430,7 +3795,9 @@ export const IndustryExpertiseDialog = ({
               </Button>
             </DialogClose>
 
-            <Button disabled={!isValid} loading={isSubmitting}>Save</Button>
+            <Button disabled={!isValid} loading={isSubmitting}>
+              Save
+            </Button>
           </div>
         </form>
       </DialogContent>
@@ -3541,7 +3908,10 @@ export const CertificationsDialog = ({
   }
 
   const onRemove = (index: number) => {
-    setValue("skills", selected?.filter((_, i) => i !== index))
+    setValue(
+      "skills",
+      selected?.filter((_, i) => i !== index)
+    )
     trigger("skills")
   }
 
@@ -3836,7 +4206,11 @@ export const CertificationsDialog = ({
               <X className="size-[15px]" />
               Cancel
             </Button>
-            <Button disabled={!isValid} loading={isSubmitting} ref={submitTriggerRef}>
+            <Button
+              disabled={!isValid}
+              loading={isSubmitting}
+              ref={submitTriggerRef}
+            >
               Save
             </Button>
 
@@ -3976,15 +4350,11 @@ export const AffiliatedTeams1 = ({
           </div>
           <div className="inline-flex items-center gap-x-2">
             <Clock className="size-[12px] text-primary-500" />
-            <span className="text-xs leading-none font-light">
-              450 hrs
-            </span>
+            <span className="text-xs leading-none font-light">450 hrs</span>
           </div>
           <div className="inline-flex items-center gap-x-2">
             <Clock className="size-[12px] text-primary-500" />
-            <span className="text-xs leading-none font-light">
-              320 members
-            </span>
+            <span className="text-xs leading-none font-light">320 members</span>
           </div>
         </div>
 
@@ -4063,12 +4433,7 @@ const OfferCard = () => {
   const tooltipMembers = (
     <ScrollArea
       className="h-[192px] p-3"
-      scrollBar={
-        <ScrollBar
-          className="w-4 p-1"
-          thumbClassName="bg-white/20"
-        />
-      }
+      scrollBar={<ScrollBar className="w-4 p-1" thumbClassName="bg-white/20" />}
     >
       <div className="space-y-3 pr-5">
         {[0, 1, 2, 3].map((i) => (
@@ -4095,10 +4460,7 @@ const OfferCard = () => {
             </div>
 
             <span className="text-sm font-semibold text-white leading-5">
-              $75{" "}
-              <span className="text-[10px] font-light leading-5">
-                /hr
-              </span>
+              $75 <span className="text-[10px] font-light leading-5">/hr</span>
             </span>
           </div>
         ))}

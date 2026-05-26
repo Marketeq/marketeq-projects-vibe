@@ -88,8 +88,7 @@ function parseHowItWorksFromPayload(
       const stepTitle = typeof row.title === "string" ? row.title.trim() : ""
       const description =
         typeof row.description === "string" ? row.description.trim() : ""
-      const iconUrlRaw =
-        normalizeSafeImageHref(row.iconUrl) ?? ""
+      const iconUrlRaw = normalizeSafeImageHref(row.iconUrl) ?? ""
       if (!stepNumber || !stepTitle || !description) return null
       return {
         stepNumber,
@@ -168,10 +167,11 @@ export function buildProjectStaticContentFromGateway(
   const payload = apiPayload as Record<string, unknown>
 
   const howItWorksFromApi =
-    parseHowItWorksFromPayload(payload) ?? DEFAULT_PROJECT_STATIC_CONTENT.howItWorks
+    parseHowItWorksFromPayload(payload) ??
+    DEFAULT_PROJECT_STATIC_CONTENT.howItWorks
 
   const guaranteeItems = Array.isArray(payload.guaranteeItems)
-    ? payload.guaranteeItems
+    ? (payload.guaranteeItems
         .map((item: unknown) => {
           if (!item || typeof item !== "object") return null
           const row = item as Record<string, unknown>
@@ -194,7 +194,7 @@ export function buildProjectStaticContentFromGateway(
             description,
           }
         })
-        .filter(Boolean) as ProjectStaticContent["guaranteeItems"]
+        .filter(Boolean) as ProjectStaticContent["guaranteeItems"])
     : []
 
   if (guaranteeItems.length === 0) {

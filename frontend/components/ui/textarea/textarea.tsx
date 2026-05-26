@@ -3,8 +3,7 @@
 import * as React from "react"
 import { cn } from "@/utils/functions"
 
-export interface TextareaProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   isInvalid?: boolean
 }
 

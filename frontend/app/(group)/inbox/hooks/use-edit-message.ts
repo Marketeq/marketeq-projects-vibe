@@ -17,7 +17,9 @@ export function useEditMessage(token: string) {
 
     const key = loadKey(convId)
     if (!key) {
-      throw new Error("Encryption key not available. Please wait and try again.")
+      throw new Error(
+        "Encryption key not available. Please wait and try again."
+      )
     }
 
     const ciphertext = await encryptAES(plaintext, key)

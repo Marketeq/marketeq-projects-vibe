@@ -1,6 +1,9 @@
-import { AutocompleteAPI } from '@/service/http/autocomplete'
+import { AutocompleteAPI } from "@/service/http/autocomplete"
 
-export const fetchAutocomplete = async (type: string, q = ''): Promise<any[]> => {
+export const fetchAutocomplete = async (
+  type: string,
+  q = ""
+): Promise<any[]> => {
   try {
     const res = await AutocompleteAPI.getByType(type, q)
     return res.data
@@ -11,9 +14,9 @@ export const fetchAutocomplete = async (type: string, q = ''): Promise<any[]> =>
       const data = mod.default || mod
       if (!q) return data.slice(0, 10)
       const lower = q.toLowerCase()
-      return data.filter((item: any) =>
-        (item.label || '').toLowerCase().includes(lower)
-      ).slice(0, 20)
+      return data
+        .filter((item: any) => (item.label || "").toLowerCase().includes(lower))
+        .slice(0, 20)
     } catch {
       return []
     }

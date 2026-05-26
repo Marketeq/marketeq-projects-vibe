@@ -113,7 +113,9 @@ const EmojiPickerImpl = ({
 
   const filteredEmojis = React.useMemo(
     () =>
-      keys(omit(configByCategory, Categories.CUSTOM, Categories.SUGGESTED)).reduce(
+      keys(
+        omit(configByCategory, Categories.CUSTOM, Categories.SUGGESTED)
+      ).reduce(
         (prev, current) => {
           const values = emojis[current].reduce(
             (prev, current) =>
@@ -315,9 +317,11 @@ const EmojiPickerImpl = ({
 // The trigger is a static IconButton — re-creating its element on every
 // parent render shouldn't force EmojiPicker to re-render and rebuild its
 // entire popover content tree.
-export const EmojiPicker = React.memo(EmojiPickerImpl, (prev, next) =>
-  prev.onEmojiSelect === next.onEmojiSelect &&
-  prev.onGifSelect === next.onGifSelect &&
-  prev.align === next.align &&
-  prev.side === next.side,
+export const EmojiPicker = React.memo(
+  EmojiPickerImpl,
+  (prev, next) =>
+    prev.onEmojiSelect === next.onEmojiSelect &&
+    prev.onGifSelect === next.onGifSelect &&
+    prev.align === next.align &&
+    prev.side === next.side
 )

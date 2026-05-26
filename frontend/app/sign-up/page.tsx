@@ -66,9 +66,13 @@ export default function SignUp() {
           response?.data?.access_token &&
           response?.data?.user
         ) {
-          Cookies.set("access_token", response?.data?.access_token, { path: "/" })
+          Cookies.set("access_token", response?.data?.access_token, {
+            path: "/",
+          })
           if (response?.data?.refresh_token) {
-            Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
+            Cookies.set("refresh_token", response.data.refresh_token, {
+              path: "/",
+            })
           }
           if (response?.data?.sessionId) {
             Cookies.set("session_id", response.data.sessionId, { path: "/" })

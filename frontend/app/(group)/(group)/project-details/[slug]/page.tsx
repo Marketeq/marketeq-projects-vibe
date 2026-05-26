@@ -10,13 +10,6 @@ import {
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
-import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
-import {
-  buildProjectStaticContentFromGateway,
-  type ProjectStaticContent,
-  type ProjectStaticIcon,
-} from "@/lib/project-details/project-static-content-from-api"
-import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -61,11 +54,18 @@ import * as RadixTabs from "@radix-ui/react-tabs"
 import { TbStar, TbStarHalfFilled } from "react-icons/tb"
 import { useToggle } from "react-use"
 import useMeasure from "react-use-measure"
+import {
+  type ProjectStaticContent,
+  type ProjectStaticIcon,
+  buildProjectStaticContentFromGateway,
+} from "@/lib/project-details/project-static-content-from-api"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { ChatsContextProvider } from "@/components/chat"
 import { EditContextProvider, useEditContext } from "@/components/inbox-comps"
 import { LikeDislike } from "@/components/like-dislike"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
+import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
 import { ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
 import {
   ShowMoreLess,
@@ -478,7 +478,9 @@ const renderProjectStaticIcon = (
 }
 
 const Shimmer = ({ className }: { className?: string }) => (
-  <div className={cn("relative bg-gray-100 rounded overflow-hidden", className)}>
+  <div
+    className={cn("relative bg-gray-100 rounded overflow-hidden", className)}
+  >
     <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
   </div>
 )
@@ -528,8 +530,7 @@ export default function ProjectDetails() {
         const candidates = Array.from(new Set([rawSlug, stripped]))
 
         // Try fetching from listings-service via gateway
-        const apiBase =
-          getPublicApiUrl() || "http://localhost:4000"
+        const apiBase = getPublicApiUrl() || "http://localhost:4000"
         let res: Response | null = null
         let slug = rawSlug
         for (const candidate of candidates) {
@@ -1834,9 +1835,12 @@ export default function ProjectDetails() {
                                   <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
                                     <HelpCircle className="size-5 text-gray-400" />
                                   </div>
-                                  <h3 className="text-sm font-semibold text-dark-blue-400">No FAQ&apos;s yet</h3>
+                                  <h3 className="text-sm font-semibold text-dark-blue-400">
+                                    No FAQ&apos;s yet
+                                  </h3>
                                   <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
-                                    Frequently asked questions will appear here once the project owner adds them.
+                                    Frequently asked questions will appear here
+                                    once the project owner adds them.
                                   </p>
                                 </div>
                               ) : (
@@ -1940,9 +1944,12 @@ export default function ProjectDetails() {
                                   <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
                                     <HelpCircle className="size-5 text-gray-400" />
                                   </div>
-                                  <h3 className="text-sm font-semibold text-dark-blue-400">No questions yet</h3>
+                                  <h3 className="text-sm font-semibold text-dark-blue-400">
+                                    No questions yet
+                                  </h3>
                                   <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
-                                    When people ask questions on this listing, they&apos;ll show up here.
+                                    When people ask questions on this listing,
+                                    they&apos;ll show up here.
                                   </p>
                                 </div>
                               ) : (
@@ -4450,7 +4457,9 @@ export default function ProjectDetails() {
                         Edit Scope
                       </Button>
                     </DialogClose>
-                    <Button onClick={() => router.push(`/checkout/${params.slug}`)}>
+                    <Button
+                      onClick={() => router.push(`/checkout/${params.slug}`)}
+                    >
                       Continue to Checkout
                     </Button>
                   </DialogFooter>

@@ -301,7 +301,9 @@ async function fetchBackendListings(): Promise<MyListing[]> {
     return projects.map((p: any) => ({
       id: p.id,
       title: p.title && p.title.trim().length > 0 ? p.title : "Untitled",
-      type: (p.listingType === "service" ? "service" : "project") as MyListingType,
+      type: (p.listingType === "service"
+        ? "service"
+        : "project") as MyListingType,
       status: (p.status === "published"
         ? "Active"
         : p.status === "in_review"
@@ -309,8 +311,13 @@ async function fetchBackendListings(): Promise<MyListing[]> {
           : "Draft") as MyListingStatus,
       category: p.categories?.[0] || "Uncategorized",
       description: p.shortDescription || p.fullDescription,
-      mediaUrl: (Array.isArray(p.media) ? p.media[0]?.featuredImage : p.media?.featuredImage) || pickFromList(FALLBACK_IMAGES, p.id),
-      budget: p.budget ? `$${Number(p.budget).toLocaleString()} budget` : "Budget TBD",
+      mediaUrl:
+        (Array.isArray(p.media)
+          ? p.media[0]?.featuredImage
+          : p.media?.featuredImage) || pickFromList(FALLBACK_IMAGES, p.id),
+      budget: p.budget
+        ? `$${Number(p.budget).toLocaleString()} budget`
+        : "Budget TBD",
       updatedAt: p.updatedAt || p.createdAt,
     }))
   } catch (err) {
@@ -353,7 +360,9 @@ export function useMyListings() {
   }, [refreshListings])
 
   useEffect(() => {
-    const onFocus = () => { refreshListings() }
+    const onFocus = () => {
+      refreshListings()
+    }
     window.addEventListener("focus", onFocus)
     return () => window.removeEventListener("focus", onFocus)
   }, [refreshListings])

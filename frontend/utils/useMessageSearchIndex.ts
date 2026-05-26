@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
+  type SearchDoc,
   buildSearchIndex,
   loadCachedDocs,
   makeSearcher,
   saveCachedDocs,
-  type SearchDoc,
 } from "@/src/search/message-search"
 
 interface UseMessageSearchIndexOptions {
@@ -139,13 +139,13 @@ export function useMessageSearchIndex({
             userId,
             next,
             // We don't track threadsIndexed here; saveCachedDocs handles it.
-            [],
+            []
           ).catch(() => {})
         }
         return next
       })
     },
-    [userId],
+    [userId]
   )
 
   // Stable object identity — consumers put this in effect deps.

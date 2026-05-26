@@ -7,7 +7,7 @@ before making changes to encryption-related code.
 ## TL;DR
 
 - **What the spec requires**: server-side deterministic KEK so message
-  history is *never* lost across password resets, new devices, or cleared
+  history is _never_ lost across password resets, new devices, or cleared
   browsers. Trade-off: server can decrypt the private key (not "true" E2E
   in the Signal sense).
 - **What we currently have**: per-device RSA keypair with no recovery flow.
@@ -42,13 +42,14 @@ undecryptable).
   the public key upload → second browser can't decrypt anything
 - Private/incognito sessions count as a new device
 - Clearing localStorage = losing all message history (no recovery)
-- Password reset doesn't lose history *only because* nothing is tied to the
+- Password reset doesn't lose history _only because_ nothing is tied to the
   password — but a new login on a different device still loses access
 
 ### Workarounds for testing
 
 Manually copy these localStorage entries from the working browser to the new
 one (DevTools → Application → Local Storage → http://localhost:3000):
+
 - `privateKey`
 - `publicKey`
 - `deviceId`
@@ -61,6 +62,7 @@ The authoritative doc is
 `docs/md/Messaging Service/End 2 End Encryption/🔐 Seamless Key Recovery for End-to-End Encrypted Messaging(1).md`
 
 Key non-negotiable platform constraints from that doc:
+
 - "Message history is never lost — non-negotiable"
 - "Users never interact with encryption keys"
 - "Password resets or new devices do **not** break access to encrypted messages"
@@ -104,6 +106,7 @@ The schema is ready — only the wiring is missing.
 Because the KEK is deterministic from `userId + systemSecret`, and the
 server holds `systemSecret`, **the server can decrypt the private key**.
 This means:
+
 - ✅ Survives password resets (KEK doesn't depend on password)
 - ✅ Works for OAuth users (no password involved at all)
 - ✅ Works on any device (any browser can derive the same KEK)
@@ -116,17 +119,17 @@ The spec explicitly accepts this trade-off because the platform constraint
 
 ## Industry comparison
 
-| App | E2E? | Multi-device? | Lose history on password reset? |
-|-----|------|---------------|--------------------------------|
-| **WhatsApp** | True E2E | Yes (with iCloud/Drive backup) | Yes if no backup |
-| **Signal** | True E2E | Yes (each device own keys) | Yes |
-| **iMessage** | True E2E | Yes (with iCloud) | Yes if no backup |
-| **LinkedIn** | No (plaintext at rest) | Yes (server has all messages) | No |
-| **Discord** | No (text plaintext) | Yes | No |
-| **Upwork** | No (active scanning) | Yes | No |
-| **ProtonMail** | True E2E (password-derived) | Yes (with password) | Yes |
-| **Marketeq spec** | "Encrypted-ish" (server holds KEK) | Yes (automatic) | No |
-| **Marketeq actual** | True E2E (per device) | No | N/A |
+| App                 | E2E?                               | Multi-device?                  | Lose history on password reset? |
+| ------------------- | ---------------------------------- | ------------------------------ | ------------------------------- |
+| **WhatsApp**        | True E2E                           | Yes (with iCloud/Drive backup) | Yes if no backup                |
+| **Signal**          | True E2E                           | Yes (each device own keys)     | Yes                             |
+| **iMessage**        | True E2E                           | Yes (with iCloud)              | Yes if no backup                |
+| **LinkedIn**        | No (plaintext at rest)             | Yes (server has all messages)  | No                              |
+| **Discord**         | No (text plaintext)                | Yes                            | No                              |
+| **Upwork**          | No (active scanning)               | Yes                            | No                              |
+| **ProtonMail**      | True E2E (password-derived)        | Yes (with password)            | Yes                             |
+| **Marketeq spec**   | "Encrypted-ish" (server holds KEK) | Yes (automatic)                | No                              |
+| **Marketeq actual** | True E2E (per device)              | No                             | N/A                             |
 
 The marketplace pattern (LinkedIn/Discord/Upwork) is plaintext + server-side
 features. The Signal pattern is true E2E + accept the UX cost. The Marketeq
@@ -182,15 +185,15 @@ customer data.
 
 ## Files involved
 
-| File | Role |
-|------|------|
-| `frontend/src/crypto/keys.ts` | RSA keygen, import/export, `ensureEncryptionKeysExist` |
-| `frontend/src/crypto/e2ee.ts` | AES encrypt/decrypt, RSA wrap/unwrap |
-| `frontend/src/crypto/storage.ts` | localStorage helpers for conversation AES keys |
-| `frontend/src/crypto/backup.ts` | **Scaffold for KEK-based backup, partially written, NOT WIRED** |
-| `frontend/src/crypto/indexedDb.ts` | IndexedDB storage (currently unused) |
-| `backend/apps/messaging-service/src/encryption/` | Public key + conversation key endpoints |
-| `backend/apps/user-service/src/user-keys/` | Device registration, user key storage |
+| File                                             | Role                                                            |
+| ------------------------------------------------ | --------------------------------------------------------------- |
+| `frontend/src/crypto/keys.ts`                    | RSA keygen, import/export, `ensureEncryptionKeysExist`          |
+| `frontend/src/crypto/e2ee.ts`                    | AES encrypt/decrypt, RSA wrap/unwrap                            |
+| `frontend/src/crypto/storage.ts`                 | localStorage helpers for conversation AES keys                  |
+| `frontend/src/crypto/backup.ts`                  | **Scaffold for KEK-based backup, partially written, NOT WIRED** |
+| `frontend/src/crypto/indexedDb.ts`               | IndexedDB storage (currently unused)                            |
+| `backend/apps/messaging-service/src/encryption/` | Public key + conversation key endpoints                         |
+| `backend/apps/user-service/src/user-keys/`       | Device registration, user key storage                           |
 
 ## All E2E encryption docs (full digest)
 
@@ -201,13 +204,13 @@ and supporting/operational.
 
 ### Foundations (read first)
 
-| # | Doc | What it covers |
-|---|-----|----------------|
-| 1 | `🚀 How to implement E2EE for messaging in your platform.md` | High-level overview of E2EE, trade-offs, intro to SubtleCrypto |
-| 2 | `End-to-End Encryption (E2EE) – Messaging Platform Full Implementation Guide.md` | Full implementation walkthrough for 1:1 messages using recipient public key |
-| 3 | `Why simple 1_1 encryption (encrypt only with the recipient's public key) fails for sender chat history.md` | Explains why both participants need the conversation key — motivates the AES + RSA hybrid |
-| 4 | `🚀 E2EE direct 1_1 conversations using AES conversationKey.md` | The actual hybrid pattern we use: AES conversation key + RSA wrapping |
-| 5 | `📂 Suggested File Structure.md` | Recommended frontend `/crypto` folder layout (we mostly follow this) |
+| #   | Doc                                                                                                         | What it covers                                                                            |
+| --- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| 1   | `🚀 How to implement E2EE for messaging in your platform.md`                                                | High-level overview of E2EE, trade-offs, intro to SubtleCrypto                            |
+| 2   | `End-to-End Encryption (E2EE) – Messaging Platform Full Implementation Guide.md`                            | Full implementation walkthrough for 1:1 messages using recipient public key               |
+| 3   | `Why simple 1_1 encryption (encrypt only with the recipient's public key) fails for sender chat history.md` | Explains why both participants need the conversation key — motivates the AES + RSA hybrid |
+| 4   | `🚀 E2EE direct 1_1 conversations using AES conversationKey.md`                                             | The actual hybrid pattern we use: AES conversation key + RSA wrapping                     |
+| 5   | `📂 Suggested File Structure.md`                                                                            | Recommended frontend `/crypto` folder layout (we mostly follow this)                      |
 
 ### Key recovery — ⚠️ CONTRADICTION ALERT
 
@@ -216,14 +219,15 @@ key recovery, and they describe **two different approaches**. The
 "Seamless Recovery" approach is the canonical one based on completeness +
 the fact that two copies exist of it (the "(1)" duplicate).
 
-| # | Doc | Approach | Status |
-|---|-----|----------|--------|
-| 6 | `🔥 Problem_ User changes device or clears browser storage.md` | Password-derived KEK (PBKDF2 from login password) | **Superseded** — accepts losing history on password reset |
-| 7 | `Private Key Backup, Restore & Cross-Device Access – E2EE Implementation Guide.md` | Password-derived KEK (PBKDF2 from login password) — full code | **Superseded** — same approach as #6, more detail |
-| 8 | `🔐 Seamless Key Recovery for End-to-End Encrypted Messaging.md` | Deterministic server-side KEK (`PBKDF2(userId + systemSecret)`) | **Canonical** |
-| 8b | `🔐 Seamless Key Recovery for End-to-End Encrypted Messaging(1).md` | Identical duplicate of #8 | **Canonical** (same content) |
+| #   | Doc                                                                                | Approach                                                        | Status                                                    |
+| --- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------- |
+| 6   | `🔥 Problem_ User changes device or clears browser storage.md`                     | Password-derived KEK (PBKDF2 from login password)               | **Superseded** — accepts losing history on password reset |
+| 7   | `Private Key Backup, Restore & Cross-Device Access – E2EE Implementation Guide.md` | Password-derived KEK (PBKDF2 from login password) — full code   | **Superseded** — same approach as #6, more detail         |
+| 8   | `🔐 Seamless Key Recovery for End-to-End Encrypted Messaging.md`                   | Deterministic server-side KEK (`PBKDF2(userId + systemSecret)`) | **Canonical**                                             |
+| 8b  | `🔐 Seamless Key Recovery for End-to-End Encrypted Messaging(1).md`                | Identical duplicate of #8                                       | **Canonical** (same content)                              |
 
 **The contradiction**:
+
 - Docs 6 & 7 say: derive KEK from user password (true E2E, but breaks on
   password reset, accepts "lose old messages on reset" as fallback like
   WhatsApp)
@@ -232,10 +236,11 @@ the fact that two copies exist of it (the "(1)" duplicate).
   invisible to user, "non-negotiable" history preservation)
 
 **Why we treat #8/#8b as canonical**:
+
 1. Two duplicate files exist of the same approach (likely revised twice)
 2. Doc #8 is more detailed (full code, schema, error handling)
-3. Doc #6 is framed as a *problem statement* with proposed solution; #8 reads
-   as the *full final architecture*
+3. Doc #6 is framed as a _problem statement_ with proposed solution; #8 reads
+   as the _full final architecture_
 4. Doc #8 explicitly addresses constraints docs #6/#7 leave open: "password
    resets do not break decryption" and "users never interact with encryption
    keys" — only the deterministic KEK can guarantee both
@@ -243,32 +248,33 @@ the fact that two copies exist of it (the "(1)" duplicate).
    architecture in #8
 
 **Open questions the canonical doc #8 doesn't answer**:
+
 - Where is `SYSTEM_SECRET` stored? (env var? KMS? both?)
 - How does key rotation work if `SYSTEM_SECRET` ever changes?
 - How are existing users migrated if `SYSTEM_SECRET` is compromised?
 
 ### Group chat (independent of recovery)
 
-| # | Doc | What it covers |
-|---|-----|----------------|
-| 9 | `🗄️ 01 - Postgres Schema_ groups, group_participants, group_keys.md` | DB schema for groups (`groups`, `group_participants`, `group_keys`) |
-| 10 | `🚀 02 - Flow for adding a new participant to a group chat (E2EE).md` | Client-side re-encryption when adding a member |
-| 11 | `✅ GROUP CHAT ENCRYPTION USE CASES.md` | All the group scenarios: invite, leave, rotate keys |
+| #   | Doc                                                                   | What it covers                                                      |
+| --- | --------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 9   | `🗄️ 01 - Postgres Schema_ groups, group_participants, group_keys.md`  | DB schema for groups (`groups`, `group_participants`, `group_keys`) |
+| 10  | `🚀 02 - Flow for adding a new participant to a group chat (E2EE).md` | Client-side re-encryption when adding a member                      |
+| 11  | `✅ GROUP CHAT ENCRYPTION USE CASES.md`                               | All the group scenarios: invite, leave, rotate keys                 |
 
 ### Supporting / operational
 
-| # | Doc | What it covers |
-|---|-----|----------------|
-| 12 | `🚀 03 - Secure private key storage in IndexedDB.md` | Use IndexedDB (not localStorage) for private key. Uses `idb` library |
-| 13 | `🔄 04 - Public Key Rotation & Re-encryption Strategy.md` | What happens on key rotation, new device flow, re-wrapping conversation keys |
-| 14 | `⚙️ Ably Integration with Ciphertext Payloads.md` | Ably real-time channels carry only ciphertext blobs, never plaintext |
-| 15 | `💌 Notification-Service Integration with E2EE Messaging.md` | Notifications use metadata only — never decrypted server-side |
-| 16 | `⚙️ Minimal NestJS Notification Forwarder Example.md` | Code example of notification service that handles ciphertext |
-| 17 | `⚙️ Document_ Integration for Notification & Message Dropdowns in Your E2EE Platform.md` | UI dropdown for notifications; client-side decryption only |
-| 18 | `⚙️ Sample UI Notifications and Messages_.md` | Sample text content for UI notification truncation |
-| 19 | `📝 Sample decrypted message payloads.md` | JSON examples for testing/truncation |
-| 20 | `🔐 Admin Auditing in an E2EE Messaging Platform.md` | How to support admin audits without breaking E2EE — metadata-only with optional arbitration decrypt |
-| 21 | `🛡 Security Incident Response Plan (E2EE Platform).md` | What to do if DB or Ably are breached |
+| #   | Doc                                                                                      | What it covers                                                                                      |
+| --- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 12  | `🚀 03 - Secure private key storage in IndexedDB.md`                                     | Use IndexedDB (not localStorage) for private key. Uses `idb` library                                |
+| 13  | `🔄 04 - Public Key Rotation & Re-encryption Strategy.md`                                | What happens on key rotation, new device flow, re-wrapping conversation keys                        |
+| 14  | `⚙️ Ably Integration with Ciphertext Payloads.md`                                        | Ably real-time channels carry only ciphertext blobs, never plaintext                                |
+| 15  | `💌 Notification-Service Integration with E2EE Messaging.md`                             | Notifications use metadata only — never decrypted server-side                                       |
+| 16  | `⚙️ Minimal NestJS Notification Forwarder Example.md`                                    | Code example of notification service that handles ciphertext                                        |
+| 17  | `⚙️ Document_ Integration for Notification & Message Dropdowns in Your E2EE Platform.md` | UI dropdown for notifications; client-side decryption only                                          |
+| 18  | `⚙️ Sample UI Notifications and Messages_.md`                                            | Sample text content for UI notification truncation                                                  |
+| 19  | `📝 Sample decrypted message payloads.md`                                                | JSON examples for testing/truncation                                                                |
+| 20  | `🔐 Admin Auditing in an E2EE Messaging Platform.md`                                     | How to support admin audits without breaking E2EE — metadata-only with optional arbitration decrypt |
+| 21  | `🛡 Security Incident Response Plan (E2EE Platform).md`                                  | What to do if DB or Ably are breached                                                               |
 
 ### Topics NOT addressed in any doc
 
@@ -286,6 +292,7 @@ the fact that two copies exist of it (the "(1)" duplicate).
 ## Threat model
 
 **Protected against**:
+
 - Database breach (only ciphertext stored, plus encrypted private keys —
   attacker would need both DB and `systemSecret`)
 - Network MITM (TLS + ciphertext)
@@ -293,6 +300,7 @@ the fact that two copies exist of it (the "(1)" duplicate).
 - Ably platform reading messages (Ably only sees ciphertext)
 
 **NOT protected against**:
+
 - A determined server operator with access to both `systemSecret` and the
   DB (they can derive any user's KEK and decrypt the private key, then read
   all messages). The spec accepts this trade-off explicitly.

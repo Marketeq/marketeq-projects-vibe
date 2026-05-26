@@ -13,11 +13,8 @@ import {
 import React from "react"
 // import ReactPlayer from "react-player"
 import dynamic from "next/dynamic"
-import * as RadixTabs from "@radix-ui/react-tabs"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { Logo3 } from "@/components/icons"
-import NextLink from "@/components/next-link"
 import options from "@/public/mock/options.json"
 import {
   AutocompleteAPI,
@@ -106,6 +103,7 @@ import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
+import * as RadixTabs from "@radix-ui/react-tabs"
 import { createColumnHelper, noop } from "@tanstack/react-table"
 import {
   Row,
@@ -131,12 +129,14 @@ import {
 import { util, z } from "zod"
 import { Prettify } from "@/types/core"
 import { CreateProjectType } from "@/types/project"
+import { Logo3 } from "@/components/icons"
 import { GripVertical2 } from "@/components/icons/grip-vertical-2"
 import { Network } from "@/components/icons/network"
 import { Network1 } from "@/components/icons/network-1"
 import { Network2 } from "@/components/icons/network-2"
 import { Network3 } from "@/components/icons/network-3"
 import { Network4 } from "@/components/icons/network-4"
+import NextLink from "@/components/next-link"
 import { CountriesCombobox, OwnCombobox } from "@/components/own-combobox"
 import { RichTextEditor } from "@/components/rich-text-editor"
 import {
@@ -208,12 +208,12 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  Textarea,
-  ToastAction,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
+  Textarea,
+  ToastAction,
   Toaster,
   Tooltip,
   TooltipContent,
@@ -789,19 +789,25 @@ const Sidebar = () => {
       // Each sidebar sub-item maps to a tab grouping
       if (name === "title") {
         // Basic Info tab: title + category
-        return Boolean(projectInfoMethods.formState.errors.title) ||
+        return (
+          Boolean(projectInfoMethods.formState.errors.title) ||
           Boolean(projectInfoMethods.formState.errors.category)
+        )
       }
       if (name === "shortDescription") {
         // Description tab: shortDescription + fullDescription
-        return Boolean(projectInfoMethods.formState.errors.shortDescription) ||
+        return (
+          Boolean(projectInfoMethods.formState.errors.shortDescription) ||
           Boolean(projectInfoMethods.formState.errors.fullDescription)
+        )
       }
       if (name === "tags") {
         // Project Details tab: tags + skills + industry
-        return Boolean(projectInfoMethods.formState.errors.tags) ||
+        return (
+          Boolean(projectInfoMethods.formState.errors.tags) ||
           Boolean(projectInfoMethods.formState.errors.skills) ||
           Boolean(projectInfoMethods.formState.errors.industry)
+        )
       }
       return false
     },
@@ -828,11 +834,7 @@ const Sidebar = () => {
                   <button
                     className="group flex items-center justify-between focus-visible:outline-none hover:bg-gray-100 rounded-md px-3 py-2"
                     data-ui-state={
-                      isActive
-                        ? "active"
-                        : isValid
-                          ? "complete"
-                          : undefined
+                      isActive ? "active" : isValid ? "complete" : undefined
                     }
                     onClick={() => setStep(index)}
                   >
@@ -848,7 +850,11 @@ const Sidebar = () => {
                 </TooltipTrigger>
 
                 <TooltipContent className="max-w-[138px]">
-                  {isActive ? "Opened" : isValid ? "Click to open" : "Click to open"}
+                  {isActive
+                    ? "Opened"
+                    : isValid
+                      ? "Click to open"
+                      : "Click to open"}
                 </TooltipContent>
 
                 <div
@@ -856,117 +862,19 @@ const Sidebar = () => {
                   style={{
                     maxHeight: isActive ? "500px" : "0px",
                     opacity: isActive ? 1 : 0,
-                    transition: "max-height 400ms cubic-bezier(0.4, 0, 0.2, 1), opacity 350ms cubic-bezier(0.4, 0, 0.2, 1) 50ms",
+                    transition:
+                      "max-height 400ms cubic-bezier(0.4, 0, 0.2, 1), opacity 350ms cubic-bezier(0.4, 0, 0.2, 1) 50ms",
                   }}
                 >
-                    {label === "Project Info" &&
-                      meta[label].map((field, i) => {
-                        const isDirty = Boolean(
-                          projectInfoMethods.formState.dirtyFields[field.name]
-                        )
-                        const hasError = hasProjectInfoFieldError(field.name)
-                        const shouldShowStatus = hasError || isDirty
+                  {label === "Project Info" &&
+                    meta[label].map((field, i) => {
+                      const isDirty = Boolean(
+                        projectInfoMethods.formState.dirtyFields[field.name]
+                      )
+                      const hasError = hasProjectInfoFieldError(field.name)
+                      const shouldShowStatus = hasError || isDirty
 
-                        return (
-                          <div
-                            className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
-                            key={i}
-                          >
-                            <span className="text-sm leading-6 text-gray-500">
-                              {field.label}
-                            </span>
-
-                            {shouldShowStatus &&
-                              (hasError ? (
-                                <AlertCircle className="size-[22px] text-warning-500 shrink-0" />
-                              ) : (
-                                <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                                  <Check className="size-3 text-white" />
-                                </div>
-                              ))}
-                          </div>
-                        )
-                      })}
-                    {label === "Media" &&
-                      meta[label].map((field, i) => {
-                        const isDirty = Boolean(
-                          mediaMethods.formState.dirtyFields[field.name]
-                        )
-                        const hasError = hasMediaFieldError(field.name)
-                        const shouldShowStatus = hasError || isDirty
-
-                        return (
-                          <div
-                            className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
-                            key={i}
-                          >
-                            <span className="text-sm leading-6 text-gray-500">
-                              {field.label}
-                            </span>
-
-                            {shouldShowStatus &&
-                              (hasError ? (
-                                <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
-                              ) : (
-                                <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                                  <Check className="size-3 text-white" />
-                                </div>
-                              ))}
-                          </div>
-                        )
-                      })}
-                    {label === "Project Scope" &&
-                      meta[label].map((field, i) => (
-                        <div
-                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
-                          key={i}
-                        >
-                          {field.label === "Task Name" ? (
-                            <button
-                              type="button"
-                              className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none"
-                              onClick={() => setTaskSearchDialogOpen(true)}
-                            >
-                              {field.label}
-                            </button>
-                          ) : (
-                            <span className="text-sm leading-6 text-gray-500">
-                              {field.label}
-                            </span>
-                          )}
-
-                          {hasStartedScope ? (
-                            (field.label === "Task Name" &&
-                              pickFromProjectScopeSchema({
-                                task: true,
-                              }).safeParse(phases)) ||
-                            (field.label === "Role" &&
-                              pickFromProjectScopeSchema({
-                                role: true,
-                              }).safeParse(phases)) ||
-                            (field.label === "Location" &&
-                              pickFromProjectScopeSchema({
-                                location: true,
-                              }).safeParse(phases)) ||
-                            (field.label === "Experience" &&
-                              pickFromProjectScopeSchema({
-                                experience: true,
-                              }).safeParse(phases)) ||
-                            (field.label === "Duration" &&
-                              pickFromProjectScopeSchema({
-                                duration: true,
-                              }).safeParse(phases)) ? (
-                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                                <Check className="size-3 text-white" />
-                              </div>
-                            ) : (
-                              <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
-                            )
-                          ) : null}
-                        </div>
-                      ))}
-                    {label === "Questions" &&
-                      meta[label].map((field, i) => (
+                      return (
                         <div
                           className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
                           key={i}
@@ -974,8 +882,107 @@ const Sidebar = () => {
                           <span className="text-sm leading-6 text-gray-500">
                             {field.label}
                           </span>
+
+                          {shouldShowStatus &&
+                            (hasError ? (
+                              <AlertCircle className="size-[22px] text-warning-500 shrink-0" />
+                            ) : (
+                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                                <Check className="size-3 text-white" />
+                              </div>
+                            ))}
                         </div>
-                      ))}
+                      )
+                    })}
+                  {label === "Media" &&
+                    meta[label].map((field, i) => {
+                      const isDirty = Boolean(
+                        mediaMethods.formState.dirtyFields[field.name]
+                      )
+                      const hasError = hasMediaFieldError(field.name)
+                      const shouldShowStatus = hasError || isDirty
+
+                      return (
+                        <div
+                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                          key={i}
+                        >
+                          <span className="text-sm leading-6 text-gray-500">
+                            {field.label}
+                          </span>
+
+                          {shouldShowStatus &&
+                            (hasError ? (
+                              <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
+                            ) : (
+                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                                <Check className="size-3 text-white" />
+                              </div>
+                            ))}
+                        </div>
+                      )
+                    })}
+                  {label === "Project Scope" &&
+                    meta[label].map((field, i) => (
+                      <div
+                        className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                        key={i}
+                      >
+                        {field.label === "Task Name" ? (
+                          <button
+                            type="button"
+                            className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none"
+                            onClick={() => setTaskSearchDialogOpen(true)}
+                          >
+                            {field.label}
+                          </button>
+                        ) : (
+                          <span className="text-sm leading-6 text-gray-500">
+                            {field.label}
+                          </span>
+                        )}
+
+                        {hasStartedScope ? (
+                          (field.label === "Task Name" &&
+                            pickFromProjectScopeSchema({
+                              task: true,
+                            }).safeParse(phases)) ||
+                          (field.label === "Role" &&
+                            pickFromProjectScopeSchema({
+                              role: true,
+                            }).safeParse(phases)) ||
+                          (field.label === "Location" &&
+                            pickFromProjectScopeSchema({
+                              location: true,
+                            }).safeParse(phases)) ||
+                          (field.label === "Experience" &&
+                            pickFromProjectScopeSchema({
+                              experience: true,
+                            }).safeParse(phases)) ||
+                          (field.label === "Duration" &&
+                            pickFromProjectScopeSchema({
+                              duration: true,
+                            }).safeParse(phases)) ? (
+                            <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                              <Check className="size-3 text-white" />
+                            </div>
+                          ) : (
+                            <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
+                          )
+                        ) : null}
+                      </div>
+                    ))}
+                  {label === "Questions" &&
+                    meta[label].map((field, i) => (
+                      <div
+                        className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                        key={i}
+                      >
+                        <span className="text-sm leading-6 text-gray-500">
+                          {field.label}
+                        </span>
+                      </div>
+                    ))}
                 </div>
               </div>
             </Tooltip>
@@ -1003,10 +1010,15 @@ const Header = ({
 
       <div className="flex items-center gap-x-3">
         {lastSavedAt && (
-        <span className="inline-flex items-center gap-x-1.5 text-sm text-gray-500">
-          <Clock className="size-4" />
-          Saved at {lastSavedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })}
-        </span>
+          <span className="inline-flex items-center gap-x-1.5 text-sm text-gray-500">
+            <Clock className="size-4" />
+            Saved at{" "}
+            {lastSavedAt.toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            })}
+          </span>
         )}
         <TooltipProvider>
           <Tooltip>
@@ -1027,17 +1039,11 @@ const Header = ({
             <TooltipContent>Preview</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <Button>
-          Publish
-        </Button>
+        <Button>Publish</Button>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <IconButton
-                variant="ghost"
-                visual="gray"
-                onClick={onClose}
-              >
+              <IconButton variant="ghost" visual="gray" onClick={onClose}>
                 <X className="size-5" />
               </IconButton>
             </TooltipTrigger>
@@ -2323,1080 +2329,1134 @@ const ProjectInfo = ({
               <TabsList className="px-0 pt-0 gap-6">
                 <TabsTrigger value="basic-info">Basic Info</TabsTrigger>
                 <TabsTrigger value="description">Description</TabsTrigger>
-                <TabsTrigger value="project-details">Project Details</TabsTrigger>
+                <TabsTrigger value="project-details">
+                  Project Details
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="basic-info">
-            <div
-              id="publish-project-title-field"
-              className="space-y-1.5 mt-6 mb-6"
-            >
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                  htmlFor="title"
+                <div
+                  id="publish-project-title-field"
+                  className="space-y-1.5 mt-6 mb-6"
                 >
-                  Title
-                </Label>
-                <div className="flex items-center justify-between">
-                  <HelperText size="sm">
-                    Write a title that accurately describes your project scope
-                    for the marketplace.
-                  </HelperText>
-
-                  <span className="text-xs leading-[14.52px] text-gray-500">
-                    {titleCharacterCount}/{TITLE_MAX_LENGTH}
-                  </span>
-                </div>
-              </div>
-
-              <Input
-                id="title"
-                type="text"
-                placeholder="Enter Title"
-                value={projectInfoValues.title ?? ""}
-                maxLength={TITLE_MAX_LENGTH}
-                onChange={(event) => {
-                  methods.setValue(
-                    "title",
-                    event.target.value.slice(0, TITLE_MAX_LENGTH),
-                    {
-                      shouldDirty: true,
-                      shouldTouch: true,
-                      shouldValidate: false,
-                    }
-                  )
-                  if (titleHasError && get(errors, "title.type") === "manual") {
-                    methods.clearErrors("title")
-                  }
-                }}
-                onBlur={() => void methods.trigger("title")}
-                onKeyDown={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      projectInfoValues.title?.length || 0,
-                      TITLE_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
-                  }
-                }}
-                onPaste={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      projectInfoValues.title?.length || 0,
-                      TITLE_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
-                  }
-                }}
-                isInvalid={titleHasError}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="title"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            <div id="publish-project-type-field" className="space-y-1.5 mt-6 mb-6">
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                >
-                  Project Type
-                </Label>
-                <HelperText size="sm">
-                  Select the category that best represents your project scope.
-                </HelperText>
-              </div>
-
-              <div className="max-w-[202px]">
-                <Listbox value={projectType} onChange={setProjectType}>
-                  <ListboxButton
-                    placeholder="Select Type"
-                    className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start border border-gray-300 rounded-[5px]"
-                  >
-                    {({ value }) => (
-                      <span className="truncate block">
-                        {value || "Select Type"}
-                      </span>
-                    )}
-                  </ListboxButton>
-                  <ListboxOptions>
-                    {PROJECT_TYPE_OPTIONS.map((option) => (
-                      <ListboxOption key={option} value={option}>
-                        {option}
-                      </ListboxOption>
-                    ))}
-                  </ListboxOptions>
-                </Listbox>
-              </div>
-            </div>
-
-            <div id="publish-project-category-field" className="space-y-6 mt-0">
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                  htmlFor="email"
-                  asChild
-                >
-                  <span>Category</span>
-                </Label>
-
-                <HelperText size="sm">
-                  Select categories that best fit your project scope for easier
-                  discovery.
-                </HelperText>
-              </div>
-
-              <div className="flex items-start gap-x-1.5">
-                <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
-                  1
-                </div>
-
-                <div className="flex flex-col flex-auto gap-y-2.5">
-                  <div className="max-w-[202px]">
-                    <Controller
-                      control={methods.control}
-                      name="category.0.category"
-                      render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox
-                          value={value}
-                          onChange={(nextValue) =>
-                            handleCategorySelection(0, nextValue, onChange)
-                          }
-                        >
-                          <ListboxButton
-                            placeholder="Add Category"
-                            className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
-                            onFocus={() => setActiveCategoryIndex(0)}
-                            {...field}
-                          >
-                            {({ value }) => (
-                              <span className="truncate block">
-                                {value || "Add Category"}
-                              </span>
-                            )}
-                          </ListboxButton>
-                          <ListboxOptions>
-                            {getAvailableCategoriesForIndex(0, value).map(
-                              (category) => (
-                                <ListboxOption key={category} value={category}>
-                                  {category}
-                                </ListboxOption>
-                              )
-                            )}
-                          </ListboxOptions>
-                        </Listbox>
-                      )}
-                    />
-                  </div>
-
-                  <Controller
-                    name="category.0.subCategories"
-                    control={methods.control}
-                    render={({ field: { onChange, ...field } }) => (
-                      <TagsInputRoot
-                        onValueChange={handleSubCategoryChange(
-                          "category.0.subCategories",
-                          onChange
-                        )}
-                        {...field}
-                        className="space-y-1.5"
-                      >
-                        <TagsInputContext>
-                          {(tagsInput) => (
-                            <>
-                              <TagsInputControl className="relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] border border-gray-300 px-[14px] py-[10px] m-0">
-                                {tagsInput.value.map((value, index) => (
-                                  <TagsInputItem
-                                    key={index}
-                                    index={index}
-                                    value={value}
-                                  >
-                                    <TagsInputItemPreview
-                                      visual="primary"
-                                      size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
-                                    >
-                                      <TagsInputItemText>
-                                        {value}
-                                      </TagsInputItemText>
-                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                        <X2 className="size-3" />
-                                      </TagsInputItemDeleteTrigger>
-                                    </TagsInputItemPreview>
-                                    <TagsInputItemInput />
-                                  </TagsInputItem>
-                                ))}
-                                <TagsInputInput
-                                  placeholder={
-                                    tagsInput.value.length
-                                      ? ""
-                                      : "Add Sub-Category(s)"
-                                  }
-                                  options={subCategoryOptions}
-                                  allowCreateOption
-                                  className="flex-1 min-w-[100px] "
-                                  onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(0, value)
-                                  }}
-                                  onFocus={() => {
-                                    setActiveCategoryIndex(0)
-                                    setSubCategoryOptions(
-                                      getSubCategoryOptionsForCategory(
-                                        categoryValues?.[0]?.category
-                                      )
-                                    )
-                                  }}
-                                />
-                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                              </TagsInputControl>
-                            </>
-                          )}
-                        </TagsInputContext>
-                        <TagsInputHiddenInput />
-                      </TagsInputRoot>
-                    )}
-                  />
-
-                  {(hookFormHasError({ errors, name: "category.0.category" }) ||
-                    hookFormHasError({
-                      errors,
-                      name: "category.0.subCategories",
-                    })) && (
-                    <ErrorMessage size="sm">
-                      {get(errors, "category.0.category.message") ||
-                        get(errors, "category.0.subCategories.message")}
-                    </ErrorMessage>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-start gap-x-1.5">
-                <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
-                  2
-                </div>
-
-                <div className="flex flex-col flex-auto gap-y-2.5">
-                  <div className="max-w-[202px]">
-                    <Controller
-                      control={methods.control}
-                      name="category.1.category"
-                      render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox
-                          value={value}
-                          onChange={(nextValue) =>
-                            handleCategorySelection(1, nextValue, onChange)
-                          }
-                        >
-                          <ListboxButton
-                            placeholder="Add Category"
-                            className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
-                            onFocus={() => setActiveCategoryIndex(1)}
-                            {...field}
-                          >
-                            {({ value }) => (
-                              <span className="truncate block">
-                                {value || "Add Category"}
-                              </span>
-                            )}
-                          </ListboxButton>
-                          <ListboxOptions>
-                            {getAvailableCategoriesForIndex(1, value).map(
-                              (category) => (
-                                <ListboxOption key={category} value={category}>
-                                  {category}
-                                </ListboxOption>
-                              )
-                            )}
-                          </ListboxOptions>
-                        </Listbox>
-                      )}
-                    />
-                  </div>
-
-                  <Controller
-                    name="category.1.subCategories"
-                    control={methods.control}
-                    render={({ field: { onChange, ...field } }) => (
-                      <TagsInputRoot
-                        onValueChange={handleSubCategoryChange(
-                          "category.1.subCategories",
-                          onChange
-                        )}
-                        {...field}
-                        className="space-y-1.5"
-                      >
-                        <TagsInputContext>
-                          {(tagsInput) => (
-                            <>
-                              <TagsInputControl
-                                className="relative pr-[28px] flex flex-wrap !justify-start
-                               !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] 
-                               border border-gray-300 px-[14px] py-[10px] m-0"
-                              >
-                                {tagsInput.value.map((value, index) => (
-                                  <TagsInputItem
-                                    key={index}
-                                    index={index}
-                                    value={value}
-                                  >
-                                    <TagsInputItemPreview
-                                      visual="primary"
-                                      size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
-                                    >
-                                      <TagsInputItemText>
-                                        {value}
-                                      </TagsInputItemText>
-                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                        <X2 className="size-3" />
-                                      </TagsInputItemDeleteTrigger>
-                                    </TagsInputItemPreview>
-                                    <TagsInputItemInput />
-                                  </TagsInputItem>
-                                ))}
-                                <TagsInputInput
-                                  options={subCategoryOptions}
-                                  placeholder={
-                                    tagsInput.value.length
-                                      ? ""
-                                      : "Add Sub-Category(s)"
-                                  }
-                                  allowCreateOption
-                                  className="flex-1 min-w-[100px]"
-                                  onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(1, value)
-                                  }}
-                                  onFocus={() => {
-                                    setActiveCategoryIndex(1)
-                                    setSubCategoryOptions(
-                                      getSubCategoryOptionsForCategory(
-                                        categoryValues?.[1]?.category
-                                      )
-                                    )
-                                  }}
-                                />
-
-                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                              </TagsInputControl>
-                            </>
-                          )}
-                        </TagsInputContext>
-                        <TagsInputHiddenInput />
-                      </TagsInputRoot>
-                    )}
-                  />
-
-                  {(hookFormHasError({ errors, name: "category.1.category" }) ||
-                    hookFormHasError({
-                      errors,
-                      name: "category.1.subCategories",
-                    })) && (
-                    <ErrorMessage size="sm">
-                      {get(errors, "category.1.category.message") ||
-                        get(errors, "category.1.subCategories.message")}
-                    </ErrorMessage>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-start gap-x-1.5">
-                <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
-                  3
-                </div>
-
-                <div className="flex flex-col flex-auto gap-y-2.5">
-                  <div className="max-w-[202px]">
-                    <Controller
-                      control={methods.control}
-                      name="category.2.category"
-                      render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox
-                          value={value}
-                          onChange={(nextValue) =>
-                            handleCategorySelection(2, nextValue, onChange)
-                          }
-                        >
-                          <ListboxButton
-                            placeholder="Add Category"
-                            className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
-                            onFocus={() => setActiveCategoryIndex(2)}
-                            {...field}
-                          >
-                            {({ value }) => (
-                              <span className="truncate block">
-                                {value || "Add Category"}
-                              </span>
-                            )}
-                          </ListboxButton>
-                          <ListboxOptions>
-                            {getAvailableCategoriesForIndex(2, value).map(
-                              (category) => (
-                                <ListboxOption key={category} value={category}>
-                                  {category}
-                                </ListboxOption>
-                              )
-                            )}
-                          </ListboxOptions>
-                        </Listbox>
-                      )}
-                    />
-                  </div>
-
-                  <Controller
-                    name="category.2.subCategories"
-                    control={methods.control}
-                    render={({ field: { onChange, ...field } }) => (
-                      <TagsInputRoot
-                        onValueChange={handleSubCategoryChange(
-                          "category.2.subCategories",
-                          onChange
-                        )}
-                        {...field}
-                        className="space-y-1.5"
-                      >
-                        <TagsInputContext>
-                          {(tagsInput) => (
-                            <>
-                              <TagsInputControl
-                                className="relative pr-[28px] flex flex-wrap !justify-start
-                               !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] 
-                               border border-gray-300 px-[14px] py-[10px] m-0"
-                              >
-                                {tagsInput.value.map((value, index) => (
-                                  <TagsInputItem
-                                    key={index}
-                                    index={index}
-                                    value={value}
-                                  >
-                                    <TagsInputItemPreview
-                                      visual="primary"
-                                      size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
-                                    >
-                                      <TagsInputItemText>
-                                        {value}
-                                      </TagsInputItemText>
-                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                        <X2 className="size-3" />
-                                      </TagsInputItemDeleteTrigger>
-                                    </TagsInputItemPreview>
-                                    <TagsInputItemInput />
-                                  </TagsInputItem>
-                                ))}
-                                <TagsInputInput
-                                  options={subCategoryOptions}
-                                  placeholder={
-                                    tagsInput.value.length
-                                      ? ""
-                                      : "Add Sub-Category(s)"
-                                  }
-                                  allowCreateOption
-                                  className="flex-1 min-w-[100px]"
-                                  onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(2, value)
-                                  }}
-                                  onFocus={() => {
-                                    setActiveCategoryIndex(2)
-                                    setSubCategoryOptions(
-                                      getSubCategoryOptionsForCategory(
-                                        categoryValues?.[2]?.category
-                                      )
-                                    )
-                                  }}
-                                />
-
-                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                              </TagsInputControl>
-                            </>
-                          )}
-                        </TagsInputContext>
-                        <TagsInputHiddenInput />
-                      </TagsInputRoot>
-                    )}
-                  />
-
-                  {(hookFormHasError({ errors, name: "category.2.category" }) ||
-                    hookFormHasError({
-                      errors,
-                      name: "category.2.subCategories",
-                    })) && (
-                    <ErrorMessage size="sm">
-                      {get(errors, "category.2.category.message") ||
-                        get(errors, "category.2.subCategories.message")}
-                    </ErrorMessage>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {showSuggestions && (
-              <div className="mt-6 space-y-1.5">
-                <span className="block text-xs leading-5 text-dark-blue-400">
-                  Suggested Categories
-                </span>
-
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
-                  {suggestedForDisplay.map(({ category, subCategory }) => (
-                    <Badge
-                      size="md"
-                      className="pr-2 focus-visible:outline-none text-primary-500 bg-primary-50"
-                      visual="primary"
-                      asChild
-                      key={category}
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                      htmlFor="title"
                     >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const indexToUpdate = activeCategoryIndex
+                      Title
+                    </Label>
+                    <div className="flex items-center justify-between">
+                      <HelperText size="sm">
+                        Write a title that accurately describes your project
+                        scope for the marketplace.
+                      </HelperText>
 
-                          // write values and mark as user-driven so Sidebar shows the checkmark
-                          setValue(
-                            `category.${indexToUpdate}.category`,
-                            category,
-                            {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            }
-                          )
-                          setValue(
-                            `category.${indexToUpdate}.subCategories`,
-                            [subCategory],
-                            {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            }
-                          )
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        {titleCharacterCount}/{TITLE_MAX_LENGTH}
+                      </span>
+                    </div>
+                  </div>
 
-                          // validate that slot
-                          trigger(`category.${indexToUpdate}`)
+                  <Input
+                    id="title"
+                    type="text"
+                    placeholder="Enter Title"
+                    value={projectInfoValues.title ?? ""}
+                    maxLength={TITLE_MAX_LENGTH}
+                    onChange={(event) => {
+                      methods.setValue(
+                        "title",
+                        event.target.value.slice(0, TITLE_MAX_LENGTH),
+                        {
+                          shouldDirty: true,
+                          shouldTouch: true,
+                          shouldValidate: false,
+                        }
+                      )
+                      if (
+                        titleHasError &&
+                        get(errors, "title.type") === "manual"
+                      ) {
+                        methods.clearErrors("title")
+                      }
+                    }}
+                    onBlur={() => void methods.trigger("title")}
+                    onKeyDown={(event) => {
+                      if (
+                        shouldBlockMaxLengthInput(
+                          event,
+                          projectInfoValues.title?.length || 0,
+                          TITLE_MAX_LENGTH
+                        )
+                      ) {
+                        event.preventDefault()
+                        triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                      }
+                    }}
+                    onPaste={(event) => {
+                      if (
+                        shouldBlockMaxLengthInput(
+                          event,
+                          projectInfoValues.title?.length || 0,
+                          TITLE_MAX_LENGTH
+                        )
+                      ) {
+                        event.preventDefault()
+                        triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                      }
+                    }}
+                    isInvalid={titleHasError}
+                  />
 
-                          // keep suggestions visible for subsequent category slots
-                        }}
-                      >
-                        {category} / {subCategory}
-                        <Plus2 className="size-3 opacity-50 hover:opacity-100" />
-                      </button>
-                    </Badge>
-                  ))}
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="title"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
                 </div>
-              </div>
-            )}
+
+                <div
+                  id="publish-project-type-field"
+                  className="space-y-1.5 mt-6 mb-6"
+                >
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                    >
+                      Project Type
+                    </Label>
+                    <HelperText size="sm">
+                      Select the category that best represents your project
+                      scope.
+                    </HelperText>
+                  </div>
+
+                  <div className="max-w-[202px]">
+                    <Listbox value={projectType} onChange={setProjectType}>
+                      <ListboxButton
+                        placeholder="Select Type"
+                        className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start border border-gray-300 rounded-[5px]"
+                      >
+                        {({ value }) => (
+                          <span className="truncate block">
+                            {value || "Select Type"}
+                          </span>
+                        )}
+                      </ListboxButton>
+                      <ListboxOptions>
+                        {PROJECT_TYPE_OPTIONS.map((option) => (
+                          <ListboxOption key={option} value={option}>
+                            {option}
+                          </ListboxOption>
+                        ))}
+                      </ListboxOptions>
+                    </Listbox>
+                  </div>
+                </div>
+
+                <div
+                  id="publish-project-category-field"
+                  className="space-y-6 mt-0"
+                >
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                      htmlFor="email"
+                      asChild
+                    >
+                      <span>Category</span>
+                    </Label>
+
+                    <HelperText size="sm">
+                      Select categories that best fit your project scope for
+                      easier discovery.
+                    </HelperText>
+                  </div>
+
+                  <div className="flex items-start gap-x-1.5">
+                    <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
+                      1
+                    </div>
+
+                    <div className="flex flex-col flex-auto gap-y-2.5">
+                      <div className="max-w-[202px]">
+                        <Controller
+                          control={methods.control}
+                          name="category.0.category"
+                          render={({
+                            field: { value, onChange, ...field },
+                          }) => (
+                            <Listbox
+                              value={value}
+                              onChange={(nextValue) =>
+                                handleCategorySelection(0, nextValue, onChange)
+                              }
+                            >
+                              <ListboxButton
+                                placeholder="Add Category"
+                                className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
+                                onFocus={() => setActiveCategoryIndex(0)}
+                                {...field}
+                              >
+                                {({ value }) => (
+                                  <span className="truncate block">
+                                    {value || "Add Category"}
+                                  </span>
+                                )}
+                              </ListboxButton>
+                              <ListboxOptions>
+                                {getAvailableCategoriesForIndex(0, value).map(
+                                  (category) => (
+                                    <ListboxOption
+                                      key={category}
+                                      value={category}
+                                    >
+                                      {category}
+                                    </ListboxOption>
+                                  )
+                                )}
+                              </ListboxOptions>
+                            </Listbox>
+                          )}
+                        />
+                      </div>
+
+                      <Controller
+                        name="category.0.subCategories"
+                        control={methods.control}
+                        render={({ field: { onChange, ...field } }) => (
+                          <TagsInputRoot
+                            onValueChange={handleSubCategoryChange(
+                              "category.0.subCategories",
+                              onChange
+                            )}
+                            {...field}
+                            className="space-y-1.5"
+                          >
+                            <TagsInputContext>
+                              {(tagsInput) => (
+                                <>
+                                  <TagsInputControl className="relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] border border-gray-300 px-[14px] py-[10px] m-0">
+                                    {tagsInput.value.map((value, index) => (
+                                      <TagsInputItem
+                                        key={index}
+                                        index={index}
+                                        value={value}
+                                      >
+                                        <TagsInputItemPreview
+                                          visual="primary"
+                                          size="md"
+                                          className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                                        >
+                                          <TagsInputItemText>
+                                            {value}
+                                          </TagsInputItemText>
+                                          <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                            <X2 className="size-3" />
+                                          </TagsInputItemDeleteTrigger>
+                                        </TagsInputItemPreview>
+                                        <TagsInputItemInput />
+                                      </TagsInputItem>
+                                    ))}
+                                    <TagsInputInput
+                                      placeholder={
+                                        tagsInput.value.length
+                                          ? ""
+                                          : "Add Sub-Category(s)"
+                                      }
+                                      options={subCategoryOptions}
+                                      allowCreateOption
+                                      className="flex-1 min-w-[100px] "
+                                      onInputValueChange={(value) => {
+                                        fetchCategoriesAutocomplete(0, value)
+                                      }}
+                                      onFocus={() => {
+                                        setActiveCategoryIndex(0)
+                                        setSubCategoryOptions(
+                                          getSubCategoryOptionsForCategory(
+                                            categoryValues?.[0]?.category
+                                          )
+                                        )
+                                      }}
+                                    />
+                                    <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                                  </TagsInputControl>
+                                </>
+                              )}
+                            </TagsInputContext>
+                            <TagsInputHiddenInput />
+                          </TagsInputRoot>
+                        )}
+                      />
+
+                      {(hookFormHasError({
+                        errors,
+                        name: "category.0.category",
+                      }) ||
+                        hookFormHasError({
+                          errors,
+                          name: "category.0.subCategories",
+                        })) && (
+                        <ErrorMessage size="sm">
+                          {get(errors, "category.0.category.message") ||
+                            get(errors, "category.0.subCategories.message")}
+                        </ErrorMessage>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-x-1.5">
+                    <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
+                      2
+                    </div>
+
+                    <div className="flex flex-col flex-auto gap-y-2.5">
+                      <div className="max-w-[202px]">
+                        <Controller
+                          control={methods.control}
+                          name="category.1.category"
+                          render={({
+                            field: { value, onChange, ...field },
+                          }) => (
+                            <Listbox
+                              value={value}
+                              onChange={(nextValue) =>
+                                handleCategorySelection(1, nextValue, onChange)
+                              }
+                            >
+                              <ListboxButton
+                                placeholder="Add Category"
+                                className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
+                                onFocus={() => setActiveCategoryIndex(1)}
+                                {...field}
+                              >
+                                {({ value }) => (
+                                  <span className="truncate block">
+                                    {value || "Add Category"}
+                                  </span>
+                                )}
+                              </ListboxButton>
+                              <ListboxOptions>
+                                {getAvailableCategoriesForIndex(1, value).map(
+                                  (category) => (
+                                    <ListboxOption
+                                      key={category}
+                                      value={category}
+                                    >
+                                      {category}
+                                    </ListboxOption>
+                                  )
+                                )}
+                              </ListboxOptions>
+                            </Listbox>
+                          )}
+                        />
+                      </div>
+
+                      <Controller
+                        name="category.1.subCategories"
+                        control={methods.control}
+                        render={({ field: { onChange, ...field } }) => (
+                          <TagsInputRoot
+                            onValueChange={handleSubCategoryChange(
+                              "category.1.subCategories",
+                              onChange
+                            )}
+                            {...field}
+                            className="space-y-1.5"
+                          >
+                            <TagsInputContext>
+                              {(tagsInput) => (
+                                <>
+                                  <TagsInputControl
+                                    className="relative pr-[28px] flex flex-wrap !justify-start
+                               !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] 
+                               border border-gray-300 px-[14px] py-[10px] m-0"
+                                  >
+                                    {tagsInput.value.map((value, index) => (
+                                      <TagsInputItem
+                                        key={index}
+                                        index={index}
+                                        value={value}
+                                      >
+                                        <TagsInputItemPreview
+                                          visual="primary"
+                                          size="md"
+                                          className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                                        >
+                                          <TagsInputItemText>
+                                            {value}
+                                          </TagsInputItemText>
+                                          <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                            <X2 className="size-3" />
+                                          </TagsInputItemDeleteTrigger>
+                                        </TagsInputItemPreview>
+                                        <TagsInputItemInput />
+                                      </TagsInputItem>
+                                    ))}
+                                    <TagsInputInput
+                                      options={subCategoryOptions}
+                                      placeholder={
+                                        tagsInput.value.length
+                                          ? ""
+                                          : "Add Sub-Category(s)"
+                                      }
+                                      allowCreateOption
+                                      className="flex-1 min-w-[100px]"
+                                      onInputValueChange={(value) => {
+                                        fetchCategoriesAutocomplete(1, value)
+                                      }}
+                                      onFocus={() => {
+                                        setActiveCategoryIndex(1)
+                                        setSubCategoryOptions(
+                                          getSubCategoryOptionsForCategory(
+                                            categoryValues?.[1]?.category
+                                          )
+                                        )
+                                      }}
+                                    />
+
+                                    <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                                  </TagsInputControl>
+                                </>
+                              )}
+                            </TagsInputContext>
+                            <TagsInputHiddenInput />
+                          </TagsInputRoot>
+                        )}
+                      />
+
+                      {(hookFormHasError({
+                        errors,
+                        name: "category.1.category",
+                      }) ||
+                        hookFormHasError({
+                          errors,
+                          name: "category.1.subCategories",
+                        })) && (
+                        <ErrorMessage size="sm">
+                          {get(errors, "category.1.category.message") ||
+                            get(errors, "category.1.subCategories.message")}
+                        </ErrorMessage>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-x-1.5">
+                    <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
+                      3
+                    </div>
+
+                    <div className="flex flex-col flex-auto gap-y-2.5">
+                      <div className="max-w-[202px]">
+                        <Controller
+                          control={methods.control}
+                          name="category.2.category"
+                          render={({
+                            field: { value, onChange, ...field },
+                          }) => (
+                            <Listbox
+                              value={value}
+                              onChange={(nextValue) =>
+                                handleCategorySelection(2, nextValue, onChange)
+                              }
+                            >
+                              <ListboxButton
+                                placeholder="Add Category"
+                                className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
+                                onFocus={() => setActiveCategoryIndex(2)}
+                                {...field}
+                              >
+                                {({ value }) => (
+                                  <span className="truncate block">
+                                    {value || "Add Category"}
+                                  </span>
+                                )}
+                              </ListboxButton>
+                              <ListboxOptions>
+                                {getAvailableCategoriesForIndex(2, value).map(
+                                  (category) => (
+                                    <ListboxOption
+                                      key={category}
+                                      value={category}
+                                    >
+                                      {category}
+                                    </ListboxOption>
+                                  )
+                                )}
+                              </ListboxOptions>
+                            </Listbox>
+                          )}
+                        />
+                      </div>
+
+                      <Controller
+                        name="category.2.subCategories"
+                        control={methods.control}
+                        render={({ field: { onChange, ...field } }) => (
+                          <TagsInputRoot
+                            onValueChange={handleSubCategoryChange(
+                              "category.2.subCategories",
+                              onChange
+                            )}
+                            {...field}
+                            className="space-y-1.5"
+                          >
+                            <TagsInputContext>
+                              {(tagsInput) => (
+                                <>
+                                  <TagsInputControl
+                                    className="relative pr-[28px] flex flex-wrap !justify-start
+                               !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] 
+                               border border-gray-300 px-[14px] py-[10px] m-0"
+                                  >
+                                    {tagsInput.value.map((value, index) => (
+                                      <TagsInputItem
+                                        key={index}
+                                        index={index}
+                                        value={value}
+                                      >
+                                        <TagsInputItemPreview
+                                          visual="primary"
+                                          size="md"
+                                          className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                                        >
+                                          <TagsInputItemText>
+                                            {value}
+                                          </TagsInputItemText>
+                                          <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                            <X2 className="size-3" />
+                                          </TagsInputItemDeleteTrigger>
+                                        </TagsInputItemPreview>
+                                        <TagsInputItemInput />
+                                      </TagsInputItem>
+                                    ))}
+                                    <TagsInputInput
+                                      options={subCategoryOptions}
+                                      placeholder={
+                                        tagsInput.value.length
+                                          ? ""
+                                          : "Add Sub-Category(s)"
+                                      }
+                                      allowCreateOption
+                                      className="flex-1 min-w-[100px]"
+                                      onInputValueChange={(value) => {
+                                        fetchCategoriesAutocomplete(2, value)
+                                      }}
+                                      onFocus={() => {
+                                        setActiveCategoryIndex(2)
+                                        setSubCategoryOptions(
+                                          getSubCategoryOptionsForCategory(
+                                            categoryValues?.[2]?.category
+                                          )
+                                        )
+                                      }}
+                                    />
+
+                                    <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                                  </TagsInputControl>
+                                </>
+                              )}
+                            </TagsInputContext>
+                            <TagsInputHiddenInput />
+                          </TagsInputRoot>
+                        )}
+                      />
+
+                      {(hookFormHasError({
+                        errors,
+                        name: "category.2.category",
+                      }) ||
+                        hookFormHasError({
+                          errors,
+                          name: "category.2.subCategories",
+                        })) && (
+                        <ErrorMessage size="sm">
+                          {get(errors, "category.2.category.message") ||
+                            get(errors, "category.2.subCategories.message")}
+                        </ErrorMessage>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {showSuggestions && (
+                  <div className="mt-6 space-y-1.5">
+                    <span className="block text-xs leading-5 text-dark-blue-400">
+                      Suggested Categories
+                    </span>
+
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
+                      {suggestedForDisplay.map(({ category, subCategory }) => (
+                        <Badge
+                          size="md"
+                          className="pr-2 focus-visible:outline-none text-primary-500 bg-primary-50"
+                          visual="primary"
+                          asChild
+                          key={category}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const indexToUpdate = activeCategoryIndex
+
+                              // write values and mark as user-driven so Sidebar shows the checkmark
+                              setValue(
+                                `category.${indexToUpdate}.category`,
+                                category,
+                                {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                }
+                              )
+                              setValue(
+                                `category.${indexToUpdate}.subCategories`,
+                                [subCategory],
+                                {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                }
+                              )
+
+                              // validate that slot
+                              trigger(`category.${indexToUpdate}`)
+
+                              // keep suggestions visible for subsequent category slots
+                            }}
+                          >
+                            {category} / {subCategory}
+                            <Plus2 className="size-3 opacity-50 hover:opacity-100" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="description">
-            <div
-              id="publish-project-short-description-field"
-              className="space-y-1.5 mt-6"
-            >
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                  htmlFor="short-description"
+                <div
+                  id="publish-project-short-description-field"
+                  className="space-y-1.5 mt-6"
                 >
-                  Short Description
-                </Label>
-                <div className="flex items-center justify-between">
-                  <HelperText size="sm">
-                    Provide a brief overview of your project scope.
-                  </HelperText>
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                      htmlFor="short-description"
+                    >
+                      Short Description
+                    </Label>
+                    <div className="flex items-center justify-between">
+                      <HelperText size="sm">
+                        Provide a brief overview of your project scope.
+                      </HelperText>
 
-                  <span className="text-xs leading-[14.52px] text-gray-500">
-                    {projectInfoValues.shortDescription?.length || 0}/
-                    {SHORT_DESCRIPTION_MAX_LENGTH}
-                  </span>
-                </div>
-              </div>
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        {projectInfoValues.shortDescription?.length || 0}/
+                        {SHORT_DESCRIPTION_MAX_LENGTH}
+                      </span>
+                    </div>
+                  </div>
 
-              <Textarea
-                id="short-description"
-                placeholder="Enter a short Description"
-                maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
-                {...shortDescriptionField}
-                onChange={(event) => {
-                  shortDescriptionField.onChange(event)
-                  if (
-                    shortDescriptionHasError &&
-                    get(errors, "shortDescription.type") === "manual"
-                  ) {
-                    methods.clearErrors("shortDescription")
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      event.currentTarget.value.length,
-                      SHORT_DESCRIPTION_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError(
-                      "shortDescription",
-                      SHORT_DESCRIPTION_MAX_LENGTH_ERROR
-                    )
-                  }
-                }}
-                onPaste={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      event.currentTarget.value.length,
-                      SHORT_DESCRIPTION_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError(
-                      "shortDescription",
-                      SHORT_DESCRIPTION_MAX_LENGTH_ERROR
-                    )
-                  }
-                }}
-                isInvalid={shortDescriptionHasError}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="shortDescription"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            <div
-              id="publish-project-full-description-field"
-              className="space-y-1.5 mt-6"
-            >
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                  htmlFor="full-description"
-                >
-                  Full Description
-                </Label>
-                <div className="flex items-center justify-between">
-                  <HelperText size="sm">
-                    Provide a comprehensive description of this project,
-                    including its purpose and features.
-                  </HelperText>
-
-                  <span className="text-xs leading-[14.52px] text-gray-500">
-                    {fullDescriptionCharacterCount}/
-                    {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              <Controller
-                name="fullDescription"
-                control={methods.control}
-                render={({ field }) => (
-                  <RichTextEditor
-                    defaultValue={field.value ?? ""}
-                    placeholder="<p class='text-gray-400'>Enter a full Description</p>"
-                    allowFullscreen
-                    className={cn(
-                      "rounded-lg border bg-white transition-colors",
-                      fullDescriptionHasError
-                        ? "border-error-500"
-                        : "border-gray-300 focus-within:border-primary-500"
-                    )}
-                    toolbarClassName="left-4"
-                    editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
-                    onUpdate={(html) => {
-                      field.onChange(html)
-
-                      const contentLength = getRichTextCharacterCount(html)
-                      if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
-                        triggerMaxLengthError(
-                          "fullDescription",
-                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                        )
-                        return
-                      }
-
+                  <Textarea
+                    id="short-description"
+                    placeholder="Enter a short Description"
+                    maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
+                    {...shortDescriptionField}
+                    onChange={(event) => {
+                      shortDescriptionField.onChange(event)
                       if (
-                        fullDescriptionHasError &&
-                        get(errors, "fullDescription.message") ===
-                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                        shortDescriptionHasError &&
+                        get(errors, "shortDescription.type") === "manual"
                       ) {
-                        methods.clearErrors("fullDescription")
+                        methods.clearErrors("shortDescription")
                       }
                     }}
-                    onBlur={(html) => {
-                      field.onBlur()
-
-                      const contentLength = getRichTextCharacterCount(html)
-                      if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
-                        triggerMaxLengthError(
-                          "fullDescription",
-                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                        )
-                        return
-                      }
-
+                    onKeyDown={(event) => {
                       if (
-                        fullDescriptionHasError &&
-                        get(errors, "fullDescription.message") ===
-                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                        shouldBlockMaxLengthInput(
+                          event,
+                          event.currentTarget.value.length,
+                          SHORT_DESCRIPTION_MAX_LENGTH
+                        )
                       ) {
-                        methods.clearErrors("fullDescription")
+                        event.preventDefault()
+                        triggerMaxLengthError(
+                          "shortDescription",
+                          SHORT_DESCRIPTION_MAX_LENGTH_ERROR
+                        )
                       }
-
-                      void trigger("fullDescription")
                     }}
+                    onPaste={(event) => {
+                      if (
+                        shouldBlockMaxLengthInput(
+                          event,
+                          event.currentTarget.value.length,
+                          SHORT_DESCRIPTION_MAX_LENGTH
+                        )
+                      ) {
+                        event.preventDefault()
+                        triggerMaxLengthError(
+                          "shortDescription",
+                          SHORT_DESCRIPTION_MAX_LENGTH_ERROR
+                        )
+                      }
+                    }}
+                    isInvalid={shortDescriptionHasError}
                   />
-                )}
-              />
 
-              <HookFormErrorMessage
-                errors={errors}
-                name="fullDescription"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="shortDescription"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
+
+                <div
+                  id="publish-project-full-description-field"
+                  className="space-y-1.5 mt-6"
+                >
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                      htmlFor="full-description"
+                    >
+                      Full Description
+                    </Label>
+                    <div className="flex items-center justify-between">
+                      <HelperText size="sm">
+                        Provide a comprehensive description of this project,
+                        including its purpose and features.
+                      </HelperText>
+
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        {fullDescriptionCharacterCount}/
+                        {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <Controller
+                    name="fullDescription"
+                    control={methods.control}
+                    render={({ field }) => (
+                      <RichTextEditor
+                        defaultValue={field.value ?? ""}
+                        placeholder="<p class='text-gray-400'>Enter a full Description</p>"
+                        allowFullscreen
+                        className={cn(
+                          "rounded-lg border bg-white transition-colors",
+                          fullDescriptionHasError
+                            ? "border-error-500"
+                            : "border-gray-300 focus-within:border-primary-500"
+                        )}
+                        toolbarClassName="left-4"
+                        editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+                        onUpdate={(html) => {
+                          field.onChange(html)
+
+                          const contentLength = getRichTextCharacterCount(html)
+                          if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+                            triggerMaxLengthError(
+                              "fullDescription",
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            )
+                            return
+                          }
+
+                          if (
+                            fullDescriptionHasError &&
+                            get(errors, "fullDescription.message") ===
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                          ) {
+                            methods.clearErrors("fullDescription")
+                          }
+                        }}
+                        onBlur={(html) => {
+                          field.onBlur()
+
+                          const contentLength = getRichTextCharacterCount(html)
+                          if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+                            triggerMaxLengthError(
+                              "fullDescription",
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            )
+                            return
+                          }
+
+                          if (
+                            fullDescriptionHasError &&
+                            get(errors, "fullDescription.message") ===
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                          ) {
+                            methods.clearErrors("fullDescription")
+                          }
+
+                          void trigger("fullDescription")
+                        }}
+                      />
+                    )}
+                  />
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="fullDescription"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
               </TabsContent>
 
               <TabsContent value="project-details">
-            <div id="publish-project-tags-field" className="space-y-1.5 mt-6">
-              <Controller
-                name="tags"
-                control={methods.control}
-                render={({ field: { onChange, ...field } }) => (
-                  <TagsInputRoot
-                    onValueChange={(details) => {
-                      if (details.value.length > 10) {
-                        methods.setError("tags", {
-                          type: "manual",
-                          message: "You can only add up to 10 tags",
-                        })
-                        return
-                      }
-                      methods.clearErrors("tags")
-                      onChange(details.value)
-                    }}
-                    {...field}
-                    className="space-y-1.5"
-                  >
-                    <TagsInputContext>
-                      {(tagsInput) => (
-                        <>
-                          <div className="space-y-0.5">
-                            <TagsInputLabel
-                              className="leading-9 text-dark-blue-400 font-semibold"
-                              size="lg"
-                            >
-                              Tags
-                            </TagsInputLabel>
-                            <div className="flex items-center justify-between">
-                              <HelperText size="sm">
-                                Add up to 10 tags that best describe your
-                                project. Use relevant keywords to highlight its
-                                features and make it easier to find.
-                              </HelperText>
-
-                              <span className="text-xs leading-[14.52px] text-gray-500">
-                                {projectInfoValues.tags?.length || 0}/10
-                              </span>
-                            </div>
-                          </div>
-                          <TagsInputControl className="relative pr-[28px]">
-                            {tagsInput.value.map((value, index) => (
-                              <TagsInputItem
-                                key={index}
-                                index={index}
-                                value={value}
-                              >
-                                <TagsInputItemPreview
-                                  visual="primary"
-                                  size="md"
-                                  className="pr-2 text-primary-500 bg-primary-50"
-                                >
-                                  <TagsInputItemText>{value}</TagsInputItemText>
-                                  <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                    <X2 className="size-3" />
-                                  </TagsInputItemDeleteTrigger>
-                                </TagsInputItemPreview>
-                                <TagsInputItemInput />
-                              </TagsInputItem>
-                            ))}
-                            <TagsInputInput
-                              options={tagOptions}
-                              placeholder="Add Tags"
-                              allowCreateOption
-                              onInputValueChange={(value) => {
-                                fetchTypeAutocomplete(
-                                  "search_keywords",
-                                  value,
-                                  setTagOptions
-                                )
-                              }}
-                            />
-
-                            <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                          </TagsInputControl>
-                        </>
-                      )}
-                    </TagsInputContext>
-                    <TagsInputHiddenInput />
-                  </TagsInputRoot>
-                )}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="tags"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            <div id="publish-project-skills-field" className="space-y-1.5 mt-6">
-              <Controller
-                name="skills"
-                control={methods.control}
-                render={({ field: { onChange, ...field } }) => (
-                  <TagsInputRoot
-                    onValueChange={(details) => {
-                      if (details.value.length > 10) {
-                        methods.setError("skills", {
-                          type: "manual",
-                          message: "You can only add up to 10 skills",
-                        })
-                        return
-                      }
-                      methods.clearErrors("skills")
-                      onChange(details.value)
-                    }}
-                    {...field}
-                    className="space-y-1.5"
-                  >
-                    <TagsInputContext>
-                      {(tagsInput) => (
-                        <>
-                          <div className="space-y-0.5">
-                            <TagsInputLabel
-                              className="leading-9 text-dark-blue-400 font-semibold"
-                              size="lg"
-                            >
-                              Skills
-                            </TagsInputLabel>
-                            <div className="flex items-center justify-between">
-                              <HelperText size="sm">
-                                List up to 10 key skills or proficiencies
-                                required to implement this project effectively.
-                              </HelperText>
-
-                              <span className="text-xs leading-[14.52px] text-gray-500">
-                                {projectInfoValues.skills?.length || 0}/10
-                              </span>
-                            </div>
-                          </div>
-                          <TagsInputControl className="relative pr-[28px]">
-                            {tagsInput.value.map((value, index) => (
-                              <TagsInputItem
-                                key={index}
-                                index={index}
-                                value={value}
-                              >
-                                <TagsInputItemPreview
-                                  visual="primary"
-                                  size="md"
-                                  className="pr-2 text-primary-500 bg-primary-50"
-                                >
-                                  <TagsInputItemText>{value}</TagsInputItemText>
-                                  <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                    <X2 className="size-3" />
-                                  </TagsInputItemDeleteTrigger>
-                                </TagsInputItemPreview>
-                                <TagsInputItemInput />
-                              </TagsInputItem>
-                            ))}
-                            <TagsInputInput
-                              options={skills}
-                              placeholder="Add Skills"
-                              allowCreateOption
-                              onInputValueChange={(value) => {
-                                fetchTypeAutocomplete(
-                                  "skills",
-                                  value,
-                                  setSkills
-                                )
-                              }}
-                            />
-
-                            <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                          </TagsInputControl>
-                        </>
-                      )}
-                    </TagsInputContext>
-                    <TagsInputHiddenInput />
-                  </TagsInputRoot>
-                )}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="skills"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            {getIsNotEmpty(suggestedSkillsForDisplay) ? (
-              <div className="mt-6 space-y-1.5">
-                <span className="block text-xs leading-5 text-dark-blue-400">
-                  Suggested Skills
-                </span>
-
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
-                  {suggestedSkillsForDisplay.map((suggestedSkill, index) => (
-                    <Badge
-                      size="md"
-                      className="pr-2 bg-primary-50 focus-visible:outline-none text-primary-500"
-                      visual="primary"
-                      key={index}
-                      asChild
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const next = projectInfoValues.skills
-                            ? [...projectInfoValues.skills, suggestedSkill]
-                            : [suggestedSkill]
-
-                          // tell RHF this field changed and should be validated
-                          setValue("skills", next, {
-                            shouldDirty: true,
-                            shouldValidate: true,
-                          })
+                <div
+                  id="publish-project-tags-field"
+                  className="space-y-1.5 mt-6"
+                >
+                  <Controller
+                    name="tags"
+                    control={methods.control}
+                    render={({ field: { onChange, ...field } }) => (
+                      <TagsInputRoot
+                        onValueChange={(details) => {
+                          if (details.value.length > 10) {
+                            methods.setError("tags", {
+                              type: "manual",
+                              message: "You can only add up to 10 tags",
+                            })
+                            return
+                          }
+                          methods.clearErrors("tags")
+                          onChange(details.value)
                         }}
+                        {...field}
+                        className="space-y-1.5"
                       >
-                        {suggestedSkill}
-                        <Plus2 className="size-3 opacity-50 hover:opacity-100" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <div
-              id="publish-project-industry-field"
-              className="space-y-1.5 mt-6"
-            >
-              <Controller
-                name="industry"
-                control={methods.control}
-                render={({ field: { onChange, ...field } }) => (
-                  <TagsInputRoot
-                    onValueChange={(details) => {
-                      if (details.value.length > 5) {
-                        methods.setError("industry", {
-                          type: "manual",
-                          message: "You can only add up to 5 industries",
-                        })
-                        return
-                      }
-                      methods.clearErrors("industry")
-                      onChange(details.value)
-                    }}
-                    {...field}
-                    className="space-y-1.5"
-                  >
-                    <TagsInputContext>
-                      {(tagsInput) => (
-                        <>
-                          <div className="space-y-0.5">
-                            <TagsInputLabel
-                              className="leading-9 text-dark-blue-400 font-semibold"
-                              size="lg"
-                            >
-                              Industries
-                            </TagsInputLabel>
-                            <div className="flex items-center justify-between">
-                              <HelperText size="sm">
-                                Add up to 5 industries that align with your
-                                project scope for targeted visibility.
-                              </HelperText>
-
-                              <span className="text-xs leading-[14.52px] text-gray-500">
-                                {projectInfoValues.industry?.length || 0}/5
-                              </span>
-                            </div>
-                          </div>
-                          <TagsInputControl className="relative pr-[28px]">
-                            {tagsInput.value.map((value, index) => (
-                              <TagsInputItem
-                                key={index}
-                                index={index}
-                                value={value}
-                              >
-                                <TagsInputItemPreview
-                                  visual="primary"
-                                  size="md"
-                                  className="pr-2 text-primary-500 bg-primary-50"
+                        <TagsInputContext>
+                          {(tagsInput) => (
+                            <>
+                              <div className="space-y-0.5">
+                                <TagsInputLabel
+                                  className="leading-9 text-dark-blue-400 font-semibold"
+                                  size="lg"
                                 >
-                                  <TagsInputItemText>{value}</TagsInputItemText>
-                                  <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                    <X2 className="size-3" />
-                                  </TagsInputItemDeleteTrigger>
-                                </TagsInputItemPreview>
-                                <TagsInputItemInput />
-                              </TagsInputItem>
-                            ))}
-                            <TagsInputInput
-                              options={industryOptions}
-                              placeholder="Add Industries"
-                              allowCreateOption
-                              onInputValueChange={(value) => {
-                                fetchTypeAutocomplete(
-                                  "industries",
-                                  value,
-                                  setIndustryOptions
-                                )
+                                  Tags
+                                </TagsInputLabel>
+                                <div className="flex items-center justify-between">
+                                  <HelperText size="sm">
+                                    Add up to 10 tags that best describe your
+                                    project. Use relevant keywords to highlight
+                                    its features and make it easier to find.
+                                  </HelperText>
+
+                                  <span className="text-xs leading-[14.52px] text-gray-500">
+                                    {projectInfoValues.tags?.length || 0}/10
+                                  </span>
+                                </div>
+                              </div>
+                              <TagsInputControl className="relative pr-[28px]">
+                                {tagsInput.value.map((value, index) => (
+                                  <TagsInputItem
+                                    key={index}
+                                    index={index}
+                                    value={value}
+                                  >
+                                    <TagsInputItemPreview
+                                      visual="primary"
+                                      size="md"
+                                      className="pr-2 text-primary-500 bg-primary-50"
+                                    >
+                                      <TagsInputItemText>
+                                        {value}
+                                      </TagsInputItemText>
+                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                        <X2 className="size-3" />
+                                      </TagsInputItemDeleteTrigger>
+                                    </TagsInputItemPreview>
+                                    <TagsInputItemInput />
+                                  </TagsInputItem>
+                                ))}
+                                <TagsInputInput
+                                  options={tagOptions}
+                                  placeholder="Add Tags"
+                                  allowCreateOption
+                                  onInputValueChange={(value) => {
+                                    fetchTypeAutocomplete(
+                                      "search_keywords",
+                                      value,
+                                      setTagOptions
+                                    )
+                                  }}
+                                />
+
+                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                              </TagsInputControl>
+                            </>
+                          )}
+                        </TagsInputContext>
+                        <TagsInputHiddenInput />
+                      </TagsInputRoot>
+                    )}
+                  />
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="tags"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
+
+                <div
+                  id="publish-project-skills-field"
+                  className="space-y-1.5 mt-6"
+                >
+                  <Controller
+                    name="skills"
+                    control={methods.control}
+                    render={({ field: { onChange, ...field } }) => (
+                      <TagsInputRoot
+                        onValueChange={(details) => {
+                          if (details.value.length > 10) {
+                            methods.setError("skills", {
+                              type: "manual",
+                              message: "You can only add up to 10 skills",
+                            })
+                            return
+                          }
+                          methods.clearErrors("skills")
+                          onChange(details.value)
+                        }}
+                        {...field}
+                        className="space-y-1.5"
+                      >
+                        <TagsInputContext>
+                          {(tagsInput) => (
+                            <>
+                              <div className="space-y-0.5">
+                                <TagsInputLabel
+                                  className="leading-9 text-dark-blue-400 font-semibold"
+                                  size="lg"
+                                >
+                                  Skills
+                                </TagsInputLabel>
+                                <div className="flex items-center justify-between">
+                                  <HelperText size="sm">
+                                    List up to 10 key skills or proficiencies
+                                    required to implement this project
+                                    effectively.
+                                  </HelperText>
+
+                                  <span className="text-xs leading-[14.52px] text-gray-500">
+                                    {projectInfoValues.skills?.length || 0}/10
+                                  </span>
+                                </div>
+                              </div>
+                              <TagsInputControl className="relative pr-[28px]">
+                                {tagsInput.value.map((value, index) => (
+                                  <TagsInputItem
+                                    key={index}
+                                    index={index}
+                                    value={value}
+                                  >
+                                    <TagsInputItemPreview
+                                      visual="primary"
+                                      size="md"
+                                      className="pr-2 text-primary-500 bg-primary-50"
+                                    >
+                                      <TagsInputItemText>
+                                        {value}
+                                      </TagsInputItemText>
+                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                        <X2 className="size-3" />
+                                      </TagsInputItemDeleteTrigger>
+                                    </TagsInputItemPreview>
+                                    <TagsInputItemInput />
+                                  </TagsInputItem>
+                                ))}
+                                <TagsInputInput
+                                  options={skills}
+                                  placeholder="Add Skills"
+                                  allowCreateOption
+                                  onInputValueChange={(value) => {
+                                    fetchTypeAutocomplete(
+                                      "skills",
+                                      value,
+                                      setSkills
+                                    )
+                                  }}
+                                />
+
+                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                              </TagsInputControl>
+                            </>
+                          )}
+                        </TagsInputContext>
+                        <TagsInputHiddenInput />
+                      </TagsInputRoot>
+                    )}
+                  />
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="skills"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
+
+                {getIsNotEmpty(suggestedSkillsForDisplay) ? (
+                  <div className="mt-6 space-y-1.5">
+                    <span className="block text-xs leading-5 text-dark-blue-400">
+                      Suggested Skills
+                    </span>
+
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
+                      {suggestedSkillsForDisplay.map(
+                        (suggestedSkill, index) => (
+                          <Badge
+                            size="md"
+                            className="pr-2 bg-primary-50 focus-visible:outline-none text-primary-500"
+                            visual="primary"
+                            key={index}
+                            asChild
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = projectInfoValues.skills
+                                  ? [
+                                      ...projectInfoValues.skills,
+                                      suggestedSkill,
+                                    ]
+                                  : [suggestedSkill]
+
+                                // tell RHF this field changed and should be validated
+                                setValue("skills", next, {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                })
                               }}
-                            />
-
-                            <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                          </TagsInputControl>
-                        </>
+                            >
+                              {suggestedSkill}
+                              <Plus2 className="size-3 opacity-50 hover:opacity-100" />
+                            </button>
+                          </Badge>
+                        )
                       )}
-                    </TagsInputContext>
-                    <TagsInputHiddenInput />
-                  </TagsInputRoot>
-                )}
-              />
+                    </div>
+                  </div>
+                ) : null}
 
-              <HookFormErrorMessage
-                errors={errors}
-                name="industry"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
+                <div
+                  id="publish-project-industry-field"
+                  className="space-y-1.5 mt-6"
+                >
+                  <Controller
+                    name="industry"
+                    control={methods.control}
+                    render={({ field: { onChange, ...field } }) => (
+                      <TagsInputRoot
+                        onValueChange={(details) => {
+                          if (details.value.length > 5) {
+                            methods.setError("industry", {
+                              type: "manual",
+                              message: "You can only add up to 5 industries",
+                            })
+                            return
+                          }
+                          methods.clearErrors("industry")
+                          onChange(details.value)
+                        }}
+                        {...field}
+                        className="space-y-1.5"
+                      >
+                        <TagsInputContext>
+                          {(tagsInput) => (
+                            <>
+                              <div className="space-y-0.5">
+                                <TagsInputLabel
+                                  className="leading-9 text-dark-blue-400 font-semibold"
+                                  size="lg"
+                                >
+                                  Industries
+                                </TagsInputLabel>
+                                <div className="flex items-center justify-between">
+                                  <HelperText size="sm">
+                                    Add up to 5 industries that align with your
+                                    project scope for targeted visibility.
+                                  </HelperText>
+
+                                  <span className="text-xs leading-[14.52px] text-gray-500">
+                                    {projectInfoValues.industry?.length || 0}/5
+                                  </span>
+                                </div>
+                              </div>
+                              <TagsInputControl className="relative pr-[28px]">
+                                {tagsInput.value.map((value, index) => (
+                                  <TagsInputItem
+                                    key={index}
+                                    index={index}
+                                    value={value}
+                                  >
+                                    <TagsInputItemPreview
+                                      visual="primary"
+                                      size="md"
+                                      className="pr-2 text-primary-500 bg-primary-50"
+                                    >
+                                      <TagsInputItemText>
+                                        {value}
+                                      </TagsInputItemText>
+                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                        <X2 className="size-3" />
+                                      </TagsInputItemDeleteTrigger>
+                                    </TagsInputItemPreview>
+                                    <TagsInputItemInput />
+                                  </TagsInputItem>
+                                ))}
+                                <TagsInputInput
+                                  options={industryOptions}
+                                  placeholder="Add Industries"
+                                  allowCreateOption
+                                  onInputValueChange={(value) => {
+                                    fetchTypeAutocomplete(
+                                      "industries",
+                                      value,
+                                      setIndustryOptions
+                                    )
+                                  }}
+                                />
+
+                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                              </TagsInputControl>
+                            </>
+                          )}
+                        </TagsInputContext>
+                        <TagsInputHiddenInput />
+                      </TagsInputRoot>
+                    )}
+                  />
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="industry"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
               </TabsContent>
             </Tabs>
           </div>
@@ -5845,14 +5905,20 @@ const ProjectScope = ({
                         <TooltipTrigger asChild>
                           <Info className="size-3.5 text-gray-400 cursor-help" />
                         </TooltipTrigger>
-                        <TooltipContent>Calculated from your scope tasks</TooltipContent>
+                        <TooltipContent>
+                          Calculated from your scope tasks
+                        </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </span>
                   <div className="mt-2 flex items-baseline gap-x-1.5">
-                    <span className="text-[28px] leading-none font-bold text-dark-blue-400">$5,000</span>
+                    <span className="text-[28px] leading-none font-bold text-dark-blue-400">
+                      $5,000
+                    </span>
                     <span className="text-sm text-dark-blue-400">per</span>
-                    <Badge visual="gray" className="rounded-[5px]">week</Badge>
+                    <Badge visual="gray" className="rounded-[5px]">
+                      week
+                    </Badge>
                   </div>
                 </div>
                 <ShieldDollar className="size-10 text-primary-500" />
@@ -5867,12 +5933,16 @@ const ProjectScope = ({
                         <TooltipTrigger asChild>
                           <Info className="size-3.5 text-gray-400 cursor-help" />
                         </TooltipTrigger>
-                        <TooltipContent>Total duration based on tasks</TooltipContent>
+                        <TooltipContent>
+                          Total duration based on tasks
+                        </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </span>
                   <div className="mt-2">
-                    <span className="text-[28px] leading-none font-bold text-dark-blue-400">6 Months</span>
+                    <span className="text-[28px] leading-none font-bold text-dark-blue-400">
+                      6 Months
+                    </span>
                   </div>
                 </div>
                 <ChartBreakoutCircle className="size-10 text-primary-500" />
@@ -6275,12 +6345,16 @@ const Team = () => {
             Team
           </h1>
           <p className="mt-2 text-sm text-gray-500">
-            Select a team member to transfer lead status and all related permissions for Project Title. Only an existing team member can be made the project lead. Read more about roles and permissions.
+            Select a team member to transfer lead status and all related
+            permissions for Project Title. Only an existing team member can be
+            made the project lead. Read more about roles and permissions.
           </p>
 
           {/* Project Owner */}
           <div className="mt-6">
-            <span className="text-sm font-semibold text-dark-blue-400">Project Owner</span>
+            <span className="text-sm font-semibold text-dark-blue-400">
+              Project Owner
+            </span>
             <div className="mt-3 flex items-center justify-between">
               <div className="flex items-center gap-x-3">
                 <Avatar size="md">
@@ -6288,9 +6362,16 @@ const Team = () => {
                   <AvatarFallback>C</AvatarFallback>
                 </Avatar>
                 <div>
-                  <span className="text-sm font-bold text-dark-blue-400">Chris</span>
-                  <span className="text-sm font-light text-gray-500"> @ux23isee</span>
-                  <p className="text-xs font-light text-dark-blue-400">Full Stack Designer</p>
+                  <span className="text-sm font-bold text-dark-blue-400">
+                    Chris
+                  </span>
+                  <span className="text-sm font-light text-gray-500">
+                    {" "}
+                    @ux23isee
+                  </span>
+                  <p className="text-xs font-light text-dark-blue-400">
+                    Full Stack Designer
+                  </p>
                 </div>
               </div>
               <Badge visual="primary" className="rounded-[4px] bg-primary-50">
@@ -6302,10 +6383,15 @@ const Team = () => {
           {/* Assign Project Lead & Select Label */}
           <div className="mt-8 grid grid-cols-2 gap-x-6">
             <div>
-              <span className="text-sm font-semibold text-dark-blue-400">Assign Project Lead</span>
+              <span className="text-sm font-semibold text-dark-blue-400">
+                Assign Project Lead
+              </span>
               <div className="mt-2">
                 <Listbox defaultValue="">
-                  <ListboxButton className="w-full h-[44px]" placeholder="Add user from team" />
+                  <ListboxButton
+                    className="w-full h-[44px]"
+                    placeholder="Add user from team"
+                  />
                   <ListboxOptions>
                     <ListboxOption value="Chris">Chris</ListboxOption>
                     <ListboxOption value="Sarah">Sarah</ListboxOption>
@@ -6315,15 +6401,28 @@ const Team = () => {
               </div>
             </div>
             <div>
-              <span className="text-sm font-semibold text-dark-blue-400">Select label</span>
+              <span className="text-sm font-semibold text-dark-blue-400">
+                Select label
+              </span>
               <div className="mt-2">
                 <Listbox defaultValue="">
-                  <ListboxButton className="w-full h-[44px]" placeholder="None selected" />
+                  <ListboxButton
+                    className="w-full h-[44px]"
+                    placeholder="None selected"
+                  />
                   <ListboxOptions>
-                    <ListboxOption value="Project Lead">Project Lead</ListboxOption>
-                    <ListboxOption value="Account Manager">Account Manager</ListboxOption>
-                    <ListboxOption value="Technical Lead">Technical Lead</ListboxOption>
-                    <ListboxOption value="Design Lead">Design Lead</ListboxOption>
+                    <ListboxOption value="Project Lead">
+                      Project Lead
+                    </ListboxOption>
+                    <ListboxOption value="Account Manager">
+                      Account Manager
+                    </ListboxOption>
+                    <ListboxOption value="Technical Lead">
+                      Technical Lead
+                    </ListboxOption>
+                    <ListboxOption value="Design Lead">
+                      Design Lead
+                    </ListboxOption>
                   </ListboxOptions>
                 </Listbox>
               </div>
@@ -6343,14 +6442,19 @@ const Team = () => {
             </div>
 
             <div className="mt-4">
-              <h3 className="text-sm font-semibold text-dark-blue-400">All assignees (3)</h3>
+              <h3 className="text-sm font-semibold text-dark-blue-400">
+                All assignees (3)
+              </h3>
               <p className="mt-1 text-xs font-light text-dark-blue-400">
-                View and manage all users currently assigned to Project name below.
+                View and manage all users currently assigned to Project name
+                below.
               </p>
             </div>
 
             <div className="mt-4">
-              <span className="text-sm font-semibold text-dark-blue-400">Add team members to this project</span>
+              <span className="text-sm font-semibold text-dark-blue-400">
+                Add team members to this project
+              </span>
               <InputGroup className="mt-2">
                 <Input placeholder="Add users to this project" />
                 <InputLeftElement>
@@ -6363,56 +6467,115 @@ const Team = () => {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-xs font-medium text-gray-500">Name</TableHead>
-                    <TableHead className="text-xs font-medium text-gray-500">Project Role</TableHead>
-                    <TableHead className="text-xs font-medium text-gray-500">Status</TableHead>
+                    <TableHead className="text-xs font-medium text-gray-500">
+                      Name
+                    </TableHead>
+                    <TableHead className="text-xs font-medium text-gray-500">
+                      Project Role
+                    </TableHead>
+                    <TableHead className="text-xs font-medium text-gray-500">
+                      Status
+                    </TableHead>
                     <TableHead className="w-[40px]" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {[
-                    { name: "Chris", username: "ux23isee", role: "Owner", status: "Active", you: true, avatar: "/man.jpg" },
-                    { name: "Sarah", username: "ux23isee", role: "Manager", status: "Active", avatar: "/woman.jpg" },
-                    { name: "Laura", username: "ux23isee", role: "Contributor", status: "Active", avatar: "/woman.jpg" },
-                    { name: "Tina", username: "ux23isee", role: "Contributor", status: "Inactive", avatar: "/woman.jpg" },
-                    { name: "Shelly", username: "ux23isee", role: "Contributor", status: "Inactive", avatar: "/woman.jpg" },
+                    {
+                      name: "Chris",
+                      username: "ux23isee",
+                      role: "Owner",
+                      status: "Active",
+                      you: true,
+                      avatar: "/man.jpg",
+                    },
+                    {
+                      name: "Sarah",
+                      username: "ux23isee",
+                      role: "Manager",
+                      status: "Active",
+                      avatar: "/woman.jpg",
+                    },
+                    {
+                      name: "Laura",
+                      username: "ux23isee",
+                      role: "Contributor",
+                      status: "Active",
+                      avatar: "/woman.jpg",
+                    },
+                    {
+                      name: "Tina",
+                      username: "ux23isee",
+                      role: "Contributor",
+                      status: "Inactive",
+                      avatar: "/woman.jpg",
+                    },
+                    {
+                      name: "Shelly",
+                      username: "ux23isee",
+                      role: "Contributor",
+                      status: "Inactive",
+                      avatar: "/woman.jpg",
+                    },
                   ].map((member, mi) => (
                     <TableRow key={mi}>
                       <TableCell className="py-4">
                         <div className="flex items-center gap-x-3">
                           <Avatar size="sm">
-                            <AvatarImage src={member.avatar} alt={member.name} />
-                            <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
+                            <AvatarImage
+                              src={member.avatar}
+                              alt={member.name}
+                            />
+                            <AvatarFallback>
+                              {member.name.charAt(0)}
+                            </AvatarFallback>
                           </Avatar>
                           <div>
                             <span className="text-sm font-semibold text-dark-blue-400">
                               {member.name}
                             </span>
                             <span className="text-sm font-light text-gray-500">
-                              {" "}@{member.username}
+                              {" "}
+                              @{member.username}
                             </span>
                             {member.you && (
-                              <span className="text-sm font-semibold text-dark-blue-400"> (You)</span>
+                              <span className="text-sm font-semibold text-dark-blue-400">
+                                {" "}
+                                (You)
+                              </span>
                             )}
-                            <p className="text-xs font-light text-dark-blue-400">Full Stack Designer</p>
+                            <p className="text-xs font-light text-dark-blue-400">
+                              Full Stack Designer
+                            </p>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="py-4">
                         <Listbox defaultValue={member.role}>
-                          <ListboxButton className="h-[36px] w-[140px] text-sm" placeholder="Select role" />
+                          <ListboxButton
+                            className="h-[36px] w-[140px] text-sm"
+                            placeholder="Select role"
+                          />
                           <ListboxOptions>
                             <ListboxOption value="Owner">Owner</ListboxOption>
-                            <ListboxOption value="Manager">Manager</ListboxOption>
-                            <ListboxOption value="Contributor">Contributor</ListboxOption>
+                            <ListboxOption value="Manager">
+                              Manager
+                            </ListboxOption>
+                            <ListboxOption value="Contributor">
+                              Contributor
+                            </ListboxOption>
                           </ListboxOptions>
                         </Listbox>
                       </TableCell>
                       <TableCell className="py-4">
-                        <span className={cn(
-                          "text-sm font-semibold",
-                          member.status === "Active" ? "text-success-500" : "text-gray-500"
-                        )}>
+                        <span
+                          className={cn(
+                            "text-sm font-semibold",
+                            member.status === "Active"
+                              ? "text-success-500"
+                              : "text-gray-500"
+                          )}
+                        >
                           {member.status}
                         </span>
                       </TableCell>
@@ -6471,7 +6634,12 @@ const SortableFaqItem = ({
   }
 
   return (
-    <AccordionItem ref={setNodeRef} style={style} value={id} className="rounded-lg border border-gray-200 bg-white">
+    <AccordionItem
+      ref={setNodeRef}
+      style={style}
+      value={id}
+      className="rounded-lg border border-gray-200 bg-white"
+    >
       <AccordionTrigger className="w-full p-4 flex items-center gap-3 [&[data-state=open]_.closed-icons]:hidden [&[data-state=closed]_.open-icons]:hidden [&[data-state=open]_.closed-text]:hidden [&[data-state=open]_.open-text]:inline">
         <button
           type="button"
@@ -6483,22 +6651,49 @@ const SortableFaqItem = ({
           <GripVertical2 />
         </button>
         <div className="min-w-0 flex-1 text-left">
-          <span className="text-sm font-bold text-dark-blue-400">Question {index + 1}<span className="closed-text">:</span></span>
+          <span className="text-sm font-bold text-dark-blue-400">
+            Question {index + 1}
+            <span className="closed-text">:</span>
+          </span>
           <span className="closed-text"> </span>
-          <span className="closed-text text-sm text-dark-blue-400">{faq.q}</span>
+          <span className="closed-text text-sm text-dark-blue-400">
+            {faq.q}
+          </span>
         </div>
         <div className="flex items-center gap-1">
           <span className="open-icons">
-            <IconButton asChild variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800">
-              <span><Check className="size-4" /></span>
+            <IconButton
+              asChild
+              variant="ghost"
+              visual="gray"
+              size="sm"
+              className="rounded-full text-gray-500 hover:text-gray-800"
+            >
+              <span>
+                <Check className="size-4" />
+              </span>
             </IconButton>
           </span>
           <span className="closed-icons">
-            <IconButton asChild variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800">
-              <span><Edit03 className="size-4" /></span>
+            <IconButton
+              asChild
+              variant="ghost"
+              visual="gray"
+              size="sm"
+              className="rounded-full text-gray-500 hover:text-gray-800"
+            >
+              <span>
+                <Edit03 className="size-4" />
+              </span>
             </IconButton>
           </span>
-          <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800" onClick={(e) => e.stopPropagation()}>
+          <IconButton
+            variant="ghost"
+            visual="gray"
+            size="sm"
+            className="rounded-full text-gray-500 hover:text-gray-800"
+            onClick={(e) => e.stopPropagation()}
+          >
             <Trash2 className="size-4" />
           </IconButton>
         </div>
@@ -6511,10 +6706,16 @@ const SortableFaqItem = ({
         <div className="mt-4">
           <h3 className="text-sm font-bold text-dark-blue-400">Answer</h3>
           <p className="mt-1 text-sm font-light text-dark-blue-400">
-            Provide a detailed, helpful response that fully addresses the question
+            Provide a detailed, helpful response that fully addresses the
+            question
           </p>
         </div>
-        <Textarea className="mt-2" rows={4} defaultValue={faq.a} maxLength={300} />
+        <Textarea
+          className="mt-2"
+          rows={4}
+          defaultValue={faq.a}
+          maxLength={300}
+        />
         <div className="mt-1 flex items-center justify-between">
           <Button variant="outlined" visual="gray" size="sm">
             <Stars02 className="size-[15px]" />
@@ -6532,14 +6733,24 @@ const Questions = () => {
   const [recentQTab, setRecentQTab] = useState("all")
   const [openFaqId, setOpenFaqId] = useState<string | null>(null)
   const [faqs, setFaqs] = useState([
-    { id: "faq-1", q: "How will you involve me in the process?", a: "We offer a comprehensive range of IT consulting services, including IT strategy development, software development, network infrastructure design and implementation, cybersecurity assessment and solutions, cloud computing solutions, and IT project management." },
+    {
+      id: "faq-1",
+      q: "How will you involve me in the process?",
+      a: "We offer a comprehensive range of IT consulting services, including IT strategy development, software development, network infrastructure design and implementation, cybersecurity assessment and solutions, cloud computing solutions, and IT project management.",
+    },
     { id: "faq-2", q: "How do you handle revisions and feedback?", a: "" },
-    { id: "faq-3", q: "Do you offer any post-design support or maintenance?", a: "" },
+    {
+      id: "faq-3",
+      q: "Do you offer any post-design support or maintenance?",
+      a: "",
+    },
   ])
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 150, tolerance: 5 },
+    }),
     useSensor(KeyboardSensor)
   )
 
@@ -6564,13 +6775,28 @@ const Questions = () => {
         <div className="flex-auto min-w-0">
           <RadixTabs.Root defaultValue="FAQs">
             <RadixTabs.List className="inline-flex items-end gap-4 border-b border-b-gray-200 w-full">
-              <RadixTabs.Trigger value="FAQs" className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none">FAQ&apos;s</RadixTabs.Trigger>
-              <RadixTabs.Trigger value="RecentQuestions" className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none">Recent Questions</RadixTabs.Trigger>
+              <RadixTabs.Trigger
+                value="FAQs"
+                className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none"
+              >
+                FAQ&apos;s
+              </RadixTabs.Trigger>
+              <RadixTabs.Trigger
+                value="RecentQuestions"
+                className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none"
+              >
+                Recent Questions
+              </RadixTabs.Trigger>
             </RadixTabs.List>
 
-            <RadixTabs.Content value="FAQs" className="focus-visible:outline-none">
+            <RadixTabs.Content
+              value="FAQs"
+              className="focus-visible:outline-none"
+            >
               <p className="mt-4 text-sm font-light text-dark-blue-400">
-                Write a response for each of the question added to this project. Drag and drop FAQ items to reorder them. The order you set here will be reflected on your project&apos;s public FAQ page.
+                Write a response for each of the question added to this project.
+                Drag and drop FAQ items to reorder them. The order you set here
+                will be reflected on your project&apos;s public FAQ page.
               </p>
 
               <div className="mt-4 flex items-center gap-3">
@@ -6590,7 +6816,10 @@ const Questions = () => {
                 modifiers={[restrictToVerticalAxis]}
                 onDragEnd={handleDragEnd}
               >
-                <SortableContext items={faqs.map((f) => f.id)} strategy={verticalListSortingStrategy}>
+                <SortableContext
+                  items={faqs.map((f) => f.id)}
+                  strategy={verticalListSortingStrategy}
+                >
                   <Accordion
                     type="single"
                     collapsible
@@ -6599,50 +6828,112 @@ const Questions = () => {
                     onValueChange={(val) => setOpenFaqId(val || null)}
                   >
                     {faqs.map((faq, idx) => (
-                      <SortableFaqItem key={faq.id} id={faq.id} faq={faq} index={idx} />
+                      <SortableFaqItem
+                        key={faq.id}
+                        id={faq.id}
+                        faq={faq}
+                        index={idx}
+                      />
                     ))}
                   </Accordion>
                 </SortableContext>
               </DndContext>
             </RadixTabs.Content>
 
-            <RadixTabs.Content value="RecentQuestions" className="focus-visible:outline-none">
+            <RadixTabs.Content
+              value="RecentQuestions"
+              className="focus-visible:outline-none"
+            >
               <p className="mt-4 text-sm font-light text-dark-blue-400">
-                Write an response for each of the recently asked questions below. You can only respond to questions that have not yet been answered.
+                Write an response for each of the recently asked questions
+                below. You can only respond to questions that have not yet been
+                answered.
               </p>
 
-              <Tabs value={recentQTab} onValueChange={setRecentQTab} unanimated className="mt-4">
+              <Tabs
+                value={recentQTab}
+                onValueChange={setRecentQTab}
+                unanimated
+                className="mt-4"
+              >
                 <TabsList className="justify-start border-b border-gray-200 px-0 pt-0">
-                  <TabsTrigger value="all">
-                    All (8)
-                  </TabsTrigger>
+                  <TabsTrigger value="all">All (8)</TabsTrigger>
                   <TabsTrigger value="awaiting">
                     Awaiting Response (5)
                   </TabsTrigger>
-                  <TabsTrigger value="answered">
-                    Answered (3)
-                  </TabsTrigger>
+                  <TabsTrigger value="answered">Answered (3)</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="all">
                   <div className="mt-4 space-y-3">
                     {[
-                      { question: "How will you ensure we're aligned on progress and feedback throughout each stage?", asker: "Kevin", username: "usernamehere", time: "3 weeks ago", status: "Answered" as const },
-                      { question: "How will you ensure we're aligned on progress and feedback throughout each stage?", asker: "Kevin", username: "usernamehere", time: "3 weeks ago", status: "Answered" as const },
-                      { question: "How will you ensure we're aligned on progress and feedback throughout each stage?", asker: "Kevin", username: "usernamehere", time: "3 weeks ago", status: "Answered" as const },
-                      { question: "How will you ensure we're aligned on progress and feedback throughout each stage?", asker: "Kevin", username: "usernamehere", time: "3 weeks ago", status: "Answered" as const },
-                      { question: "How will you ensure we're aligned on progress and feedback throughout each stage?", asker: "Kevin", username: "usernamehere", time: "3 weeks ago", status: "Answered" as const },
+                      {
+                        question:
+                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
+                        asker: "Kevin",
+                        username: "usernamehere",
+                        time: "3 weeks ago",
+                        status: "Answered" as const,
+                      },
+                      {
+                        question:
+                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
+                        asker: "Kevin",
+                        username: "usernamehere",
+                        time: "3 weeks ago",
+                        status: "Answered" as const,
+                      },
+                      {
+                        question:
+                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
+                        asker: "Kevin",
+                        username: "usernamehere",
+                        time: "3 weeks ago",
+                        status: "Answered" as const,
+                      },
+                      {
+                        question:
+                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
+                        asker: "Kevin",
+                        username: "usernamehere",
+                        time: "3 weeks ago",
+                        status: "Answered" as const,
+                      },
+                      {
+                        question:
+                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
+                        asker: "Kevin",
+                        username: "usernamehere",
+                        time: "3 weeks ago",
+                        status: "Answered" as const,
+                      },
                     ].map((item, idx) => (
-                      <div key={idx} className="rounded-lg border border-gray-200 bg-white p-4">
+                      <div
+                        key={idx}
+                        className="rounded-lg border border-gray-200 bg-white p-4"
+                      >
                         <div className="flex items-start justify-between gap-3">
-                          <p className="text-sm font-medium text-dark-blue-400">{item.question}</p>
-                          <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800 shrink-0">
+                          <p className="text-sm font-medium text-dark-blue-400">
+                            {item.question}
+                          </p>
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            size="sm"
+                            className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
+                          >
                             <Edit03 className="size-4" />
                           </IconButton>
                         </div>
                         <p className="mt-2 text-xs text-gray-500">
-                          Asked by {item.asker} <span className="text-gray-400">@{item.username}</span> {item.time}
-                          <span className="ml-3 text-xs font-semibold text-success-500">{item.status}</span>
+                          Asked by {item.asker}{" "}
+                          <span className="text-gray-400">
+                            @{item.username}
+                          </span>{" "}
+                          {item.time}
+                          <span className="ml-3 text-xs font-semibold text-success-500">
+                            {item.status}
+                          </span>
                         </p>
                       </div>
                     ))}
@@ -6652,37 +6943,58 @@ const Questions = () => {
                 <TabsContent value="awaiting">
                   <div className="mt-4 space-y-3">
                     {[0, 1, 2, 3, 4].map((idx) => (
-                      <div key={idx} className="rounded-lg border border-gray-200 bg-white p-4">
+                      <div
+                        key={idx}
+                        className="rounded-lg border border-gray-200 bg-white p-4"
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-start gap-2 min-w-0">
-                            {idx === 0 && <Check className="size-4 mt-0.5 shrink-0 text-gray-400" />}
+                            {idx === 0 && (
+                              <Check className="size-4 mt-0.5 shrink-0 text-gray-400" />
+                            )}
                             <p className="text-sm font-medium text-dark-blue-400">
-                              How will you ensure we&apos;re aligned on progress and feedback throughout each stage?
+                              How will you ensure we&apos;re aligned on progress
+                              and feedback throughout each stage?
                             </p>
                           </div>
                           {idx !== 0 && (
-                            <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800 shrink-0">
+                            <IconButton
+                              variant="ghost"
+                              visual="gray"
+                              size="sm"
+                              className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
+                            >
                               <Edit03 className="size-4" />
                             </IconButton>
                           )}
                         </div>
                         <p className="mt-2 text-xs text-gray-500">
-                          Asked by Kevin <span className="text-gray-400">@usernamehere</span> 3 weeks ago
-                          {idx !== 0 && <span className="ml-3 text-xs font-semibold text-warning-500">Awaiting Response</span>}
+                          Asked by Kevin{" "}
+                          <span className="text-gray-400">@usernamehere</span> 3
+                          weeks ago
+                          {idx !== 0 && (
+                            <span className="ml-3 text-xs font-semibold text-warning-500">
+                              Awaiting Response
+                            </span>
+                          )}
                         </p>
                         {idx === 0 && (
                           <>
                             <div className="mt-3 flex items-center gap-3">
-                              <Button variant="outlined" visual="gray" size="sm">
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                size="sm"
+                              >
                                 Assign To Team Member
                               </Button>
-                              <Button size="sm">
-                                Respond
-                              </Button>
+                              <Button size="sm">Respond</Button>
                             </div>
                             <div className="mt-3 flex items-center gap-2">
                               <Switch />
-                              <span className="text-xs text-gray-500">Hide this question</span>
+                              <span className="text-xs text-gray-500">
+                                Hide this question
+                              </span>
                             </div>
                           </>
                         )}
@@ -6694,19 +7006,27 @@ const Questions = () => {
                 <TabsContent value="answered">
                   <div className="mt-4 space-y-3">
                     {[0, 1, 2].map((idx) => (
-                      <div key={idx} className="rounded-lg border border-gray-200 bg-white p-4">
+                      <div
+                        key={idx}
+                        className="rounded-lg border border-gray-200 bg-white p-4"
+                      >
                         {idx === 0 ? (
                           <>
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex items-start gap-2 min-w-0">
                                 <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
                                 <p className="text-sm font-medium text-dark-blue-400">
-                                  How will you ensure we&apos;re aligned on progress and feedback throughout each stage?
+                                  How will you ensure we&apos;re aligned on
+                                  progress and feedback throughout each stage?
                                 </p>
                               </div>
                             </div>
                             <p className="mt-2 ml-6 text-xs text-gray-500">
-                              Asked by Kevin <span className="text-gray-400">@usernamehere</span> 3 weeks ago
+                              Asked by Kevin{" "}
+                              <span className="text-gray-400">
+                                @usernamehere
+                              </span>{" "}
+                              3 weeks ago
                             </p>
                             <div className="mt-3 ml-6 flex items-start gap-2">
                               <Avatar size="xs">
@@ -6715,30 +7035,57 @@ const Questions = () => {
                               </Avatar>
                               <div className="min-w-0 flex-1">
                                 <p className="text-xs font-medium text-dark-blue-400">
-                                  You <Badge visual="primary" className="ml-1 rounded-[4px] bg-primary-50 text-[10px]">Project Lead</Badge>
+                                  You{" "}
+                                  <Badge
+                                    visual="primary"
+                                    className="ml-1 rounded-[4px] bg-primary-50 text-[10px]"
+                                  >
+                                    Project Lead
+                                  </Badge>
                                 </p>
-                                <Textarea className="mt-2" rows={3} defaultValue="We offer a comprehensive range of IT consulting services, including IT strategy development, software development, network infrastructure design and implementation, cybersecurity assessment and solutions, cloud computing solutions, and IT project management." maxLength={300} />
-                                <p className="mt-1 text-right text-xs text-gray-500">250/300</p>
+                                <Textarea
+                                  className="mt-2"
+                                  rows={3}
+                                  defaultValue="We offer a comprehensive range of IT consulting services, including IT strategy development, software development, network infrastructure design and implementation, cybersecurity assessment and solutions, cloud computing solutions, and IT project management."
+                                  maxLength={300}
+                                />
+                                <p className="mt-1 text-right text-xs text-gray-500">
+                                  250/300
+                                </p>
                               </div>
                             </div>
                             <div className="mt-3 ml-6 flex items-center gap-2">
                               <Switch />
-                              <span className="text-xs text-gray-500">Hide this question</span>
+                              <span className="text-xs text-gray-500">
+                                Hide this question
+                              </span>
                             </div>
                           </>
                         ) : (
                           <>
                             <div className="flex items-start justify-between gap-3">
                               <p className="text-sm font-medium text-dark-blue-400">
-                                How will you ensure we&apos;re aligned on progress and feedback throughout each stage?
+                                How will you ensure we&apos;re aligned on
+                                progress and feedback throughout each stage?
                               </p>
-                              <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800 shrink-0">
+                              <IconButton
+                                variant="ghost"
+                                visual="gray"
+                                size="sm"
+                                className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
+                              >
                                 <Edit03 className="size-4" />
                               </IconButton>
                             </div>
                             <p className="mt-2 text-xs text-gray-500">
-                              Asked by Kevin <span className="text-gray-400">@usernamehere</span> 3 weeks ago
-                              <span className="ml-3 text-xs font-semibold text-success-500">Answered</span>
+                              Asked by Kevin{" "}
+                              <span className="text-gray-400">
+                                @usernamehere
+                              </span>{" "}
+                              3 weeks ago
+                              <span className="ml-3 text-xs font-semibold text-success-500">
+                                Answered
+                              </span>
                             </p>
                           </>
                         )}
@@ -7000,7 +7347,7 @@ function PublishProject({
     return () => {
       cancelled = true
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug])
 
   // Ref-stable save functions so cleanup/beforeunload can call them
@@ -7298,50 +7645,64 @@ function PublishProject({
   ) : (
     <StepperProvider value={stepperValue}>
       <StepRootProvider value={stepperRootValue}>
-        <style dangerouslySetInnerHTML={{ __html: `@keyframes editStepFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }` }} />
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `@keyframes editStepFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`,
+          }}
+        />
         <div className="h-screen flex overflow-x-hidden">
           <ProjectInfoProvider value={projectInfoMethods}>
             <MediaProvider value={mediaMethods}>
               <ProjectScopeProvider value={projectScopeValue}>
                 <Sidebar />
                 <div className="flex-auto bg-white min-w-0 overflow-x-hidden">
-                  <Header onClose={() => router.back()} slug={slug} lastSavedAt={lastSavedAt} />
+                  <Header
+                    onClose={() => router.back()}
+                    slug={slug}
+                    lastSavedAt={lastSavedAt}
+                  />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}
                     onOpenChange={toggleIsSaveExitDialogOpen}
                     onConfirm={handleSaveExit}
                   />
-                  <div key={currentStep} style={{ animation: "editStepFadeIn 450ms cubic-bezier(0.4, 0, 0.2, 1) forwards" }}>
-                  <StepControl className="contents">
-                    {/*  Wrap steps to inject progress setter props */}
-                    <Step className="contents">
-                      {projectInfo && React.isValidElement(projectInfo)
-                        ? React.cloneElement(projectInfo, {
-                            setProgress: setProjectInfoProgress, // <-- inject progress
-                          })
-                        : null}
-                    </Step>
-                    <Step className="contents">
-                      {media && React.isValidElement(media)
-                        ? React.cloneElement(media, {
-                            setProgress: setMediaProgress,
-                          })
-                        : null}
-                    </Step>
-                    <Step className="contents">
-                      {projectScope && React.isValidElement(projectScope)
-                        ? React.cloneElement(projectScope, {
-                            setProgress: setProjectScopeProgress, // <-- inject progress
-                          })
-                        : null}
-                    </Step>
-                    <Step className="contents">
-                      <Team />
-                    </Step>
-                    <Step className="contents">
-                      <Questions />
-                    </Step>
-                  </StepControl>
+                  <div
+                    key={currentStep}
+                    style={{
+                      animation:
+                        "editStepFadeIn 450ms cubic-bezier(0.4, 0, 0.2, 1) forwards",
+                    }}
+                  >
+                    <StepControl className="contents">
+                      {/*  Wrap steps to inject progress setter props */}
+                      <Step className="contents">
+                        {projectInfo && React.isValidElement(projectInfo)
+                          ? React.cloneElement(projectInfo, {
+                              setProgress: setProjectInfoProgress, // <-- inject progress
+                            })
+                          : null}
+                      </Step>
+                      <Step className="contents">
+                        {media && React.isValidElement(media)
+                          ? React.cloneElement(media, {
+                              setProgress: setMediaProgress,
+                            })
+                          : null}
+                      </Step>
+                      <Step className="contents">
+                        {projectScope && React.isValidElement(projectScope)
+                          ? React.cloneElement(projectScope, {
+                              setProgress: setProjectScopeProgress, // <-- inject progress
+                            })
+                          : null}
+                      </Step>
+                      <Step className="contents">
+                        <Team />
+                      </Step>
+                      <Step className="contents">
+                        <Questions />
+                      </Step>
+                    </StepControl>
                   </div>
                   {/* No BottomBar in edit mode */}
                 </div>

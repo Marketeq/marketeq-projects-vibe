@@ -36,9 +36,9 @@ import {
 } from "@/components/ui/toggle-group"
 import { Grid, List, SortAs } from "@/components/icons"
 import { Logo4 } from "@/components/icons/logo-4"
+import { ListingCard, ListingCardProps } from "@/components/listing-card"
 import { SearchCard } from "@/components/search-card"
 import { SearchCardLandscape } from "@/components/search-card-landscape"
-import { ListingCard, ListingCardProps } from "@/components/listing-card"
 import {
   Badge,
   Button,
@@ -174,11 +174,7 @@ function hitToListingCardProps(
           ? hit.team_avatars
           : undefined,
       badge: kind === "service" ? "Service" : undefined,
-      favoriteSlot: (
-        <FavoriteRoot>
-          {() => <Favorite />}
-        </FavoriteRoot>
-      ),
+      favoriteSlot: <FavoriteRoot>{() => <Favorite />}</FavoriteRoot>,
       cardVariant,
     }
   }
@@ -250,11 +246,7 @@ function hitToListingCardProps(
       : Array.isArray(hit.client_logos)
         ? hit.client_logos
         : undefined,
-    favoriteSlot: (
-      <FavoriteRoot>
-        {() => <Favorite />}
-      </FavoriteRoot>
-    ),
+    favoriteSlot: <FavoriteRoot>{() => <Favorite />}</FavoriteRoot>,
   }
 }
 
@@ -281,7 +273,12 @@ function placeholderHit(
       rating: 4.2,
       projects_count: 11,
       all_stars: true,
-      skills: ["UX Research", "Web Design", "Content Design", "Frontend Development"],
+      skills: [
+        "UX Research",
+        "Web Design",
+        "Content Design",
+        "Frontend Development",
+      ],
     }
   }
   if (kind === "team") {
@@ -295,7 +292,13 @@ function placeholderHit(
       locations: ["UK", "USA", "Brazil", "Philippines"],
       rating: 4.9,
       projects_count: 16,
-      skills: ["iOS", "E-commerce", "Mobile Application", "Small Business", "Software Development"],
+      skills: [
+        "iOS",
+        "E-commerce",
+        "Mobile Application",
+        "Small Business",
+        "Software Development",
+      ],
     }
   }
   return {
@@ -386,10 +389,15 @@ function Search({
   // Map the top-nav listing-type category ("projects"/"services"/"teams"/"talent")
   // onto the backend SearchCategory enum. Anything else falls through to "all".
   const backendCategory: SearchCategoryType = useMemo(() => {
-    const known: SearchCategoryType[] = ["talent", "teams", "projects", "services"]
-    return (known.includes(categorySlug as SearchCategoryType)
-      ? categorySlug
-      : "all") as SearchCategoryType
+    const known: SearchCategoryType[] = [
+      "talent",
+      "teams",
+      "projects",
+      "services",
+    ]
+    return (
+      known.includes(categorySlug as SearchCategoryType) ? categorySlug : "all"
+    ) as SearchCategoryType
   }, [categorySlug])
 
   useEffect(() => {
@@ -587,8 +595,7 @@ function Search({
               {categoryLabel && (
                 <>
                   {" "}
-                  in{" "}
-                  <span className="font-bold">{categoryLabel}</span>
+                  in <span className="font-bold">{categoryLabel}</span>
                 </>
               )}
             </h1>
@@ -669,13 +676,12 @@ function Search({
 
             <div className="lg:contents mt-5 md:mt-6 xs:max-md:px-5 md:max-lg:px-6 flex justify-between items-end">
               <h1 className="text-xs leading-[19.36px] lg:hidden font-light text-dark-blue-400">
-                <span className="font-semibold">{resultsCount}</span> Results for{" "}
-                <span className="font-semibold">“{query}”</span>
+                <span className="font-semibold">{resultsCount}</span> Results
+                for <span className="font-semibold">“{query}”</span>
                 {categoryLabel && (
                   <>
                     {" "}
-                    in{" "}
-                    <span className="font-semibold">{categoryLabel}</span>
+                    in <span className="font-semibold">{categoryLabel}</span>
                   </>
                 )}
               </h1>

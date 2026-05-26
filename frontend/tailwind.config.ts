@@ -117,7 +117,7 @@ const config: Config = {
           800: "#05603A",
           900: "#000000",
         },
-        "project": {
+        project: {
           mint: "#A1EDD3",
           salmon: "#FFB4C1",
           lavender: "#D4B8F7",

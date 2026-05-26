@@ -4,8 +4,8 @@ import { useCategoryPageL3 } from "../../src/features/category-pages/hook"
 
 export default function TestL3Page() {
   const { data, isLoading, error } = useCategoryPageL3(
-    "creative", 
-    "ui-design", 
+    "creative",
+    "ui-design",
     "mobile-ui",
     { kind: "projects", limit: 10 }
   )
@@ -32,7 +32,7 @@ export default function TestL3Page() {
           L3 Integration Working!
         </h1>
         <p className="text-green-700 mt-2">
-          Full Path: {data.breadcrumbs.map(b => b.name).join(" → ")}
+          Full Path: {data.breadcrumbs.map((b) => b.name).join(" → ")}
         </p>
         <p className="text-sm text-green-600 mt-1">
           GET /api/category-pages/creative/ui-design/mobile-ui

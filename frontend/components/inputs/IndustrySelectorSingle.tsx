@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react"
-import { getPublicApiUrl } from "@/lib/runtime-urls"
 import industries from "@/public/mock/industries.json"
 import { useControllableState } from "@/utils/hooks"
 import {
@@ -10,6 +9,7 @@ import {
   submitTextToModerationQueue,
 } from "@/utils/jobTitleValidation"
 import Fuse from "fuse.js"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import {
   Badge,
   Combobox,
@@ -50,9 +50,7 @@ export const IndustrySelectorSingle = ({
     const loadIndustries = async () => {
       try {
         const apiBase = getPublicApiUrl()
-        const res = await fetch(
-          `${apiBase}/talent/autocomplete?type=industry`
-        )
+        const res = await fetch(`${apiBase}/talent/autocomplete?type=industry`)
         const data = await res.json()
         const dynamic = data.map((entry: any) => entry.value)
         const combined = Array.from(

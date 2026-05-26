@@ -1,7 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { ArrowLeft, Briefcase, Info, Repeat, User, X } from "@blend-metrics/icons"
+import {
+  ArrowLeft,
+  Briefcase,
+  Info,
+  Repeat,
+  User,
+  X,
+} from "@blend-metrics/icons"
 import NextLink from "@/components/next-link"
 import type { OfferDialogData } from "@/components/offer-dialog.types"
 import {
@@ -331,7 +338,9 @@ export function OfferFlowDialog({
 
                   <DialogTitle className="text-[18px] font-semibold leading-7 text-dark-blue-400">
                     {data.senderDisplayName}{" "}
-                    <span className="text-primary-500">{data.senderUsername}</span>
+                    <span className="text-primary-500">
+                      {data.senderUsername}
+                    </span>
                   </DialogTitle>
                 </div>
 

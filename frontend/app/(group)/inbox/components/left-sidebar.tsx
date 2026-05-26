@@ -2,19 +2,17 @@
 
 import React, { useCallback, useMemo, useRef, useState } from "react"
 import { useEffect } from "react"
-import {
-  ensureEncryptionKeysExist,
-  loadPrivateKey,
-} from "@/src/crypto/keys"
 import { useRouter } from "next/navigation"
-import { useThreadActions, type ThreadBulkAction } from "../hooks/use-thread-actions"
+import { decryptAES } from "@/src/crypto/e2ee"
+import { ensureEncryptionKeysExist, loadPrivateKey } from "@/src/crypto/keys"
+import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
 import { listBlocked } from "@/src/lib/api/blocks"
-import { useUserChannel } from "@/utils/useUserChannel"
-import { getCurrentUser, getAccessToken } from "@/utils/auth"
+import { getAccessToken, getCurrentUser } from "@/utils/auth"
 import { noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
 import { useAblyChannel } from "@/utils/useAblyChannel"
+import { useUserChannel } from "@/utils/useUserChannel"
 import {
   AlertTriangle,
   Archive,
@@ -35,8 +33,6 @@ import {
   UploadCloud,
   X,
 } from "@blend-metrics/icons"
-import { Spinner } from "@/components/ui/spinner/spinner"
-import { NewMessageDialog } from "./new-message-dialog"
 import {
   DropboxBrand,
   GoogleDrive1Brand,
@@ -46,9 +42,8 @@ import { DropdownMenuArrow } from "@radix-ui/react-dropdown-menu"
 import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
-import { decryptAES } from "@/src/crypto/e2ee"
-import { loadKey, saveKey } from "@/src/crypto/storage"
 import { User } from "@/types/user"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
 import {
@@ -87,14 +82,19 @@ import {
   TooltipTrigger,
 } from "@/components/ui"
 import {
-  SearchResultsPanel,
-  extractUrls,
+  type ThreadBulkAction,
+  useThreadActions,
+} from "../hooks/use-thread-actions"
+import { truncateFilenameMiddle } from "./message-components"
+import { NewMessageDialog } from "./new-message-dialog"
+import {
   type SearchFileResult,
   type SearchLinkResult,
   type SearchMessageResult,
   type SearchPeopleResult,
+  SearchResultsPanel,
+  extractUrls,
 } from "./search-results-panel"
-import { truncateFilenameMiddle } from "./message-components"
 
 function getOtherParticipantId(
   conv: Conversation,
@@ -157,8 +157,14 @@ const LeftSidebar = ({
   onHighlightMessage,
   privateKey,
 }: LeftSidebarProps) => {
-  const { pinnedChats, setPinnedChats, toggleShowPinnedIcon, showPinnedIcon, checkedChats, resetCheckedChats } =
-    useChatsContext()
+  const {
+    pinnedChats,
+    setPinnedChats,
+    toggleShowPinnedIcon,
+    showPinnedIcon,
+    checkedChats,
+    resetCheckedChats,
+  } = useChatsContext()
 
   //getting the user id || can get other details later as required
   const currentUser = getCurrentUser()
@@ -188,7 +194,9 @@ const LeftSidebar = ({
   useEffect(() => {
     if (!CACHE_KEY) return
     if (conversations.length > 0) {
-      try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(conversations)) } catch {}
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify(conversations))
+      } catch {}
     }
   }, [conversations, CACHE_KEY])
   const [activeFilter, setActiveFilter] = useState<string>("all")
@@ -230,7 +238,13 @@ const LeftSidebar = ({
 
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<
-    Array<{ id: string; threadId: string; senderId: string; content: string; createdAt: string }>
+    Array<{
+      id: string
+      threadId: string
+      senderId: string
+      content: string
+      createdAt: string
+    }>
   >([])
   const [searchLoading, setSearchLoading] = useState(false)
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
@@ -267,7 +281,10 @@ const LeftSidebar = ({
     resetCheckedChats?.()
   }
 
-  const bulkAction = async (action: ThreadBulkAction, patch: Partial<Conversation>) => {
+  const bulkAction = async (
+    action: ThreadBulkAction,
+    patch: Partial<Conversation>
+  ) => {
     if (bulkActionPending) return false
     const ids = Array.from(checkedIds)
     if (!ids.length) return false
@@ -277,7 +294,7 @@ const LeftSidebar = ({
       await threadActions.bulk(ids, action)
       const idSet = new Set(ids)
       setConversations((prev) =>
-        prev.map((c) => idSet.has(c.id) ? { ...c, ...patch } : c)
+        prev.map((c) => (idSet.has(c.id) ? { ...c, ...patch } : c))
       )
       if (selectedConversation && idSet.has(selectedConversation.id)) {
         setSelectedConversation({ ...(selectedConversation as any), ...patch })
@@ -300,7 +317,9 @@ const LeftSidebar = ({
     const patchConv = (id: string, patch: Partial<Conversation>) => {
       if (cancelled) return
       setConversations((prev) =>
-        prev.map((c) => (c.id === id ? ({ ...c, ...patch } as Conversation) : c))
+        prev.map((c) =>
+          c.id === id ? ({ ...c, ...patch } as Conversation) : c
+        )
       )
     }
 
@@ -359,7 +378,9 @@ const LeftSidebar = ({
       // label there, ↪ here in the row preview where icons are unavailable).
       const fwd = lm.m_forwardedFromId ? "↪ " : ""
       if (lm.m_content) {
-        patchConv(conv.id, { lastMessagePreview: `${fwd}${lm.m_content}` } as any)
+        patchConv(conv.id, {
+          lastMessagePreview: `${fwd}${lm.m_content}`,
+        } as any)
         return
       }
       // File-only or image-only message — show filename as the preview.
@@ -380,7 +401,9 @@ const LeftSidebar = ({
         // attachment (forward only copies content/ciphertext, not attachments —
         // upstream bug). Still surface that the conversation has activity.
         if (lm.m_forwardedFromId) {
-          patchConv(conv.id, { lastMessagePreview: "↪ Forwarded message" } as any)
+          patchConv(conv.id, {
+            lastMessagePreview: "↪ Forwarded message",
+          } as any)
         }
         return
       }
@@ -388,7 +411,9 @@ const LeftSidebar = ({
       let key: Uint8Array | null = null
       try {
         key = loadKey(conv.id)
-      } catch { /* not cached */ }
+      } catch {
+        /* not cached */
+      }
 
       if (!key && currentUserId) {
         try {
@@ -478,7 +503,7 @@ const LeftSidebar = ({
               threadActions.untrash(match.id).catch(() => {})
               const restored = { ...match, isTrashed: false }
               setConversations((prev) =>
-                prev.map((c) => c.id === match.id ? restored : c)
+                prev.map((c) => (c.id === match.id ? restored : c))
               )
               setSelectedConversation(restored)
             } else {
@@ -503,7 +528,9 @@ const LeftSidebar = ({
         // Enrich in parallel; each resolves independently and patches state.
         await Promise.allSettled(
           data.map((conv) =>
-            conv.isGroup ? enrichGroup(conv) : enrichIndividual(conv, privKeyRef)
+            conv.isGroup
+              ? enrichGroup(conv)
+              : enrichIndividual(conv, privKeyRef)
           )
         )
       } catch (err) {
@@ -573,15 +600,23 @@ const LeftSidebar = ({
 
         try {
           let key: Uint8Array | null = null
-          try { key = loadKey(conv.id) } catch { /* not cached */ }
+          try {
+            key = loadKey(conv.id)
+          } catch {
+            /* not cached */
+          }
           if (!key) {
             const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
               `/api/messaging/conversations/${conv.id}/key?isGroup=${conv.isGroup}`,
               { headers: { Authorization: `Bearer ${token}` } }
             )
-            const wrapped = Uint8Array.from(atob(encryptedKey), (c) => c.charCodeAt(0))
+            const wrapped = Uint8Array.from(atob(encryptedKey), (c) =>
+              c.charCodeAt(0)
+            )
             const raw = await window.crypto.subtle.decrypt(
-              { name: "RSA-OAEP" }, privateKey, wrapped
+              { name: "RSA-OAEP" },
+              privateKey,
+              wrapped
             )
             key = new Uint8Array(raw)
             saveKey(conv.id, btoa(String.fromCharCode(...key)))
@@ -591,14 +626,21 @@ const LeftSidebar = ({
           setConversations((prev) =>
             prev.map((c) =>
               c.id === conv.id
-                ? ({ ...c, lastMessagePreview: `${fwd}${decrypted}` } as Conversation)
+                ? ({
+                    ...c,
+                    lastMessagePreview: `${fwd}${decrypted}`,
+                  } as Conversation)
                 : c
             )
           )
-        } catch { /* still can't decrypt — leave placeholder */ }
+        } catch {
+          /* still can't decrypt — leave placeholder */
+        }
       }
     })()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [privateKey, token, conversations.length])
 
   // Handle ?participantId= independently of the thread-list fetch so it works
@@ -647,7 +689,10 @@ const LeftSidebar = ({
         const thread = await apiFetch<Conversation>("/v1/threads", {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
-          body: { participantIds: [currentUserId, initialParticipantId], isGroup: false },
+          body: {
+            participantIds: [currentUserId, initialParticipantId],
+            isGroup: false,
+          },
         })
         if (cancelled) return
 
@@ -703,12 +748,14 @@ const LeftSidebar = ({
         console.error("[LeftSidebar] participantId thread create failed:", err)
       }
     })()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [currentUserId, token, initialParticipantId, isLoading, conversations])
 
   const skipAutoSelectRef = useRef(false)
   const [blockedSenderIds, setBlockedSenderIds] = useState<Set<string>>(
-    new Set(),
+    new Set()
   )
 
   useEffect(() => {
@@ -764,7 +811,9 @@ const LeftSidebar = ({
         return
       }
       setConversations((prev) => {
-        const next = prev.map((c) => (c.id === threadId ? { ...c, ...patch } : c))
+        const next = prev.map((c) =>
+          c.id === threadId ? { ...c, ...patch } : c
+        )
         next.sort((a, b) => {
           if (!!a.isPinned !== !!b.isPinned) return a.isPinned ? -1 : 1
           return (
@@ -838,7 +887,9 @@ const LeftSidebar = ({
           content: string
           createdAt: string
         }> = []
-        for (const [threadId, msgs] of Object.entries(messagesByConversation ?? {})) {
+        for (const [threadId, msgs] of Object.entries(
+          messagesByConversation ?? {}
+        )) {
           for (const m of msgs as Message[]) {
             if ((m as any).isDeleted || (m as any).deleted) continue
             const content = m.content || ""
@@ -932,7 +983,10 @@ const LeftSidebar = ({
         return {
           id: r.id,
           threadId: r.threadId,
-          participantName: conv?.participantName || conv?.participantUsername || "Conversation",
+          participantName:
+            conv?.participantName ||
+            conv?.participantUsername ||
+            "Conversation",
           participantAvatarUrl: conv?.participantAvatarUrl,
           snippet: r.content,
           createdAt: r.createdAt,
@@ -953,7 +1007,7 @@ const LeftSidebar = ({
     // for the current user we just say "You".
     const senderNameFor = (
       senderId: string,
-      conv: Conversation | undefined,
+      conv: Conversation | undefined
     ): string => {
       if (senderId === currentUserId) return "You"
       return conv?.participantName || conv?.participantUsername || "Unknown"
@@ -1009,13 +1063,20 @@ const LeftSidebar = ({
     // Links and Files: newest-first.
     const byCreatedDesc = (
       a: { createdAt?: string },
-      b: { createdAt?: string },
+      b: { createdAt?: string }
     ) => (b.createdAt || "").localeCompare(a.createdAt || "")
     links.sort(byCreatedDesc)
     files.sort(byCreatedDesc)
 
     return { people, messages, links, files }
-  }, [searchQuery, searchResults, conversations, currentUserId, searchIndex, blockedSenderIds])
+  }, [
+    searchQuery,
+    searchResults,
+    conversations,
+    currentUserId,
+    searchIndex,
+    blockedSenderIds,
+  ])
 
   return (
     <div className="w-[322px] shrink-0 border-r bg-white border-gray-200 h-full flex flex-col min-h-0">
@@ -1023,7 +1084,16 @@ const LeftSidebar = ({
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <button className="focus-visible:outline-none w-[157px] h-11 inline-flex items-center justify-center shrink-0 text-base leading-6 font-semibold gap-x-1.5">
-              {{ all: "All Messages", unread: "Unread", starred: "Starred", sent: "Sent", archived: "Archived", spam: "Spam", trash: "Trash" }[activeFilter] ?? "All Messages"} <ChevronDown className="size-4" />
+              {{
+                all: "All Messages",
+                unread: "Unread",
+                starred: "Starred",
+                sent: "Sent",
+                archived: "Archived",
+                spam: "Spam",
+                trash: "Trash",
+              }[activeFilter] ?? "All Messages"}{" "}
+              <ChevronDown className="size-4" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -1032,15 +1102,17 @@ const LeftSidebar = ({
             sideOffset={4}
             className="w-[142px] max-h-[170px] overflow-y-auto rounded-[5px]"
           >
-            {([
-              ["all", "All Messages"],
-              ["unread", "Unread"],
-              ["starred", "Starred"],
-              ["sent", "Sent"],
-              ["archived", "Archived"],
-              ["spam", "Spam"],
-              ["trash", "Trash"],
-            ] as const).map(([key, label]) => (
+            {(
+              [
+                ["all", "All Messages"],
+                ["unread", "Unread"],
+                ["starred", "Starred"],
+                ["sent", "Sent"],
+                ["archived", "Archived"],
+                ["spam", "Spam"],
+                ["trash", "Trash"],
+              ] as const
+            ).map(([key, label]) => (
               <DropdownMenuItem
                 key={key}
                 className={`w-[142px] h-[34px] gap-2 py-2.5 px-3 ${activeFilter === key ? "font-semibold" : ""}`}
@@ -1084,7 +1156,9 @@ const LeftSidebar = ({
                         className="rounded-full size-6 text-gray-400 hover:text-dark-blue-400"
                         visual="gray"
                         variant="ghost"
-                        onClick={() => { void bulkAction("mark-unread", { markedUnread: true }) }}
+                        onClick={() => {
+                          void bulkAction("mark-unread", { markedUnread: true })
+                        }}
                       >
                         <Mail05 className="size-4" />
                       </IconButton>
@@ -1099,7 +1173,9 @@ const LeftSidebar = ({
                         className="rounded-full size-6 text-gray-400 hover:text-dark-blue-400"
                         visual="gray"
                         variant="ghost"
-                        onClick={() => { void bulkAction("star", { isStarred: true }) }}
+                        onClick={() => {
+                          void bulkAction("star", { isStarred: true })
+                        }}
                       >
                         <Star className="size-4" />
                       </IconButton>
@@ -1114,7 +1190,9 @@ const LeftSidebar = ({
                         className="rounded-full size-6 text-gray-400 hover:text-dark-blue-400"
                         visual="gray"
                         variant="ghost"
-                        onClick={() => { void bulkAction("pin", { isPinned: true }) }}
+                        onClick={() => {
+                          void bulkAction("pin", { isPinned: true })
+                        }}
                       >
                         <Pin02 className="size-4" />
                       </IconButton>
@@ -1129,7 +1207,9 @@ const LeftSidebar = ({
                         className="rounded-full size-6 text-gray-400 hover:text-dark-blue-400"
                         visual="gray"
                         variant="ghost"
-                        onClick={() => { void bulkAction("archive", { isArchived: true }) }}
+                        onClick={() => {
+                          void bulkAction("archive", { isArchived: true })
+                        }}
                       >
                         <Archive className="size-4" />
                       </IconButton>
@@ -1144,7 +1224,9 @@ const LeftSidebar = ({
                         className="rounded-full size-6 text-gray-400 hover:text-dark-blue-400"
                         visual="gray"
                         variant="ghost"
-                        onClick={() => { void bulkAction("spam", { isSpam: true }) }}
+                        onClick={() => {
+                          void bulkAction("spam", { isSpam: true })
+                        }}
                       >
                         <AlertTriangle className="size-4" />
                       </IconButton>
@@ -1169,11 +1251,15 @@ const LeftSidebar = ({
                 </TooltipProvider>
               </div>
             </div>
-            <Dialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+            <Dialog
+              open={showBulkDeleteConfirm}
+              onOpenChange={setShowBulkDeleteConfirm}
+            >
               <DialogContent className="max-w-[348px] p-7 rounded-xl">
                 <DialogTitle>Delete {checkedIds.size} chats?</DialogTitle>
                 <DialogDescription className="mt-2">
-                  These chats will be moved to Trash. You can restore them later from the Trash filter.
+                  These chats will be moved to Trash. You can restore them later
+                  from the Trash filter.
                 </DialogDescription>
                 <div className="mt-8 grid grid-cols-2 gap-x-3">
                   <DialogClose asChild>
@@ -1183,9 +1269,11 @@ const LeftSidebar = ({
                   </DialogClose>
                   <Button
                     onClick={() => {
-                      void bulkAction("trash", { isTrashed: true }).then((ok) => {
-                        if (ok) setShowBulkDeleteConfirm(false)
-                      })
+                      void bulkAction("trash", { isTrashed: true }).then(
+                        (ok) => {
+                          if (ok) setShowBulkDeleteConfirm(false)
+                        }
+                      )
                     }}
                     disabled={bulkActionPending}
                   >
@@ -1296,90 +1384,163 @@ const LeftSidebar = ({
             <div className="flex items-center justify-center py-12 text-gray-400">
               <Spinner size={24} strokeWidth={3} />
             </div>
-          ) : (() => {
-            return visibleConversations.length === 0 ? (() => {
-              // Per Doc 05 EC-1.2: per-filter empty state, not the global one.
-              const empty = {
-                all: { Icon: Mail05, title: "No conversations yet", hint: "Start a conversation to see it here." },
-                unread: { Icon: Mail05, title: "No unread conversations", hint: "You're all caught up." },
-                starred: { Icon: Star, title: "No starred conversations", hint: "Star a conversation to find it here later." },
-                sent: { Icon: Send, title: "No sent messages", hint: "Messages you send will appear here." },
-                archived: { Icon: Archive, title: "No archived conversations", hint: "Conversations you archive will appear here." },
-                spam: { Icon: AlertTriangle, title: "No spam", hint: "Conversations marked as spam will appear here." },
-                trash: { Icon: Trash2, title: "Trash is empty", hint: "Deleted conversations stay here for 30 days." },
-              }[activeFilter] ?? { Icon: Mail05, title: "No conversations yet", hint: "" }
-              const { Icon, title, hint } = empty
-              return (
-                <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-400">
-                  <Icon className="size-8 stroke-[1.5]" />
-                  <p className="text-sm">{title}</p>
-                  {hint && <p className="text-xs text-gray-300 text-center px-6">{hint}</p>}
-                </div>
-              )
-            })() : (
-              visibleConversations.map((conv) => (
-                <Chat
-                  key={conv.id}
-                  conversation={conv}
-                  variant={selectedConversation?.id === conv.id ? "active" : "default"}
-                  pinned={conv.isPinned}
-                  starred={conv.isStarred}
-                  onStarredChange={(val) => {
-                    setConversations((prev) =>
-                      prev.map((c) => c.id === conv.id ? { ...c, isStarred: val } : c)
-                    )
-                    if (selectedConversation && selectedConversation.id === conv.id) {
-                      setSelectedConversation({ ...(selectedConversation as any), isStarred: val })
+          ) : (
+            (() => {
+              return visibleConversations.length === 0
+                ? (() => {
+                    // Per Doc 05 EC-1.2: per-filter empty state, not the global one.
+                    const empty = {
+                      all: {
+                        Icon: Mail05,
+                        title: "No conversations yet",
+                        hint: "Start a conversation to see it here.",
+                      },
+                      unread: {
+                        Icon: Mail05,
+                        title: "No unread conversations",
+                        hint: "You're all caught up.",
+                      },
+                      starred: {
+                        Icon: Star,
+                        title: "No starred conversations",
+                        hint: "Star a conversation to find it here later.",
+                      },
+                      sent: {
+                        Icon: Send,
+                        title: "No sent messages",
+                        hint: "Messages you send will appear here.",
+                      },
+                      archived: {
+                        Icon: Archive,
+                        title: "No archived conversations",
+                        hint: "Conversations you archive will appear here.",
+                      },
+                      spam: {
+                        Icon: AlertTriangle,
+                        title: "No spam",
+                        hint: "Conversations marked as spam will appear here.",
+                      },
+                      trash: {
+                        Icon: Trash2,
+                        title: "Trash is empty",
+                        hint: "Deleted conversations stay here for 30 days.",
+                      },
+                    }[activeFilter] ?? {
+                      Icon: Mail05,
+                      title: "No conversations yet",
+                      hint: "",
                     }
-                  }}
-                  onMarkUnread={() => {
-                    const next = !conv.markedUnread
-                    ;(next ? threadActions.markUnread(conv.id) : threadActions.markRead(conv.id)).catch(console.error)
-                    setConversations((prev) =>
-                      prev.map((c) => c.id === conv.id ? { ...c, markedUnread: next } : c)
+                    const { Icon, title, hint } = empty
+                    return (
+                      <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-400">
+                        <Icon className="size-8 stroke-[1.5]" />
+                        <p className="text-sm">{title}</p>
+                        {hint && (
+                          <p className="text-xs text-gray-300 text-center px-6">
+                            {hint}
+                          </p>
+                        )}
+                      </div>
                     )
-                  }}
-                  onArchive={() => {
-                    const next = !conv.isArchived
-                    ;(next ? threadActions.archive(conv.id) : threadActions.unarchive(conv.id)).catch(console.error)
-                    setConversations((prev) =>
-                      prev.map((c) => c.id === conv.id ? { ...c, isArchived: next } : c)
-                    )
-                  }}
-                  onSpam={() => {
-                    const next = !conv.isSpam
-                    ;(next ? threadActions.spam(conv.id) : threadActions.unspam(conv.id)).catch(console.error)
-                    setConversations((prev) =>
-                      prev.map((c) => c.id === conv.id ? { ...c, isSpam: next } : c)
-                    )
-                  }}
-                  onTrash={() => {
-                    const next = !conv.isTrashed
-                    ;(next ? threadActions.trash(conv.id) : threadActions.untrash(conv.id)).catch(console.error)
-                    setConversations((prev) =>
-                      prev.map((c) => c.id === conv.id ? { ...c, isTrashed: next } : c)
-                    )
-                  }}
-                  checked={checkedIds.has(conv.id)}
-                  onCheckedChange={(convId, isChecked) => {
-                    setCheckedIds((prev) => {
-                      const next = new Set(prev)
-                      isChecked ? next.add(convId) : next.delete(convId)
-                      return next
-                    })
-                  }}
-                  currentUserId={currentUserId}
-                  onClick={() => {
-                    setSelectedConversation(conv)
-                  }}
-                />
-              ))
-            )
-          })()}
+                  })()
+                : visibleConversations.map((conv) => (
+                    <Chat
+                      key={conv.id}
+                      conversation={conv}
+                      variant={
+                        selectedConversation?.id === conv.id
+                          ? "active"
+                          : "default"
+                      }
+                      pinned={conv.isPinned}
+                      starred={conv.isStarred}
+                      onStarredChange={(val) => {
+                        setConversations((prev) =>
+                          prev.map((c) =>
+                            c.id === conv.id ? { ...c, isStarred: val } : c
+                          )
+                        )
+                        if (
+                          selectedConversation &&
+                          selectedConversation.id === conv.id
+                        ) {
+                          setSelectedConversation({
+                            ...(selectedConversation as any),
+                            isStarred: val,
+                          })
+                        }
+                      }}
+                      onMarkUnread={() => {
+                        const next = !conv.markedUnread
+                        ;(next
+                          ? threadActions.markUnread(conv.id)
+                          : threadActions.markRead(conv.id)
+                        ).catch(console.error)
+                        setConversations((prev) =>
+                          prev.map((c) =>
+                            c.id === conv.id ? { ...c, markedUnread: next } : c
+                          )
+                        )
+                      }}
+                      onArchive={() => {
+                        const next = !conv.isArchived
+                        ;(next
+                          ? threadActions.archive(conv.id)
+                          : threadActions.unarchive(conv.id)
+                        ).catch(console.error)
+                        setConversations((prev) =>
+                          prev.map((c) =>
+                            c.id === conv.id ? { ...c, isArchived: next } : c
+                          )
+                        )
+                      }}
+                      onSpam={() => {
+                        const next = !conv.isSpam
+                        ;(next
+                          ? threadActions.spam(conv.id)
+                          : threadActions.unspam(conv.id)
+                        ).catch(console.error)
+                        setConversations((prev) =>
+                          prev.map((c) =>
+                            c.id === conv.id ? { ...c, isSpam: next } : c
+                          )
+                        )
+                      }}
+                      onTrash={() => {
+                        const next = !conv.isTrashed
+                        ;(next
+                          ? threadActions.trash(conv.id)
+                          : threadActions.untrash(conv.id)
+                        ).catch(console.error)
+                        setConversations((prev) =>
+                          prev.map((c) =>
+                            c.id === conv.id ? { ...c, isTrashed: next } : c
+                          )
+                        )
+                      }}
+                      checked={checkedIds.has(conv.id)}
+                      onCheckedChange={(convId, isChecked) => {
+                        setCheckedIds((prev) => {
+                          const next = new Set(prev)
+                          isChecked ? next.add(convId) : next.delete(convId)
+                          return next
+                        })
+                      }}
+                      currentUserId={currentUserId}
+                      onClick={() => {
+                        setSelectedConversation(conv)
+                      }}
+                    />
+                  ))
+            })()
+          )}
         </div>
       </ScrollArea>
 
-      <NewMessageDialog open={showNewMessage} onOpenChange={setShowNewMessage} />
+      <NewMessageDialog
+        open={showNewMessage}
+        onOpenChange={setShowNewMessage}
+      />
     </div>
   )
 }

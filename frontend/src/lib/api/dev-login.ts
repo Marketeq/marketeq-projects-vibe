@@ -11,7 +11,8 @@ const DEV_EMAIL = "harry.torres8@gmail.com"
  */
 export async function ensureDevAuth(): Promise<boolean> {
   if (typeof window === "undefined") return false
-  if (process.env.NODE_ENV === "production") return !!Cookies.get("access_token")
+  if (process.env.NODE_ENV === "production")
+    return !!Cookies.get("access_token")
 
   // If there's already a token, verify it decodes to the right user
   const existing = Cookies.get("access_token")

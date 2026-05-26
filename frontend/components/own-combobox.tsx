@@ -291,16 +291,16 @@ export interface NativeName {
 // Top freelance markets — pinned at the top of the dropdown.
 // Order: US first, then by freelance platform volume.
 const POPULAR_COUNTRIES = [
-  'United States',
-  'United Kingdom',
-  'Canada',
-  'India',
-  'Germany',
-  'Australia',
-  'Brazil',
-  'Philippines',
-  'Ukraine',
-  'Poland',
+  "United States",
+  "United Kingdom",
+  "Canada",
+  "India",
+  "Germany",
+  "Australia",
+  "Brazil",
+  "Philippines",
+  "Ukraine",
+  "Poland",
 ]
 
 const popularSet = new Set(POPULAR_COUNTRIES)
@@ -318,7 +318,10 @@ export function getFlagUrlByName(countryName: string): string | null {
   return getFlagUrl(country)
 }
 
-function sortCountries(countries: Country[]): { popular: Country[]; rest: Country[] } {
+function sortCountries(countries: Country[]): {
+  popular: Country[]
+  rest: Country[]
+} {
   const popular: Country[] = []
   const rest: Country[] = []
 
@@ -332,7 +335,9 @@ function sortCountries(countries: Country[]): { popular: Country[]; rest: Countr
 
   // Sort popular by the predefined order
   popular.sort(
-    (a, b) => POPULAR_COUNTRIES.indexOf(a.name.common) - POPULAR_COUNTRIES.indexOf(b.name.common)
+    (a, b) =>
+      POPULAR_COUNTRIES.indexOf(a.name.common) -
+      POPULAR_COUNTRIES.indexOf(b.name.common)
   )
 
   // Sort rest alphabetically
@@ -356,7 +361,9 @@ export const CountriesCombobox = ({
 }) => {
   const data = useAsync(async () => {
     if (countriesCache) return countriesCache
-    const result = await getCountries<Country[]>("/all?fields=id,name,flags,cca2")
+    const result = await getCountries<Country[]>(
+      "/all?fields=id,name,flags,cca2"
+    )
     countriesCache = result
     return result
   }, [])

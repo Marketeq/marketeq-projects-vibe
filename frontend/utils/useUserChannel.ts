@@ -1,13 +1,19 @@
 import { useEffect, useRef } from "react"
 import { apiFetch } from "@/src/lib/api"
-import { getCurrentUser, getAccessToken } from "@/utils/auth"
+import { getAccessToken, getCurrentUser } from "@/utils/auth"
 import * as Ably from "ably"
 
 type ThreadStatePatch = Record<string, unknown> & { removed?: boolean }
 
 export interface UserChannelHandlers {
-  onThreadStateChanged?: (evt: { threadId: string; patch: ThreadStatePatch }) => void
-  onListAssignmentsChanged?: (evt: { threadId: string; listIds: string[] }) => void
+  onThreadStateChanged?: (evt: {
+    threadId: string
+    patch: ThreadStatePatch
+  }) => void
+  onListAssignmentsChanged?: (evt: {
+    threadId: string
+    listIds: string[]
+  }) => void
   onListsChanged?: () => void
   onMessageRead?: (evt: { messageId: string; readerId?: string }) => void
 }
@@ -18,7 +24,9 @@ export interface UserChannelHandlers {
  */
 export function useUserChannel(handlers: UserChannelHandlers) {
   const ref = useRef(handlers)
-  useEffect(() => { ref.current = handlers }, [handlers])
+  useEffect(() => {
+    ref.current = handlers
+  }, [handlers])
 
   useEffect(() => {
     const currentUser = getCurrentUser()
@@ -30,10 +38,10 @@ export function useUserChannel(handlers: UserChannelHandlers) {
       authCallback: async (_params, cb) => {
         try {
           const token = getAccessToken()
-          const details = await apiFetch<any>(
-            `/v1/threads/ably-token`,
-            { method: "GET", headers: { Authorization: `Bearer ${token}` } }
-          )
+          const details = await apiFetch<any>(`/v1/threads/ably-token`, {
+            method: "GET",
+            headers: { Authorization: `Bearer ${token}` },
+          })
           if (!details) {
             cb("Realtime token unavailable", null)
             return

@@ -31,8 +31,7 @@ type UpdateTaskPayload = Pick<
 >
 // Prefer a dedicated listings URL if set; otherwise fall back to the general
 // API URL so existing Vercel deployments keep working without a new env var.
-const LISTINGS_BASE =
-  getPublicListingsUrl()
+const LISTINGS_BASE = getPublicListingsUrl()
 
 const API_BASE = getPublicApiUrl() || "http://localhost:4000"
 
@@ -57,7 +56,10 @@ export const ProjectAPI = {
       fullDescription?: string
     }
   ) => {
-    return AxiosRequest.put(`${LISTINGS_BASE}/publish/project/${projectId}`, data)
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/project/${projectId}`,
+      data
+    )
   },
   GetMyProjects: () => {
     return AxiosRequest.get(`${LISTINGS_BASE}/publish/projects/mine`)
@@ -83,9 +85,12 @@ export const ProjectAPI = {
       }>
     }>
   ) => {
-    return AxiosRequest.put(`${LISTINGS_BASE}/publish/project/${projectId}/scope`, {
-      scope,
-    })
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/project/${projectId}/scope`,
+      {
+        scope,
+      }
+    )
   },
   CreateProject: (data: CreateProjectType | FormData) => {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/project`, data, {
@@ -96,7 +101,10 @@ export const ProjectAPI = {
     })
   },
   CreateModeratedSubcategory: (data: { name: string; parentUuid?: string }) => {
-    return AxiosRequest.post(`${LISTINGS_BASE}/publish/category/subcategory`, data)
+    return AxiosRequest.post(
+      `${LISTINGS_BASE}/publish/category/subcategory`,
+      data
+    )
   },
   UploadMedia: (data: FormData) => {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/media`, data, {
@@ -106,7 +114,10 @@ export const ProjectAPI = {
     })
   },
   UpdateGalleryImages: (projectId: string, additionalImages: string[]) => {
-    return AxiosRequest.put(`${LISTINGS_BASE}/publish/media/${projectId}/gallery`, { additionalImages })
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/media/${projectId}/gallery`,
+      { additionalImages }
+    )
   },
   UploadRichTextImage: (data: FormData) => {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/rich-text-image`, data, {

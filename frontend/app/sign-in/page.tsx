@@ -7,7 +7,6 @@ import {
   resolveDashboardRoute,
   useAuth,
 } from "@/contexts/auth"
-import { getPublicApiUrl } from "@/lib/runtime-urls"
 import UnauthenticatedRoute from "@/hoc/UnauthenticatedRoute"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
@@ -19,6 +18,7 @@ import Cookies from "js-cookie"
 import { Controller, SubmitHandler, useForm } from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import GoogleLoginButton from "@/components/auth/GoogleLoginButton"
 import LinkedInLoginButton from "@/components/auth/LinkedInLoginButton"
@@ -75,7 +75,9 @@ export default function SignIn() {
   }, [resendCooldown])
   const redirectTarget = searchParams.get("redirect")
   const nextRoute =
-    redirectTarget && redirectTarget.startsWith("/") && !redirectTarget.startsWith("//")
+    redirectTarget &&
+    redirectTarget.startsWith("/") &&
+    !redirectTarget.startsWith("//")
       ? redirectTarget
       : "/"
 
@@ -97,7 +99,10 @@ export default function SignIn() {
     if (twoFactorCode.length < 6) return
     setIsVerifying2FA(true)
     try {
-      const res = await AuthAPI.VerifyTwoFactor({ code: twoFactorCode, partialToken })
+      const res = await AuthAPI.VerifyTwoFactor({
+        code: twoFactorCode,
+        partialToken,
+      })
       if (res?.data?.access_token) {
         Cookies.set("access_token", res.data.access_token, { path: "/" })
         if (res.data.refresh_token) {
@@ -128,7 +133,9 @@ export default function SignIn() {
           setUser(nextUser)
         }
 
-        const destination = redirectTarget ? nextRoute : resolveDashboardRoute(nextUser)
+        const destination = redirectTarget
+          ? nextRoute
+          : resolveDashboardRoute(nextUser)
         router.push(destination)
         reset()
       } else {
@@ -175,7 +182,9 @@ export default function SignIn() {
         if (response?.status === 200 && response?.data?.access_token) {
           Cookies.set("access_token", response.data.access_token, { path: "/" })
           if (response.data.refresh_token) {
-            Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
+            Cookies.set("refresh_token", response.data.refresh_token, {
+              path: "/",
+            })
           }
           if (response.data.sessionId) {
             Cookies.set("session_id", response.data.sessionId, { path: "/" })
@@ -202,7 +211,9 @@ export default function SignIn() {
             setUser(nextUser)
           }
 
-          const destination = redirectTarget ? nextRoute : resolveDashboardRoute(nextUser)
+          const destination = redirectTarget
+            ? nextRoute
+            : resolveDashboardRoute(nextUser)
           router.push(destination)
           reset()
         }
@@ -273,341 +284,390 @@ export default function SignIn() {
 
         <div className="flex-auto grid place-content-center px-5 md:px-10 py-16">
           {twoFactorRequired ? (
-          <div className="max-w-[400px] w-full mx-auto">
-            <h1 className="text-center text-2xl leading-9 font-semibold text-dark-blue-400">
-              Two-Factor Authentication
-            </h1>
-            <p className="text-center text-base mt-2 leading-[19.36px] font-light text-dark-blue-400">
-              {useBackupCode
-                ? "Enter one of your backup codes"
-                : twoFactorMethod === "sms"
-                  ? "We sent a verification code to your phone"
-                  : "Enter the 6-digit code from your authenticator app"}
-            </p>
+            <div className="max-w-[400px] w-full mx-auto">
+              <h1 className="text-center text-2xl leading-9 font-semibold text-dark-blue-400">
+                Two-Factor Authentication
+              </h1>
+              <p className="text-center text-base mt-2 leading-[19.36px] font-light text-dark-blue-400">
+                {useBackupCode
+                  ? "Enter one of your backup codes"
+                  : twoFactorMethod === "sms"
+                    ? "We sent a verification code to your phone"
+                    : "Enter the 6-digit code from your authenticator app"}
+              </p>
 
-            <div className="mt-10 space-y-6">
-              {useBackupCode ? (
-                <div className="space-y-1.5">
-                  <Label className="text-dark-blue-500" size="sm">Backup Code</Label>
-                  <Input
-                    placeholder="xxxx-xxxx"
-                    value={twoFactorCode}
-                    onChange={(e) => setTwoFactorCode(e.target.value)}
-                  />
-                </div>
-              ) : (
-                <div className="flex gap-2 justify-center">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <input
-                      key={i}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={twoFactorCode[i] || ""}
-                      onChange={(e) => {
-                        const char = e.target.value
-                        if (!/^\d?$/.test(char)) return
-                        const arr = twoFactorCode.split("")
-                        while (arr.length < 6) arr.push("")
-                        arr[i] = char
-                        const next = arr.join("").slice(0, 6)
-                        setTwoFactorCode(next)
-                        if (char && i < 5) {
-                          const nextInput = e.target.parentElement?.children[i + 1] as HTMLInputElement
-                          nextInput?.focus()
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Backspace" && !twoFactorCode[i] && i > 0) {
-                          const prevInput = (e.target as HTMLElement).parentElement?.children[i - 1] as HTMLInputElement
-                          prevInput?.focus()
-                        }
-                      }}
-                      disabled={isVerifying2FA}
-                      className="w-11 h-12 text-center text-lg font-semibold border border-gray-200 rounded-lg focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition-colors disabled:opacity-50"
+              <div className="mt-10 space-y-6">
+                {useBackupCode ? (
+                  <div className="space-y-1.5">
+                    <Label className="text-dark-blue-500" size="sm">
+                      Backup Code
+                    </Label>
+                    <Input
+                      placeholder="xxxx-xxxx"
+                      value={twoFactorCode}
+                      onChange={(e) => setTwoFactorCode(e.target.value)}
                     />
-                  ))}
-                </div>
-              )}
-
-              <Button
-                className="w-full"
-                size="lg"
-                disabled={isVerifying2FA || twoFactorCode.length < 6}
-                onClick={handleVerify2FA}
-              >
-                {isVerifying2FA ? (
-                  <Spinner
-                    size={24}
-                    className="stroke-white"
-                    trackClassName="stroke-primary-500"
-                    strokeWidth={2}
-                  />
+                  </div>
                 ) : (
-                  "Verify"
-                )}
-              </Button>
-
-              {twoFactorMethod === "sms" && !useBackupCode && (
-                <p className="text-sm text-center text-gray-500">
-                  Not seeing the code?{" "}
-                  {resendCooldown > 0 ? (
-                    <span className="text-gray-400">Resend in {resendCooldown}s</span>
-                  ) : (
-                    <button type="button" onClick={handleResendLoginCode} className="text-primary-500 hover:underline font-medium">
-                      Resend
-                    </button>
-                  )}
-                </p>
-              )}
-
-              <div className="text-center">
-                <button
-                  type="button"
-                  className="text-sm text-primary-500 hover:underline"
-                  onClick={() => {
-                    setUseBackupCode(!useBackupCode)
-                    setTwoFactorCode("")
-                  }}
-                >
-                  {useBackupCode
-                    ? twoFactorMethod === "sms" ? "Use SMS code instead" : "Use authenticator app instead"
-                    : "Use a backup code"}
-                </button>
-              </div>
-
-              <div className="text-center">
-                <button
-                  type="button"
-                  className="text-sm text-gray-500 hover:underline"
-                  onClick={() => {
-                    setTwoFactorRequired(false)
-                    setPartialToken("")
-                    setTwoFactorCode("")
-                    setUseBackupCode(false)
-                  }}
-                >
-                  Back to login
-                </button>
-              </div>
-            </div>
-          </div>
-          ) : (
-          <div className="max-w-[560px]">
-            <h1 className="md:text-left text-center text-2xl leading-9 font-semibold text-dark-blue-400">
-              Welcome Changemakers!
-            </h1>
-            <p className="md:text-left text-center text-base mt-2 leading-[19.36px] font-light text-dark-blue-400">
-              Login to your account below
-            </p>
-
-            <div className="grid md:grid-cols-2 mt-10 md:mt-[50px] gap-3 items-center">
-              <GoogleLoginButton />
-
-              <LinkedInLoginButton />
-            </div>
-
-            <div className="flex gap-x-[9px] mt-6 items-center">
-              <span className="inline-block bg-[#E1E6EA] flex-auto h-px" />
-              <span className="text-xs text-[#939DA7] leading-5 font-medium">
-                Or use your email
-              </span>
-              <span className="inline-block bg-[#E1E6EA] flex-auto h-px" />
-            </div>
-
-            <form className="mt-5 md:mt-6" onSubmit={handleSubmit(onSubmit)}>
-              <div className="flex flex-col gap-y-1.5">
-                <Label className="text-dark-blue-500" size="sm" htmlFor="email">
-                  Email
-                </Label>
-                <Input
-                  placeholder="you@email.com"
-                  id="email"
-                  type="email"
-                  {...register("email")}
-                  isInvalid={hookFormHasError({
-                    errors,
-                    name: "email",
-                  })}
-                />
-                <HookFormErrorMessage
-                  errors={errors}
-                  name="email"
-                  render={({ message }) => (
-                    <ErrorMessage size="sm">{message}</ErrorMessage>
-                  )}
-                />
-              </div>
-              <div className="flex flex-col mt-5 gap-y-1.5">
-                <Label
-                  className="text-dark-blue-500"
-                  size="sm"
-                  htmlFor="password"
-                >
-                  Password
-                </Label>
-                <InputGroup>
-                  <Input
-                    placeholder="enter your password"
-                    id="password"
-                    type={isVisible ? "text" : "password"}
-                    {...register("password")}
-                    isInvalid={hookFormHasError({
-                      errors,
-                      name: "password",
-                    })}
-                  />
-                  <InputRightElement>
-                    <button
-                      className="focus-visible:outline-none"
-                      onClick={toggleIsVisible}
-                      type="button"
-                    >
-                      {isVisible ? (
-                        <EyeOff className="size-4 text-gray-500" />
-                      ) : (
-                        <Eye className="size-4 text-gray-500" />
-                      )}
-                    </button>
-                  </InputRightElement>
-                </InputGroup>
-                <HookFormErrorMessage
-                  errors={errors}
-                  name="password"
-                  render={({ message }) => (
-                    <ErrorMessage size="sm">{message}</ErrorMessage>
-                  )}
-                />
-              </div>
-
-              {loginError && (
-                <p className="mt-2 text-sm text-red-500">{loginError}</p>
-              )}
-
-              <div className="mt-2 flex items-center justify-between">
-                <div className="flex items-center gap-x-2">
-                  <Controller
-                    name="rememberMe"
-                    control={control}
-                    render={({ field: { value, onChange, ...field } }) => (
-                      <Checkbox
-                        id="remember-me"
-                        checked={value}
-                        onCheckedChange={onChange}
-                        {...field}
-                      />
-                    )}
-                  />
-                  <Label
-                    className="text-[#939DA7] font-normal"
-                    htmlFor="remember-me"
-                  >
-                    Remember me
-                  </Label>
-                </div>
-
-                <NextLink href="/forgot-password">
-                  <Button
-                    className="font-normal text-[#939DA7]"
-                    size="sm"
-                    variant="link"
-                    visual="gray"
-                    type="button"
-                  >
-                    Forgot password
-                  </Button>
-                </NextLink>
-              </div>
-
-              <Button
-                className="mt-5 xs:max-md:text-sm xs:max-md:py-2 xs:max-md:px-[14px] xs:max-md:h-9 md:mt-6 w-full"
-                size="lg"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <Spinner
-                    size={24}
-                    className="stroke-white"
-                    trackClassName="stroke-primary-500"
-                    strokeWidth={2}
-                  />
-                ) : (
-                  "Login to my account"
-                )}
-              </Button>
-
-              {process.env.NODE_ENV !== "production" && (
-                <Button
-                  className="mt-3 w-full border-dashed border-2 border-orange-400 text-orange-600 hover:bg-orange-50"
-                  size="lg"
-                  variant="outlined"
-                  visual="gray"
-                  type="button"
-                  disabled={isDevLoading}
-                  onClick={async () => {
-                    setIsDevLoading(true)
-                    try {
-                      const gateway = getPublicApiUrl() || "http://localhost:4000"
-                      const res = await fetch(`${gateway}/auth/dev-login`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ email: "CHRISTOPHERTORRES17@GMAIL.COM" }),
-                      })
-                      if (!res.ok) throw new Error("Dev login failed")
-                      const data = await res.json()
-                      if (data.access_token) {
-                        Cookies.set("access_token", data.access_token, { path: "/" })
-                        if (data.refresh_token) {
-                          Cookies.set("refresh_token", data.refresh_token, { path: "/" })
-                        }
-                        if (data.sessionId) {
-                          Cookies.set("session_id", data.sessionId, { path: "/" })
-                        }
-                        let nextUser = data.user
-                        try {
-                          const meResponse = await UserAPI.me()
-                          if (meResponse?.status === 200) {
-                            const profileUser = meResponse?.data?.user ?? meResponse?.data?.data?.user ?? meResponse?.data
-                            if (profileUser && typeof profileUser === "object") {
-                              nextUser = mergeDashboardUserFields(nextUser, profileUser)
-                            }
+                  <div className="flex gap-2 justify-center">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <input
+                        key={i}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={twoFactorCode[i] || ""}
+                        onChange={(e) => {
+                          const char = e.target.value
+                          if (!/^\d?$/.test(char)) return
+                          const arr = twoFactorCode.split("")
+                          while (arr.length < 6) arr.push("")
+                          arr[i] = char
+                          const next = arr.join("").slice(0, 6)
+                          setTwoFactorCode(next)
+                          if (char && i < 5) {
+                            const nextInput = e.target.parentElement?.children[
+                              i + 1
+                            ] as HTMLInputElement
+                            nextInput?.focus()
                           }
-                        } catch {}
-                        if (nextUser) {
-                          nextUser.role = nextUser.role || "CLIENT"
-                          nextUser.onboardingDismissed = true
-                          setUser(nextUser)
-                        }
-                        router.push("/client-dashboard")
-                      }
-                    } catch (err) {
-                      toast({ title: "Dev login failed", variant: "destructive" })
-                    } finally {
-                      setIsDevLoading(false)
-                    }
-                  }}
+                        }}
+                        onKeyDown={(e) => {
+                          if (
+                            e.key === "Backspace" &&
+                            !twoFactorCode[i] &&
+                            i > 0
+                          ) {
+                            const prevInput = (e.target as HTMLElement)
+                              .parentElement?.children[
+                              i - 1
+                            ] as HTMLInputElement
+                            prevInput?.focus()
+                          }
+                        }}
+                        disabled={isVerifying2FA}
+                        className="w-11 h-12 text-center text-lg font-semibold border border-gray-200 rounded-lg focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition-colors disabled:opacity-50"
+                      />
+                    ))}
+                  </div>
+                )}
+
+                <Button
+                  className="w-full"
+                  size="lg"
+                  disabled={isVerifying2FA || twoFactorCode.length < 6}
+                  onClick={handleVerify2FA}
                 >
-                  {isDevLoading ? (
-                    <Spinner size={24} className="stroke-orange-500" trackClassName="stroke-orange-200" strokeWidth={2} />
+                  {isVerifying2FA ? (
+                    <Spinner
+                      size={24}
+                      className="stroke-white"
+                      trackClassName="stroke-primary-500"
+                      strokeWidth={2}
+                    />
                   ) : (
-                    "Dev Login (CLIENT)"
+                    "Verify"
                   )}
                 </Button>
-              )}
 
-              <div className="flex gap-x-1 mt-10 md:mt-[50px] items-center">
-                <span className="text-sm leading-6 text-[#68707B]">
-                  Don't have an account?
-                </span>
-                <NextLink
-                  href="/sign-up"
-                  className="underline font-normal text-blue-500 text-sm leading-6"
-                >
-                  Sign up
-                </NextLink>
+                {twoFactorMethod === "sms" && !useBackupCode && (
+                  <p className="text-sm text-center text-gray-500">
+                    Not seeing the code?{" "}
+                    {resendCooldown > 0 ? (
+                      <span className="text-gray-400">
+                        Resend in {resendCooldown}s
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleResendLoginCode}
+                        className="text-primary-500 hover:underline font-medium"
+                      >
+                        Resend
+                      </button>
+                    )}
+                  </p>
+                )}
+
+                <div className="text-center">
+                  <button
+                    type="button"
+                    className="text-sm text-primary-500 hover:underline"
+                    onClick={() => {
+                      setUseBackupCode(!useBackupCode)
+                      setTwoFactorCode("")
+                    }}
+                  >
+                    {useBackupCode
+                      ? twoFactorMethod === "sms"
+                        ? "Use SMS code instead"
+                        : "Use authenticator app instead"
+                      : "Use a backup code"}
+                  </button>
+                </div>
+
+                <div className="text-center">
+                  <button
+                    type="button"
+                    className="text-sm text-gray-500 hover:underline"
+                    onClick={() => {
+                      setTwoFactorRequired(false)
+                      setPartialToken("")
+                      setTwoFactorCode("")
+                      setUseBackupCode(false)
+                    }}
+                  >
+                    Back to login
+                  </button>
+                </div>
               </div>
-            </form>
-          </div>
+            </div>
+          ) : (
+            <div className="max-w-[560px]">
+              <h1 className="md:text-left text-center text-2xl leading-9 font-semibold text-dark-blue-400">
+                Welcome Changemakers!
+              </h1>
+              <p className="md:text-left text-center text-base mt-2 leading-[19.36px] font-light text-dark-blue-400">
+                Login to your account below
+              </p>
+
+              <div className="grid md:grid-cols-2 mt-10 md:mt-[50px] gap-3 items-center">
+                <GoogleLoginButton />
+
+                <LinkedInLoginButton />
+              </div>
+
+              <div className="flex gap-x-[9px] mt-6 items-center">
+                <span className="inline-block bg-[#E1E6EA] flex-auto h-px" />
+                <span className="text-xs text-[#939DA7] leading-5 font-medium">
+                  Or use your email
+                </span>
+                <span className="inline-block bg-[#E1E6EA] flex-auto h-px" />
+              </div>
+
+              <form className="mt-5 md:mt-6" onSubmit={handleSubmit(onSubmit)}>
+                <div className="flex flex-col gap-y-1.5">
+                  <Label
+                    className="text-dark-blue-500"
+                    size="sm"
+                    htmlFor="email"
+                  >
+                    Email
+                  </Label>
+                  <Input
+                    placeholder="you@email.com"
+                    id="email"
+                    type="email"
+                    {...register("email")}
+                    isInvalid={hookFormHasError({
+                      errors,
+                      name: "email",
+                    })}
+                  />
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="email"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
+                <div className="flex flex-col mt-5 gap-y-1.5">
+                  <Label
+                    className="text-dark-blue-500"
+                    size="sm"
+                    htmlFor="password"
+                  >
+                    Password
+                  </Label>
+                  <InputGroup>
+                    <Input
+                      placeholder="enter your password"
+                      id="password"
+                      type={isVisible ? "text" : "password"}
+                      {...register("password")}
+                      isInvalid={hookFormHasError({
+                        errors,
+                        name: "password",
+                      })}
+                    />
+                    <InputRightElement>
+                      <button
+                        className="focus-visible:outline-none"
+                        onClick={toggleIsVisible}
+                        type="button"
+                      >
+                        {isVisible ? (
+                          <EyeOff className="size-4 text-gray-500" />
+                        ) : (
+                          <Eye className="size-4 text-gray-500" />
+                        )}
+                      </button>
+                    </InputRightElement>
+                  </InputGroup>
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="password"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
+
+                {loginError && (
+                  <p className="mt-2 text-sm text-red-500">{loginError}</p>
+                )}
+
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="flex items-center gap-x-2">
+                    <Controller
+                      name="rememberMe"
+                      control={control}
+                      render={({ field: { value, onChange, ...field } }) => (
+                        <Checkbox
+                          id="remember-me"
+                          checked={value}
+                          onCheckedChange={onChange}
+                          {...field}
+                        />
+                      )}
+                    />
+                    <Label
+                      className="text-[#939DA7] font-normal"
+                      htmlFor="remember-me"
+                    >
+                      Remember me
+                    </Label>
+                  </div>
+
+                  <NextLink href="/forgot-password">
+                    <Button
+                      className="font-normal text-[#939DA7]"
+                      size="sm"
+                      variant="link"
+                      visual="gray"
+                      type="button"
+                    >
+                      Forgot password
+                    </Button>
+                  </NextLink>
+                </div>
+
+                <Button
+                  className="mt-5 xs:max-md:text-sm xs:max-md:py-2 xs:max-md:px-[14px] xs:max-md:h-9 md:mt-6 w-full"
+                  size="lg"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <Spinner
+                      size={24}
+                      className="stroke-white"
+                      trackClassName="stroke-primary-500"
+                      strokeWidth={2}
+                    />
+                  ) : (
+                    "Login to my account"
+                  )}
+                </Button>
+
+                {process.env.NODE_ENV !== "production" && (
+                  <Button
+                    className="mt-3 w-full border-dashed border-2 border-orange-400 text-orange-600 hover:bg-orange-50"
+                    size="lg"
+                    variant="outlined"
+                    visual="gray"
+                    type="button"
+                    disabled={isDevLoading}
+                    onClick={async () => {
+                      setIsDevLoading(true)
+                      try {
+                        const gateway =
+                          getPublicApiUrl() || "http://localhost:4000"
+                        const res = await fetch(`${gateway}/auth/dev-login`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            email: "CHRISTOPHERTORRES17@GMAIL.COM",
+                          }),
+                        })
+                        if (!res.ok) throw new Error("Dev login failed")
+                        const data = await res.json()
+                        if (data.access_token) {
+                          Cookies.set("access_token", data.access_token, {
+                            path: "/",
+                          })
+                          if (data.refresh_token) {
+                            Cookies.set("refresh_token", data.refresh_token, {
+                              path: "/",
+                            })
+                          }
+                          if (data.sessionId) {
+                            Cookies.set("session_id", data.sessionId, {
+                              path: "/",
+                            })
+                          }
+                          let nextUser = data.user
+                          try {
+                            const meResponse = await UserAPI.me()
+                            if (meResponse?.status === 200) {
+                              const profileUser =
+                                meResponse?.data?.user ??
+                                meResponse?.data?.data?.user ??
+                                meResponse?.data
+                              if (
+                                profileUser &&
+                                typeof profileUser === "object"
+                              ) {
+                                nextUser = mergeDashboardUserFields(
+                                  nextUser,
+                                  profileUser
+                                )
+                              }
+                            }
+                          } catch {}
+                          if (nextUser) {
+                            nextUser.role = nextUser.role || "CLIENT"
+                            nextUser.onboardingDismissed = true
+                            setUser(nextUser)
+                          }
+                          router.push("/client-dashboard")
+                        }
+                      } catch (err) {
+                        toast({
+                          title: "Dev login failed",
+                          variant: "destructive",
+                        })
+                      } finally {
+                        setIsDevLoading(false)
+                      }
+                    }}
+                  >
+                    {isDevLoading ? (
+                      <Spinner
+                        size={24}
+                        className="stroke-orange-500"
+                        trackClassName="stroke-orange-200"
+                        strokeWidth={2}
+                      />
+                    ) : (
+                      "Dev Login (CLIENT)"
+                    )}
+                  </Button>
+                )}
+
+                <div className="flex gap-x-1 mt-10 md:mt-[50px] items-center">
+                  <span className="text-sm leading-6 text-[#68707B]">
+                    Don't have an account?
+                  </span>
+                  <NextLink
+                    href="/sign-up"
+                    className="underline font-normal text-blue-500 text-sm leading-6"
+                  >
+                    Sign up
+                  </NextLink>
+                </div>
+              </form>
+            </div>
           )}
         </div>
       </div>

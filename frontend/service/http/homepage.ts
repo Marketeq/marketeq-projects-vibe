@@ -1,5 +1,5 @@
-import AxiosRequest from ".."
 import { getPublicHomepageUrl } from "@/lib/runtime-urls"
+import AxiosRequest from ".."
 
 const HOMEPAGE_BASE = getPublicHomepageUrl() || ""
 

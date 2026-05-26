@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   Calendar,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Clock,
   Download,
@@ -26,6 +27,7 @@ import {
   FilterLines,
   HelpCircle,
   Image01,
+  Info,
   Keyboard01,
   MoreHorizontal,
   Mouse,
@@ -37,10 +39,13 @@ import {
   X,
   ZoomIn,
 } from "@blend-metrics/icons"
+import { Filter } from "@/components/icons"
+import { Filter01 } from "@/components/icons/filter-01"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Avatar,
   AvatarFallback,
+  Badge,
   Button,
   Checkbox,
   Combobox,
@@ -49,6 +54,7 @@ import {
   ComboboxOption,
   ComboboxOptions,
   ComboboxTrigger,
+  DatePicker,
   Dialog,
   DialogClose,
   DialogContent,
@@ -71,9 +77,12 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
+  Label,
   Popover,
   PopoverContent,
   PopoverTrigger,
+  RadioGroup,
+  RadioGroupItem,
   ScaleOutIn,
   ScrollArea,
   Select,
@@ -82,6 +91,10 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
+  TimeField,
+  TimeFieldInput,
+  TimeFieldLabel,
+  TimeFieldSegment,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -174,11 +187,14 @@ function AppIcons({ apps }: { apps: string[] }) {
     terminal: "bg-gray-500",
   }
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center -space-x-2">
       {apps.map((app, i) => (
         <div
           key={i}
-          className={cn("size-3 rounded-full", colors[app] || "bg-gray-400")}
+          className={cn(
+            "size-5 rounded-full border border-gray-300",
+            colors[app] || "bg-gray-400"
+          )}
           title={app}
         />
       ))}
@@ -469,17 +485,15 @@ function ScreenshotThumbnail({
   return (
     <div
       className={cn(
-        "flex-none w-[158px] p-1 rounded-xl transition-colors cursor-pointer",
-        selected
-          ? "bg-gray-100 border border-gray-200"
-          : "border border-transparent"
+        "flex-none min-w-[172px] w-full rounded-xl transition-colors cursor-pointer border",
+        selected ? "bg-gray-100 border-gray-200" : "border-transparent"
       )}
       onClick={() => onSelect(screenshot.id)}
     >
       <div className="relative aspect-[16/10] rounded-lg overflow-hidden">
         {screenshot.isNoActivity ? (
-          <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-            <span className="text-xs text-gray-400">No Activity</span>
+          <div className="w-full h-full bg-white rounded-lg border border-gray-200 flex items-center justify-center">
+            <span className="text-xs text-gray-500">No Activity</span>
           </div>
         ) : screenshot.imageUrl ? (
           <img
@@ -493,15 +507,15 @@ function ScreenshotThumbnail({
         )}
         {/* Duplicate badge */}
         {screenshot.isDuplicate && screenshot.duplicateCount && (
-          <div className="absolute bottom-1.5 right-1.5 bg-gray-800/80 text-white text-[10px] font-medium px-1.5 py-0.5 rounded flex items-center gap-0.5">
+          <div className="absolute bottom-2.5right-2.5 right-2.5 bg-black/40 text-white text-[10px] font-medium px-1 rounded-[5px] flex items-center gap-0.5">
             {screenshot.duplicateCount}x
-            <Image01 className="size-3" />
+            <Image01 className="size-[15px]" />
           </div>
         )}
       </div>
       {/* Activity bar */}
       {!screenshot.isNoActivity && (
-        <div className="h-1 bg-gray-200 rounded-full mt-1 overflow-hidden">
+        <div className="h-1.5 bg-gray-200 rounded-full mt-[7px] overflow-hidden">
           <div
             className="h-full bg-primary-500 rounded-full"
             style={{ width: `${screenshot.activityLevel}%` }}
@@ -509,8 +523,10 @@ function ScreenshotThumbnail({
         </div>
       )}
       {/* Timestamp + app icons */}
-      <div className="flex items-center justify-between mt-1">
-        <span className="text-[11px] text-gray-400">{screenshot.time}</span>
+      <div className="flex items-center justify-between mt-2">
+        <span className="text-xs font-medium text-dark-blue-400">
+          {screenshot.time}
+        </span>
         {screenshot.apps.length > 0 && <AppIcons apps={screenshot.apps} />}
       </div>
     </div>
@@ -536,7 +552,7 @@ function ProjectBar({ project }: { project: ProjectBlock }) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-3 py-1.5 rounded-md border",
+        "flex items-center gap-x-3 px-3 py-1.5 rounded-md border",
         projectBarColors[project.projectColor]
       )}
     >
@@ -554,7 +570,7 @@ function ProjectBar({ project }: { project: ProjectBlock }) {
         >
           <span className="inline-flex items-center gap-1 text-base font-semibold leading-6">
             <span>{projectName}</span>
-            <ChevronDown className="mt-px size-3.5 shrink-0" />
+            <ChevronDown className="mt-px size-[15px] shrink-0" />
           </span>
         </DropdownPopoverTrigger>
         <DropdownPopoverContent
@@ -607,7 +623,7 @@ function ProjectBar({ project }: { project: ProjectBlock }) {
         </DropdownPopoverContent>
       </DropdownPopover>
 
-      <div className="h-4 w-px bg-gray-300/70" />
+      <div className="h-[18px] w-px bg-dark-blue-800 opacity-20" />
 
       <DropdownPopover
         selected={taskName}
@@ -616,9 +632,9 @@ function ProjectBar({ project }: { project: ProjectBlock }) {
         }}
       >
         <DropdownPopoverTrigger className="h-auto w-auto min-w-0 flex-1 justify-start border-0 bg-transparent p-0 text-left shadow-none ring-0 hover:bg-transparent data-[state=open]:border-0 data-[state=open]:bg-transparent data-[state=open]:ring-0">
-          <span className="inline-flex min-w-0 items-center gap-1.5 text-[14px] leading-6 text-gray-500">
+          <span className="inline-flex min-w-0 items-center gap-2 text-sm leading-6 text-dark-blue-800 opacity-50 hover:opacity-100">
             <span className="truncate">{taskName}</span>
-            <Edit03 className="mt-px size-3.5 shrink-0 text-gray-400" />
+            <Edit03 className="size-[15px] shrink-0" />
           </span>
         </DropdownPopoverTrigger>
         <DropdownPopoverContent
@@ -689,29 +705,28 @@ function TimeBlockCard({
     <div className="py-4">
       {/* Block header */}
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-x-2">
+          <Checkbox size="md" />
           <h3 className="text-xl font-bold text-dark-blue-400">{block.hour}</h3>
-          <span className="text-sm text-gray-400">{block.date}</span>
+          <span className="text-base text-dark-blue-400">{block.date}</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-x-3">
           {block.isManualTime && (
-            <span className="text-sm text-gray-400">
+            <span className="text-sm text-dark-blue-400 inline-flex items-center px-2.5 gap-x-0.5 py-1 bg-gray-100 rounded-lg">
               Manual time{" "}
-              <span className="font-bold text-primary-500">
-                {block.manualDuration}
-              </span>
+              <span className="font-bold">{block.manualDuration}</span>
             </span>
           )}
-          <span className="text-sm font-medium text-dark-blue-400">
+          <span className="text-base font-medium text-dark-blue-400">
             {block.totalTime}
           </span>
         </div>
       </div>
 
       {/* Project bars + screenshots */}
-      <div className="space-y-4">
+      <div className="space-y-[17px]">
         {/* Render project bars in a row if multiple */}
-        <div className="flex gap-2">
+        <div className="flex gap-x-6">
           {block.projects.map((project, i) => (
             <div key={i} className="flex-1">
               <ProjectBar project={project} />
@@ -720,7 +735,7 @@ function TimeBlockCard({
         </div>
 
         {/* Screenshots row */}
-        <div className="flex gap-3 overflow-x-auto pb-1">
+        <div className="grid grid-cols-6 gap-x-6 overflow-x-auto pb-1">
           {block.projects.flatMap((project, pi) =>
             project.screenshots.map((screenshot, si) => (
               <ScreenshotThumbnail
@@ -747,127 +762,113 @@ function AddManualTimeDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const { toast } = useToast()
-  const [date, setDate] = useState("")
-  const [startTime, setStartTime] = useState("")
-  const [endTime, setEndTime] = useState("")
-  const [contract, setContract] = useState("")
-  const [task, setTask] = useState("")
-  const [notes, setNotes] = useState("")
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-[489px]">
+        <DialogClose asChild>
+          <IconButton
+            className="rounded-full absolute right-2.5 top-2.5 text-gray-500"
+            variant="ghost"
+            visual="gray"
+          >
+            <X className="size-[24px]" />
+          </IconButton>
+        </DialogClose>
+
         <DialogHeader>
           <DialogTitle>Add Manual Time</DialogTitle>
+
+          <div className="space-y-8 mt-8">
+            <div className="space-y-1.5">
+              <Label size="sm">Date</Label>
+              <DatePicker
+                indicator={<Calendar className="size-5 text-gray-400" />}
+                inputClassName="w-full flex-row-reverse font-normal justify-between"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-3">
+              <TimeField>
+                <TimeFieldLabel size="sm">Start Time</TimeFieldLabel>
+                <TimeFieldInput>
+                  {(segment) => <TimeFieldSegment segment={segment} />}
+                </TimeFieldInput>
+              </TimeField>
+
+              <TimeField>
+                <TimeFieldLabel size="sm">End Time</TimeFieldLabel>
+                <TimeFieldInput>
+                  {(segment) => <TimeFieldSegment segment={segment} />}
+                </TimeFieldInput>
+              </TimeField>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label size="sm">Contract</Label>
+              <Select>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select Contact" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="apple">Apple</SelectItem>
+                  <SelectItem value="banana">Banana</SelectItem>
+                  <SelectItem value="blueberry">Blueberry</SelectItem>
+                  <SelectItem value="grapes">Grapes</SelectItem>
+                  <SelectItem value="pineapple">Pineapple</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label size="sm">Task</Label>
+              <Select>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select Task" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="apple">Apple</SelectItem>
+                  <SelectItem value="banana">Banana</SelectItem>
+                  <SelectItem value="blueberry">Blueberry</SelectItem>
+                  <SelectItem value="grapes">Grapes</SelectItem>
+                  <SelectItem value="pineapple">Pineapple</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label size="sm">Notes</Label>
+              <Textarea placeholder="Tell us what you worked on" />
+            </div>
+
+            <div className="flex items-start gap-x-3">
+              <Info className="size-[15px] text-gray-500 shrink-0" />{" "}
+              <span className="text-sm text-gray-500">
+                Manual time will appear in your timeline without screenshots and
+                may be subject to review or approval.
+              </span>
+            </div>
+          </div>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-dark-blue-400">
-              Date
-            </label>
-            <Input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              placeholder="Select Date"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-dark-blue-400">
-                Start Time
-              </label>
-              <Input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                placeholder="Enter start time"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-dark-blue-400">
-                End Time
-              </label>
-              <Input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                placeholder="Enter end time"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-dark-blue-400">
-              Contract
-            </label>
-            <Select value={contract} onValueChange={setContract}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Contract" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="project1">Project 1</SelectItem>
-                <SelectItem value="project2">Project 2</SelectItem>
-                <SelectItem value="project3">Project 3</SelectItem>
-                <SelectItem value="project4">Project 4</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-dark-blue-400">
-              Task
-            </label>
-            <Select value={task} onValueChange={setTask}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Task" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="editing">Editing Layouts</SelectItem>
-                <SelectItem value="logo">Creating logo</SelectItem>
-                <SelectItem value="wireframes">Wireframing</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-dark-blue-400">
-              Notes
-            </label>
-            <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Tell us what you worked on"
-              rows={3}
-            />
-          </div>
-
-          <p className="text-xs text-gray-400 flex items-center gap-1.5">
-            <HelpCircle className="size-3.5 flex-none" />
-            Manual time will appear in your timeline without screenshots and may
-            be subject to review or approval.
-          </p>
-        </div>
-
-        <DialogFooter>
+        <DialogFooter className="mt-8 flex justify-end">
           <DialogClose asChild>
             <Button variant="outlined" visual="gray">
               Cancel
             </Button>
           </DialogClose>
-          <Button
-            onClick={() => {
-              onOpenChange(false)
-              toast({
-                title: "Manual time added",
-                description: `${startTime} – ${endTime}`,
-              })
-            }}
-          >
-            Save
-          </Button>
+
+          <DialogClose asChild>
+            <Button
+              onClick={() => {
+                toast({
+                  title: "Manual time added",
+                })
+              }}
+            >
+              Save
+            </Button>
+          </DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1385,7 +1386,9 @@ function ContractPicker({
 
   return (
     <div className="space-y-1.5">
-      <label className="text-sm text-gray-500">Contract</label>
+      <Label className="text-dark-blue-400" size="sm">
+        Contract
+      </Label>
       <Combobox
         value={selectedProject}
         onChange={(project: ProjectOption) => onChange(project.name)}
@@ -1407,7 +1410,7 @@ function ContractPicker({
           </div>
         </ComboboxTrigger>
         <ScaleOutIn afterLeave={() => setQuery("")}>
-          <ComboboxOptions className="mt-1 w-[448px] max-w-[calc(100vw-3rem)] space-y-0 rounded-xl border border-gray-100 bg-white px-0 py-0 shadow-[0_24px_48px_rgba(16,24,40,0.18)]">
+          <ComboboxOptions className="mt-1 max-w-[250px] space-y-0 rounded-xl border border-gray-100 bg-white px-0 py-0 shadow-[0_24px_48px_rgba(16,24,40,0.18)]">
             <ScrollArea viewportClassName="max-h-[272px]">
               {filtered.length === 0 ? (
                 <li className="px-5 py-6 text-center text-sm text-gray-400">
@@ -1474,7 +1477,9 @@ function TaskPicker({
 
   return (
     <div className="space-y-1.5">
-      <label className="text-sm text-gray-500">Task</label>
+      <Label className="text-dark-blue-400" size="sm">
+        Task
+      </Label>
       <Combobox
         value={value}
         onChange={(task: string) => onChange(task)}
@@ -1497,7 +1502,7 @@ function TaskPicker({
           </div>
         </ComboboxTrigger>
         <ScaleOutIn afterLeave={() => setQuery("")}>
-          <ComboboxOptions className="left-auto right-0 mt-1 w-[462px] max-w-[calc(100vw-3rem)] space-y-0 rounded-xl border border-gray-100 bg-white px-0 py-0 shadow-[0_24px_48px_rgba(16,24,40,0.18)]">
+          <ComboboxOptions className="left-auto right-0 mt-1 max-w-[250px] space-y-0 rounded-xl border border-gray-100 bg-white px-0 py-0 shadow-[0_24px_48px_rgba(16,24,40,0.18)]">
             <ScrollArea viewportClassName="max-h-[224px]">
               {filtered.length === 0 ? (
                 <li className="px-5 py-6 text-center text-sm text-gray-400">
@@ -1509,7 +1514,7 @@ function TaskPicker({
                     key={task}
                     value={task}
                     className={cn(
-                      "px-5 py-3 text-sm font-medium text-left ui-active:bg-gray-50 ui-active:text-dark-blue-400",
+                      "px-5 py-3 text-sm truncate font-medium first:rounded-xl text-left ui-active:bg-gray-50 ui-active:text-dark-blue-400",
                       task === value ? "text-dark-blue-400" : "text-gray-500"
                     )}
                   >
@@ -1570,24 +1575,29 @@ function ScreenshotDetailsDialog({
 
   return (
     <Dialog open={!!openId} onOpenChange={onOpenChange}>
-      <DialogContent className="!left-0 !top-0 !translate-x-0 !translate-y-0 !max-w-none w-screen h-screen !rounded-none p-0 gap-0 flex flex-col overflow-hidden shadow-none">
+      <DialogContent className="!left-0 !top-0 !translate-x-0 !translate-y-0 max-w-none min-h-screen h-full w-full rounded-none p-0 flex flex-col gap-0 shadow-none">
         <TooltipProvider delayDuration={200}>
           {/* Top bar */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-none">
-            <div className="flex items-center gap-3">
-              <IconButton
-                variant="outlined"
-                visual="gray"
-                size="sm"
-                onClick={() => onOpenChange(false)}
-              >
-                <ArrowLeft className="size-5" />
-              </IconButton>
-              <h2 className="text-base font-semibold text-dark-blue-400">
+            <div className="flex items-center gap-x-5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <IconButton
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    onClick={() => onOpenChange(false)}
+                  >
+                    <ArrowLeft className="size-5" />
+                  </IconButton>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Back</TooltipContent>
+              </Tooltip>
+              <h2 className="text-sm font-semibold text-gray-500">
                 Screen {currentIndex + 1} of {total}
               </h2>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-x-3">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenu>
@@ -1613,6 +1623,7 @@ function ScreenshotDetailsDialog({
                     variant="ghost"
                     visual="gray"
                     size="sm"
+                    className="rounded-full"
                     onClick={() => onOpenChange(false)}
                   >
                     <X className="size-5" />
@@ -1624,17 +1635,11 @@ function ScreenshotDetailsDialog({
           </div>
 
           {/* Main content */}
-          <div className="flex-1 flex min-h-0">
-            {/* Screenshot area */}
-            <div className="flex-1 flex flex-col min-w-0 p-6 overflow-hidden">
-              <div className="flex-1 flex items-center justify-center min-h-0 px-6">
-                <div
-                  className="relative"
-                  style={{
-                    width: "min(100%, calc((100vh - 320px) * 1.6), 1000px)",
-                    aspectRatio: "16 / 10",
-                  }}
-                >
+          <div className="flex-1 gap-y-5 flex flex-col overflow-y-auto p-8">
+            <div className="relative flex-auto">
+              <div className="flex gap-x-8">
+                {/* Screenshot area */}
+                <div className="flex-auto relative">
                   {/* Screenshot */}
                   {s.isNoActivity ? (
                     <div className="w-full h-full bg-gray-100 rounded-lg flex items-center justify-center">
@@ -1655,10 +1660,10 @@ function ScreenshotDetailsDialog({
                     type="button"
                     onClick={goPrev}
                     disabled={currentIndex <= 0}
-                    className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-5 w-10 h-20 rounded-lg bg-white hover:bg-gray-50 border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    className="focus-visible:outline-none absolute left-0 top-1/2 -translate-y-1/2 translate-x-[26px] w-7 h-[83px] rounded-[5px] disabled:hover:bg-transparent hover:bg-gray-50 border border-white/20 flex items-center justify-center text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition duration-300 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]"
                     aria-label="Previous screenshot"
                   >
-                    <ChevronRight className="size-5 rotate-180" />
+                    <ChevronLeft className="size-5" />
                   </button>
 
                   {/* Next side panel (attached to right edge) */}
@@ -1666,7 +1671,7 @@ function ScreenshotDetailsDialog({
                     type="button"
                     onClick={goNext}
                     disabled={currentIndex >= total - 1}
-                    className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-5 w-10 h-20 rounded-lg bg-white hover:bg-gray-50 border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    className="focus-visible:outline-none absolute right-0 top-1/2 -translate-y-1/2 -translate-x-[26px] w-7 h-[83px] rounded-[5px] disabled:hover:bg-transparent hover:bg-gray-50 border border-white/20 flex items-center justify-center text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition duration-300 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]"
                     aria-label="Next screenshot"
                   >
                     <ChevronRight className="size-5" />
@@ -1713,170 +1718,182 @@ function ScreenshotDetailsDialog({
                     </Tooltip>
                   </div>
                 </div>
-              </div>
 
-              {/* Thumbnail strip */}
-              <div className="flex items-center gap-2 mt-6 flex-none">
-                <div className="flex gap-3 overflow-x-auto flex-1 pb-1">
-                  {flatScreenshots.map((f) => {
-                    const isCurrent = f.screenshot.id === openId
-                    return (
-                      <button
-                        key={f.screenshot.id}
-                        type="button"
-                        onClick={() => onNavigate(f.screenshot.id)}
-                        className="flex-none w-[130px]"
-                      >
-                        <div
-                          className={cn(
-                            "relative aspect-[16/10] rounded-md overflow-hidden border-2 transition-all",
-                            isCurrent
-                              ? "border-primary-400 ring-2 ring-primary-100"
-                              : "border-transparent hover:border-gray-300"
-                          )}
-                        >
-                          {f.screenshot.isNoActivity ? (
-                            <div className="w-full h-full bg-gray-100" />
-                          ) : f.screenshot.imageUrl ? (
-                            <img
-                              src={f.screenshot.imageUrl}
-                              alt={`Screenshot at ${f.screenshot.time}`}
-                              className="w-full h-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-900" />
-                          )}
+                {/* Sidebar */}
+                <div className="w-[250px] flex-none">
+                  <div className="space-y-5">
+                    {/* Time / Date */}
+                    <div className="space-y-2">
+                      <div className="flex items-baseline gap-x-2">
+                        <span className="text-sm text-dark-blue-400 inline-block">
+                          Time
+                        </span>
+                        <span className="text-base font-semibold text-dark-blue-400 inline-block">
+                          {s.time}
+                        </span>
+                      </div>
+                      <div className="flex items-baseline gap-x-2">
+                        <span className="text-sm text-dark-blue-400 inline-block">
+                          Date
+                        </span>
+                        <span className="text-base font-semibold text-dark-blue-400 inline-block">
+                          {current.blockDate}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-gray-200" />
+
+                    {/* Activity bars */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <Keyboard01 className="size-5 text-gray-500 flex-none" />
+                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary-500 rounded-full"
+                            style={{ width: `${keyboardActivity}%` }}
+                          />
                         </div>
-                        {/* Activity bar */}
-                        {!f.screenshot.isNoActivity && (
-                          <div className="h-1 bg-gray-200 rounded-full mt-1.5 overflow-hidden">
-                            <div
-                              className="h-full bg-primary-500 rounded-full"
-                              style={{
-                                width: `${f.screenshot.activityLevel}%`,
-                              }}
-                            />
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between mt-1">
-                          <span className="text-[11px] text-gray-400">
-                            {f.screenshot.time}
-                          </span>
-                          {f.screenshot.apps.length > 0 && (
-                            <AppIcons apps={f.screenshot.apps} />
-                          )}
+                        <span className="text-sm font-medium text-dark-blue-400 text-right">
+                          {keyboardActivity}%
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Mouse className="size-5 text-gray-500 flex-none" />
+                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary-500 rounded-full"
+                            style={{ width: `${mouseActivity}%` }}
+                          />
                         </div>
-                      </button>
-                    )
-                  })}
+                        <span className="text-sm font-medium text-dark-blue-400 text-right">
+                          {mouseActivity}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-gray-200" />
+
+                    {/* Contract */}
+                    <ContractPicker
+                      value={current.projectName}
+                      onChange={() => {}}
+                    />
+
+                    {/* Task */}
+                    <TaskPicker value={current.taskName} onChange={() => {}} />
+
+                    <div className="h-px bg-gray-200" />
+
+                    {/* Apps */}
+                    <div className="space-y-3">
+                      <label className="text-sm font-semibold text-dark-blue-400">
+                        Apps
+                      </label>
+                      {s.apps.length === 0 ? (
+                        <p className="text-xs text-gray-400">
+                          No app activity recorded
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {s.apps.map((app, i) => {
+                            const info = appDisplay[app] || {
+                              name: app,
+                              color: "bg-gray-400",
+                            }
+                            return (
+                              <div
+                                key={i}
+                                className="flex items-center gap-x-3"
+                              >
+                                <div
+                                  className={cn(
+                                    "size-[22px] shrink-0 border border-gray-300 rounded-full flex-none",
+                                    info.color
+                                  )}
+                                />
+                                <span className="text-[10px] leading-none font-medium text-dark-blue-400">
+                                  {info.name}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <IconButton
-                  variant="outlined"
-                  visual="gray"
-                  size="sm"
-                  onClick={goNext}
-                  disabled={currentIndex >= total - 1}
-                >
-                  <ChevronRight className="size-4" />
-                </IconButton>
               </div>
             </div>
 
-            {/* Right sidebar */}
-            <div className="w-[320px] flex-none border-l border-gray-200 p-6 overflow-y-auto">
-              <div className="space-y-5">
-                {/* Time / Date */}
-                <div className="space-y-2">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-sm text-gray-500 w-14">Time</span>
-                    <span className="text-base font-semibold text-dark-blue-400">
-                      {s.time}
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-sm text-gray-500 w-14">Date</span>
-                    <span className="text-base font-semibold text-dark-blue-400">
-                      {current.blockDate}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="h-px bg-gray-200" />
-
-                {/* Activity bars */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Keyboard01 className="size-4 text-gray-500 flex-none" />
-                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+            {/* Thumbnail strip */}
+            <div className="flex items-center gap-x-2.5 mt-5 flex-none">
+              <div className="flex overflow-x-auto items-start flex-1 pb-1">
+                {flatScreenshots.map((f) => {
+                  const isCurrent = f.screenshot.id === openId
+                  return (
+                    <button
+                      key={f.screenshot.id}
+                      type="button"
+                      onClick={() => onNavigate(f.screenshot.id)}
+                      className={cn(
+                        "flex-none w-[130px] p-2.5 border-2 rounded-md focus:outline-none",
+                        isCurrent
+                          ? "border-gray-300 hover:bg-gray-300"
+                          : "border-transparent hover:border-gray-300 hover:bg-gray-300"
+                      )}
+                    >
                       <div
-                        className="h-full bg-primary-500 rounded-full"
-                        style={{ width: `${keyboardActivity}%` }}
-                      />
-                    </div>
-                    <span className="text-xs font-medium text-dark-blue-400 w-8 text-right">
-                      {keyboardActivity}%
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Mouse className="size-4 text-gray-500 flex-none" />
-                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary-500 rounded-full"
-                        style={{ width: `${mouseActivity}%` }}
-                      />
-                    </div>
-                    <span className="text-xs font-medium text-dark-blue-400 w-8 text-right">
-                      {mouseActivity}%
-                    </span>
-                  </div>
-                </div>
-
-                <div className="h-px bg-gray-200" />
-
-                {/* Contract */}
-                <ContractPicker
-                  value={current.projectName}
-                  onChange={() => {}}
-                />
-
-                {/* Task */}
-                <TaskPicker value={current.taskName} onChange={() => {}} />
-
-                <div className="h-px bg-gray-200" />
-
-                {/* Apps */}
-                <div className="space-y-2">
-                  <label className="text-sm text-gray-500">Apps</label>
-                  {s.apps.length === 0 ? (
-                    <p className="text-xs text-gray-400">
-                      No app activity recorded
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {s.apps.map((app, i) => {
-                        const info = appDisplay[app] || {
-                          name: app,
-                          color: "bg-gray-400",
-                        }
-                        return (
-                          <div key={i} className="flex items-center gap-2.5">
-                            <div
-                              className={cn(
-                                "size-5 rounded-full flex-none",
-                                info.color
-                              )}
-                            />
-                            <span className="text-sm text-dark-blue-400">
-                              {info.name}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
+                        className={cn(
+                          "relative aspect-[16/10] rounded-md overflow-hidden transition-all"
+                        )}
+                      >
+                        {f.screenshot.isNoActivity ? (
+                          <div className="w-full h-full bg-gray-100" />
+                        ) : f.screenshot.imageUrl ? (
+                          <img
+                            src={f.screenshot.imageUrl}
+                            alt={`Screenshot at ${f.screenshot.time}`}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-900" />
+                        )}
+                      </div>
+                      {/* Activity bar */}
+                      {!f.screenshot.isNoActivity && (
+                        <div className="h-1 bg-gray-200 rounded-full mt-[7px] overflow-hidden">
+                          <div
+                            className="h-full bg-primary-500 rounded-full"
+                            style={{
+                              width: `${f.screenshot.activityLevel}%`,
+                            }}
+                          />
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-[11px] text-gray-400">
+                          {f.screenshot.time}
+                        </span>
+                        {f.screenshot.apps.length > 0 && (
+                          <AppIcons apps={f.screenshot.apps} />
+                        )}
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
+              <IconButton
+                className="h-full bg-white hover:bg-gray-100"
+                variant="outlined"
+                visual="gray"
+                size="sm"
+                onClick={goNext}
+                disabled={currentIndex >= total - 1}
+              >
+                <ChevronRight className="size-4" />
+              </IconButton>
             </div>
           </div>
         </TooltipProvider>
@@ -1891,17 +1908,7 @@ function ScreenshotDetailsDialog({
 //   doc 30 — Auto-Update & Release Channels  (GitHub releases feed)
 //   doc 41 — In-App Help, Empty States & Onboarding Copy
 
-// Stable download URLs. The underlying repo is a dedicated release-only repo
-// (Marketeq/desktop-time-tracker) so the main codebase stays private while
-// /releases/latest/download/<file> remains publicly downloadable.
-//
-// Filenames are intentionally versionless so these URLs never break across
-// version bumps — GitHub redirects `/releases/latest/download/<file>` to the
-// current release asset. This is the same pattern Obsidian, Standard Notes,
-// and Linear use.
-//
-// electron-builder artifactName in desktop/electron-builder.yml MUST stay in
-// sync with these filenames (doc 29 §1.1).
+// Versionless artifact names from electron-builder.yml — URLs stay stable across releases
 const DTT_RELEASES_BASE =
   "https://github.com/Marketeq/desktop-time-tracker/releases/latest/download"
 
@@ -2201,6 +2208,144 @@ function DownloadDesktopTrackerDialog({
   )
 }
 
+const SettingsPanel = ({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        variant="unanimated"
+        className="max-w-[479px] right-0 inset-y-0 flex flex-col bg-white"
+      >
+        <div className="h-[60px] flex-none px-6 border-b border-gray-200 flex items-center justify-between">
+          <h1 className="text-base font-semibold text-dark-blue-400">
+            Settings
+          </h1>
+
+          <IconButton
+            className="size-7 rounded-full"
+            variant="ghost"
+            size="sm"
+            visual="gray"
+          >
+            <X className="size-4" />
+          </IconButton>
+        </div>
+
+        <div className="flex-auto">
+          <form>
+            <div className="p-6">
+              <Select>
+                <SelectTrigger className="w-full">
+                  <span className="flex items-center gap-x-3">
+                    <Clock className="size-[18px]" />
+
+                    <SelectValue placeholder="Time & Display" />
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mac-arm64">
+                    macOS — Apple Silicon (M1/M2/M3)
+                  </SelectItem>
+                  <SelectItem value="mac-x64">macOS — Intel</SelectItem>
+                  <SelectItem value="win-x64">
+                    Windows 10/11 — 64-bit
+                  </SelectItem>
+                  <SelectItem value="win-arm64">
+                    Windows 10/11 — ARM64
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="border-t border-gray-200 pt-6 space-y-6 px-6">
+              <div className="space-y-1.5">
+                <Label size="sm">Time Zone</Label>
+                <Select>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select time zone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Asia/Kolkata">Asia/Kolkata</SelectItem>
+                    <SelectItem value="America/New_York">
+                      America/New York
+                    </SelectItem>
+                    <SelectItem value="America/Chicago">
+                      America/Chicago
+                    </SelectItem>
+                    <SelectItem value="America/Los_Angeles">
+                      America/Los Angeles
+                    </SelectItem>
+                    <SelectItem value="Europe/London">Europe/London</SelectItem>
+                    <SelectItem value="Asia/Tokyo">Asia/Tokyo</SelectItem>
+                    <SelectItem value="Australia/Sydney">
+                      Australia/Sydney
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label size="sm">Date Format</Label>
+                <DatePicker
+                  indicator={<ChevronDown className="size-4 text-gray-400" />}
+                  inputClassName="w-full flex-row-reverse font-normal justify-between"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label size="sm">Start of week</Label>
+                <Select>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select start of week" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Monday">Monday</SelectItem>
+                    <SelectItem value="Tuesday">Tuesday</SelectItem>
+                    <SelectItem value="Wednesday">Wednesday</SelectItem>
+                    <SelectItem value="Thursday">Thursday</SelectItem>
+                    <SelectItem value="Friday">Friday</SelectItem>
+                    <SelectItem value="Sunday">Sunday</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label size="sm">Time Format</Label>
+                <RadioGroup className="space-y-3">
+                  <div className="flex items-center gap-x-3">
+                    <RadioGroupItem value="24-hours" />
+                    <Label size="sm">24 hours</Label>
+                  </div>
+                  <div className="flex items-center gap-x-3">
+                    <RadioGroupItem value="12-hours" />
+                    <Label size="sm">12 hours, AM / PM</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <div className="h-[60px] flex-none px-6 border-t border-gray-200 flex items-center justify-end gap-x-3">
+          <DialogClose asChild>
+            <Button variant="ghost" visual="gray">
+              Cancel
+            </Button>
+          </DialogClose>
+          <DialogClose asChild>
+            <Button>Save</Button>
+          </DialogClose>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Main Page ──────────────────────────────────────────────────────────
 
 export default function TimeTrackingPage() {
@@ -2215,6 +2360,7 @@ export default function TimeTrackingPage() {
   const [bulkSelectionEnabled, setBulkSelectionEnabled] = useState(false)
   const [showManualTimeDialog, setShowManualTimeDialog] = useState(false)
   const [showDownloadTracker, setShowDownloadTracker] = useState(false)
+  const [showSettingPanel, setShowSettingPanel] = useState(false)
   const [appliedFilters, setAppliedFilters] =
     useState<AppliedFilters>(emptyAppliedFilters)
 
@@ -2316,37 +2462,42 @@ export default function TimeTrackingPage() {
         <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
           {/* ── Header ── */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-x-3">
               <h1 className="text-xl font-bold text-dark-blue-400">
                 Total time <span className="text-2xl">{totalTime}</span>
               </h1>
-              <span className="text-sm text-gray-400">
-                + Manual time{" "}
-                <span className="font-bold text-primary-500">0:23hr</span>
+              <span className="text-sm text-dark-blue-400 inline-flex bg-gray-100 rounded-lg gap-x-1 items-center px-2.5 py-1">
+                <Plus className="size-[15px] shrink-0" />{" "}
+                <span>
+                  Manual time <span className="font-bold">0:23hr</span>
+                </span>
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-x-3">
               <Button
                 variant="ghost"
                 visual="gray"
                 size="sm"
-                leftIcon={<Plus className="size-4" />}
+                leftIcon={<Plus className="size-[15px]" />}
                 onClick={() => setShowManualTimeDialog(true)}
               >
                 Add Manual Time
               </Button>
               <Button
                 size="sm"
-                visual="error"
-                leftIcon={<Clock className="size-4" />}
+                variant="outlined"
+                visual="gray"
+                className="bg-white text-primary-500 border-2 border-primary-500 hover:bg-primary-500 hover:text-white"
+                leftIcon={<Clock className="size-[15px]" />}
                 onClick={() => setShowDownloadTracker(true)}
               >
                 Log Time
               </Button>
               <IconButton
-                variant="ghost"
+                className="bg-white"
+                size="md"
+                variant="outlined"
                 visual="gray"
-                size="sm"
                 onClick={() =>
                   toast({
                     title: "Help",
@@ -2355,27 +2506,29 @@ export default function TimeTrackingPage() {
                   })
                 }
               >
-                <HelpCircle className="size-4" />
+                <HelpCircle className="size-[15px]" />
               </IconButton>
               <IconButton
-                variant="ghost"
+                className="bg-white"
+                size="md"
+                variant="outlined"
                 visual="gray"
-                size="sm"
-                onClick={() =>
+                onClick={() => {
+                  setShowSettingPanel(true)
                   toast({
                     title: "Settings",
                     description: "Time tracking settings coming soon.",
                   })
-                }
+                }}
               >
-                <Settings02 className="size-4" />
+                <Settings02 className="size-[15px]" />
               </IconButton>
             </div>
           </div>
 
           {/* ── Filter bar ── */}
-          <div className="flex items-center justify-between mt-5 gap-3">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between mt-6 gap-x-3">
+            <div className="flex items-center gap-x-2">
               <div
                 className={cn(
                   buttonVariants({
@@ -2383,7 +2536,7 @@ export default function TimeTrackingPage() {
                     visual: "gray",
                     size: "sm",
                   }),
-                  "min-w-[56px] justify-between bg-white px-2.5"
+                  "bg-white p-2"
                 )}
               >
                 <Checkbox
@@ -2391,9 +2544,8 @@ export default function TimeTrackingPage() {
                   onCheckedChange={(checked) =>
                     setBulkSelectionEnabled(checked === true)
                   }
-                  className="hover:ring-0 active:ring-0"
                 />
-                <ChevronDown className="size-4 text-gray-500" />
+                <ChevronDown className="size-[18px] text-gray-500" />
               </div>
 
               {/* Filter button */}
@@ -2406,25 +2558,23 @@ export default function TimeTrackingPage() {
                   visual="gray"
                   size="sm"
                   className="bg-white"
-                  leftIcon={<FilterLines className="size-4" />}
+                  leftIcon={
+                    totalActiveFilters > 0 ? (
+                      <Badge visual="primary" className="rounded-full">
+                        {totalActiveFilters}
+                      </Badge>
+                    ) : (
+                      <FilterLines className="size-[15px]" />
+                    )
+                  }
                 >
-                  <span>Filter</span>
-                  <span
-                    className={cn(
-                      "inline-flex items-center justify-center overflow-hidden rounded-full bg-primary-500 text-white text-[10px] font-semibold transition-all duration-200 ease-out",
-                      totalActiveFilters > 0
-                        ? "size-4 ml-1.5 opacity-100"
-                        : "size-0 ml-0 opacity-0"
-                    )}
-                  >
-                    {totalActiveFilters > 0 ? totalActiveFilters : ""}
-                  </span>
+                  Filter
                 </Button>
               </FilterPopover>
 
               {/* Contract filter */}
               <Select value={contractFilter} onValueChange={setContractFilter}>
-                <SelectTrigger className="h-9 w-[160px] bg-white">
+                <SelectTrigger className="h-9 font-semibold bg-white">
                   <SelectValue placeholder="All Contracts" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2458,7 +2608,7 @@ export default function TimeTrackingPage() {
                 visual="gray"
                 size="sm"
                 className="bg-white"
-                leftIcon={<Calendar className="size-4" />}
+                leftIcon={<Calendar className="size-[15px]" />}
               >
                 {dateRange}
               </Button>
@@ -2466,12 +2616,12 @@ export default function TimeTrackingPage() {
 
             <div className="flex items-center gap-2">
               <IconButton variant="ghost" visual="gray" size="sm">
-                <SwitchVertical01 className="size-4" />
+                <Filter01 />
               </IconButton>
 
               {/* Timezone */}
               <Select value={timezone}>
-                <SelectTrigger className="w-[200px] h-9 bg-white">
+                <SelectTrigger className="h-9 bg-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -2498,14 +2648,14 @@ export default function TimeTrackingPage() {
             )}
           >
             <div className="overflow-hidden">
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-x-3 flex-wrap">
                 {appliedChips.map((chip, i) => (
                   <span
                     key={`${chip.category}-${chip.value ?? "count"}`}
-                    className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1 rounded-full bg-primary-50 text-primary-600 text-xs font-medium animate-in fade-in slide-in-from-left-2 zoom-in-95 duration-200"
+                    className="inline-flex items-center gap-2 h-9 px-3 rounded-[5px] whitespace-nowrap shrink-0 bg-primary-50 text-primary-600 text-sm font-medium animate-in fade-in slide-in-from-left-2 zoom-in-95 duration-200"
                   >
                     {chip.count !== undefined && (
-                      <span className="size-4 rounded-full bg-primary-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                      <span className="size-5 shrink-0 rounded-full bg-primary-100 text-primary-500 text-xs font-medium flex items-center justify-center">
                         {chip.count}
                       </span>
                     )}
@@ -2513,10 +2663,10 @@ export default function TimeTrackingPage() {
                     <button
                       type="button"
                       onClick={() => removeChip(chip)}
-                      className="size-4 rounded-full flex items-center justify-center hover:bg-primary-100"
+                      className="rounded-full shrink-0 inline-flex items-center justify-center focus-visible:outline-none hover:opacity-100 opacity-60"
                       aria-label={`Remove ${chip.label}`}
                     >
-                      <X className="size-3" />
+                      <X className="size-4" />
                     </button>
                   </span>
                 ))}
@@ -2526,14 +2676,15 @@ export default function TimeTrackingPage() {
                 >
                   <button
                     type="button"
-                    className="text-xs text-primary-500 hover:text-primary-600 font-medium"
+                    className="text-sm inline-flex px-3 items-center gap-x-2 h-9 shrink-0 whitespace-nowrap focus-visible:outline-none rounded-[5px] bg-gray-100 text-gray-500"
                   >
-                    + Add Filter
+                    <Plus className="size-[15px]" />
+                    Add Filter
                   </button>
                 </FilterPopover>
                 <button
                   type="button"
-                  className="text-xs text-gray-400 hover:text-gray-600 ml-2"
+                  className="text-sm transition duration-300 hover:underline font-semibold focus-visible:outline-none inline-block text-primary-500 ml-3"
                   onClick={() => setAppliedFilters(emptyAppliedFilters)}
                 >
                   Clear All
@@ -2543,7 +2694,7 @@ export default function TimeTrackingPage() {
           </div>
 
           {/* ── Time blocks ── */}
-          <div className="mt-4 divide-y divide-gray-200">
+          <div className="mt-4">
             {isLoading ? (
               <div className="flex items-center justify-center py-16">
                 <div className="flex flex-col items-center gap-3">
@@ -2589,6 +2740,11 @@ export default function TimeTrackingPage() {
         openId={detailsOpen ? selectedScreenshotId : null}
         onOpenChange={(open) => setDetailsOpen(open)}
         onNavigate={setSelectedScreenshotId}
+      />
+
+      <SettingsPanel
+        open={showSettingPanel}
+        onOpenChange={setShowSettingPanel}
       />
     </AuthenticatedRoute>
   )

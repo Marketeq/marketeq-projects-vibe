@@ -51,7 +51,10 @@ function OtpInput({
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault()
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6)
+    const pasted = e.clipboardData
+      .getData("text")
+      .replace(/\D/g, "")
+      .slice(0, 6)
     onChange(pasted)
     const focusIdx = Math.min(pasted.length, 5)
     inputRefs.current[focusIdx]?.focus()
@@ -62,7 +65,9 @@ function OtpInput({
       {Array.from({ length: 6 }).map((_, i) => (
         <input
           key={i}
-          ref={(el) => { inputRefs.current[i] = el }}
+          ref={(el) => {
+            inputRefs.current[i] = el
+          }}
           type="text"
           inputMode="numeric"
           maxLength={1}
@@ -97,7 +102,9 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
   const { toast } = useToast()
   const { setUser } = useAuth()
   const [step, setStep] = useState<SetupStep>("method")
-  const [selectedMethod, setSelectedMethod] = useState<"totp" | "sms" | null>(null)
+  const [selectedMethod, setSelectedMethod] = useState<"totp" | "sms" | null>(
+    null
+  )
 
   // TOTP state
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState("")
@@ -135,7 +142,8 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
       }
       setStep("qr")
     } catch (err: any) {
-      const msg = err?.response?.data?.message || "Failed to generate 2FA secret"
+      const msg =
+        err?.response?.data?.message || "Failed to generate 2FA secret"
       toast({ title: msg, variant: "destructive" })
     } finally {
       setIsLoading(false)
@@ -153,7 +161,10 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
   const handleSendSmsCode = async () => {
     const digits = phoneNumber.replace(/\D/g, "")
     if (digits.length < 7) {
-      toast({ title: "Please enter a valid phone number", variant: "destructive" })
+      toast({
+        title: "Please enter a valid phone number",
+        variant: "destructive",
+      })
       return
     }
     setIsLoading(true)
@@ -162,7 +173,8 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
       setResendCooldown(60)
       setStep("sms_verify")
     } catch (err: any) {
-      const msg = err?.response?.data?.message || "Failed to send verification code"
+      const msg =
+        err?.response?.data?.message || "Failed to send verification code"
       toast({ title: msg, variant: "destructive" })
     } finally {
       setIsLoading(false)
@@ -189,11 +201,16 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
       const res = await AuthAPI.EnableTwoFactor({ code, method })
       if (res?.data?.backupCodes) {
         setBackupCodes(res.data.backupCodes)
-        setUser((prev) => (prev ? { ...prev, twoFactorEnabled: true, twoFactorMethod: method } : prev))
+        setUser((prev) =>
+          prev
+            ? { ...prev, twoFactorEnabled: true, twoFactorMethod: method }
+            : prev
+        )
         setStep("backup")
       }
     } catch (err: any) {
-      const msg = err?.response?.data?.message || "Invalid code, please try again"
+      const msg =
+        err?.response?.data?.message || "Invalid code, please try again"
       toast({ title: msg, variant: "destructive" })
     } finally {
       setIsLoading(false)
@@ -223,9 +240,13 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open && (step === "method" || step === "qr")) onClose() }}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && (step === "method" || step === "qr")) onClose()
+      }}
+    >
       <DialogContent className="w-full max-w-md">
-
         {step === "method" && (
           <div className="space-y-6">
             <DialogHeader>
@@ -242,13 +263,25 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
                 className="w-full flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:border-primary-500 hover:bg-primary-50 transition-colors text-left disabled:opacity-50"
               >
                 <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center shrink-0">
-                  <svg className="w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  <svg
+                    className="w-5 h-5 text-primary-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                    />
                   </svg>
                 </div>
                 <div>
                   <p className="font-medium text-gray-900">Authenticator App</p>
-                  <p className="text-sm text-gray-500">Use Google Authenticator, Authy, or similar</p>
+                  <p className="text-sm text-gray-500">
+                    Use Google Authenticator, Authy, or similar
+                  </p>
                 </div>
               </button>
 
@@ -258,13 +291,27 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
                 className="w-full flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:border-primary-500 hover:bg-primary-50 transition-colors text-left disabled:opacity-50"
               >
                 <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center shrink-0">
-                  <svg className="w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                  <svg
+                    className="w-5 h-5 text-primary-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                    />
                   </svg>
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">Text Message (SMS)</p>
-                  <p className="text-sm text-gray-500">Receive a verification code via text message</p>
+                  <p className="font-medium text-gray-900">
+                    Text Message (SMS)
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Receive a verification code via text message
+                  </p>
                 </div>
               </button>
             </div>
@@ -282,7 +329,8 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
             <DialogHeader>
               <DialogTitle>Set Up Authenticator App</DialogTitle>
               <DialogDescription>
-                Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
+                Scan this QR code with your authenticator app (Google
+                Authenticator, Authy, etc.)
               </DialogDescription>
             </DialogHeader>
 
@@ -291,7 +339,11 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
                 <div className="w-48 h-48 bg-gray-100 rounded-lg animate-pulse" />
               ) : (
                 qrCodeDataUrl && (
-                  <img src={qrCodeDataUrl} alt="2FA QR Code" className="w-48 h-48" />
+                  <img
+                    src={qrCodeDataUrl}
+                    alt="2FA QR Code"
+                    className="w-48 h-48"
+                  />
                 )
               )}
             </div>
@@ -304,14 +356,23 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
                 <code className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono text-center select-all break-all">
                   {secret}
                 </code>
-                <Button variant="outlined" visual="gray" size="sm" onClick={copySecret}>
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  onClick={copySecret}
+                >
                   {copied ? "Copied" : "Copy"}
                 </Button>
               </div>
             </div>
 
             <DialogFooter>
-              <Button variant="outlined" visual="gray" onClick={() => setStep("method")}>
+              <Button
+                variant="outlined"
+                visual="gray"
+                onClick={() => setStep("method")}
+              >
                 Back
               </Button>
               <Button onClick={() => setStep("verify")} disabled={isLoading}>
@@ -326,7 +387,8 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
             <DialogHeader>
               <DialogTitle>Verify Your Authenticator App</DialogTitle>
               <DialogDescription>
-                Enter the 6-digit code from your authenticator app to confirm setup.
+                Enter the 6-digit code from your authenticator app to confirm
+                setup.
               </DialogDescription>
             </DialogHeader>
 
@@ -341,11 +403,17 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
               <Button
                 variant="outlined"
                 visual="gray"
-                onClick={() => { setCode(""); setStep("qr") }}
+                onClick={() => {
+                  setCode("")
+                  setStep("qr")
+                }}
               >
                 Back
               </Button>
-              <Button onClick={handleVerify} disabled={isLoading || code.length !== 6}>
+              <Button
+                onClick={handleVerify}
+                disabled={isLoading || code.length !== 6}
+              >
                 {isLoading ? "Verifying..." : "Verify"}
               </Button>
             </DialogFooter>
@@ -357,12 +425,15 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
             <DialogHeader>
               <DialogTitle>Set Up SMS Verification</DialogTitle>
               <DialogDescription>
-                Enter your phone number and we'll send a verification code to confirm it.
+                Enter your phone number and we'll send a verification code to
+                confirm it.
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Phone Number</label>
+              <label className="text-sm font-medium text-gray-700">
+                Phone Number
+              </label>
               <div className="flex gap-2">
                 <select
                   value={countryCode}
@@ -386,10 +457,19 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
             </div>
 
             <DialogFooter>
-              <Button variant="outlined" visual="gray" onClick={() => setStep("method")}>
+              <Button
+                variant="outlined"
+                visual="gray"
+                onClick={() => setStep("method")}
+              >
                 Back
               </Button>
-              <Button onClick={handleSendSmsCode} disabled={isLoading || phoneNumber.replace(/\D/g, "").length < 7}>
+              <Button
+                onClick={handleSendSmsCode}
+                disabled={
+                  isLoading || phoneNumber.replace(/\D/g, "").length < 7
+                }
+              >
                 {isLoading ? "Sending..." : "Continue"}
               </Button>
             </DialogFooter>
@@ -401,7 +481,8 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
             <DialogHeader>
               <DialogTitle>Verify Your Phone Number</DialogTitle>
               <DialogDescription>
-                We sent a verification code to the number ending with <strong>{lastFour}</strong>.
+                We sent a verification code to the number ending with{" "}
+                <strong>{lastFour}</strong>.
               </DialogDescription>
             </DialogHeader>
 
@@ -415,9 +496,14 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
             <p className="text-sm text-center text-gray-500">
               Not seeing the code?{" "}
               {resendCooldown > 0 ? (
-                <span className="text-gray-400">Resend in {resendCooldown}s</span>
+                <span className="text-gray-400">
+                  Resend in {resendCooldown}s
+                </span>
               ) : (
-                <button onClick={handleResend} className="text-primary-600 hover:underline font-medium">
+                <button
+                  onClick={handleResend}
+                  className="text-primary-600 hover:underline font-medium"
+                >
                   Resend
                 </button>
               )}
@@ -427,11 +513,17 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
               <Button
                 variant="outlined"
                 visual="gray"
-                onClick={() => { setCode(""); setStep("phone") }}
+                onClick={() => {
+                  setCode("")
+                  setStep("phone")
+                }}
               >
                 Back
               </Button>
-              <Button onClick={handleVerify} disabled={isLoading || code.length !== 6}>
+              <Button
+                onClick={handleVerify}
+                disabled={isLoading || code.length !== 6}
+              >
                 {isLoading ? "Verifying..." : "Verify"}
               </Button>
             </DialogFooter>
@@ -443,7 +535,9 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
             <DialogHeader>
               <DialogTitle>Save Your Backup Codes</DialogTitle>
               <DialogDescription>
-                Save these codes in a safe place. Each code can only be used once if you lose access to your {selectedMethod === "sms" ? "phone" : "authenticator app"}.
+                Save these codes in a safe place. Each code can only be used
+                once if you lose access to your{" "}
+                {selectedMethod === "sms" ? "phone" : "authenticator app"}.
               </DialogDescription>
             </DialogHeader>
 
@@ -485,7 +579,9 @@ export function TwoFactorSetupModal({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setSavedConfirmed(e.target.checked)}
                 className="rounded border-gray-300"
               />
-              <span className="text-sm text-gray-600">I have saved these codes</span>
+              <span className="text-sm text-gray-600">
+                I have saved these codes
+              </span>
             </label>
 
             <DialogFooter>
@@ -532,7 +628,11 @@ export function DisableTwoFactorModal({ onClose }: { onClose: () => void }) {
     setIsLoading(true)
     try {
       await AuthAPI.DisableTwoFactor({ code })
-      setUser((prev) => (prev ? { ...prev, twoFactorEnabled: false, twoFactorMethod: null } : prev))
+      setUser((prev) =>
+        prev
+          ? { ...prev, twoFactorEnabled: false, twoFactorMethod: null }
+          : prev
+      )
       toast({ title: "Two-factor authentication disabled" })
       onClose()
     } catch (err: any) {
@@ -544,7 +644,12 @@ export function DisableTwoFactorModal({ onClose }: { onClose: () => void }) {
   }, [code, setUser, toast, onClose])
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
       <DialogContent className="w-full max-w-md">
         <div className="space-y-6">
           <DialogHeader>
@@ -552,8 +657,7 @@ export function DisableTwoFactorModal({ onClose }: { onClose: () => void }) {
             <DialogDescription>
               {method === "sms"
                 ? "Enter the verification code sent to your phone to disable 2FA."
-                : "Enter your authenticator code to disable 2FA."
-              }{" "}
+                : "Enter your authenticator code to disable 2FA."}{" "}
               This will make your account less secure.
             </DialogDescription>
           </DialogHeader>

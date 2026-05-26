@@ -1,10 +1,21 @@
 "use client"
 
-import React, { Fragment, Suspense, SVGProps, useEffect, useRef, useState } from "react"
+import React, {
+  Fragment,
+  SVGProps,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
+import dynamic from "next/dynamic"
 import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { UserAPI, EducationPayload, ExperiencePayload } from "@/service/http/user"
-import { UserProfile } from "@/types/user"
+import {
+  EducationPayload,
+  ExperiencePayload,
+  UserAPI,
+} from "@/service/http/user"
 import { cn, hookFormHasError, noop } from "@/utils/functions"
 import {
   useCallbackRef,
@@ -49,10 +60,8 @@ import CurrencyInput from "react-currency-input-field"
 import { Controller, SubmitHandler, useForm, useWatch } from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
-import dynamic from "next/dynamic"
+import { UserProfile } from "@/types/user"
 import NextImage from "@/components/next-image"
-
-const CaseStudyBuilder = dynamic(() => import("@/components/case-study-builder"), { ssr: false })
 import {
   BecomeTopSeller,
   Carousel,
@@ -109,6 +118,11 @@ import {
   inputVariants,
 } from "@/components/ui"
 
+const CaseStudyBuilder = dynamic(
+  () => import("@/components/case-study-builder"),
+  { ssr: false }
+)
+
 const Bulb = (props: SVGProps<SVGSVGElement>) => (
   <svg
     width={20}
@@ -148,8 +162,11 @@ const RightSidebar = () => {
   const searchParams = useSearchParams()
   const [isOpen, setIsOpen] = useState(() => searchParams.get("open") === "1")
   const [profileProgress, setProfileProgress] = useState(0)
-  const displayUsername = user?.username ||
-    `${user?.firstName || ""}${user?.lastName || ""}`.toLowerCase().replace(/\s+/g, "") ||
+  const displayUsername =
+    user?.username ||
+    `${user?.firstName || ""}${user?.lastName || ""}`
+      .toLowerCase()
+      .replace(/\s+/g, "") ||
     "my-profile"
   return (
     <div className="shrink-0 w-[322px]">
@@ -194,7 +211,11 @@ const RightSidebar = () => {
               <UserCheck01 className="size-[15px]" />
               Complete My Profile
             </Button>
-            <StatusDialog open={isOpen} onOpenChange={setIsOpen} onProgressChange={setProfileProgress} />
+            <StatusDialog
+              open={isOpen}
+              onOpenChange={setIsOpen}
+              onProgressChange={setProfileProgress}
+            />
           </div>
           <div className="mt-3">
             <span className="text-[13px] leading-none font-light text-dark-blue-400">
@@ -446,7 +467,8 @@ export const StatusDialog = ({
   initialStep?: (typeof DIALOG_NAMES)[number] | null
 }) => {
   const { user } = useAuth()
-  const [dialogsState, setDialogsState] = useState<DialogsStateType>(defaultDialogsState)
+  const [dialogsState, setDialogsState] =
+    useState<DialogsStateType>(defaultDialogsState)
   const [profile, setProfile] = useState<UserProfile | null>(null)
 
   // Load from localStorage on mount (client-side only — localStorage unavailable during SSR)
@@ -459,7 +481,10 @@ export const StatusDialog = ({
           DIALOG_NAMES.reduce(
             (acc, name) => ({
               ...acc,
-              [name]: { finished: parsed[name]?.finished ?? false, opened: false },
+              [name]: {
+                finished: parsed[name]?.finished ?? false,
+                opened: false,
+              },
             }),
             {} as DialogsStateType
           )
@@ -537,7 +562,10 @@ export const StatusDialog = ({
           break
         }
       }
-      if (!openedDialogName) { closeAll(); return }
+      if (!openedDialogName) {
+        closeAll()
+        return
+      }
 
       // Find next incomplete step (excluding CONGRATULATIONS)
       const stepsToCheck = DIALOG_NAMES.filter((n) => n !== "CONGRATULATIONS")
@@ -636,9 +664,9 @@ export const StatusDialog = ({
   })
 
   const totalSteps = Object.keys(content).length
-  const completedSteps = (Object.keys(content) as (keyof typeof content)[]).filter(
-    (k) => dialogsState[k].finished
-  ).length
+  const completedSteps = (
+    Object.keys(content) as (keyof typeof content)[]
+  ).filter((k) => dialogsState[k].finished).length
   const progressPercent = Math.round((completedSteps / totalSteps) * 100)
 
   useEffect(() => {
@@ -656,7 +684,10 @@ export const StatusDialog = ({
         }
         opened={dialogsState["ABOUT-ME"].opened}
         onOpenedChange={(opened) => {
-          if (!opened && isDirectStep) { closeAll(); return }
+          if (!opened && isDirectStep) {
+            closeAll()
+            return
+          }
           setDialogsState((prev) => ({
             ...prev,
             "ABOUT-ME": { ...prev["ABOUT-ME"], opened },
@@ -676,7 +707,10 @@ export const StatusDialog = ({
         }
         opened={dialogsState["PORTFOLIO"].opened}
         onOpenedChange={(opened) => {
-          if (!opened && isDirectStep) { closeAll(); return }
+          if (!opened && isDirectStep) {
+            closeAll()
+            return
+          }
           setDialogsState((prev) => ({
             ...prev,
             PORTFOLIO: { ...prev["PORTFOLIO"], opened },
@@ -695,7 +729,10 @@ export const StatusDialog = ({
         }
         opened={dialogsState["SKILLS"].opened}
         onOpenedChange={(opened) => {
-          if (!opened && isDirectStep) { closeAll(); return }
+          if (!opened && isDirectStep) {
+            closeAll()
+            return
+          }
           setDialogsState((prev) => ({
             ...prev,
             SKILLS: { ...prev["SKILLS"], opened },
@@ -716,7 +753,10 @@ export const StatusDialog = ({
         }
         opened={dialogsState["WORK-EXPERIENCE"].opened}
         onOpenedChange={(opened) => {
-          if (!opened && isDirectStep) { closeAll(); return }
+          if (!opened && isDirectStep) {
+            closeAll()
+            return
+          }
           setDialogsState((prev) => ({
             ...prev,
             "WORK-EXPERIENCE": { ...prev["WORK-EXPERIENCE"], opened },
@@ -737,7 +777,10 @@ export const StatusDialog = ({
         }
         opened={dialogsState["EDUCATION"].opened}
         onOpenedChange={(opened) => {
-          if (!opened && isDirectStep) { closeAll(); return }
+          if (!opened && isDirectStep) {
+            closeAll()
+            return
+          }
           setDialogsState((prev) => ({
             ...prev,
             EDUCATION: { ...prev["EDUCATION"], opened },
@@ -757,7 +800,10 @@ export const StatusDialog = ({
         }
         opened={dialogsState["JOB_TITLE_RATE"].opened}
         onOpenedChange={(opened) => {
-          if (!opened && isDirectStep) { closeAll(); return }
+          if (!opened && isDirectStep) {
+            closeAll()
+            return
+          }
           setDialogsState((prev) => ({
             ...prev,
             JOB_TITLE_RATE: { ...prev["JOB_TITLE_RATE"], opened },
@@ -789,21 +835,28 @@ export const StatusDialog = ({
             <div className="p-6 bg-white border-gray-200 flex items-center gap-x-[18px] border-b">
               <div className="flex-auto space-y-2">
                 <p className="text-sm leading-none text-dark-blue-400">
-                  Boost your hiring potential{user?.firstName ? `, ${user.firstName}` : ""}!
+                  Boost your hiring potential
+                  {user?.firstName ? `, ${user.firstName}` : ""}!
                 </p>
                 <h2 className="text-lg font-semibold leading-none text-dark-blue-400">
                   Complete your profile to get hired by top clients.
                 </h2>
               </div>
               {(() => {
-                const remaining = (Object.keys(content) as (keyof typeof content)[]).reduce(
+                const remaining = (
+                  Object.keys(content) as (keyof typeof content)[]
+                ).reduce(
                   (prev, cur) => (dialogsState[cur].finished ? prev - 1 : prev),
                   Object.keys(content).length
                 )
                 return remaining === 0 ? (
-                  <Badge visual="success" size="lg">All done! 🎉</Badge>
+                  <Badge visual="success" size="lg">
+                    All done! 🎉
+                  </Badge>
                 ) : (
-                  <Badge visual="primary" size="lg">{remaining} step{remaining !== 1 ? "s" : ""} left</Badge>
+                  <Badge visual="primary" size="lg">
+                    {remaining} step{remaining !== 1 ? "s" : ""} left
+                  </Badge>
                 )
               })()}
             </div>
@@ -917,10 +970,10 @@ const moreInfoFormSchema = z
     earning: z.number().optional(),
     fee: z.number().optional(),
   })
-  .refine(
-    (data) => (data.clientRate ?? 0) > 0 || (data.earning ?? 0) > 0,
-    { message: "Please enter a rate", path: ["clientRate"] }
-  )
+  .refine((data) => (data.clientRate ?? 0) > 0 || (data.earning ?? 0) > 0, {
+    message: "Please enter a rate",
+    path: ["clientRate"],
+  })
 
 type MoreInfoFormValues = z.infer<typeof moreInfoFormSchema>
 
@@ -984,7 +1037,11 @@ const MoreInfoDialog = ({
 
   // Pre-fill from saved profile data
   useEffect(() => {
-    if (profile && !profileLoaded && (profile.rateMin || profile.rateMax || profile.role)) {
+    if (
+      profile &&
+      !profileLoaded &&
+      (profile.rateMin || profile.rateMax || profile.role)
+    ) {
       setProfileLoaded(true)
       const entry: MoreInfoFormValues = {
         jobTitle: profile.role ?? "",
@@ -1002,7 +1059,8 @@ const MoreInfoDialog = ({
       // If this entry is being set as default, unmark the previous default
       const updated = workExperiences?.map((workExperience, index) => {
         if (index === editingIndex) return values
-        if (values.saveAsDefault) return { ...workExperience, saveAsDefault: false }
+        if (values.saveAsDefault)
+          return { ...workExperience, saveAsDefault: false }
         return workExperience
       })
       setWorkExperiences(updated)
@@ -1013,7 +1071,10 @@ const MoreInfoDialog = ({
         const newEntry = values
         if (!prev) return [newEntry]
         if (newEntry.saveAsDefault) {
-          return [...prev.map((e) => ({ ...e, saveAsDefault: false })), newEntry]
+          return [
+            ...prev.map((e) => ({ ...e, saveAsDefault: false })),
+            newEntry,
+          ]
         }
         return [...prev, newEntry]
       })
@@ -1149,11 +1210,13 @@ const MoreInfoDialog = ({
                             <div className="mt-1 flex items-center gap-x-3">
                               <div className="flex items-center flex-none gap-x-2">
                                 <span className="text-xs leading-none font-light text-dark-blue-400">
-                                  Client rate ${workExperience.clientRate ?? 0}/hr
+                                  Client rate ${workExperience.clientRate ?? 0}
+                                  /hr
                                 </span>
                                 <span className="inline-block size-1 bg-gray-300 rounded-full" />
                                 <span className="text-xs leading-none font-light text-dark-blue-400">
-                                  Your earnings ${workExperience.earning ?? 0}/hr
+                                  Your earnings ${workExperience.earning ?? 0}
+                                  /hr
                                 </span>
                               </div>
 
@@ -1183,8 +1246,12 @@ const MoreInfoDialog = ({
                               type="button"
                               className="text-gray-400 rounded-full hover:text-error-500 hover:bg-error-50"
                               onClick={() => {
-                                const updated = workExperiences?.filter((_, i) => i !== index)
-                                setWorkExperiences(updated?.length ? updated : undefined)
+                                const updated = workExperiences?.filter(
+                                  (_, i) => i !== index
+                                )
+                                setWorkExperiences(
+                                  updated?.length ? updated : undefined
+                                )
                                 if (!updated?.length) setState("default")
                               }}
                             >
@@ -1200,7 +1267,10 @@ const MoreInfoDialog = ({
                     <>
                       <div className="space-y-1.5">
                         <Label size="sm" htmlFor="job-title-input">
-                          Job Title {editingIndex !== undefined ? editingIndex + 1 : (workExperiences?.length ?? 0) + 1}
+                          Job Title{" "}
+                          {editingIndex !== undefined
+                            ? editingIndex + 1
+                            : (workExperiences?.length ?? 0) + 1}
                         </Label>
 
                         <Input
@@ -1295,8 +1365,14 @@ const MoreInfoDialog = ({
                                         const rate = values?.float ?? null
                                         onChange(rate)
                                         if (rate != null) {
-                                          setValue("earning", Math.round(rate * 0.8))
-                                          setValue("fee", Math.round(rate * 0.2))
+                                          setValue(
+                                            "earning",
+                                            Math.round(rate * 0.8)
+                                          )
+                                          setValue(
+                                            "fee",
+                                            Math.round(rate * 0.2)
+                                          )
                                         }
                                       }}
                                       placeholder="$78"
@@ -1425,9 +1501,14 @@ const MoreInfoDialog = ({
                                         const earning = values?.float ?? null
                                         onChange(earning)
                                         if (earning != null) {
-                                          const clientRate = Math.round(earning / 0.8)
+                                          const clientRate = Math.round(
+                                            earning / 0.8
+                                          )
                                           setValue("clientRate", clientRate)
-                                          setValue("fee", Math.round(clientRate * 0.2))
+                                          setValue(
+                                            "fee",
+                                            Math.round(clientRate * 0.2)
+                                          )
                                         }
                                       }}
                                       placeholder="$65"
@@ -1513,7 +1594,13 @@ const MoreInfoDialog = ({
                 >
                   <X className="size-[15px]" /> Cancel
                 </Button>
-                <Button ref={submitTriggerRef} type="submit" disabled={!isValid}>Save</Button>
+                <Button
+                  ref={submitTriggerRef}
+                  type="submit"
+                  disabled={!isValid}
+                >
+                  Save
+                </Button>
 
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                   <DialogContent className="max-w-[409px] p-0">
@@ -1884,7 +1971,9 @@ const SkillsDialog = ({
     next?.()
     if (userId) {
       // Only add skills that don't already exist in DB
-      const newSkills = skills.filter((s) => !existingSkillNamesRef.current.has(s.name))
+      const newSkills = skills.filter(
+        (s) => !existingSkillNamesRef.current.has(s.name)
+      )
       if (newSkills.length) {
         Promise.all(
           newSkills.map((s) => UserAPI.addSkill(userId, { name: s.name }))
@@ -2218,19 +2307,26 @@ const WorkExperienceDialog = ({
   useEffect(() => {
     if (profile?.experience?.length && !profileLoaded) {
       setProfileLoaded(true)
-      const mapped: WorkExperienceFormValues[] = profile.experience.map((exp) => {
-        const [startYear, startMonth] = (exp.startDate ?? "").split("-").map(Number)
-        const [endYear, endMonth] = (exp.endDate ?? "").split("-").map(Number)
-        return {
-          employer: exp.company,
-          jobTitle: exp.role,
-          startDate: { month: startMonth || 1, year: startYear || 2020 },
-          endDate: { month: endMonth || undefined, year: endYear || undefined },
-          currentlyWorkHere: !exp.endDate,
-          jobDescription: exp.description ?? "",
-          skills: [],
+      const mapped: WorkExperienceFormValues[] = profile.experience.map(
+        (exp) => {
+          const [startYear, startMonth] = (exp.startDate ?? "")
+            .split("-")
+            .map(Number)
+          const [endYear, endMonth] = (exp.endDate ?? "").split("-").map(Number)
+          return {
+            employer: exp.company,
+            jobTitle: exp.role,
+            startDate: { month: startMonth || 1, year: startYear || 2020 },
+            endDate: {
+              month: endMonth || undefined,
+              year: endYear || undefined,
+            },
+            currentlyWorkHere: !exp.endDate,
+            jobDescription: exp.description ?? "",
+            skills: [],
+          }
         }
-      })
+      )
       setWorkExperiences(mapped)
       setState("preview")
     }
@@ -2267,7 +2363,11 @@ const WorkExperienceDialog = ({
           company: values.employer,
           role: values.jobTitle,
           startDate: `${values.startDate.year}-${String(values.startDate.month).padStart(2, "0")}`,
-          endDate: values.currentlyWorkHere ? undefined : values.endDate?.year ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}` : undefined,
+          endDate: values.currentlyWorkHere
+            ? undefined
+            : values.endDate?.year
+              ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}`
+              : undefined,
           description: values.jobDescription,
         }
         UserAPI.addExperience(userId, payload).catch(() => {})
@@ -2447,7 +2547,10 @@ const WorkExperienceDialog = ({
                             placeholder="CEO"
                             {...register("jobTitle")}
                             onBlur={(e) => {
-                              setValue("jobTitle", formatJobTitle(e.target.value))
+                              setValue(
+                                "jobTitle",
+                                formatJobTitle(e.target.value)
+                              )
                             }}
                             isInvalid={hookFormHasError({
                               errors,
@@ -2479,7 +2582,10 @@ const WorkExperienceDialog = ({
                                   <Listbox value={value} onChange={onChange}>
                                     <ListboxButton
                                       placeholder="Month"
-                                      displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
+                                      displayValue={(value: number) =>
+                                        months.find((m) => m.value === value)
+                                          ?.name ?? ""
+                                      }
                                       isInvalid={hookFormHasError({
                                         errors,
                                         name: "startDate.month",
@@ -2588,7 +2694,10 @@ const WorkExperienceDialog = ({
                                   <Listbox value={value} onChange={onChange}>
                                     <ListboxButton
                                       placeholder="Month"
-                                      displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
+                                      displayValue={(value: number) =>
+                                        months.find((m) => m.value === value)
+                                          ?.name ?? ""
+                                      }
                                       isInvalid={hookFormHasError({
                                         errors,
                                         name: "endDate.month",
@@ -2864,7 +2973,13 @@ const WorkExperienceDialog = ({
                 >
                   <X className="size-[15px]" /> Cancel
                 </Button>
-                <Button ref={submitTriggerRef} type="submit" disabled={!isValid}>Save</Button>
+                <Button
+                  ref={submitTriggerRef}
+                  type="submit"
+                  disabled={!isValid}
+                >
+                  Save
+                </Button>
 
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                   <DialogContent className="max-w-[409px] p-0">
@@ -3089,7 +3204,9 @@ const EducationDialog = ({
     if (profile?.education?.length && !profileLoaded) {
       setProfileLoaded(true)
       const mapped: EducationFormValues[] = profile.education.map((edu) => {
-        const [startYear, startMonth] = (edu.startDate ?? "").split("-").map(Number)
+        const [startYear, startMonth] = (edu.startDate ?? "")
+          .split("-")
+          .map(Number)
         const [endYear, endMonth] = (edu.endDate ?? "").split("-").map(Number)
         return {
           schoolOrUniversity: edu.institution,
@@ -3123,7 +3240,11 @@ const EducationDialog = ({
           degree: values.degree,
           field: values.major,
           startDate: `${values.startDate.year}-${String(values.startDate.month).padStart(2, "0")}`,
-          endDate: values.currentlyAttending ? undefined : values.endDate?.year ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}` : undefined,
+          endDate: values.currentlyAttending
+            ? undefined
+            : values.endDate?.year
+              ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}`
+              : undefined,
         }
         UserAPI.addEducation(userId, payload).catch(() => {})
       }
@@ -3371,7 +3492,10 @@ const EducationDialog = ({
                               render={({ field: { value, onChange } }) => (
                                 <Listbox value={value} onChange={onChange}>
                                   <ListboxButton
-                                    displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
+                                    displayValue={(value: number) =>
+                                      months.find((m) => m.value === value)
+                                        ?.name ?? ""
+                                    }
                                     placeholder="Month"
                                     isInvalid={hookFormHasError({
                                       errors,
@@ -3459,7 +3583,10 @@ const EducationDialog = ({
                               render={({ field: { value, onChange } }) => (
                                 <Listbox value={value} onChange={onChange}>
                                   <ListboxButton
-                                    displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
+                                    displayValue={(value: number) =>
+                                      months.find((m) => m.value === value)
+                                        ?.name ?? ""
+                                    }
                                     placeholder="Month"
                                     isInvalid={hookFormHasError({
                                       errors,
@@ -3606,7 +3733,13 @@ const EducationDialog = ({
                   <X className="size-[15px]" /> Cancel
                 </Button>
 
-                <Button ref={submitTriggerRef} type="submit" disabled={!isValid}>Save</Button>
+                <Button
+                  ref={submitTriggerRef}
+                  type="submit"
+                  disabled={!isValid}
+                >
+                  Save
+                </Button>
 
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                   <DialogContent className="max-w-[409px] p-0">
@@ -3766,7 +3899,10 @@ const Portfolio = ({
           <CaseStudyBuilder
             onClose={() => setCaseStudyOpen(false)}
             onSave={() => {
-              setPortfolioItems((prev) => [...prev, `Case Study ${prev.length + 1}`])
+              setPortfolioItems((prev) => [
+                ...prev,
+                `Case Study ${prev.length + 1}`,
+              ])
               onFinished?.(true)
               setCaseStudyOpen(false)
             }}
@@ -3804,12 +3940,16 @@ const Portfolio = ({
                     <div className="size-10 shrink-0 rounded-full border-2 border-success-500 inline-flex items-center justify-center text-success-500">
                       <Check className="size-4" />
                     </div>
-                    <h3 className="text-center text-sm font-semibold text-dark-blue-400">{item}</h3>
+                    <h3 className="text-center text-sm font-semibold text-dark-blue-400">
+                      {item}
+                    </h3>
                     <button
                       type="button"
                       className="text-xs text-error-500 hover:underline"
                       onClick={() => {
-                        const updated = portfolioItems.filter((_, i) => i !== index)
+                        const updated = portfolioItems.filter(
+                          (_, i) => i !== index
+                        )
                         setPortfolioItems(updated)
                         if (updated.length === 0) onFinished?.(false)
                       }}
@@ -3868,51 +4008,51 @@ const Portfolio = ({
               </div>
             </div>
           </form>
-        <div className="p-[50px] relative">
-          <DialogClose asChild>
-            <IconButton
-              className="absolute text-gray-500 right-0 top-0"
-              size="md"
-              variant="ghost"
-              visual="gray"
-            >
-              <X className="size-5" />
-            </IconButton>
-          </DialogClose>
-          <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-            Show Off Your Best Work!
-          </h1>
-          <p className="text-base text-dark-blue-400 mt-2.5">
-            Your portfolio isn’t just a section, it’s the proof that you’re the
-            real deal. It’s where talent meets results and leaves clients
-            saying, ‘I need this!
-          </p>
+          <div className="p-[50px] relative">
+            <DialogClose asChild>
+              <IconButton
+                className="absolute text-gray-500 right-0 top-0"
+                size="md"
+                variant="ghost"
+                visual="gray"
+              >
+                <X className="size-5" />
+              </IconButton>
+            </DialogClose>
+            <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+              Show Off Your Best Work!
+            </h1>
+            <p className="text-base text-dark-blue-400 mt-2.5">
+              Your portfolio isn’t just a section, it’s the proof that you’re
+              the real deal. It’s where talent meets results and leaves clients
+              saying, ‘I need this!
+            </p>
 
-          <div className="mt-[49px]">
-            <ul className="mt-4 space-y-[15px]">
-              <li className="flex items-start gap-x-5">
-                <Bulb className="shrink-0 text-warning-300" />
-                <span className="text-base text-dark-blue-400 leading-none">
-                  Highlighting your strengths means the right clients can find
-                  you faster.
-                </span>
-              </li>
-              <li className="flex items-start gap-x-5">
-                <Bulb className="shrink-0 text-warning-300" />
-                <span className="text-base text-dark-blue-400 leading-none">
-                  What makes you passionate about what you do?
-                </span>
-              </li>
-              <li className="flex items-start gap-x-5">
-                <Bulb className="shrink-0 text-warning-300" />
-                <span className="text-base text-dark-blue-400 leading-none">
-                  What’s that one thing that’ll make someone remember you?
-                </span>
-              </li>
-            </ul>
+            <div className="mt-[49px]">
+              <ul className="mt-4 space-y-[15px]">
+                <li className="flex items-start gap-x-5">
+                  <Bulb className="shrink-0 text-warning-300" />
+                  <span className="text-base text-dark-blue-400 leading-none">
+                    Highlighting your strengths means the right clients can find
+                    you faster.
+                  </span>
+                </li>
+                <li className="flex items-start gap-x-5">
+                  <Bulb className="shrink-0 text-warning-300" />
+                  <span className="text-base text-dark-blue-400 leading-none">
+                    What makes you passionate about what you do?
+                  </span>
+                </li>
+                <li className="flex items-start gap-x-5">
+                  <Bulb className="shrink-0 text-warning-300" />
+                  <span className="text-base text-dark-blue-400 leading-none">
+                    What’s that one thing that’ll make someone remember you?
+                  </span>
+                </li>
+              </ul>
+            </div>
           </div>
-        </div>
-      </DialogContent>
+        </DialogContent>
       </Dialog>
     </>
   )
@@ -4015,12 +4155,48 @@ const Congratulations = ({
           <div className="mt-[30px]">
             <ul className="space-y-[19px]">
               {[
-                { icon: <CreditCard02 className="shrink-0 size-8 text-dark-blue-400" />, label: "Set up payments", href: "/talent-dashboard" },
-                { icon: <Search className="shrink-0 size-8 text-dark-blue-400" />, label: "Find open projects", href: "/search" },
-                { icon: <UsersPlus className="shrink-0 size-8 text-dark-blue-400" />, label: "Join a team", href: "/search" },
-                { icon: <Briefcase02 className="shrink-0 size-8 text-dark-blue-400" />, label: "Create a new project", href: "/submit-project" },
-                { icon: <RefreshCw className="shrink-0 size-8 text-dark-blue-400" />, label: "Start a new service", href: "/talent-dashboard" },
-                { icon: <UserPlus01 className="shrink-0 size-8 text-dark-blue-400" />, label: "Set up my account", href: "/account-settings" },
+                {
+                  icon: (
+                    <CreditCard02 className="shrink-0 size-8 text-dark-blue-400" />
+                  ),
+                  label: "Set up payments",
+                  href: "/talent-dashboard",
+                },
+                {
+                  icon: (
+                    <Search className="shrink-0 size-8 text-dark-blue-400" />
+                  ),
+                  label: "Find open projects",
+                  href: "/search",
+                },
+                {
+                  icon: (
+                    <UsersPlus className="shrink-0 size-8 text-dark-blue-400" />
+                  ),
+                  label: "Join a team",
+                  href: "/search",
+                },
+                {
+                  icon: (
+                    <Briefcase02 className="shrink-0 size-8 text-dark-blue-400" />
+                  ),
+                  label: "Create a new project",
+                  href: "/submit-project",
+                },
+                {
+                  icon: (
+                    <RefreshCw className="shrink-0 size-8 text-dark-blue-400" />
+                  ),
+                  label: "Start a new service",
+                  href: "/talent-dashboard",
+                },
+                {
+                  icon: (
+                    <UserPlus01 className="shrink-0 size-8 text-dark-blue-400" />
+                  ),
+                  label: "Set up my account",
+                  href: "/account-settings",
+                },
               ].map(({ icon, label, href }) => (
                 <li key={label}>
                   <DialogClose asChild>

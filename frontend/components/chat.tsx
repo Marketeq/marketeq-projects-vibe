@@ -1,12 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import Cookies from "js-cookie"
 import { apiFetch } from "@/src/lib/api"
-import { BlockReportDialog } from "@/app/(group)/inbox/components/block-report-dialog"
-import { cn } from "@/utils/functions"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
+import { cn } from "@/utils/functions"
 import { useControllableState, useUncontrolledState } from "@/utils/hooks"
 import { createContext } from "@/utils/react-utils"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
@@ -22,6 +20,7 @@ import {
 import { CheckedState } from "@radix-ui/react-checkbox"
 import { cva } from "class-variance-authority"
 import { format, isToday, isYesterday, parseISO } from "date-fns"
+import Cookies from "js-cookie"
 import { useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import {
@@ -46,6 +45,7 @@ import {
   FavoriteRoot,
   IconButton,
 } from "@/components/ui"
+import { BlockReportDialog } from "@/app/(group)/inbox/components/block-report-dialog"
 
 const chatVariants = cva(
   "group/chat relative cursor-pointer flex items-start gap-x-2 pl-3.5 hover:bg-gray-100 data-[state=active]:bg-primary-50 hover:data-[state=active]:bg-primary-100"
@@ -132,13 +132,20 @@ export const UserDetail = ({
   const me = getCurrentUser()?.id
   const otherId = me ? getOtherParticipantId(conversation, me) : undefined
   const showOnlineDot = conversation.isGroup
-    ? (conversation.participantIds ?? []).some((id) => id !== me && isOnline(id))
+    ? (conversation.participantIds ?? []).some(
+        (id) => id !== me && isOnline(id)
+      )
     : isOnline(otherId)
 
   //jwt token
   const jwtToken = (() => {
     if (typeof window === "undefined") return null
-    return Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("token") || null
+    return (
+      Cookies.get("access_token") ||
+      Cookies.get("accessToken") ||
+      localStorage.getItem("token") ||
+      null
+    )
   })()
 
   const [isPinned, setIsPinned] = useControllableState({
@@ -149,13 +156,10 @@ export const UserDetail = ({
       onChatPinned(value)
 
       try {
-        await apiFetch<unknown>(
-          `/v1/threads/${conversation.id}/pin`,
-          {
-            method: value ? "POST" : "DELETE",
-            headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
-          }
-        )
+        await apiFetch<unknown>(`/v1/threads/${conversation.id}/pin`, {
+          method: value ? "POST" : "DELETE",
+          headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
+        })
       } catch (err) {
         console.error("Failed to toggle pin on server", err)
 
@@ -182,7 +186,13 @@ export const UserDetail = ({
   const showCheckbox = checkedChats > 0
 
   return (
-    <article className={cn(chatVariants({ className }), conversation.markedUnread && "bg-primary-25")} data-state={variant}>
+    <article
+      className={cn(
+        chatVariants({ className }),
+        conversation.markedUnread && "bg-primary-25"
+      )}
+      data-state={variant}
+    >
       <div className="pt-3.5 group">
         <Avatar
           size="md"
@@ -195,7 +205,11 @@ export const UserDetail = ({
         >
           <AvatarImage
             src={(conversation as any).participantAvatarUrl || undefined}
-            alt={conversation.participantName || conversation.participantUsername || "User"}
+            alt={
+              conversation.participantName ||
+              conversation.participantUsername ||
+              "User"
+            }
           />
           <AvatarFallbackIcon />
         </Avatar>
@@ -215,27 +229,36 @@ export const UserDetail = ({
       </div>
       <div className="pr-3.5 flex flex-col flex-auto min-w-0 gap-y-0.5 items-start py-[18px] border-b border-gray-200 relative">
         <div className="flex self-stretch items-center justify-between gap-x-2">
-          <h3 className={cn(
-            "group-data-[state=active]/chat:font-bold text-[13px] leading-[18.88px] text-dark-blue-400 min-w-0 flex-1 truncate",
-            conversation.markedUnread ? "font-semibold group-hover/chat:font-bold" : "font-medium"
-          )}>
-            {conversation.participantName || conversation.participantUsername || "Unknown"}
-            {conversation.participantUsername &&
-              conversation.participantUsername !== conversation.participantName && (
-              <span className="ml-1 text-xs leading-[14.52px] font-normal text-gray-700">
-                @{conversation.participantUsername}
-              </span>
+          <h3
+            className={cn(
+              "group-data-[state=active]/chat:font-bold text-[13px] leading-[18.88px] text-dark-blue-400 min-w-0 flex-1 truncate",
+              conversation.markedUnread
+                ? "font-semibold group-hover/chat:font-bold"
+                : "font-medium"
             )}
+          >
+            {conversation.participantName ||
+              conversation.participantUsername ||
+              "Unknown"}
+            {conversation.participantUsername &&
+              conversation.participantUsername !==
+                conversation.participantName && (
+                <span className="ml-1 text-xs leading-[14.52px] font-normal text-gray-700">
+                  @{conversation.participantUsername}
+                </span>
+              )}
           </h3>
 
-          <span className={cn(
-            "transition duration-300 shrink-0 group-data-[state=active]/chat:font-bold group-hover/chat:opacity-0 opacity-100 text-xs leading-[14.52px] text-dark-blue-400",
-            conversation.markedUnread ? "font-semibold" : "font-medium"
-          )}>
+          <span
+            className={cn(
+              "transition duration-300 shrink-0 group-data-[state=active]/chat:font-bold group-hover/chat:opacity-0 opacity-100 text-xs leading-[14.52px] text-dark-blue-400",
+              conversation.markedUnread ? "font-semibold" : "font-medium"
+            )}
+          >
             {formatConversationDate(
-              (conversation as any).lastMessage?.m_createdAt
-                ?? conversation.updatedAt
-                ?? conversation.createdAt
+              (conversation as any).lastMessage?.m_createdAt ??
+                conversation.updatedAt ??
+                conversation.createdAt
             )}
           </span>
 
@@ -258,10 +281,12 @@ export const UserDetail = ({
               collisionPadding={8}
             >
               <DropdownMenuItem onSelect={() => onMarkUnread?.()}>
-                <EyeOff className="h-4 w-4" /> {conversation.markedUnread ? "Mark as Read" : "Mark Unread"}
+                <EyeOff className="h-4 w-4" />{" "}
+                {conversation.markedUnread ? "Mark as Read" : "Mark Unread"}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onSpam?.()}>
-                <AlertCircle className="h-4 w-4" /> {conversation.isSpam ? "Move to Inbox" : "Move to Spam"}
+                <AlertCircle className="h-4 w-4" />{" "}
+                {conversation.isSpam ? "Move to Inbox" : "Move to Spam"}
               </DropdownMenuItem>
 
               <DropdownMenuItem onSelect={() => setIsPinned((prev) => !prev)}>
@@ -269,7 +294,8 @@ export const UserDetail = ({
               </DropdownMenuItem>
 
               <DropdownMenuItem onSelect={() => onArchive?.()}>
-                <Archive className="h-4 w-4" /> {conversation.isArchived ? "Unarchive" : "Archive"}
+                <Archive className="h-4 w-4" />{" "}
+                {conversation.isArchived ? "Unarchive" : "Archive"}
               </DropdownMenuItem>
               {!conversation.isGroup && otherId && (
                 <DropdownMenuItem
@@ -284,9 +310,12 @@ export const UserDetail = ({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 visual={conversation.isTrashed ? undefined : "destructive"}
-                onSelect={() => conversation.isTrashed ? onTrash?.() : toggle()}
+                onSelect={() =>
+                  conversation.isTrashed ? onTrash?.() : toggle()
+                }
               >
-                <Trash2 className="h-4 w-4" /> {conversation.isTrashed ? "Restore" : "Delete Chat"}
+                <Trash2 className="h-4 w-4" />{" "}
+                {conversation.isTrashed ? "Restore" : "Delete Chat"}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -305,7 +334,8 @@ export const UserDetail = ({
             <DialogContent className="max-w-[348px] p-7 rounded-xl">
               <DialogTitle>Delete this chat?</DialogTitle>
               <DialogDescription className="mt-2">
-                This chat will be moved to Trash. You can restore it later from the Trash filter.
+                This chat will be moved to Trash. You can restore it later from
+                the Trash filter.
               </DialogDescription>
               <div className="mt-8 grid grid-cols-2 gap-x-3">
                 <DialogClose asChild>
@@ -313,7 +343,14 @@ export const UserDetail = ({
                     Cancel
                   </Button>
                 </DialogClose>
-                <Button onClick={() => { onTrash?.(); toggle() }}>Yes, Delete</Button>
+                <Button
+                  onClick={() => {
+                    onTrash?.()
+                    toggle()
+                  }}
+                >
+                  Yes, Delete
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -324,20 +361,25 @@ export const UserDetail = ({
         </div>
 
         <div className="flex gap-x-1.5 self-stretch items-center justify-between">
-          <span className={cn(
-            "group-data-[state=active]/chat:text-dark-blue-500 text-[11px] line-clamp-2 leading-[13.31px] flex-1 min-w-0 break-words [overflow-wrap:anywhere] group-data-[state=active]/chat:font-medium",
-            conversation.markedUnread ? "text-dark-blue-400 font-medium" : "text-gray-500"
-          )}>
+          <span
+            className={cn(
+              "group-data-[state=active]/chat:text-dark-blue-500 text-[11px] line-clamp-2 leading-[13.31px] flex-1 min-w-0 break-words [overflow-wrap:anywhere] group-data-[state=active]/chat:font-medium",
+              conversation.markedUnread
+                ? "text-dark-blue-400 font-medium"
+                : "text-gray-500"
+            )}
+          >
             {(conversation as any).lastMessagePreview ||
-              ((conversation as any).lastMessage?.m_content) ||
-              ((conversation as any).lastMessage?.m_ciphertext ? "Encrypted message" : "No messages yet")}
+              (conversation as any).lastMessage?.m_content ||
+              ((conversation as any).lastMessage?.m_ciphertext
+                ? "Encrypted message"
+                : "No messages yet")}
           </span>
 
           <div className="shrink-0">
             {(() => {
               const unreadCount = (conversation as any).unreadCount ?? 0
-              const hasUnread =
-                conversation.markedUnread || unreadCount > 0
+              const hasUnread = conversation.markedUnread || unreadCount > 0
               if (hasUnread) {
                 const badgeText =
                   unreadCount > 99
@@ -361,7 +403,9 @@ export const UserDetail = ({
                           onStarredChange?.(next)
                           apiFetch(`/v1/threads/${conversation.id}/star`, {
                             method: next ? "POST" : "DELETE",
-                            headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
+                            headers: jwtToken
+                              ? { Authorization: `Bearer ${jwtToken}` }
+                              : {},
                           }).catch((err) => {
                             console.error("Failed to toggle star", err)
                             onStarredChange?.(!next)
@@ -387,7 +431,9 @@ export const UserDetail = ({
                     onStarredChange?.(next)
                     apiFetch(`/v1/threads/${conversation.id}/star`, {
                       method: next ? "POST" : "DELETE",
-                      headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
+                      headers: jwtToken
+                        ? { Authorization: `Bearer ${jwtToken}` }
+                        : {},
                     }).catch((err) => {
                       console.error("Failed to toggle star", err)
                       onStarredChange?.(!next)
@@ -445,19 +491,28 @@ export const Chat = ({
     variant,
     className,
     conversation,
-    name: conversation.participantName || conversation.participantUsername || "Unknown",
+    name:
+      conversation.participantName ||
+      conversation.participantUsername ||
+      "Unknown",
   } as const
 
   if (showPinnedIcon) {
     return isPinned ? (
-      <div onClick={onClick} className="cursor-pointer hover:bg-gray-100 rounded-md">
+      <div
+        onClick={onClick}
+        className="cursor-pointer hover:bg-gray-100 rounded-md"
+      >
         <UserDetail {...detailProps} />
       </div>
     ) : null
   }
 
   return (
-    <div onClick={onClick} className="cursor-pointer hover:bg-gray-100 rounded-md">
+    <div
+      onClick={onClick}
+      className="cursor-pointer hover:bg-gray-100 rounded-md"
+    >
       <UserDetail {...detailProps} />
     </div>
   )

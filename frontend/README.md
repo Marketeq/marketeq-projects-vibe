@@ -4,24 +4,30 @@ A Next.js 14 (App Router) frontend for Marketeq with Tailwind CSS, a custom UI k
 
 ### Quick Start
 
-1) Install deps
+1. Install deps
+
 ```bash
 npm install
 ```
 
-2) Set environment (see Environment below), then run dev server
+2. Set environment (see Environment below), then run dev server
+
 ```bash
 npm run dev
 ```
+
 Open http://localhost:3000
 
-3) Optional: Storybook
+3. Optional: Storybook
+
 ```bash
 npm run storybook
 ```
+
 Open http://localhost:6006
 
 ### Scripts
+
 - `dev`: start Next.js dev server
 - `build`: production build
 - `start`: start production server
@@ -35,6 +41,7 @@ Open http://localhost:6006
 - `build-storybook`: build Storybook static
 
 ### Environment
+
 Create `.env.local` with relevant variables:
 
 ```bash
@@ -53,10 +60,12 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID="your-google-oauth-client-id"
 ```
 
 Notes:
+
 - Cookies: `accessToken` is read in `service/http/client.ts` and attached as `Authorization: Bearer`.
 - CORS/credentials: logout uses `withCredentials` on `/auth/logout`.
 
 ### Tech Stack
+
 - Next.js 14 (App Router)
 - React 18
 - Tailwind CSS + headless UI libs (`@headlessui/tailwindcss`, `tailwindcss-animate`, `tailwind-scrollbar`, RAC)
@@ -138,33 +147,39 @@ Notes:
 ```
 
 ### Key Flows
+
 - Auth bootstrap: `app/layout.tsx` wraps with `GoogleOAuthProvider` and `AuthProvider`. On mount, `contexts/auth.tsx` calls `UserAPI.me()` to populate user; `logoutHandler` clears cookie and redirects to `/sign-in`.
 - API calls: `service/index.ts` configures Axios with `NEXT_PUBLIC_API_URL` and bearer token from cookie `accessToken`.
 - Realtime (optional): `utils/useAblyChannel.ts` uses Ably Realtime with server-signed tokens via `apiFetch` to `/api/messaging/ably` and subscribes to `thread-${threadId}` events.
 - Skills fetch: `utils/api.ts` uses native fetch to `NEXT_PUBLIC_BACKEND_URL`.
 
 ### Development Notes
+
 - Path alias: import from `@/` root (`baseUrl: "."`).
 - Image domains: configured in `next.config.js` (GitHub, Google, LinkedIn, Sanity CDN).
 - UI/Design: Tailwind theme extends brand palettes (`primary`, `gray`, `light-gray`, `dark-blue`, `light-blue`) and animations.
 
 ### Build & Deploy
+
 ```bash
 npm run build
 npm start
 ```
 
 ### Conventions
+
 - Commit messages: Conventional Commits enforced by commitlint/husky.
 - Formatting: Prettier with Tailwind plugin and import sorting.
 - Linting: `eslint-config-next` + Storybook plugin.
 
 ### Troubleshooting
+
 - 401/Unauthenticated: ensure `accessToken` cookie is set for the app domain and `NEXT_PUBLIC_API_URL` matches API CORS settings.
 - Images failing to load: check `next.config.js` `images.domains`/`remotePatterns`.
 - OAuth popup issues: verify `NEXT_PUBLIC_GOOGLE_CLIENT_ID` and authorized origins.
 
 ---
+
 Maintainers can update this README as features evolve (routes, services, envs).
 
 ### Stories directory (file purposes)

@@ -1,27 +1,12 @@
 "use client"
 
-import React, { useState, useCallback, useRef, useEffect } from "react"
-import {
-  FontSizeExtension,
-  type FontSizeVariant,
-} from "@/components/tiptap-font-size"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import { ProjectAPI } from "@/service/http/project"
 import { cn } from "@/utils/functions"
 import { useClickOutside } from "@/utils/hooks"
 import {
-  Bold,
-  Italic,
-  OrderedList,
-  StrikeThrough,
-  ToCenter,
-  ToLeft,
-  ToRight,
-  Underline,
-  UnorderedList,
-} from "@/components/icons/editing-icons"
-import {
-  Clock,
   ChevronDown,
+  Clock,
   Edit03,
   Eye,
   Image as ImageIcon,
@@ -34,6 +19,26 @@ import {
   Upload,
   X,
 } from "@blend-metrics/icons"
+import { Extension, isAtStartOfNode, isNodeActive } from "@tiptap/core"
+import ImageExtension from "@tiptap/extension-image"
+import UnderlineExtension from "@tiptap/extension-underline"
+import { Editor, EditorContent, useEditor, useEditorState } from "@tiptap/react"
+import StarterKit from "@tiptap/starter-kit"
+import {
+  Bold,
+  Italic,
+  OrderedList,
+  StrikeThrough,
+  ToCenter,
+  ToLeft,
+  ToRight,
+  Underline,
+  UnorderedList,
+} from "@/components/icons/editing-icons"
+import {
+  FontSizeExtension,
+  type FontSizeVariant,
+} from "@/components/tiptap-font-size"
 import {
   Button,
   Dialog,
@@ -44,8 +49,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  ImageEditor,
   IconButton,
+  ImageEditor,
   Toggle,
   Tooltip,
   TooltipContent,
@@ -53,11 +58,6 @@ import {
   TooltipTrigger,
   useToast,
 } from "@/components/ui"
-import { useEditor, useEditorState, EditorContent, Editor } from "@tiptap/react"
-import { Extension, isAtStartOfNode, isNodeActive } from "@tiptap/core"
-import StarterKit from "@tiptap/starter-kit"
-import ImageExtension from "@tiptap/extension-image"
-import UnderlineExtension from "@tiptap/extension-underline"
 
 type ImageAlignValue = "left" | "right" | "full-width"
 
@@ -333,12 +333,7 @@ const formatSavedTime = (value: Date) =>
   })
 
 const UndoArrowIcon = ({ className }: { className?: string }) => (
-  <svg
-    viewBox="0 0 20 20"
-    fill="none"
-    aria-hidden="true"
-    className={className}
-  >
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className={className}>
     <path
       d="M7.55 5.65 4.7 8.5l2.85 2.85"
       stroke="currentColor"
@@ -357,12 +352,7 @@ const UndoArrowIcon = ({ className }: { className?: string }) => (
 )
 
 const RedoArrowIcon = ({ className }: { className?: string }) => (
-  <svg
-    viewBox="0 0 20 20"
-    fill="none"
-    aria-hidden="true"
-    className={className}
-  >
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className={className}>
     <path
       d="M12.45 5.65 15.3 8.5l-2.85 2.85"
       stroke="currentColor"
@@ -392,12 +382,12 @@ const FullscreenToggleButton = ({
   return (
     <TooltipProvider delayDuration={75}>
       <Tooltip>
-      <TooltipTrigger
-        type="button"
-        data-rich-text-fullscreen-toggle="true"
-        onClick={onClick}
-        className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
-      >
+        <TooltipTrigger
+          type="button"
+          data-rich-text-fullscreen-toggle="true"
+          onClick={onClick}
+          className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
+        >
           {isFullscreen ? (
             <Minimize01 className="size-4" />
           ) : (
@@ -412,9 +402,7 @@ const FullscreenToggleButton = ({
   )
 }
 
-const preventToolbarFocusChange = (
-  event: React.MouseEvent<HTMLElement>
-) => {
+const preventToolbarFocusChange = (event: React.MouseEvent<HTMLElement>) => {
   event.preventDefault()
 }
 
@@ -446,11 +434,7 @@ const RichTextImageToolbar = ({
   onAlignMenuOpenChange: (open: boolean) => void
 }) => {
   const AlignmentIcon =
-    alignment === "left"
-      ? ToLeft
-      : alignment === "right"
-        ? ToRight
-        : ToCenter
+    alignment === "left" ? ToLeft : alignment === "right" ? ToRight : ToCenter
 
   return (
     <div
@@ -703,10 +687,7 @@ const RichTextToolbar = ({
       )}
     >
       <div className="pr-2">
-        <DropdownMenu
-          open={isFontMenuOpen}
-          onOpenChange={onFontMenuOpenChange}
-        >
+        <DropdownMenu open={isFontMenuOpen} onOpenChange={onFontMenuOpenChange}>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
@@ -728,16 +709,24 @@ const RichTextToolbar = ({
             sideOffset={6}
             className="min-w-[152px]"
           >
-            <DropdownMenuItem onSelect={() => handleHeadingChange("Normal Text")}>
+            <DropdownMenuItem
+              onSelect={() => handleHeadingChange("Normal Text")}
+            >
               Normal Text
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => handleHeadingChange("Small Heading")}>
+            <DropdownMenuItem
+              onSelect={() => handleHeadingChange("Small Heading")}
+            >
               Small Heading
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => handleHeadingChange("Normal Heading")}>
+            <DropdownMenuItem
+              onSelect={() => handleHeadingChange("Normal Heading")}
+            >
               Normal Heading
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => handleHeadingChange("Large Heading")}>
+            <DropdownMenuItem
+              onSelect={() => handleHeadingChange("Large Heading")}
+            >
               Large Heading
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -769,7 +758,9 @@ const RichTextToolbar = ({
           <Tooltip>
             <Toggle
               pressed={toolbarState.italic}
-              onPressedChange={() => editor.chain().focus().toggleItalic().run()}
+              onPressedChange={() =>
+                editor.chain().focus().toggleItalic().run()
+              }
               asChild
             >
               <TooltipTrigger
@@ -789,7 +780,9 @@ const RichTextToolbar = ({
           <Tooltip>
             <Toggle
               pressed={toolbarState.underline}
-              onPressedChange={() => editor.chain().focus().toggleUnderline().run()}
+              onPressedChange={() =>
+                editor.chain().focus().toggleUnderline().run()
+              }
               asChild
             >
               <TooltipTrigger
@@ -809,7 +802,9 @@ const RichTextToolbar = ({
           <Tooltip>
             <Toggle
               pressed={toolbarState.strike}
-              onPressedChange={() => editor.chain().focus().toggleStrike().run()}
+              onPressedChange={() =>
+                editor.chain().focus().toggleStrike().run()
+              }
               asChild
             >
               <TooltipTrigger
@@ -987,7 +982,8 @@ const ActiveEditor = ({
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [isEditorFocused, setIsEditorFocused] = useState(false)
   const [isFontMenuOpen, setIsFontMenuOpen] = useState(false)
-  const [hasFontMenuAnchorSelection, setHasFontMenuAnchorSelection] = useState(false)
+  const [hasFontMenuAnchorSelection, setHasFontMenuAnchorSelection] =
+    useState(false)
   const [isToolbarPinned, setIsToolbarPinned] = useState(false)
   const [bubbleMenuInstanceKey, setBubbleMenuInstanceKey] = useState(0)
   const [floatingToolbarPosition, setFloatingToolbarPosition] = useState<{
@@ -1005,45 +1001,46 @@ const ActiveEditor = ({
     alignment: ImageAlignValue
     src: string
     alt: string
-      } | null>(null)
+  } | null>(null)
 
-  const syncDropCursorPreview = useCallback((
-    align: ImageAlignValue,
-    dropSide?: "left" | "right"
-  ) => {
-    if (typeof window === "undefined" || !containerRef.current) {
-      return
-    }
-
-    window.requestAnimationFrame(() => {
-      const dropCursor = containerRef.current?.querySelector(
-        ".rich-text-dropcursor"
-      ) as HTMLElement | null
-      const proseMirrorElement = containerRef.current?.querySelector(
-        ".ProseMirror"
-      ) as HTMLElement | null
-
-      if (!dropCursor || !proseMirrorElement) {
+  const syncDropCursorPreview = useCallback(
+    (align: ImageAlignValue, dropSide?: "left" | "right") => {
+      if (typeof window === "undefined" || !containerRef.current) {
         return
       }
 
-      const proseMirrorWidth = proseMirrorElement.getBoundingClientRect().width
-      const nextWidth =
-        align === "full-width" ? proseMirrorWidth : proseMirrorWidth / 2
-      const nextLeft =
-        align === "full-width"
-          ? 0
-          : dropSide === "right"
-            ? proseMirrorWidth - nextWidth
-            : 0
+      window.requestAnimationFrame(() => {
+        const dropCursor = containerRef.current?.querySelector(
+          ".rich-text-dropcursor"
+        ) as HTMLElement | null
+        const proseMirrorElement = containerRef.current?.querySelector(
+          ".ProseMirror"
+        ) as HTMLElement | null
 
-      dropCursor.style.width = `${nextWidth}px`
-      dropCursor.style.left = `${nextLeft}px`
-      dropCursor.style.right = "auto"
-      dropCursor.style.backgroundColor = "#306CFE"
-      dropCursor.style.height = "2px"
-    })
-  }, [])
+        if (!dropCursor || !proseMirrorElement) {
+          return
+        }
+
+        const proseMirrorWidth =
+          proseMirrorElement.getBoundingClientRect().width
+        const nextWidth =
+          align === "full-width" ? proseMirrorWidth : proseMirrorWidth / 2
+        const nextLeft =
+          align === "full-width"
+            ? 0
+            : dropSide === "right"
+              ? proseMirrorWidth - nextWidth
+              : 0
+
+        dropCursor.style.width = `${nextWidth}px`
+        dropCursor.style.left = `${nextLeft}px`
+        dropCursor.style.right = "auto"
+        dropCursor.style.backgroundColor = "#306CFE"
+        dropCursor.style.height = "2px"
+      })
+    },
+    []
+  )
 
   const clearDropCursorPreview = useCallback(() => {
     if (typeof document === "undefined" || !containerRef.current) {
@@ -1071,7 +1068,9 @@ const ActiveEditor = ({
     }
 
     clearDropCursorPreview()
-    draggedImageRef.current?.element?.removeAttribute("data-rich-text-drag-source")
+    draggedImageRef.current?.element?.removeAttribute(
+      "data-rich-text-drag-source"
+    )
     draggedImageRef.current = null
     document.body.classList.remove("rich-text-image-dragging")
     delete document.body.dataset.richTextDragAlign
@@ -1216,25 +1215,28 @@ const ActiveEditor = ({
                   const matchingImages = draggedImage.src
                     ? images.filter(
                         (image) =>
-                          (image.currentSrc || image.getAttribute("src") || "") ===
-                          draggedImage.src
+                          (image.currentSrc ||
+                            image.getAttribute("src") ||
+                            "") === draggedImage.src
                       )
                     : images
 
-                  const candidateImage = draggedImageElement ?? matchingImages
-                    .map((image) => {
-                      const rect = image.getBoundingClientRect()
-                      const centerX = rect.left + rect.width / 2
-                      const centerY = rect.top + rect.height / 2
-                      const distance = Math.hypot(
-                        centerX - event.clientX,
-                        centerY - event.clientY
-                      )
+                  const candidateImage =
+                    draggedImageElement ??
+                    matchingImages
+                      .map((image) => {
+                        const rect = image.getBoundingClientRect()
+                        const centerX = rect.left + rect.width / 2
+                        const centerY = rect.top + rect.height / 2
+                        const distance = Math.hypot(
+                          centerX - event.clientX,
+                          centerY - event.clientY
+                        )
 
-                      return { image, distance }
-                    })
-                    .sort((left, right) => left.distance - right.distance)[0]
-                    ?.image
+                        return { image, distance }
+                      })
+                      .sort((left, right) => left.distance - right.distance)[0]
+                      ?.image
 
                   if (!(candidateImage instanceof HTMLImageElement)) {
                     return
@@ -1244,7 +1246,10 @@ const ActiveEditor = ({
                     const pos = editor.view.posAtDOM(candidateImage, 0)
                     const node = editor.state.doc.nodeAt(pos)
 
-                    if (node?.type.name === "image" && node.attrs.align !== nextSide) {
+                    if (
+                      node?.type.name === "image" &&
+                      node.attrs.align !== nextSide
+                    ) {
                       updateImageAtPos(pos, { align: nextSide })
                     }
                   } catch {
@@ -1283,8 +1288,7 @@ const ActiveEditor = ({
     },
   })
 
-  const shouldKeepToolbarVisible =
-    hasSelectedText || hasFontMenuAnchorSelection
+  const shouldKeepToolbarVisible = hasSelectedText || hasFontMenuAnchorSelection
 
   const updateFloatingToolbarPosition = useCallback(() => {
     if (!editor || !containerRef.current) {
@@ -1317,38 +1321,41 @@ const ActiveEditor = ({
     })
   }, [editor, hasFontMenuAnchorSelection])
 
-  const handleFontMenuOpenChange = useCallback((open: boolean) => {
-    if (!open) {
-      fontMenuAnchorSelectionRef.current = false
-      fontMenuSelectionRef.current = null
-      setIsFontMenuOpen(false)
-      setHasFontMenuAnchorSelection(false)
-      return
-    }
+  const handleFontMenuOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        fontMenuAnchorSelectionRef.current = false
+        fontMenuSelectionRef.current = null
+        setIsFontMenuOpen(false)
+        setHasFontMenuAnchorSelection(false)
+        return
+      }
 
-    if (
-      !editor ||
-      (!selectionHasTextContent(editor) &&
-        !hasFontMenuAnchorSelection &&
-        !fontMenuAnchorSelectionRef.current)
-    ) {
-      return
-    }
+      if (
+        !editor ||
+        (!selectionHasTextContent(editor) &&
+          !hasFontMenuAnchorSelection &&
+          !fontMenuAnchorSelectionRef.current)
+      ) {
+        return
+      }
 
-    fontMenuAnchorSelectionRef.current = true
-    fontMenuSelectionRef.current = {
-      from: editor.state.selection.from,
-      to: editor.state.selection.to,
-    }
-    setHasFontMenuAnchorSelection(true)
-    setIsFontMenuOpen(true)
+      fontMenuAnchorSelectionRef.current = true
+      fontMenuSelectionRef.current = {
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+      }
+      setHasFontMenuAnchorSelection(true)
+      setIsFontMenuOpen(true)
 
-    if (!isToolbarPinned) {
-      editor.view.dispatch(
-        editor.state.tr.setMeta("bubbleMenu", "updatePosition")
-      )
-    }
-  }, [editor, hasFontMenuAnchorSelection, isToolbarPinned])
+      if (!isToolbarPinned) {
+        editor.view.dispatch(
+          editor.state.tr.setMeta("bubbleMenu", "updatePosition")
+        )
+      }
+    },
+    [editor, hasFontMenuAnchorSelection, isToolbarPinned]
+  )
 
   const handleFontMenuTriggerMouseDown = useCallback(() => {
     if (editor && selectionHasTextContent(editor)) {
@@ -1432,365 +1439,404 @@ const ActiveEditor = ({
     setHoveredImage(null)
   }, [])
 
-  const syncHoveredImage = useCallback((imageElement?: HTMLImageElement | null) => {
-    if (!editor || !containerRef.current) {
-      clearHoveredImage()
-      return
-    }
-
-    const targetImage = imageElement ?? hoveredImageElementRef.current
-
-    if (!targetImage || !editor.view.dom.contains(targetImage)) {
-      clearHoveredImage()
-      return
-    }
-
-    try {
-      const pos = editor.view.posAtDOM(targetImage, 0)
-      const node = editor.state.doc.nodeAt(pos)
-
-      if (!node || node.type.name !== "image") {
+  const syncHoveredImage = useCallback(
+    (imageElement?: HTMLImageElement | null) => {
+      if (!editor || !containerRef.current) {
         clearHoveredImage()
         return
       }
 
-      const imageRect = targetImage.getBoundingClientRect()
-      const containerRect = containerRef.current.getBoundingClientRect()
+      const targetImage = imageElement ?? hoveredImageElementRef.current
 
-      if (hoveredImageElementRef.current !== targetImage) {
-        hoveredImageElementRef.current?.removeAttribute(
-          "data-rich-text-image-hovered"
-        )
-        targetImage.setAttribute("data-rich-text-image-hovered", "true")
-      }
-
-      hoveredImageElementRef.current = targetImage
-      setHoveredImage({
-        pos,
-        top: imageRect.top - containerRect.top + 20,
-        left: imageRect.left - containerRect.left + 16,
-        alignment:
-          node.attrs.align === "left" ||
-          node.attrs.align === "right" ||
-          node.attrs.align === "full-width"
-            ? node.attrs.align
-            : DEFAULT_IMAGE_ALIGN,
-        src: typeof node.attrs.src === "string" ? node.attrs.src : "",
-        alt: typeof node.attrs.alt === "string" ? node.attrs.alt : "",
-      })
-    } catch {
-      clearHoveredImage()
-    }
-  }, [clearHoveredImage, editor])
-
-  const getImageNodeAtPos = useCallback((pos: number) => {
-    if (!editor) {
-      return null
-    }
-
-    const node = editor.state.doc.nodeAt(pos)
-    if (!node || node.type.name !== "image") {
-      return null
-    }
-
-    return node
-  }, [editor])
-
-  const refreshHoveredImageAtPos = useCallback((pos: number) => {
-    if (!editor) {
-      return
-    }
-
-    if (typeof window === "undefined") {
-      const nodeDom = editor.view.nodeDOM(pos)
-      if (nodeDom instanceof HTMLImageElement) {
-        syncHoveredImage(nodeDom)
-      } else {
+      if (!targetImage || !editor.view.dom.contains(targetImage)) {
         clearHoveredImage()
+        return
       }
-      return
-    }
 
-    window.requestAnimationFrame(() => {
-      const nodeDom = editor.view.nodeDOM(pos)
-      if (nodeDom instanceof HTMLImageElement) {
-        syncHoveredImage(nodeDom)
-      } else {
-        clearHoveredImage()
-      }
-    })
-  }, [clearHoveredImage, editor, syncHoveredImage])
+      try {
+        const pos = editor.view.posAtDOM(targetImage, 0)
+        const node = editor.state.doc.nodeAt(pos)
 
-  const updateImageAtPos = useCallback((pos: number, attrs: Record<string, unknown>) => {
-    if (!editor) {
-      return
-    }
+        if (!node || node.type.name !== "image") {
+          clearHoveredImage()
+          return
+        }
 
-    const node = getImageNodeAtPos(pos)
-    if (!node) {
-      return
-    }
+        const imageRect = targetImage.getBoundingClientRect()
+        const containerRect = containerRef.current.getBoundingClientRect()
 
-    const transaction = editor.state.tr.setNodeMarkup(pos, undefined, {
-      ...node.attrs,
-      ...attrs,
-    })
+        if (hoveredImageElementRef.current !== targetImage) {
+          hoveredImageElementRef.current?.removeAttribute(
+            "data-rich-text-image-hovered"
+          )
+          targetImage.setAttribute("data-rich-text-image-hovered", "true")
+        }
 
-    editor.view.dispatch(transaction)
-    editor.commands.focus(undefined, { scrollIntoView: false })
-    refreshHoveredImageAtPos(pos)
-  }, [editor, getImageNodeAtPos, refreshHoveredImageAtPos])
-
-  const uploadRichTextImageFile = useCallback(async (file: File) => {
-    const preparedUpload = await prepareRichTextImageUpload(file)
-
-    if (preparedUpload.file.size > RICH_TEXT_IMAGE_UPLOAD_MAX_BYTES) {
-      throw new Error("We couldn't prepare that image for upload. Please try a different image.")
-    }
-
-    const formData = new FormData()
-    formData.append("file", preparedUpload.file)
-
-    const response = await ProjectAPI.UploadRichTextImage(formData)
-    const imageSource = response?.data?.url
-
-    if (typeof imageSource !== "string" || !imageSource.length) {
-      throw new Error("Image upload did not return a valid URL.")
-    }
-
-    if (preparedUpload.wasResized) {
-      toast({
-        title: "Image resized",
-        description: "Your image was optimized for upload.",
-      })
-    }
-
-    return imageSource
-  }, [toast])
-
-  const removeImageAtPos = useCallback((pos: number) => {
-    if (!editor) {
-      return
-    }
-
-    const node = getImageNodeAtPos(pos)
-    if (!node) {
-      return
-    }
-
-    const transaction = editor.state.tr.delete(pos, pos + node.nodeSize)
-    editor.view.dispatch(transaction)
-    editor.commands.focus(undefined, { scrollIntoView: false })
-    clearHoveredImage()
-  }, [clearHoveredImage, editor, getImageNodeAtPos])
-
-  const handleInsertImage = useCallback((
-    mode: "insert" | "replace" = "insert",
-    imagePos?: number
-  ) => {
-    if (!editor || typeof window === "undefined" || isUploadingImage) return
-
-    uploadActionRef.current =
-      mode === "replace" && typeof imagePos === "number"
-        ? {
-            mode,
-            imagePos,
-          }
-        : {
-            mode: "insert",
-          }
-
-    if (mode === "insert") {
-      selectionRef.current = {
-        from: editor.state.selection.from,
-        to: editor.state.selection.to,
-      }
-    } else {
-      selectionRef.current = null
-    }
-
-    scrollPositionRef.current = {
-      x: window.scrollX,
-      y: window.scrollY,
-    }
-    fileInputRef.current?.click()
-  }, [editor, isUploadingImage])
-
-  const handleImageFileChange = useCallback(async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = event.target.files?.[0]
-    event.target.value = ""
-
-    if (!file) {
-      if (typeof window !== "undefined" && scrollPositionRef.current) {
-        window.scrollTo(scrollPositionRef.current.x, scrollPositionRef.current.y)
-      }
-      uploadActionRef.current = null
-      scrollPositionRef.current = null
-      return
-    }
-
-    if (!file.type.startsWith("image/")) {
-      window.alert("Please choose an image file.")
-      uploadActionRef.current = null
-      return
-    }
-
-    if (!editor) {
-      return
-    }
-
-    try {
-      setIsUploadingImage(true)
-      const imageSource = await uploadRichTextImageFile(file)
-
-      const uploadAction = uploadActionRef.current
-
-      if (uploadAction?.mode === "replace") {
-        updateImageAtPos(uploadAction.imagePos, {
-          src: imageSource,
-          alt: file.name,
+        hoveredImageElementRef.current = targetImage
+        setHoveredImage({
+          pos,
+          top: imageRect.top - containerRect.top + 20,
+          left: imageRect.left - containerRect.left + 16,
+          alignment:
+            node.attrs.align === "left" ||
+            node.attrs.align === "right" ||
+            node.attrs.align === "full-width"
+              ? node.attrs.align
+              : DEFAULT_IMAGE_ALIGN,
+          src: typeof node.attrs.src === "string" ? node.attrs.src : "",
+          alt: typeof node.attrs.alt === "string" ? node.attrs.alt : "",
         })
+      } catch {
+        clearHoveredImage()
+      }
+    },
+    [clearHoveredImage, editor]
+  )
+
+  const getImageNodeAtPos = useCallback(
+    (pos: number) => {
+      if (!editor) {
+        return null
+      }
+
+      const node = editor.state.doc.nodeAt(pos)
+      if (!node || node.type.name !== "image") {
+        return null
+      }
+
+      return node
+    },
+    [editor]
+  )
+
+  const refreshHoveredImageAtPos = useCallback(
+    (pos: number) => {
+      if (!editor) {
         return
       }
 
-      const selection = selectionRef.current
-      const insertChain = editor.chain().focus(undefined, {
-        scrollIntoView: false,
+      if (typeof window === "undefined") {
+        const nodeDom = editor.view.nodeDOM(pos)
+        if (nodeDom instanceof HTMLImageElement) {
+          syncHoveredImage(nodeDom)
+        } else {
+          clearHoveredImage()
+        }
+        return
+      }
+
+      window.requestAnimationFrame(() => {
+        const nodeDom = editor.view.nodeDOM(pos)
+        if (nodeDom instanceof HTMLImageElement) {
+          syncHoveredImage(nodeDom)
+        } else {
+          clearHoveredImage()
+        }
+      })
+    },
+    [clearHoveredImage, editor, syncHoveredImage]
+  )
+
+  const updateImageAtPos = useCallback(
+    (pos: number, attrs: Record<string, unknown>) => {
+      if (!editor) {
+        return
+      }
+
+      const node = getImageNodeAtPos(pos)
+      if (!node) {
+        return
+      }
+
+      const transaction = editor.state.tr.setNodeMarkup(pos, undefined, {
+        ...node.attrs,
+        ...attrs,
       })
 
-      if (selection) {
-        insertChain.setTextSelection(selection)
+      editor.view.dispatch(transaction)
+      editor.commands.focus(undefined, { scrollIntoView: false })
+      refreshHoveredImageAtPos(pos)
+    },
+    [editor, getImageNodeAtPos, refreshHoveredImageAtPos]
+  )
+
+  const uploadRichTextImageFile = useCallback(
+    async (file: File) => {
+      const preparedUpload = await prepareRichTextImageUpload(file)
+
+      if (preparedUpload.file.size > RICH_TEXT_IMAGE_UPLOAD_MAX_BYTES) {
+        throw new Error(
+          "We couldn't prepare that image for upload. Please try a different image."
+        )
       }
 
-      insertChain
-        .setImage({
-          src: imageSource,
-          alt: file.name,
-          align: DEFAULT_IMAGE_ALIGN,
-        } as any)
-        .run()
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.message ||
-        error?.response?.data?.reason ||
-        error?.message ||
-        "We couldn't upload that image. Please try again."
-      window.alert(message)
-    } finally {
-      if (typeof window !== "undefined" && scrollPositionRef.current) {
-        window.scrollTo(scrollPositionRef.current.x, scrollPositionRef.current.y)
+      const formData = new FormData()
+      formData.append("file", preparedUpload.file)
+
+      const response = await ProjectAPI.UploadRichTextImage(formData)
+      const imageSource = response?.data?.url
+
+      if (typeof imageSource !== "string" || !imageSource.length) {
+        throw new Error("Image upload did not return a valid URL.")
       }
-      setIsUploadingImage(false)
-      uploadActionRef.current = null
-      selectionRef.current = null
-      scrollPositionRef.current = null
-    }
-  }, [editor, updateImageAtPos, uploadRichTextImageFile])
 
-  const handleEditorMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    const target = event.target
+      if (preparedUpload.wasResized) {
+        toast({
+          title: "Image resized",
+          description: "Your image was optimized for upload.",
+        })
+      }
 
-    if (!(target instanceof HTMLElement)) {
-      return
-    }
+      return imageSource
+    },
+    [toast]
+  )
 
-    if (
-      target.closest("[data-rich-text-image-toolbar='true']") ||
-      target.closest("[data-rich-text-image-toolbar-menu='true']")
-    ) {
-      return
-    }
+  const removeImageAtPos = useCallback(
+    (pos: number) => {
+      if (!editor) {
+        return
+      }
 
-    const imageElement = target.closest("img")
-    if (imageElement instanceof HTMLImageElement) {
-      syncHoveredImage(imageElement)
-      return
-    }
+      const node = getImageNodeAtPos(pos)
+      if (!node) {
+        return
+      }
 
-    clearHoveredImage()
-  }, [
-    clearHoveredImage,
-    syncHoveredImage,
-  ])
+      const transaction = editor.state.tr.delete(pos, pos + node.nodeSize)
+      editor.view.dispatch(transaction)
+      editor.commands.focus(undefined, { scrollIntoView: false })
+      clearHoveredImage()
+    },
+    [clearHoveredImage, editor, getImageNodeAtPos]
+  )
+
+  const handleInsertImage = useCallback(
+    (mode: "insert" | "replace" = "insert", imagePos?: number) => {
+      if (!editor || typeof window === "undefined" || isUploadingImage) return
+
+      uploadActionRef.current =
+        mode === "replace" && typeof imagePos === "number"
+          ? {
+              mode,
+              imagePos,
+            }
+          : {
+              mode: "insert",
+            }
+
+      if (mode === "insert") {
+        selectionRef.current = {
+          from: editor.state.selection.from,
+          to: editor.state.selection.to,
+        }
+      } else {
+        selectionRef.current = null
+      }
+
+      scrollPositionRef.current = {
+        x: window.scrollX,
+        y: window.scrollY,
+      }
+      fileInputRef.current?.click()
+    },
+    [editor, isUploadingImage]
+  )
+
+  const handleImageFileChange = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      event.target.value = ""
+
+      if (!file) {
+        if (typeof window !== "undefined" && scrollPositionRef.current) {
+          window.scrollTo(
+            scrollPositionRef.current.x,
+            scrollPositionRef.current.y
+          )
+        }
+        uploadActionRef.current = null
+        scrollPositionRef.current = null
+        return
+      }
+
+      if (!file.type.startsWith("image/")) {
+        window.alert("Please choose an image file.")
+        uploadActionRef.current = null
+        return
+      }
+
+      if (!editor) {
+        return
+      }
+
+      try {
+        setIsUploadingImage(true)
+        const imageSource = await uploadRichTextImageFile(file)
+
+        const uploadAction = uploadActionRef.current
+
+        if (uploadAction?.mode === "replace") {
+          updateImageAtPos(uploadAction.imagePos, {
+            src: imageSource,
+            alt: file.name,
+          })
+          return
+        }
+
+        const selection = selectionRef.current
+        const insertChain = editor.chain().focus(undefined, {
+          scrollIntoView: false,
+        })
+
+        if (selection) {
+          insertChain.setTextSelection(selection)
+        }
+
+        insertChain
+          .setImage({
+            src: imageSource,
+            alt: file.name,
+            align: DEFAULT_IMAGE_ALIGN,
+          } as any)
+          .run()
+      } catch (error: any) {
+        const message =
+          error?.response?.data?.message ||
+          error?.response?.data?.reason ||
+          error?.message ||
+          "We couldn't upload that image. Please try again."
+        window.alert(message)
+      } finally {
+        if (typeof window !== "undefined" && scrollPositionRef.current) {
+          window.scrollTo(
+            scrollPositionRef.current.x,
+            scrollPositionRef.current.y
+          )
+        }
+        setIsUploadingImage(false)
+        uploadActionRef.current = null
+        selectionRef.current = null
+        scrollPositionRef.current = null
+      }
+    },
+    [editor, updateImageAtPos, uploadRichTextImageFile]
+  )
+
+  const handleEditorMouseMove = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target
+
+      if (!(target instanceof HTMLElement)) {
+        return
+      }
+
+      if (
+        target.closest("[data-rich-text-image-toolbar='true']") ||
+        target.closest("[data-rich-text-image-toolbar-menu='true']")
+      ) {
+        return
+      }
+
+      const imageElement = target.closest("img")
+      if (imageElement instanceof HTMLImageElement) {
+        syncHoveredImage(imageElement)
+        return
+      }
+
+      clearHoveredImage()
+    },
+    [clearHoveredImage, syncHoveredImage]
+  )
 
   const handleEditorMouseLeave = useCallback(() => {
-    if (!isHoveringImageToolbar && !isImageAlignMenuOpen && !isImageEditorOpen) {
+    if (
+      !isHoveringImageToolbar &&
+      !isImageAlignMenuOpen &&
+      !isImageEditorOpen
+    ) {
       clearHoveredImage()
     }
-  }, [clearHoveredImage, isHoveringImageToolbar, isImageAlignMenuOpen, isImageEditorOpen])
+  }, [
+    clearHoveredImage,
+    isHoveringImageToolbar,
+    isImageAlignMenuOpen,
+    isImageEditorOpen,
+  ])
 
-  const handleToolbarPinnedChange = useCallback((nextPinned: boolean) => {
-    setIsFontMenuOpen(false)
-    setIsToolbarPinned(nextPinned)
+  const handleToolbarPinnedChange = useCallback(
+    (nextPinned: boolean) => {
+      setIsFontMenuOpen(false)
+      setIsToolbarPinned(nextPinned)
 
-    if (!editor) {
-      return
-    }
+      if (!editor) {
+        return
+      }
 
-    const hasSelectedTextNow = selectionHasTextContent(editor)
-    if (hasSelectedTextNow) {
-      fontMenuAnchorSelectionRef.current = true
-      fontMenuSelectionRef.current = {
+      const hasSelectedTextNow = selectionHasTextContent(editor)
+      if (hasSelectedTextNow) {
+        fontMenuAnchorSelectionRef.current = true
+        fontMenuSelectionRef.current = {
+          from: editor.state.selection.from,
+          to: editor.state.selection.to,
+        }
+        setHasFontMenuAnchorSelection(true)
+      }
+
+      const selectionRange = {
         from: editor.state.selection.from,
         to: editor.state.selection.to,
-      }
-      setHasFontMenuAnchorSelection(true)
-    }
-
-    const selectionRange = {
-      from: editor.state.selection.from,
-      to: editor.state.selection.to,
-    }
-
-    if (!nextPinned) {
-      shouldRestoreBubbleMenuRef.current = true
-      setIsEditorFocused(true)
-      setBubbleMenuInstanceKey((currentKey) => currentKey + 1)
-    }
-
-    const refocusEditor = () => {
-      setIsEditorFocused(true)
-      editor.commands.focus(selectionRange.from, { scrollIntoView: false })
-      editor.view.focus()
-
-      if (hasSelectedTextNow) {
-        editor.commands.setTextSelection({
-          from: fontMenuSelectionRef.current?.from ?? selectionRange.from,
-          to: fontMenuSelectionRef.current?.to ?? selectionRange.to,
-        })
       }
 
       if (!nextPinned) {
-        editor.view.dispatch(
-          editor.state.tr.setMeta("bubbleMenu", "updatePosition")
-        )
+        shouldRestoreBubbleMenuRef.current = true
+        setIsEditorFocused(true)
+        setBubbleMenuInstanceKey((currentKey) => currentKey + 1)
       }
 
-      if (hasSelectedTextNow) {
-        window.requestAnimationFrame(() => {
-          if (selectionHasTextContent(editor)) {
-            fontMenuAnchorSelectionRef.current = false
-            setHasFontMenuAnchorSelection(false)
-          }
-        })
+      const refocusEditor = () => {
+        setIsEditorFocused(true)
+        editor.commands.focus(selectionRange.from, { scrollIntoView: false })
+        editor.view.focus()
+
+        if (hasSelectedTextNow) {
+          editor.commands.setTextSelection({
+            from: fontMenuSelectionRef.current?.from ?? selectionRange.from,
+            to: fontMenuSelectionRef.current?.to ?? selectionRange.to,
+          })
+        }
+
+        if (!nextPinned) {
+          editor.view.dispatch(
+            editor.state.tr.setMeta("bubbleMenu", "updatePosition")
+          )
+        }
+
+        if (hasSelectedTextNow) {
+          window.requestAnimationFrame(() => {
+            if (selectionHasTextContent(editor)) {
+              fontMenuAnchorSelectionRef.current = false
+              setHasFontMenuAnchorSelection(false)
+            }
+          })
+        }
       }
-    }
 
-    if (typeof window === "undefined") {
-      refocusEditor()
-      return
-    }
+      if (typeof window === "undefined") {
+        refocusEditor()
+        return
+      }
 
-    window.requestAnimationFrame(() => {
-      refocusEditor()
       window.requestAnimationFrame(() => {
         refocusEditor()
-        window.setTimeout(refocusEditor, 0)
+        window.requestAnimationFrame(() => {
+          refocusEditor()
+          window.setTimeout(refocusEditor, 0)
+        })
       })
-    })
-  }, [editor])
+    },
+    [editor]
+  )
 
   useEffect(() => {
     if (!editor || isToolbarPinned || !shouldRestoreBubbleMenuRef.current) {
@@ -1803,7 +1849,9 @@ const ActiveEditor = ({
       setIsEditorFocused(true)
       editor.commands.focus(selectionPosition, { scrollIntoView: false })
       editor.view.focus()
-      editor.view.dispatch(editor.state.tr.setMeta("bubbleMenu", "updatePosition"))
+      editor.view.dispatch(
+        editor.state.tr.setMeta("bubbleMenu", "updatePosition")
+      )
     }
 
     if (typeof window === "undefined") {
@@ -1920,7 +1968,10 @@ const ActiveEditor = ({
           />
         </div>
       ) : null}
-      {editor && !isToolbarPinned && shouldKeepToolbarVisible && floatingToolbarPosition ? (
+      {editor &&
+      !isToolbarPinned &&
+      shouldKeepToolbarVisible &&
+      floatingToolbarPosition ? (
         <div
           className={cn(
             "absolute z-20 inline-flex origin-bottom-left",
@@ -2046,68 +2097,80 @@ const RichTextEditor = ({
     setHistoryVersion((currentVersion) => currentVersion + 1)
   }, [])
 
-  const recordHistoryEntry = useCallback((html: string) => {
-    const currentEntries = historyEntriesRef.current
-    const currentIndex = historyIndexRef.current
-    const currentValue = currentEntries[currentIndex] ?? ""
+  const recordHistoryEntry = useCallback(
+    (html: string) => {
+      const currentEntries = historyEntriesRef.current
+      const currentIndex = historyIndexRef.current
+      const currentValue = currentEntries[currentIndex] ?? ""
 
-    if (currentValue === html) {
-      return
-    }
+      if (currentValue === html) {
+        return
+      }
 
-    let nextEntries = currentEntries.slice(0, currentIndex + 1)
-    nextEntries.push(html)
+      let nextEntries = currentEntries.slice(0, currentIndex + 1)
+      nextEntries.push(html)
 
-    if (nextEntries.length > RICH_TEXT_HISTORY_LIMIT) {
-      nextEntries = nextEntries.slice(
-        nextEntries.length - RICH_TEXT_HISTORY_LIMIT
-      )
-    }
+      if (nextEntries.length > RICH_TEXT_HISTORY_LIMIT) {
+        nextEntries = nextEntries.slice(
+          nextEntries.length - RICH_TEXT_HISTORY_LIMIT
+        )
+      }
 
-    historyEntriesRef.current = nextEntries
-    historyIndexRef.current = nextEntries.length - 1
-    syncHistoryVersion()
-  }, [syncHistoryVersion])
+      historyEntriesRef.current = nextEntries
+      historyIndexRef.current = nextEntries.length - 1
+      syncHistoryVersion()
+    },
+    [syncHistoryVersion]
+  )
 
   const canUndoHistory = historyVersion >= 0 && historyIndexRef.current > 0
   const canRedoHistory =
     historyVersion >= 0 &&
     historyIndexRef.current < historyEntriesRef.current.length - 1
 
-  const handleEditorUpdate = useCallback((html: string) => {
-    setContent(html)
+  const handleEditorUpdate = useCallback(
+    (html: string) => {
+      setContent(html)
 
-    if (suppressNextHistoryEntryRef.current) {
-      suppressNextHistoryEntryRef.current = false
-    } else {
-      recordHistoryEntry(html)
-    }
+      if (suppressNextHistoryEntryRef.current) {
+        suppressNextHistoryEntryRef.current = false
+      } else {
+        recordHistoryEntry(html)
+      }
 
-    onUpdate?.(html)
-  }, [onUpdate, recordHistoryEntry])
+      onUpdate?.(html)
+    },
+    [onUpdate, recordHistoryEntry]
+  )
 
-  const handleBlur = useCallback((html: string) => {
-    const normalizedHtml = normalizeRichTextHtml(html)
+  const handleBlur = useCallback(
+    (html: string) => {
+      const normalizedHtml = normalizeRichTextHtml(html)
 
-    setContent(normalizedHtml)
-    if (suppressNextHistoryEntryRef.current) {
-      suppressNextHistoryEntryRef.current = false
-    } else {
-      recordHistoryEntry(normalizedHtml)
-    }
-    setLastSavedAt(new Date())
-    onBlur?.(normalizedHtml)
-  }, [onBlur, recordHistoryEntry])
+      setContent(normalizedHtml)
+      if (suppressNextHistoryEntryRef.current) {
+        suppressNextHistoryEntryRef.current = false
+      } else {
+        recordHistoryEntry(normalizedHtml)
+      }
+      setLastSavedAt(new Date())
+      onBlur?.(normalizedHtml)
+    },
+    [onBlur, recordHistoryEntry]
+  )
 
-  const handleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (!isEditing && !isFullscreenOpen) {
-      setInitialFocusPoint({
-        left: event.clientX,
-        top: event.clientY,
-      })
-      setIsEditing(true)
-    }
-  }, [isEditing, isFullscreenOpen])
+  const handleClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!isEditing && !isFullscreenOpen) {
+        setInitialFocusPoint({
+          left: event.clientX,
+          top: event.clientY,
+        })
+        setIsEditing(true)
+      }
+    },
+    [isEditing, isFullscreenOpen]
+  )
 
   const handleFullscreenToggle = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -2148,15 +2211,14 @@ const RichTextEditor = ({
   }, [defaultValue, isEditing, syncHistoryVersion])
 
   useClickOutside([containerRef], () => {
-    if (!isEditing || isFullscreenOpen || typeof document === "undefined") return
+    if (!isEditing || isFullscreenOpen || typeof document === "undefined")
+      return
 
     const activeElement = document.activeElement
     if (
       activeElement instanceof HTMLElement &&
-      (
-        activeElement.closest("[data-rich-text-editor-select-content='true']") ||
-        activeElement.closest("[data-rich-text-image-toolbar-menu='true']")
-      )
+      (activeElement.closest("[data-rich-text-editor-select-content='true']") ||
+        activeElement.closest("[data-rich-text-image-toolbar-menu='true']"))
     ) {
       return
     }
@@ -2340,7 +2402,8 @@ const RichTextEditor = ({
                           visual="gray"
                           variant="ghost"
                         >
-                          <Clock className="size-[15px]" /> {fullscreenSavedLabel}
+                          <Clock className="size-[15px]" />{" "}
+                          {fullscreenSavedLabel}
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent

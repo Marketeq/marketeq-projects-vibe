@@ -36,7 +36,8 @@ const iconVariants = cva("fill-current shrink-0 text-current", {
 })
 
 interface RadioGroupItemProps
-  extends React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Item>,
+  extends
+    React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Item>,
     VariantProps<typeof radioGroupItemVariants> {}
 
 const RadioGroupItem = React.forwardRef<

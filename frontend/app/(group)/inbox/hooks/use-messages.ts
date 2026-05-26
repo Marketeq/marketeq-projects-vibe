@@ -14,7 +14,10 @@ interface MessagesPageResponse {
   nextCursor: string | null
 }
 
-async function decryptPage(convId: string, rows: Message[] | undefined | null): Promise<Message[]> {
+async function decryptPage(
+  convId: string,
+  rows: Message[] | undefined | null
+): Promise<Message[]> {
   if (!rows || rows.length === 0) return []
   let key: Uint8Array | null = null
   try {

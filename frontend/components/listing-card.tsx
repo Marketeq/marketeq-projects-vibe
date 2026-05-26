@@ -14,7 +14,14 @@
  * Talent cards forward to the existing TalentSearchCard which already
  * implements the full grid layout with skills, rating, avatar, etc.
  */
-
+import {
+  jobDetailsUrl,
+  projectDetailsUrl,
+  serviceDetailsUrl,
+  talentProfileUrl,
+  teamDetailsUrl,
+} from "@/src/lib/listing-urls"
+import { cn } from "@/utils/functions"
 import {
   Briefcase,
   Check,
@@ -32,14 +39,7 @@ import {
 import { Money } from "@/components/money"
 import { NextImage } from "@/components/next-image"
 import { NextLink } from "@/components/next-link"
-import {
-  jobDetailsUrl,
-  projectDetailsUrl,
-  serviceDetailsUrl,
-  talentProfileUrl,
-  teamDetailsUrl,
-} from "@/src/lib/listing-urls"
-import { cn } from "@/utils/functions"
+import { TalentSearchCard } from "@/components/talent-search-card"
 import {
   Avatar,
   AvatarFallback,
@@ -55,7 +55,6 @@ import {
   DropdownMenuTrigger,
   IconButton,
 } from "@/components/ui"
-import { TalentSearchCard } from "@/components/talent-search-card"
 
 /* ─── Types ────────────────────────────────────────────────────────────── */
 
@@ -211,10 +210,10 @@ function ProjectListingCard({
     (cardVariant === "job" || cardVariant === "job-grid"
       ? jobDetailsUrl(id)
       : mode === "owned" && status && status !== "Active"
-      ? `/publish-project?type=${kind}&draftId=${id}`
-      : kind === "service"
-        ? serviceDetailsUrl(id)
-        : projectDetailsUrl(id))
+        ? `/publish-project?type=${kind}&draftId=${id}`
+        : kind === "service"
+          ? serviceDetailsUrl(id)
+          : projectDetailsUrl(id))
 
   const getStableVariantIndex = (value: string, total: number) => {
     let hash = 0
@@ -234,8 +233,7 @@ function ProjectListingCard({
     const secondarySkills = ["Wireframing", "Figma"]
     const gridVariantIndex = getStableVariantIndex(id, 4)
     const earningsVariantIndex = getStableVariantIndex(`${id}-earnings`, 3)
-    const showPaymentVerified =
-      gridVariantIndex === 1 || gridVariantIndex === 3
+    const showPaymentVerified = gridVariantIndex === 1 || gridVariantIndex === 3
     const showNdaRequired = gridVariantIndex === 2 || gridVariantIndex === 3
     const showServiceBadge = gridVariantIndex === 0 || gridVariantIndex === 3
 
@@ -290,7 +288,9 @@ function ProjectListingCard({
                 visual="gray"
                 size="sm"
                 className="h-auto rounded-[5px] px-3 py-1 text-xs font-semibold leading-[18px] text-dark-blue-400 shadow-none"
-                leftIcon={<DollarSign className="size-[14px] text-success-600" />}
+                leftIcon={
+                  <DollarSign className="size-[14px] text-success-600" />
+                }
               >
                 Payment Verified
               </Button>
@@ -427,7 +427,9 @@ function ProjectListingCard({
                   {title || "Corporate Dashboard Project"}
                 </NextLink>
 
-                <span className="text-sm leading-5 text-gray-500">2 days ago</span>
+                <span className="text-sm leading-5 text-gray-500">
+                  2 days ago
+                </span>
               </div>
 
               <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -729,9 +731,7 @@ function TeamListingCard({
 }: TeamCardProps) {
   const computedHref = href ?? teamDetailsUrl(id)
   const avatars =
-    memberAvatars && memberAvatars.length > 0
-      ? memberAvatars
-      : ["/woman.jpg"]
+    memberAvatars && memberAvatars.length > 0 ? memberAvatars : ["/woman.jpg"]
 
   return (
     <article className="h-full flex flex-col p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white">

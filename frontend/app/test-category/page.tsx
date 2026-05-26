@@ -3,9 +3,9 @@
 import { useCategoryPageL1 } from "../../src/features/category-pages/hook"
 
 export default function TestCategoryPage() {
-  const { data, isLoading, error } = useCategoryPageL1("creative", { 
-    kind: "projects", 
-    limit: 10 
+  const { data, isLoading, error } = useCategoryPageL1("creative", {
+    kind: "projects",
+    limit: 10,
   })
 
   if (isLoading) {
@@ -66,10 +66,15 @@ export default function TestCategoryPage() {
 
       {data.children && data.children.length > 0 && (
         <div className="mb-6">
-          <h3 className="text-xl font-semibold mb-2">Child Categories ({data.children.length})</h3>
+          <h3 className="text-xl font-semibold mb-2">
+            Child Categories ({data.children.length})
+          </h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {data.children.map(child => (
-              <div key={child.uuid} className="p-3 bg-blue-50 rounded border border-blue-200">
+            {data.children.map((child) => (
+              <div
+                key={child.uuid}
+                className="p-3 bg-blue-50 rounded border border-blue-200"
+              >
                 {child.name}
               </div>
             ))}
@@ -78,8 +83,10 @@ export default function TestCategoryPage() {
       )}
 
       <div className="mb-6">
-        <h3 className="text-xl font-semibold mb-2">Content Blocks ({data.blocks.length})</h3>
-        {data.blocks.map(block => (
+        <h3 className="text-xl font-semibold mb-2">
+          Content Blocks ({data.blocks.length})
+        </h3>
+        {data.blocks.map((block) => (
           <div key={block.key} className="mb-4 p-4 border rounded bg-gray-50">
             <div className="font-semibold text-lg">{block.title}</div>
             <div className="text-sm text-gray-600 mt-1">

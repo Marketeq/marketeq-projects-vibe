@@ -1,6 +1,6 @@
-import AxiosRequest from ".."
 import Cookies from "js-cookie"
 import { getPublicUserUrl } from "@/lib/runtime-urls"
+import AxiosRequest from ".."
 
 const USER_BASE = getPublicUserUrl()
 
@@ -55,7 +55,13 @@ export interface UserProfilePayload {
   role?: string | null
   rateMin?: number | null
   rateMax?: number | null
-  jobTitles?: Array<{ jobTitle: string; clientRate: number; earning: number; fee: number; saveAsDefault: boolean }> | null
+  jobTitles?: Array<{
+    jobTitle: string
+    clientRate: number
+    earning: number
+    fee: number
+    saveAsDefault: boolean
+  }> | null
   userType?: string
   industry?: string
   businessGoals?: string[]
@@ -107,26 +113,19 @@ export const UserAPI = {
       { headers: authHeaders() }
     ),
   removeEducation: (userId: string, eduId: string) =>
-    AxiosRequest.del(
-      `${USER_BASE}/v1/users/${userId}/education/${eduId}`,
-      { headers: authHeaders() }
-    ),
+    AxiosRequest.del(`${USER_BASE}/v1/users/${userId}/education/${eduId}`, {
+      headers: authHeaders(),
+    }),
 
   // Experience
   addExperience: (userId: string, data: ExperiencePayload) =>
     AxiosRequest.post(`${USER_BASE}/v1/users/${userId}/work`, data, {
       headers: authHeaders(),
     }),
-  updateExperience: (
-    userId: string,
-    workId: string,
-    data: ExperiencePayload
-  ) =>
-    AxiosRequest.put(
-      `${USER_BASE}/v1/users/${userId}/work/${workId}`,
-      data,
-      { headers: authHeaders() }
-    ),
+  updateExperience: (userId: string, workId: string, data: ExperiencePayload) =>
+    AxiosRequest.put(`${USER_BASE}/v1/users/${userId}/work/${workId}`, data, {
+      headers: authHeaders(),
+    }),
   removeExperience: (userId: string, workId: string) =>
     AxiosRequest.del(`${USER_BASE}/v1/users/${userId}/work/${workId}`, {
       headers: authHeaders(),
@@ -160,18 +159,15 @@ export const UserAPI = {
       { headers: authHeaders() }
     ),
   removeLanguage: (userId: string, langId: string) =>
-    AxiosRequest.del(
-      `${USER_BASE}/v1/users/${userId}/languages/${langId}`,
-      { headers: authHeaders() }
-    ),
+    AxiosRequest.del(`${USER_BASE}/v1/users/${userId}/languages/${langId}`, {
+      headers: authHeaders(),
+    }),
 
   // Certifications
   addCertification: (userId: string, data: CertificationPayload) =>
-    AxiosRequest.post(
-      `${USER_BASE}/v1/users/${userId}/certifications`,
-      data,
-      { headers: authHeaders() }
-    ),
+    AxiosRequest.post(`${USER_BASE}/v1/users/${userId}/certifications`, data, {
+      headers: authHeaders(),
+    }),
   updateCertification: (
     userId: string,
     certId: string,

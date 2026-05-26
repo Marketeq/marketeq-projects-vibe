@@ -40,7 +40,8 @@ export default function EditEmailModal({
   const [value, setValue] = useState(currentAddress ?? accountEmail ?? "")
   const [error, setError] = useState<string | null>(null)
 
-  const differsFromAccount = value.trim().toLowerCase() !== accountEmail.toLowerCase()
+  const differsFromAccount =
+    value.trim().toLowerCase() !== accountEmail.toLowerCase()
 
   const handleSave = async () => {
     const trimmed = value.trim()
@@ -49,7 +50,8 @@ export default function EditEmailModal({
       return
     }
     setError(null)
-    const next = trimmed.toLowerCase() === accountEmail.toLowerCase() ? null : trimmed
+    const next =
+      trimmed.toLowerCase() === accountEmail.toLowerCase() ? null : trimmed
     await onSave(next)
     onOpenChange(false)
   }
@@ -80,7 +82,9 @@ export default function EditEmailModal({
 
         <div className="mt-2 space-y-2">
           <div className="flex items-center justify-between">
-            <Label size="sm">You will receive notifications on this email</Label>
+            <Label size="sm">
+              You will receive notifications on this email
+            </Label>
             {differsFromAccount && (
               <TooltipProvider delayDuration={150}>
                 <Tooltip>
@@ -94,9 +98,12 @@ export default function EditEmailModal({
                       Reset To Default
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-[240px] text-center">
-                    Reset to the email address you&apos;re using to log into your
-                    Marketeq account
+                  <TooltipContent
+                    side="top"
+                    className="max-w-[240px] text-center"
+                  >
+                    Reset to the email address you&apos;re using to log into
+                    your Marketeq account
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

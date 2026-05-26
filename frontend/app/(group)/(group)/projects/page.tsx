@@ -1,5 +1,13 @@
-'use client'
+"use client"
 
+import { useEffect, useState } from "react"
+import { type BlockItem, getCategoryPage } from "@/src/lib/api/category-pages"
+import {
+  addFavorite,
+  findFavoriteByItemId,
+  removeFavorite,
+} from "@/src/lib/api/favorites"
+import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import {
   ArrowRight,
   Check,
@@ -12,18 +20,17 @@ import {
 } from "@blend-metrics/icons"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs"
 import { SwiperSlide } from "swiper/react"
+import { CategoryBanner } from "@/components/category-banner"
+import { ListingCard } from "@/components/listing-card"
+import { Money } from "@/components/money"
+import NextImage from "@/components/next-image"
+import NextLink from "@/components/next-link"
 import {
   SwiperContent,
   SwiperNextTrigger,
   SwiperPrevTrigger,
   SwiperRoot,
 } from "@/components/swiper"
-import { Money } from "@/components/money"
-import NextImage from "@/components/next-image"
-import NextLink from "@/components/next-link"
-import { buildProjectUrl } from "@/src/lib/urlHelpers"
-import { ListingCard } from "@/components/listing-card"
-import { CategoryBanner } from "@/components/category-banner"
 import {
   Avatar,
   AvatarFallback,
@@ -43,117 +50,115 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui";
-
-import { useState, useEffect } from 'react';
-import { getCategoryPage, type BlockItem } from '@/src/lib/api/category-pages';
-import { addFavorite, removeFavorite, findFavoriteByItemId } from '@/src/lib/api/favorites';
+} from "@/components/ui"
 
 // Interface for project items
 interface ProjectItem extends BlockItem {
-  featured?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  rating?: number;
-  reviewCount?: number;
-  reviews?: number;
-  coverImage?: string;
-  summary?: string;
-  role?: string;
+  featured?: boolean
+  createdAt?: string
+  updatedAt?: string
+  rating?: number
+  reviewCount?: number
+  reviews?: number
+  coverImage?: string
+  summary?: string
+  role?: string
   scopeTotal?: {
-    timeline?: string;
-    budget?: number | string;
-  };
+    timeline?: string
+    budget?: number | string
+  }
 }
 
 export default function Projects() {
   // State management
-  const [allProjects, setAllProjects] = useState<ProjectItem[]>([]);
-  const [displayedProjects, setDisplayedProjects] = useState<ProjectItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('Featured');
-  const [pageData, setPageData] = useState<any>(null); // ✅ ADD THIS LINE
+  const [allProjects, setAllProjects] = useState<ProjectItem[]>([])
+  const [displayedProjects, setDisplayedProjects] = useState<ProjectItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState("Featured")
+  const [pageData, setPageData] = useState<any>(null) // ✅ ADD THIS LINE
   // Fetch data from backend
   useEffect(() => {
     async function fetchData() {
       try {
-        setIsLoading(true);
-        const data = await getCategoryPage('creative');
-        setPageData(data);
+        setIsLoading(true)
+        const data = await getCategoryPage("creative")
+        setPageData(data)
         if (data?.blocks) {
-          const allItems: any[] = [];
+          const allItems: any[] = []
 
           // Filter to only get projects, not talent
           data.blocks.forEach((block: any) => {
-            if (block.entity === 'projects' && block.items) {
-              allItems.push(...block.items);
+            if (block.entity === "projects" && block.items) {
+              allItems.push(...block.items)
             }
-          });
+          })
 
-          setAllProjects(allItems);
-          setDisplayedProjects(allItems);
+          setAllProjects(allItems)
+          setDisplayedProjects(allItems)
         }
       } catch (error) {
-        console.error('Failed to fetch:', error);
+        console.error("Failed to fetch:", error)
       } finally {
-        setIsLoading(false);
+        setIsLoading(false)
       }
     }
 
-    fetchData();
-  }, []);
+    fetchData()
+  }, [])
 
   // Sort projects when tab changes
   useEffect(() => {
-    if (allProjects.length === 0) return;
+    if (allProjects.length === 0) return
 
-    let sorted = [...allProjects];
+    let sorted = [...allProjects]
 
     switch (activeTab) {
-      case 'Featured':
+      case "Featured":
         sorted = sorted.sort((a: any, b: any) => {
-          if (a.featured && !b.featured) return -1;
-          if (!a.featured && b.featured) return 1;
-          return 0;
-        });
-        break;
+          if (a.featured && !b.featured) return -1
+          if (!a.featured && b.featured) return 1
+          return 0
+        })
+        break
 
-      case 'Newest':
+      case "Newest":
         sorted = sorted.sort((a: any, b: any) => {
-          const dateA = new Date(a.createdAt || 0).getTime();
-          const dateB = new Date(b.createdAt || 0).getTime();
-          return dateB - dateA;
-        });
-        break;
+          const dateA = new Date(a.createdAt || 0).getTime()
+          const dateB = new Date(b.createdAt || 0).getTime()
+          return dateB - dateA
+        })
+        break
 
-      case 'Most Popular':
+      case "Most Popular":
         sorted = sorted.sort((a: any, b: any) => {
-          const reviewsA = a.reviewCount || a.reviews || 0;
-          const reviewsB = b.reviewCount || b.reviews || 0;
-          return reviewsB - reviewsA;
-        });
-        break;
+          const reviewsA = a.reviewCount || a.reviews || 0
+          const reviewsB = b.reviewCount || b.reviews || 0
+          return reviewsB - reviewsA
+        })
+        break
 
-      case 'Trending':
+      case "Trending":
         sorted = sorted.sort((a: any, b: any) => {
-          const dateA = new Date(a.updatedAt || 0).getTime();
-          const dateB = new Date(b.updatedAt || 0).getTime();
-          return dateB - dateA;
-        });
-        break;
+          const dateA = new Date(a.updatedAt || 0).getTime()
+          const dateB = new Date(b.updatedAt || 0).getTime()
+          return dateB - dateA
+        })
+        break
 
-      case 'Top-Rated':
+      case "Top-Rated":
         sorted = sorted.sort((a: any, b: any) => {
-          const ratingA = a.rating || 0;
-          const ratingB = b.rating || 0;
-          return ratingB - ratingA;
-        });
-        break;
+          const ratingA = a.rating || 0
+          const ratingB = b.rating || 0
+          return ratingB - ratingA
+        })
+        break
     }
 
-    setDisplayedProjects(sorted);
-  }, [activeTab, allProjects]);
-  const categorySlugPath = pageData?.breadcrumbs.map((b: any) => b.slug) || ["creative"]
+    setDisplayedProjects(sorted)
+  }, [activeTab, allProjects])
+  const categorySlugPath = pageData?.breadcrumbs.map((b: any) => b.slug) || [
+    "creative",
+  ]
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <div className="py-[50px]">
@@ -166,8 +171,12 @@ export default function Projects() {
             breadcrumbs={
               <div className="flex items-center gap-x-2">
                 <Home03 className="size-[18px] text-white opacity-60" />
-                <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
-                <span className="text-xs leading-6 font-semibold text-white opacity-60">Projects</span>
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                  /
+                </span>
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                  Projects
+                </span>
               </div>
             }
           />
@@ -267,181 +276,194 @@ export default function Projects() {
                 Top Projects
               </h1>
               <SwiperRoot>
-              <div className="mt-6 flex justify-between items-center">
-                <TabsList className="flex items-center gap-x-3">
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Featured">Featured</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Newest">Newest</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Most Popular">Most Popular</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Trending">Trending</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Top-Rated">Top-Rated</TabsTrigger>
-                  </Badge>
-                </TabsList>
+                <div className="mt-6 flex justify-between items-center">
+                  <TabsList className="flex items-center gap-x-3">
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Featured">Featured</TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Newest">Newest</TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Most Popular">
+                        Most Popular
+                      </TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Trending">Trending</TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Top-Rated">Top-Rated</TabsTrigger>
+                    </Badge>
+                  </TabsList>
 
-                <div className="flex items-center gap-x-3">
-                  <NextLink href="../../level-3/projects">
-                    <Button variant="link" visual="gray" size="lg" className="underline">
-                      Explore More Projects
-                    </Button>
-                  </NextLink>
-                  <SwiperPrevTrigger asChild>
-                    <IconButton
-                      className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                      visual="gray"
-                      variant="outlined"
-                    >
-                      <ChevronLeft className="size-[18px]" />
-                    </IconButton>
-                  </SwiperPrevTrigger>
-                  <SwiperNextTrigger asChild>
-                    <IconButton
-                      className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                      visual="gray"
-                      variant="outlined"
-                    >
-                      <ChevronRight className="size-[18px]" />
-                    </IconButton>
-                  </SwiperNextTrigger>
+                  <div className="flex items-center gap-x-3">
+                    <NextLink href="../../level-3/projects">
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="lg"
+                        className="underline"
+                      >
+                        Explore More Projects
+                      </Button>
+                    </NextLink>
+                    <SwiperPrevTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronLeft className="size-[18px]" />
+                      </IconButton>
+                    </SwiperPrevTrigger>
+                    <SwiperNextTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronRight className="size-[18px]" />
+                      </IconButton>
+                    </SwiperNextTrigger>
+                  </div>
                 </div>
-              </div>
 
-              <div className="mt-6">
-                <TabsContent className="gap-5 flex items-center" value={activeTab}>
-                  <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                  {isLoading ? (
-                    Array(8).fill(0).map((_, index) => (
-                      <SwiperSlide className="w-[355px]" key={index}>
-                      <article className="p-5 bg-white border rounded-lg animate-pulse">
-                        <div className="h-[169px] bg-gray-200 rounded-[6px]"></div>
-                        <div className="mt-3 h-4 bg-gray-200 rounded"></div>
-                        <div className="mt-3 h-3 bg-gray-200 rounded"></div>
-                      </article>
-                      </SwiperSlide>
-                    ))
-                  ) : displayedProjects.length > 0 ? (
-                    displayedProjects.slice(0, 8).map((project) => (
-                      <SwiperSlide className="w-[355px]" key={project.id}>
-                        <ListingCard
-                          kind="project"
-                          id={project.id}
-                          title={project.title ?? ""}
-                          description={
-                            project.summary ||
-                            project.description ||
-                            "No description available"
-                          }
-                          mediaUrl={
-                            project.coverImage ||
-                            project.thumbnail ||
-                            "/dashboard.png"
-                          }
-                          budget={`$${project.scopeTotal?.budget || project.price || "50,000"} budget`}
-                          duration={`Starting from ${project.scopeTotal?.timeline || "12 weeks"}`}
-                          rating={
-                            project.rating && (project.reviewCount ?? 0) > 0
-                              ? project.rating
-                              : undefined
-                          }
-                          reviewCount={
-                            project.rating && (project.reviewCount ?? 0) > 0
-                              ? project.reviewCount
-                              : undefined
-                          }
-                          href={buildProjectUrl(
-                            categorySlugPath,
-                            project.slug,
-                            project.id
-                          )}
-                          favoriteSlot={
-                            <FavoriteRoot
-                              onValueChange={async (pressed) => {
-                                if (pressed) {
-                                  await addFavorite({
-                                    type: "project",
-                                    itemId: project.id,
-                                  })
-                                } else {
-                                  const favorite = await findFavoriteByItemId(
-                                    project.id
-                                  )
-                                  if (favorite) {
-                                    await removeFavorite(favorite.id)
-                                  }
-                                }
-                              }}
-                            >
-                              {({ pressed }) => (
-                                <TooltipProvider delayDuration={75}>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="inline-block">
-                                        <Favorite />
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      {pressed ? (
-                                        <span className="inline-flex items-center gap-x-1">
-                                          <Check className="size-[15px] shrink-0 text-green-500" />
-                                          Saved
-                                        </span>
-                                      ) : (
-                                        "Save to favorites"
-                                      )}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
+                <div className="mt-6">
+                  <TabsContent
+                    className="gap-5 flex items-center"
+                    value={activeTab}
+                  >
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {isLoading ? (
+                        Array(8)
+                          .fill(0)
+                          .map((_, index) => (
+                            <SwiperSlide className="w-[355px]" key={index}>
+                              <article className="p-5 bg-white border rounded-lg animate-pulse">
+                                <div className="h-[169px] bg-gray-200 rounded-[6px]"></div>
+                                <div className="mt-3 h-4 bg-gray-200 rounded"></div>
+                                <div className="mt-3 h-3 bg-gray-200 rounded"></div>
+                              </article>
+                            </SwiperSlide>
+                          ))
+                      ) : displayedProjects.length > 0 ? (
+                        displayedProjects.slice(0, 8).map((project) => (
+                          <SwiperSlide className="w-[355px]" key={project.id}>
+                            <ListingCard
+                              kind="project"
+                              id={project.id}
+                              title={project.title ?? ""}
+                              description={
+                                project.summary ||
+                                project.description ||
+                                "No description available"
+                              }
+                              mediaUrl={
+                                project.coverImage ||
+                                project.thumbnail ||
+                                "/dashboard.png"
+                              }
+                              budget={`$${project.scopeTotal?.budget || project.price || "50,000"} budget`}
+                              duration={`Starting from ${project.scopeTotal?.timeline || "12 weeks"}`}
+                              rating={
+                                project.rating && (project.reviewCount ?? 0) > 0
+                                  ? project.rating
+                                  : undefined
+                              }
+                              reviewCount={
+                                project.rating && (project.reviewCount ?? 0) > 0
+                                  ? project.reviewCount
+                                  : undefined
+                              }
+                              href={buildProjectUrl(
+                                categorySlugPath,
+                                project.slug,
+                                project.id
                               )}
-                            </FavoriteRoot>
-                          }
-                        />
-                      </SwiperSlide>
-                    ))
-                  ) : (
-                    <div className="col-span-4 text-center py-12">
-                      <p className="text-dark-blue-400">No projects found</p>
-                    </div>
-                  )}
-                  </SwiperContent>
-                </TabsContent>
-              </div>
+                              favoriteSlot={
+                                <FavoriteRoot
+                                  onValueChange={async (pressed) => {
+                                    if (pressed) {
+                                      await addFavorite({
+                                        type: "project",
+                                        itemId: project.id,
+                                      })
+                                    } else {
+                                      const favorite =
+                                        await findFavoriteByItemId(project.id)
+                                      if (favorite) {
+                                        await removeFavorite(favorite.id)
+                                      }
+                                    }
+                                  }}
+                                >
+                                  {({ pressed }) => (
+                                    <TooltipProvider delayDuration={75}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="inline-block">
+                                            <Favorite />
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {pressed ? (
+                                            <span className="inline-flex items-center gap-x-1">
+                                              <Check className="size-[15px] shrink-0 text-green-500" />
+                                              Saved
+                                            </span>
+                                          ) : (
+                                            "Save to favorites"
+                                          )}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                </FavoriteRoot>
+                              }
+                            />
+                          </SwiperSlide>
+                        ))
+                      ) : (
+                        <div className="col-span-4 text-center py-12">
+                          <p className="text-dark-blue-400">
+                            No projects found
+                          </p>
+                        </div>
+                      )}
+                    </SwiperContent>
+                  </TabsContent>
+                </div>
               </SwiperRoot>
             </Tabs>
           </div>
@@ -699,154 +721,154 @@ export default function Projects() {
                 Recommended Projects
               </h1>
               <SwiperRoot>
-              <div className="mt-6 flex justify-between items-center">
-                <TabsList className="flex items-center gap-x-3">
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Back-End Development">
-                      Back-End Development
-                    </TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Blockchain">Blockchain</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Data Structure & Algorithms">
-                      Data Structure & Algorithms
-                    </TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Cloud Computing">
-                      Cloud Computing
-                    </TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Front-End Development">
-                      Front-End Development
-                    </TabsTrigger>
-                  </Badge>
-                </TabsList>
-
-                <div className="flex items-center gap-x-3">
-                  <SwiperPrevTrigger asChild>
-                    <IconButton
-                      className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                <div className="mt-6 flex justify-between items-center">
+                  <TabsList className="flex items-center gap-x-3">
+                    <Badge
+                      variant="circular"
                       visual="gray"
-                      variant="outlined"
-                    >
-                      <ChevronLeft className="size-[18px]" />
-                    </IconButton>
-                  </SwiperPrevTrigger>
-                  <SwiperNextTrigger asChild>
-                    <IconButton
-                      className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                      visual="gray"
-                      variant="outlined"
-                    >
-                      <ChevronRight className="size-[18px]" />
-                    </IconButton>
-                  </SwiperNextTrigger>
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <TabsContent
-                  value="Back-End Development"
-                  className="gap-5 flex items-center"
-                >
-                  <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                  <SwiperSlide className="w-[355px]" key="promo">
-                  <article className="py-[50px] bg-warning-600 flex flex-col items-start justify-end px-6">
-                    <h1 className="text-[28px] font-bold leading-none text-white">
-                      Back-End Development Projects
-                    </h1>
-                    <p className="mt-3 text-lg font-light leading-none text-white">
-                      Discover high-quality back-end development projects ready
-                      to launch.
-                    </p>
-                    <Button
-                      className="rounded-full bg-white text-warning-700 mt-8"
                       size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
                     >
-                      Explore more <ArrowRight className="size-[15px]" />
-                    </Button>
-                  </article>
-                  </SwiperSlide>
-                  {Array(3)
-                    .fill(0)
-                    .map((_, index) => (
-                      <SwiperSlide className="w-[355px]" key={index}>
-                        <ListingCard
-                          kind="project"
-                          id={`placeholder-${index}`}
-                          title="The Ultimate Mobile App Experience"
-                          description="Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
-                          mediaUrl="/dashboard.png"
-                          budget="$50,000 budget"
-                          duration="Starting from 12 weeks"
-                          rating={4.9}
-                          reviewCount={5}
-                          href="#"
-                          favoriteSlot={
-                            <FavoriteRoot>
-                              {({ pressed }) => (
-                                <TooltipProvider delayDuration={75}>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="inline-block">
-                                        <Favorite />
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      {pressed ? (
-                                        <span className="inline-flex items-center gap-x-1">
-                                          <Check className="size-[15px] shrink-0 text-green-500" />
-                                          Saved
-                                        </span>
-                                      ) : (
-                                        "Save to favorites"
-                                      )}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                            </FavoriteRoot>
-                          }
-                        />
+                      <TabsTrigger value="Back-End Development">
+                        Back-End Development
+                      </TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Blockchain">Blockchain</TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Data Structure & Algorithms">
+                        Data Structure & Algorithms
+                      </TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Cloud Computing">
+                        Cloud Computing
+                      </TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Front-End Development">
+                        Front-End Development
+                      </TabsTrigger>
+                    </Badge>
+                  </TabsList>
+
+                  <div className="flex items-center gap-x-3">
+                    <SwiperPrevTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronLeft className="size-[18px]" />
+                      </IconButton>
+                    </SwiperPrevTrigger>
+                    <SwiperNextTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronRight className="size-[18px]" />
+                      </IconButton>
+                    </SwiperNextTrigger>
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <TabsContent
+                    value="Back-End Development"
+                    className="gap-5 flex items-center"
+                  >
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      <SwiperSlide className="w-[355px]" key="promo">
+                        <article className="py-[50px] bg-warning-600 flex flex-col items-start justify-end px-6">
+                          <h1 className="text-[28px] font-bold leading-none text-white">
+                            Back-End Development Projects
+                          </h1>
+                          <p className="mt-3 text-lg font-light leading-none text-white">
+                            Discover high-quality back-end development projects
+                            ready to launch.
+                          </p>
+                          <Button
+                            className="rounded-full bg-white text-warning-700 mt-8"
+                            size="lg"
+                          >
+                            Explore more <ArrowRight className="size-[15px]" />
+                          </Button>
+                        </article>
                       </SwiperSlide>
-                    ))}
-                  </SwiperContent>
-                </TabsContent>
-              </div>
+                      {Array(3)
+                        .fill(0)
+                        .map((_, index) => (
+                          <SwiperSlide className="w-[355px]" key={index}>
+                            <ListingCard
+                              kind="project"
+                              id={`placeholder-${index}`}
+                              title="The Ultimate Mobile App Experience"
+                              description="Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
+                              mediaUrl="/dashboard.png"
+                              budget="$50,000 budget"
+                              duration="Starting from 12 weeks"
+                              rating={4.9}
+                              reviewCount={5}
+                              href="#"
+                              favoriteSlot={
+                                <FavoriteRoot>
+                                  {({ pressed }) => (
+                                    <TooltipProvider delayDuration={75}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="inline-block">
+                                            <Favorite />
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {pressed ? (
+                                            <span className="inline-flex items-center gap-x-1">
+                                              <Check className="size-[15px] shrink-0 text-green-500" />
+                                              Saved
+                                            </span>
+                                          ) : (
+                                            "Save to favorites"
+                                          )}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                </FavoriteRoot>
+                              }
+                            />
+                          </SwiperSlide>
+                        ))}
+                    </SwiperContent>
+                  </TabsContent>
+                </div>
               </SwiperRoot>
             </Tabs>
           </div>

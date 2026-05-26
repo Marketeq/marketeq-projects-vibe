@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
+  addFavorite,
+  findFavoriteByItemId,
+  removeFavorite,
+} from "@/src/lib/api/favorites"
+import {
   Check,
   Copy,
   Edit03,
@@ -12,11 +17,6 @@ import {
   Star02,
   Trash2,
 } from "@blend-metrics/icons"
-import {
-  addFavorite,
-  findFavoriteByItemId,
-  removeFavorite,
-} from "@/src/lib/api/favorites"
 import NextImage from "./next-image"
 import NextLink from "./next-link"
 import {
@@ -225,8 +225,7 @@ export const TalentSearchCard = ({
           <div className="flex items-center text-gray-500 gap-x-1 mt-3.5">
             <MarkerPin02 className="size-3" />
             <p className="text-[10px] leading-5 font-semibold">
-              {country}{" "}
-              <span className="font-light">({localTime})</span>
+              {country} <span className="font-light">({localTime})</span>
             </p>
           </div>
 
@@ -320,7 +319,15 @@ export const TalentSearchCard = ({
           <span
             key={index}
             className="text-xs leading-5 font-semibold text-gray-500/60 hover:text-gray-500 cursor-pointer whitespace-nowrap"
-            style={index >= visibleCount ? { position: "absolute", visibility: "hidden", pointerEvents: "none" } : undefined}
+            style={
+              index >= visibleCount
+                ? {
+                    position: "absolute",
+                    visibility: "hidden",
+                    pointerEvents: "none",
+                  }
+                : undefined
+            }
           >
             {skill}
           </span>

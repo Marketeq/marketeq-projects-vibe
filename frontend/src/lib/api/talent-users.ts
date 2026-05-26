@@ -9,7 +9,6 @@
  * off a single fetch and every subsequent caller (in the same page load)
  * reuses the cached promise.
  */
-
 import { useEffect, useState } from "react"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 
@@ -57,7 +56,10 @@ function fetchTalentUsers(): Promise<TalentUser[]> {
  * caller — homepage, /talent, /c/<category>, favorites, etc. — produces
  * an identical card from the same backend payload.
  */
-export function talentToCardProps(u: TalentUser, idx = 0): {
+export function talentToCardProps(
+  u: TalentUser,
+  idx = 0
+): {
   id: string
   username: string
   name: string
