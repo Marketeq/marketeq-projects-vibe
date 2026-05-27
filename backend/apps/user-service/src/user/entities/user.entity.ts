@@ -92,20 +92,8 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   onboardedAt?: Date;
 
-  @Column({ type: 'timestamptz', nullable: true })
-  clientOnboardedAt?: Date;
-
-  @Column({ type: 'timestamptz', nullable: true })
-  talentOnboardedAt?: Date;
-
   @Column({ type: 'numeric', nullable: true })
   rate?: number;
-
-  @Column({ type: 'numeric', nullable: true })
-  rateMin?: number;
-
-  @Column({ type: 'numeric', nullable: true })
-  rateMax?: number;
 
   @Column({ type: 'jsonb', nullable: true })
   jobTitles?: string[];

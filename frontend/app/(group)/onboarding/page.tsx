@@ -11,7 +11,7 @@ import { Button } from "@/components/ui"
 export default function Onboarding() {
   return (
     <AuthenticatedRoute>
-      <div className="h-screen flex overflow-hidden">
+      <div className="min-h-screen flex">
         <div className="relative p-[75px] w-[480px] shrink-0 flex flex-col bg-dark-blue-500">
           <Logo className="h-9 w-[245px] shrink-0" />
 

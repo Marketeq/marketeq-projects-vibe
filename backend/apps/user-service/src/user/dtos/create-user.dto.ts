@@ -137,19 +137,4 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   onboardingDismissed?: boolean;
-
-  @ApiPropertyOptional({ example: 'client' })
-  @IsOptional()
-  @IsString()
-  userType?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  clientOnboardedAt?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  talentOnboardedAt?: string;
 }

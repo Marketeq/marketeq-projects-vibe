@@ -2,11 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import {
-  useAuth,
-  hasCompletedClientOnboarding,
-  hasCompletedTalentOnboarding,
-} from "@/contexts/auth"
+import { useAuth } from "@/contexts/auth"
 import { useAutocomplete } from "@/libs/autocomplete"
 import {
   type NotificationMetadata,
@@ -1354,25 +1350,19 @@ export const TopMostHeader = ({
                   setMenuOpen(false)
                   const newType =
                     user?.accountType === "TALENT" ? "client" : "talent"
-                  const newRole =
-                    newType === "talent" ? ROLE.TALENT : ROLE.CLIENT
+                  const newDashboard =
+                    newType === "client"
+                      ? "/client-dashboard"
+                      : "/talent-dashboard"
                   // Optimistically update local user so the dropdown label flips immediately,
                   // even if the backend doesn't accept the userType change.
-                  const updatedUser = user
-                    ? {
-                        ...user,
-                        userType: newType,
-                        accountType: newRole,
-                        role: newRole,
-                      }
-                    : null
                   setUser((prev) =>
                     prev
                       ? {
                           ...prev,
                           userType: newType,
-                          accountType: newRole,
-                          role: newRole,
+                          accountType:
+                            newType === "talent" ? ROLE.TALENT : ROLE.CLIENT,
                         }
                       : prev
                   )
@@ -1381,17 +1371,7 @@ export const TopMostHeader = ({
                       () => {}
                     )
                   }
-                  // Check if the user needs onboarding for the target role
-                  const needsOnboarding =
-                    newType === "client"
-                      ? !hasCompletedClientOnboarding(updatedUser)
-                      : !hasCompletedTalentOnboarding(updatedUser)
-                  const destination = needsOnboarding
-                    ? `/onboarding/${newType}`
-                    : newType === "client"
-                      ? "/client-dashboard"
-                      : "/talent-dashboard"
-                  router.push(destination)
+                  router.push(newDashboard)
                 }}
               >
                 <Repeat className="size-4" />

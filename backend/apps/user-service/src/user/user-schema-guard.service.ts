@@ -47,8 +47,6 @@ export class UserSchemaGuardService implements OnModuleInit {
       `"customAvailability" jsonb`,
       `"isStudent" boolean DEFAULT false`,
       `"gettingStartedStep" integer`,
-      `"clientOnboardedAt" timestamptz`,
-      `"talentOnboardedAt" timestamptz`,
       `"totalProjectsCompleted" integer`,
       `"clientSuccessRating" numeric`,
       `"repeatHireRate" numeric`,
