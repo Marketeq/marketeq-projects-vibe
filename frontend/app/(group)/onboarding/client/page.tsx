@@ -2967,6 +2967,7 @@ const DoNext = ({
     const finishedUser = {
       ...(clientUser ?? user),
       onboardingDismissed: true,
+      clientOnboardedAt: new Date().toISOString(),
       userType: "client",
     } as User
     setUser(finishedUser)
